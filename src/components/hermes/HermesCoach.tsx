@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Bot, Brain, Check, GitBranch, LoaderCircle, RefreshCw, Send, Sparkles, X } from "lucide-react"
-import { API_BASE, api } from "@/lib/farq-api"
+import { API_BASE, HERMES_API_KEY_HEADER, api, getHermesApiKey, getHermesModel, getHermesProvider } from "@/lib/farq-api"
 
 interface Message { id: string; role: "user" | "assistant"; content: string; created_at: string }
 interface Fact { id: string; category: string; key: string; value: unknown }
@@ -45,7 +45,16 @@ export function HermesCoach() {
     setInput(""); setBusy(true); setError(null)
     setMessages((items) => [...items, { id: `optimistic-${Date.now()}`, role: "user", content, created_at: new Date().toISOString() }])
     try {
-      const result = await api<{ run_id: string }>(`/api/chat/threads/${demo.thread_id}/messages`, { method: "POST", body: JSON.stringify({ content }) })
+      const provider = getHermesProvider()
+      const model = getHermesModel(provider)
+      const gatewayKey = getHermesApiKey().trim()
+      const result = await api<{ run_id: string }>(`/api/chat/threads/${demo.thread_id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content, provider, model }),
+        // Tab-only Farq Hermes key override goes to Farq API only — never to
+        // providers directly, never persisted, never sent to a system Hermes.
+        headers: gatewayKey ? { [HERMES_API_KEY_HEADER]: gatewayKey } : undefined,
+      })
       setStage("Starting Hermes")
       const source = new EventSource(`${API_BASE}/api/agent-runs/${result.run_id}/events`)
       source.addEventListener("status", (event) => {

@@ -1,10 +1,12 @@
+import { API_BASE, HERMES_API_KEY_HEADER, HERMES_GEMINI_MODELS, HERMES_NIM_MODELS, getHermesApiKey } from "./farq-api";
+
 // ─────────────────────────────────────────────────────────────
 // quiz-ai.ts — THE swappable AI backbone for SmartLearn quizzes.
 //
-// Prototype implementation: NVIDIA NIM (hosted, OpenAI-compatible).
-// Future: replace `generateQuiz` body with the Hermes agent call.
+// Hermes backend: the browser POSTs slide text to the Farq API, which runs
+// the quiz prompt on the local Hermes gateway (server-side keys only).
 // UI code must only import the types + `generateQuiz` + `getMockQuiz`
-// from this file, so the swap is a one-file change.
+// from this file.
 //
 // Contract:
 //   input:  source slide text + options
@@ -54,28 +56,13 @@ export interface QuizProgress {
   totalQuestions: number;
 }
 
-/**
- * NVIDIA NIM sends no CORS headers, so browsers block direct calls
- * (Safari surfaces this as TypeError "Load failed").
- * Under `npm run dev`, vite.config.ts proxies /api/nim → NIM.
- */
-const NIM_PROXY_PATH = "/api/nim/v1/chat/completions";
-const NIM_DIRECT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+/** Quiz models served through the Hermes gateway (allowlisted server-side).
+ * Used for display labels only — generation uses the server's Hermes model
+ * unless a fallback override is passed per-run. */
+export const QUIZ_MODELS = [...HERMES_GEMINI_MODELS, ...HERMES_NIM_MODELS];
 
-export const NIM_MODELS = [
-  { id: "nvidia/nemotron-3-ultra-550b-a55b", label: "Nemotron 3 Ultra 550B (recommended)" },
-  { id: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Llama Nemotron Ultra 253B" },
-  { id: "nvidia/nemotron-3.5-lightning-30b-a3b", label: "Nemotron 3.5 Lightning 30B (fast)" },
-] as const;
-
-export const DEFAULT_NIM_MODEL = NIM_MODELS[0].id;
-
-/** Max chars of slide text sent to NIM — keeps prototype fast + cheap. */
+/** Max chars of slide text sent for generation — keeps it fast + cheap. */
 export const MAX_SOURCE_CHARS = 12_000;
-
-interface NimChatResponse {
-  choices?: Array<{ message?: { content?: string } }>;
-}
 
 export class QuizAIError extends Error {
   status?: number;
@@ -91,47 +78,6 @@ export class QuizAIError extends Error {
 
 /** Small, fast model used as the escape hatch when the big models are saturated. */
 export const NIM_FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
-
-function typeList(types: QuizQuestionType[]): string {
-  const names: Record<QuizQuestionType, string> = {
-    mcq: "multiple-choice (4 options, exactly 1 correct)",
-    true_false: "true/false",
-    short_answer: "short-answer (1-2 sentence reference answer)",
-  };
-  return types.map((t) => names[t]).join(", ");
-}
-
-function buildMessages(sourceText: string, opts: QuizGenerationOptions) {
-  const source =
-    sourceText.length > MAX_SOURCE_CHARS
-      ? sourceText.slice(0, MAX_SOURCE_CHARS)
-      : sourceText;
-
-  const system = [
-    "You generate study quizzes from lecture slides.",
-    "Return ONLY a JSON object: {\"questions\": [...]}. No markdown, no prose.",
-    "Each question: {\"id\":\"q1\",\"type\":\"mcq|true_false|short_answer\",\"question\":\"...\",\"options\":[...],\"answer\":\"...\",\"explanation\":\"one sentence\",\"source\":\"Slide N or Page N\"}.",
-    "Rules: mcq has exactly 4 distinct options with answer matching one option verbatim.",
-    "true_false answer is exactly \"True\" or \"False\".",
-    "short_answer has no options field and a concise reference answer.",
-    "Explanations reference the slide content. No trick questions beyond the material.",
-  ].join(" ");
-
-  const user = [
-    `Generate ${opts.count} questions. Difficulty: ${opts.difficulty}.`,
-    `Question types to mix: ${typeList(opts.types)}.`,
-    "Distribute types evenly across the set.",
-    "",
-    "--- SLIDE TEXT START ---",
-    source,
-    "--- SLIDE TEXT END ---",
-  ].join("\n");
-
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ];
-}
 
 /** Strip ```json fences etc. then JSON.parse. Throws QuizAIError on failure. */
 /** First 200 chars of raw output, for diagnosable error messages. */
@@ -288,312 +234,145 @@ function sanitizeQuestions(input: unknown[]): QuizQuestion[] {
 
 // ── Public API ────────────────────────────────────────────────
 
-function requestFailed(status: number): QuizAIError {
+function hermesRequestFailed(status: number, detail: string): QuizAIError {
   if (status === 401)
     return new QuizAIError(
-      "Invalid NIM API key (401). Grab a fresh nvapi- key from build.nvidia.com.",
+      "Hermes rejected the gateway key (401). Press Apply in footer Settings to save this tab's key to the server, or clear it to use the server key.",
       status,
       false,
     );
-  if (status === 403)
+  if (status === 422) return new QuizAIError(detail || "Invalid quiz request.", status, false);
+  if (status === 502 || status === 503 || status === 504)
     return new QuizAIError(
-      "Key rejected (403). Your NVIDIA account needs “Public API Endpoints” enabled for this model.",
-      status,
-      false,
-    );
-  if (status === 404)
-    return new QuizAIError(
-      "Model not found (404). Pick another model from the list.",
-      status,
-      false,
-    );
-  if (status === 429)
-    return new QuizAIError(
-      "Rate limited (429). NVIDIA is throttling this key right now — wait a minute, or switch to the Lightning model.",
+      detail || "Hermes is unavailable or timed out — transient, retry in a bit.",
       status,
       true,
     );
-  if (status === 503)
-    return new QuizAIError(
-      "Model overloaded (503). NVIDIA's servers are saturated for this model — it's transient, not your key or files. Wait a bit, or switch to the Lightning model.",
-      status,
-      true,
-    );
-  if (status === 502 || status === 504)
-    return new QuizAIError(
-      `NVIDIA gateway hiccup (${status}). Transient — retry in a few seconds.`,
-      status,
-      true,
-    );
-  return new QuizAIError(`NIM request failed (${status}).`, status);
-}
-
-/** Abort-aware sleep for retry backoff. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException("Aborted", "AbortError"));
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-async function postQuiz(
-  url: string,
-  body: Record<string, unknown>,
-  apiKey: string,
-  signal?: AbortSignal,
-): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
-  } catch (e) {
-    // User-cancelled — let it propagate so the UI can exit quietly.
-    if (e instanceof DOMException && e.name === "AbortError") throw e;
-    // Browsers hide the real cause (CORS looks identical to offline).
-    // Safari reports this as TypeError "Load failed".
-    const detail = e instanceof Error ? e.message : "network error";
-    throw new QuizAIError(
-      `Couldn't reach NVIDIA (${detail}). If you're opening a built file directly, run “npm run dev” instead so the /api/nim proxy is active — and check VPN / ad-blocker.`,
-    );
-  }
-  return res;
-}
-
-/** Rough expected output size: max_tokens ≈ 4 chars each. */
-const EXPECTED_CHARS = 12000;
-
-/** Count complete question objects in streamed content via their "type" field. */
-function countParsedQuestions(content: string): number {
-  const matches = content.match(/"type"\s*:\s*"(mcq|true_false|short_answer)"/g);
-  return matches ? matches.length : 0;
+  return new QuizAIError(detail || `Quiz request failed (${status}).`, status);
 }
 
 /**
- * Read an SSE chat-completion stream, accumulating content while emitting
- * genuine progress: bytes received + questions parsed so far.
- * Reasoning traces count toward activity (charsReceived) but never toward
- * parsed questions, so the count stays honest.
+ * Time-based progress for an opaque agent run: the gateway gives no
+ * byte stream, so percent ramps with elapsed time (capped), and the
+ * stage transitions are the honest signal. Parsed counts only update
+ * once the full output validates.
  */
-async function readStream(
-  res: Response,
-  opts: { signal?: AbortSignal; totalQuestions: number; onProgress?: (p: QuizProgress) => void },
-): Promise<string> {
+function startRunTicker(options: QuizGenerationOptions): () => void {
   const startedAt = Date.now();
-  const total = Math.max(1, opts.totalQuestions);
-  const emit = (chars: number, parsed: number, stage: QuizLiveStage) => {
-    const tokenFrac = Math.min(1, chars / EXPECTED_CHARS);
-    const questionFrac = Math.min(1, parsed / total);
+  const emit = (stage: QuizLiveStage) => {
+    const elapsed = (Date.now() - startedAt) / 1000;
     const percent =
-      stage === "done"
-        ? 100
-        : stage === "validating"
-          ? 96
-          : stage === "waiting"
-            ? Math.min(10, 3 + (Date.now() - startedAt) / 3000)
-            : Math.min(92, 12 + 80 * Math.max(tokenFrac * 0.9, questionFrac));
-    opts.onProgress?.({
+      stage === "waiting" ? Math.min(8, 2 + elapsed) : Math.min(90, 10 + 80 * (1 - Math.exp(-elapsed / 60)));
+    options.onProgress?.({
       percent: Math.round(percent),
       stage,
-      charsReceived: chars,
-      parsedQuestions: Math.min(parsed, opts.totalQuestions),
-      totalQuestions: opts.totalQuestions,
+      charsReceived: 0,
+      parsedQuestions: 0,
+      totalQuestions: options.count,
     });
   };
-
-  emit(0, 0, "waiting");
-
-  // No streaming body (old browser) — fall back to one-shot read.
-  if (!res.body) {
-    const text = await res.text();
-    const data = JSON.parse(text) as NimChatResponse;
-    const content = data.choices?.[0]?.message?.content ?? "";
-    emit(content.length, countParsedQuestions(content), "receiving");
-    return content;
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let content = "";
-  let activityChars = 0;
-  let gotFirstByte = false;
-  // Nudge the waiting stage while TTFT stretches out.
-  const waitTimer = window.setInterval(() => {
-    if (!gotFirstByte) emit(activityChars, 0, "waiting");
-  }, 1000);
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      gotFirstByte = true;
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-      const events = buffer.split("\n\n");
-      buffer = events.pop() ?? "";
-      for (const event of events) {
-        for (const line of event.split("\n")) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-          const payload = trimmed.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-          try {
-            const json = JSON.parse(payload) as NimChatResponse & {
-              choices?: Array<{
-                delta?: { content?: string; reasoning_content?: string; reasoning?: string };
-                message?: { content?: string };
-              }>;
-            };
-            const delta = json.choices?.[0]?.delta;
-            const text =
-              delta?.content ??
-              delta?.reasoning_content ??
-              delta?.reasoning ??
-              json.choices?.[0]?.message?.content ??
-              "";
-            if (!text) continue;
-            activityChars += text.length;
-            // Only real answer content counts toward parsed questions.
-            if (delta?.content ?? json.choices?.[0]?.message?.content) {
-              content += delta?.content ?? json.choices?.[0]?.message?.content ?? "";
-            }
-          } catch {
-            // Partial JSON split across chunks — more bytes will complete it.
-          }
-        }
-      }
-      emit(activityChars, countParsedQuestions(content), "receiving");
-    }
-  } finally {
-    window.clearInterval(waitTimer);
-    try {
-      reader.releaseLock();
-    } catch {
-      // Stream already closed — nothing to release.
-    }
-  }
-
-  emit(activityChars, countParsedQuestions(content), "receiving");
-  return content;
+  emit("waiting");
+  const timer = window.setInterval(() => emit("receiving"), 1000);
+  return () => window.clearInterval(timer);
 }
 
 /**
- * Generate quiz questions via NVIDIA NIM.
- * Hermes migration: keep this signature, replace the fetch body
- * with the Hermes agent invocation.
+ * Generate quiz questions through the Farq backend (Hermes gateway).
+ * No provider key needed in the browser: auth is the server gateway key,
+ * optionally overridden per-tab from Settings (same as the coach).
+ * The model is the server's Hermes model unless `options.model` carries a
+ * per-run override (e.g. the Lightning fallback after a transient failure).
+ * Progress ticks while the agent run is polled; the shared
+ * parse/salvage pipeline then validates the output.
  */
+export interface QuizGenerationResult {
+  questions: QuizQuestion[];
+  /** Model the backend actually used. */
+  model: string;
+  provider: string;
+}
+
 export async function generateQuiz(
   sourceText: string,
   options: QuizGenerationOptions,
-  apiKey: string,
-): Promise<QuizQuestion[]> {
-  const key = apiKey.trim();
-  if (!key) throw new QuizAIError("Missing NVIDIA NIM API key.");
+): Promise<QuizGenerationResult> {
   if (!sourceText.trim()) throw new QuizAIError("No slide text to generate from.");
   if (options.types.length === 0) throw new QuizAIError("Select at least one question type.");
 
-  const body = {
-    model: options.model || DEFAULT_NIM_MODEL,
-    messages: buildMessages(sourceText, options),
-    temperature: 0.4,
-    top_p: 0.9,
-    max_tokens: 4000,
-    response_format: { type: "json_object" },
-    stream: true,
-  };
+  const source =
+    sourceText.length > MAX_SOURCE_CHARS ? sourceText.slice(0, MAX_SOURCE_CHARS) : sourceText;
+  const stopTicker = startRunTicker(options);
 
-  // Proxy first (vite dev), direct as fallback. Real NIM errors stop
-  // immediately (after retries for transient ones); network-level
-  // failures — including mid-stream drops — fall through to the next endpoint.
-  // Transient statuses (429/502/503/504) are retried with backoff.
-  const backoffMs = [2000, 5000];
-  let text: string | null = null;
-  let lastNetworkError: QuizAIError | null = null;
-  const streamOpts = {
-    signal: options.signal,
-    totalQuestions: options.count,
-    onProgress: options.onProgress,
-  };
-  for (const url of [NIM_PROXY_PATH, NIM_DIRECT_URL]) {
-    let attempts = 0;
-    for (;;) {
-      let res: Response;
-      try {
-        res = await postQuiz(url, body, key, options.signal);
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") throw e;
-        lastNetworkError = e as QuizAIError;
-        break; // try next endpoint
-      }
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.includes("application/json") && !contentType.includes("text/event-stream")) {
-        break; // SPA fallback, not NIM
-      }
-      if (!res.ok) {
-        const err = requestFailed(res.status);
-        if (err.retryable && attempts < backoffMs.length) {
-          attempts += 1;
-          await sleep(backoffMs[attempts - 1], options.signal); // throws if cancelled
-          continue;
-        }
-        throw err;
-      }
-      try {
-        text = await readStream(res, streamOpts);
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") throw e;
-        lastNetworkError = new QuizAIError("Connection dropped mid-stream. Retrying…", undefined, true);
-        if (attempts < backoffMs.length) {
-          attempts += 1;
-          await sleep(backoffMs[attempts - 1], options.signal);
-          continue;
-        }
-        break; // try next endpoint
-      }
-      break;
-    }
-    if (text !== null) break;
-  }
-  if (text === null) {
-    throw (
-      lastNetworkError ??
-      new QuizAIError("NIM unreachable from this page. Run “npm run dev” and retry.")
+  let res: Response;
+  try {
+    const gatewayKey = getHermesApiKey().trim();
+    res = await fetch(`${API_BASE}/api/quiz/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(gatewayKey ? { [HERMES_API_KEY_HEADER]: gatewayKey } : {}),
+      },
+      body: JSON.stringify({
+        source_text: source,
+        count: options.count,
+        difficulty: options.difficulty,
+        types: options.types,
+        model: options.model,
+      }),
+      signal: options.signal,
+    });
+  } catch (e) {
+    stopTicker();
+    // User-cancelled — let it propagate so the UI can exit quietly.
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    const detail = e instanceof Error ? e.message : "network error";
+    throw new QuizAIError(
+      `Couldn't reach the Farq backend (${detail}). Is the stack running (scripts/firas_run_mac.py)?`,
     );
+  }
+  if (!res.ok) {
+    stopTicker();
+    let detail = "";
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? "";
+    } catch {
+      // Non-JSON error body — fall back to the status mapping.
+    }
+    throw hermesRequestFailed(res.status, detail);
+  }
+  let payload: { output?: unknown; model?: unknown; provider?: unknown };
+  try {
+    payload = (await res.json()) as { output?: unknown; model?: unknown; provider?: unknown };
+  } catch {
+    stopTicker();
+    throw new QuizAIError("Backend returned an unreadable answer. Retry.");
+  }
+  stopTicker();
+  const output = payload.output;
+  if (typeof output !== "string" || !output.trim()) {
+    throw new QuizAIError("Backend returned an empty answer. Retry.");
   }
   options.onProgress?.({
     percent: 96,
     stage: "validating",
-    charsReceived: text.length,
-    parsedQuestions: countParsedQuestions(text),
+    charsReceived: output.length,
+    parsedQuestions: 0,
     totalQuestions: options.count,
   });
-  const questions = parseQuizJson(text);
+  const questions = parseQuizJson(output);
   if (questions.length === 0) throw new QuizAIError("Model returned no valid questions. Retry.");
   options.onProgress?.({
     percent: 100,
     stage: "done",
-    charsReceived: text.length,
+    charsReceived: output.length,
     parsedQuestions: questions.length,
     totalQuestions: options.count,
   });
-  return questions;
+  return {
+    questions,
+    model: typeof payload.model === "string" ? payload.model : "",
+    provider: typeof payload.provider === "string" ? payload.provider : "",
+  };
 }
 
 /** Offline demo set so the UI is testable without a key. */

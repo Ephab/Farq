@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   FileText,
-  KeyRound,
   ListChecks,
   Loader2,
   Play,
@@ -16,7 +15,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { NIM_MODELS, type QuizQuestion } from "@/lib/quiz-ai";
+import type { QuizQuestion } from "@/lib/quiz-ai";
 import {
   formatDeckDate,
   sortDecks,
@@ -28,10 +27,8 @@ import { ActiveJobList, type GenJob } from "./QuizJobList";
 import { cn } from "@/lib/utils";
 
 interface QuizHomeProps {
-  apiKey: string;
-  model: string;
-  onApiKey: (key: string) => void;
-  onModel: (model: string) => void;
+  /** Read-only label of the server's Hermes model. */
+  modelLabel: string;
   decks: SlideDeck[];
   selectedDeckIds: string[];
   onToggleDeck: (id: string) => void;
@@ -74,10 +71,7 @@ function quizBreakdown(questions: QuizQuestion[]): string {
 }
 
 export function QuizHome({
-  apiKey,
-  model,
-  onApiKey,
-  onModel,
+  modelLabel,
   decks,
   selectedDeckIds,
   onToggleDeck,
@@ -136,7 +130,7 @@ export function QuizHome({
 
   return (
     <div className="w-full px-4 py-8 sm:px-8 lg:px-10">
-      {/* Header: title left, NIM controls top-right */}
+      {/* Header: title left, Hermes model readout top-right */}
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-end justify-between gap-4">
         <div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -148,44 +142,14 @@ export function QuizHome({
           </h1>
         </div>
         <div
-          className="flex items-center gap-2 rounded-2xl border border-border bg-background p-2"
-          aria-label="NVIDIA NIM settings"
+          className="flex items-center gap-2 rounded-2xl border border-border bg-background px-3 py-2"
+          aria-label="Hermes quiz model"
+          title="Quizzes use the server's Hermes model"
         >
-          <KeyRound className="ml-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => onApiKey(e.target.value)}
-            placeholder="nvapi-…"
-            aria-label="NVIDIA NIM API key"
-            autoComplete="off"
-            spellCheck={false}
-            className="h-8 w-32 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground sm:w-40"
-          />
-          <span className="h-5 w-px bg-border" aria-hidden="true" />
-          <div className="relative">
-            <select
-              value={model}
-              onChange={(e) => onModel(e.target.value)}
-              aria-label="NIM model"
-              className="h-8 max-w-40 appearance-none bg-transparent pr-7 text-[13px] font-medium outline-none sm:max-w-56"
-            >
-              {(model && !NIM_MODELS.some((m) => m.id === model)
-                ? [{ id: model, label: model }]
-                : []
-              )
-                .concat([...NIM_MODELS])
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-            </select>
-            <ChevronDown
-              className="pointer-events-none absolute right-1.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-          </div>
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            Hermes
+          </span>
+          <span className="max-w-40 truncate text-[13px] font-medium sm:max-w-56">{modelLabel}</span>
         </div>
       </div>
 

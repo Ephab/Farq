@@ -23,10 +23,13 @@ dist-ssr
 *.sln
 *.sw?
 
+# Personal local runners (not for sharing)
+scripts/firas_*.py
+
 # Environment and local runtime state
 .env
 .venv
-services/api/data/
+services/data/
 *.db
 *.db-shm
 *.db-wal

@@ -15,7 +15,7 @@ services:
       DATABASE_URL: sqlite:////data/farq.db
       HERMES_URL: http://hermes:8642
       HERMES_API_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
-      HERMES_MODEL: ${HERMES_MODEL:-gemini-2.5-flash}
+      HERMES_MODEL: ${HERMES_MODEL:-gemini-3-flash-preview}
       HERMES_PROVIDER: ${HERMES_PROVIDER:-gemini}
       FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
     volumes:
@@ -34,12 +34,13 @@ services:
     working_dir: /workspace
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
       API_SERVER_ENABLED: "true"
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: 8642
       API_SERVER_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
       HERMES_ENABLE_PROJECT_PLUGINS: "1"
-      HERMES_MODEL: ${HERMES_MODEL:-gemini-2.5-flash}
+      HERMES_MODEL: ${HERMES_MODEL:-gemini-3-flash-preview}
       FARQ_API_INTERNAL_URL: http://api:8000
       FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
     volumes:

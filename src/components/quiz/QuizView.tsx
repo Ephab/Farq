@@ -1,17 +1,17 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  DEFAULT_NIM_MODEL,
   generateQuiz,
   getMockQuiz,
   NIM_FALLBACK_MODEL,
-  NIM_MODELS,
+  QUIZ_MODELS,
   QuizAIError,
   type QuizDifficulty,
   type QuizQuestion,
   type QuizQuestionType,
 } from "@/lib/quiz-ai";
+import { api } from "@/lib/farq-api";
 import { extractSource } from "@/lib/quiz-extract";
 import {
   combineDeckTexts,
@@ -31,22 +31,8 @@ import { QuizRunner, type QuizAnswer } from "./QuizRunner";
 
 type Phase = "home" | "generate" | "running" | "finished";
 
-const KEY_STORAGE = "smartlearn-nim-key";
-
-function loadKey(): string {
-  try {
-    return (
-      localStorage.getItem(KEY_STORAGE) ??
-      (import.meta.env.VITE_NIM_API_KEY as string | undefined) ??
-      ""
-    );
-  } catch {
-    return (import.meta.env.VITE_NIM_API_KEY as string | undefined) ?? "";
-  }
-}
-
 function modelLabelFor(id: string): string {
-  return NIM_MODELS.find((m) => m.id === id)?.label ?? id;
+  return QUIZ_MODELS.find((m) => m.id === id)?.label ?? id;
 }
 
 export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
@@ -62,8 +48,21 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, QuizAnswer>>({});
   const [genMeta, setGenMeta] = useState({ sourceName: "", model: "", difficulty: "" });
-  const [apiKey, setApiKey] = useState(loadKey);
-  const [model, setModel] = useState<string>(DEFAULT_NIM_MODEL);
+  // The server's Hermes model (single source of truth — no picker).
+  const [hermesModel, setHermesModel] = useState({ id: "", label: "Hermes" });
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ model?: string; provider?: string }>("/api/health")
+      .then((health) => {
+        if (cancelled || !health.model) return;
+        setHermesModel({ id: health.model, label: modelLabelFor(health.model) });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [jobs, setJobs] = useState<GenJob[]>([]);
   const [newQuizIds, setNewQuizIds] = useState<string[]>([]);
   const abortControllers = useRef(new Map<string, AbortController>());
@@ -76,15 +75,6 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
     setLibrary(next);
     if (!saveLibrary(next)) {
       setError("Browser storage is full — delete old decks or quizzes to free space.");
-    }
-  }, []);
-
-  const updateKey = useCallback((key: string) => {
-    setApiKey(key);
-    try {
-      localStorage.setItem(KEY_STORAGE, key);
-    } catch {
-      // private mode — key just won't persist
     }
   }, []);
 
@@ -143,8 +133,9 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
     setPhase("generate");
   }, []);
 
-  // Job tubes are driven by real stream progress (see runJob's
-  // onProgress) — no fake ticker. Elapsed time updates with each event.
+  // Job tubes are driven by agent-run progress (see generateQuiz's
+  // poll ticker) — stages are honest, percent ramps with elapsed time.
+  // Elapsed time updates with each event.
 
   const runJob = useCallback(
     async (job: GenJob, ctrl: AbortController) => {
@@ -160,39 +151,36 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
         return;
       }
       try {
-        const qs = await generateQuiz(
-          combineDeckTexts(decks),
-          {
-            count: job.count,
-            difficulty: job.difficulty,
-            types: job.types,
-            model: job.model,
-            signal: ctrl.signal,
-            onProgress: (p) => {
-              setJobs((prev) =>
-                prev.map((j) =>
-                  j.id === job.id && j.status === "generating"
-                    ? {
-                        ...j,
-                        progress: p.percent,
-                        parsed: p.parsedQuestions,
-                        total: p.totalQuestions,
-                        liveStage: p.stage,
-                      }
-                    : j,
-                ),
-              );
-            },
+        const result = await generateQuiz(combineDeckTexts(decks), {
+          count: job.count,
+          difficulty: job.difficulty,
+          types: job.types,
+          // Empty = server Hermes model; set only for the Lightning fallback.
+          model: job.model || undefined,
+          signal: ctrl.signal,
+          onProgress: (p) => {
+            setJobs((prev) =>
+              prev.map((j) =>
+                j.id === job.id && j.status === "generating"
+                  ? {
+                      ...j,
+                      progress: p.percent,
+                      parsed: p.parsedQuestions,
+                      total: p.totalQuestions,
+                      liveStage: p.stage,
+                    }
+                  : j,
+              ),
+            );
           },
-          job.apiKey,
-        );
+        });
         const saved: SavedQuiz = {
           id: makeId(),
           deckIds: job.deckIds,
           deckName: job.label,
-          questions: qs,
+          questions: result.questions,
           difficulty: job.difficulty,
-          model: job.modelLabel,
+          model: modelLabelFor(result.model || hermesModel.id),
           createdAt: Date.now(),
         };
         const lib = libraryRef.current;
@@ -223,7 +211,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
         abortControllers.current.delete(job.id);
       }
     },
-    [persist],
+    [persist, hermesModel],
   );
 
   /** Fire a generation job and return straight to home. Safe to call in parallel. */
@@ -241,9 +229,9 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
       count: shape.count,
       difficulty: shape.difficulty,
       types: [...shape.types],
-      model,
-      modelLabel: modelLabelFor(model),
-      apiKey,
+      // Empty model = the server's Hermes model.
+      model: "",
+      modelLabel: hermesModel.label,
       status: "generating",
       progress: 3,
       parsed: 0,
@@ -258,7 +246,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
     setJobs((prev) => [job, ...prev]);
     setPhase("home");
     void runJob(job, ctrl);
-  }, [library, selectedDeckIds, shape, model, apiKey, runJob]);
+  }, [library, selectedDeckIds, shape, hermesModel, runJob]);
 
   const retryJob = useCallback(
     (job: GenJob, modelOverride?: string) => {
@@ -268,7 +256,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
       const updated: GenJob = {
         ...job,
         model: m,
-        modelLabel: modelLabelFor(m),
+        modelLabel: m ? modelLabelFor(m) : job.modelLabel,
         status: "generating",
         progress: 3,
         parsed: 0,
@@ -331,7 +319,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
         decks={generateDecks}
         shape={shape}
         onShape={setShape}
-        modelLabel={modelLabelFor(model)}
+        modelLabel={hermesModel.label}
         error={error}
         onGenerate={startGeneration}
         onBack={() => {
@@ -376,10 +364,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
 
   return (
     <QuizHome
-      apiKey={apiKey}
-      model={model}
-      onApiKey={updateKey}
-      onModel={setModel}
+      modelLabel={hermesModel.label}
       decks={library.decks}
       selectedDeckIds={selectedDeckIds}
       onToggleDeck={toggleDeck}

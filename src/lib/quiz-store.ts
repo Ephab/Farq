@@ -1,10 +1,12 @@
 // Persistent quiz library (localStorage prototype).
 // Decks keep their extracted text so generation works without re-upload.
 // Saved quizzes keep their questions so they can be retaken anytime.
+// Saved extensions keep AI-generated slides so they can be previewed/exported.
 // Hermes later: swap this file for server-backed storage, same types.
 
 import type { ExtractedSource } from "./quiz-extract";
 import type { QuizQuestion } from "./quiz-ai";
+import type { ExtendedSlide } from "./slides-ai";
 
 export interface SlideDeck {
   id: string;
@@ -26,14 +28,25 @@ export interface SavedQuiz {
   createdAt: number;
 }
 
+export interface SavedExtension {
+  id: string;
+  deckId: string;
+  deckName: string;
+  deckKind: "pdf" | "pptx";
+  topic: string;
+  slides: ExtendedSlide[];
+  createdAt: number;
+}
+
 export interface QuizLibrary {
   decks: SlideDeck[];
   quizzes: SavedQuiz[];
+  extensions: SavedExtension[];
 }
 
 const STORAGE_KEY = "smartlearn-quiz-library-v1";
 
-export const EMPTY_LIBRARY: QuizLibrary = { decks: [], quizzes: [] };
+export const EMPTY_LIBRARY: QuizLibrary = { decks: [], quizzes: [], extensions: [] };
 
 export function loadLibrary(): QuizLibrary {
   try {
@@ -52,6 +65,7 @@ export function loadLibrary(): QuizLibrary {
           deckIds: legacy.deckId ? [legacy.deckId] : [],
         } as SavedQuiz;
       }),
+      extensions: Array.isArray(parsed.extensions) ? parsed.extensions : [],
     };
   } catch {
     return EMPTY_LIBRARY;

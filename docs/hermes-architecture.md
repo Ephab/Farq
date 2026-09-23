@@ -25,7 +25,7 @@ Hermes internals because its documented gateway contract is a safer upgrade boun
 1. The UI saves a message through FastAPI.
 2. FastAPI creates an `AgentRun`, supplies the Hermes thread session ID, and sends a unique
    idempotency key to `/v1/runs`.
-3. `X-Hermes-Session-Key: farq:user:<id>` gives Hermes a stable per-student memory scope.
+3. `X-Hermes-Session-Key: farq:user:<id>:<session>` scopes Hermes memory to the current coach session; restoring defaults rotates that session.
 4. Hermes may call Farq tools several times before replying.
 5. FastAPI polls the durable run and exposes simplified status events to the browser via SSE.
 6. The final assistant message and run result are persisted in SQLite.
@@ -40,6 +40,31 @@ selected. Reusing a category/key supersedes the old fact without erasing its aud
 
 This prevents fuzzy agent memory from becoming the only record of courses, achievements,
 strengths, weaknesses, or career direction.
+
+## Quiz generation
+
+`POST /api/quiz/generate` sends a JSON-only quiz prompt to `POST /v1/runs` on a
+throwaway `farq:quiz:*` session (fresh ID per generation, tools forbidden by
+instructions) and polls the durable run in a worker thread, returning the raw
+model output. The browser keeps its parse/salvage pipeline and turns the text
+into questions. Quiz source text is never written to SQLite: it is not an
+explicit student statement, so it must not become a fact, message, or proposal.
+
+## Slide extension
+
+`POST /api/slides/suggest` and `POST /api/slides/extend` follow the same
+pattern on throwaway `farq:slides:*` sessions (tools forbidden, JSON-only
+`{"topics": [...]}` / `{"slides": [...]}`). Slide text is never written to
+SQLite for the same reason as quizzes. `POST /api/slides/export` is a local
+`python-pptx` build with no model call that returns ONE file: the original
+slides are kept and the AI slides are appended after a provenance divider,
+reusing the deck's most-used content layout with its background and title/body
+text styling copied over. PPTX originals are supplied as bytes; PDF originals
+arrive as client-rendered page images embedded full-bleed. The browser previews
+uploads in-page (PPTX parsed to vector shapes/text, PDF rendered to images)
+and shows originals + extension as one unified deck styled with the deck's own
+theme. Decks and saved extensions persist in the shared localStorage quiz
+library; original files stay in memory only.
 
 ## Tool contracts
 

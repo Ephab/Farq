@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -10,18 +11,25 @@ from typing import Annotated
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from fastapi.responses import Response, StreamingResponse
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine, get_db
-from .hermes import HERMES_API_KEY, HERMES_URL, run_agent
-from .models import AgentRun, ChatMessage, ChatThread, RoadmapProposal, RoadmapVersion, Student, StudentFact, now
+from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, resolve_hermes_selection, run_agent
+from .models import AgentRun, ChatMessage, ChatThread, RoadmapProposal, RoadmapVersion, Student, StudentFact, now, uid
 from .roadmaps import apply_operations
-from .schemas import ChatInput, FactCreate, ProposalCreate, RoadmapSnapshot
+from .schemas import ChatInput, FactCreate, HermesSettingsApply, ProposalCreate, QuizGenerateInput, ResetInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput
+from .settings_env import ENV_PATH, write_env_values
+from .quiz import QuizRunError, run_quiz
+from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, decode_original_pptx, run_extend, run_suggest
+
+
+STARTED_AT = time.time()
 
 
 DEMO_STUDENT_ID = "demo-student"
+ROADMAP_SEED_PATH = Path(__file__).resolve().parents[1] / "seed-roadmap.json"
 INTERNAL_TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
 Db = Annotated[Session, Depends(get_db)]
 app = FastAPI(title="Farq Hermes Backbone", version="0.1.0")
@@ -32,6 +40,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def default_roadmap_snapshot() -> RoadmapSnapshot:
+    return RoadmapSnapshot.model_validate_json(ROADMAP_SEED_PATH.read_text(encoding="utf-8"))
 
 
 def active_roadmap(db: Session, student_id: str) -> RoadmapVersion:
@@ -68,9 +80,7 @@ def startup() -> None:
             db.add(Student(id=DEMO_STUDENT_ID, display_name="Demo Student"))
             db.flush()
         if db.scalar(select(func.count()).select_from(RoadmapVersion).where(RoadmapVersion.student_id == DEMO_STUDENT_ID)) == 0:
-            seed = Path(__file__).resolve().parents[1] / "seed-roadmap.json"
-            snapshot = RoadmapSnapshot.model_validate_json(seed.read_text(encoding="utf-8"))
-            db.add(RoadmapVersion(student_id=DEMO_STUDENT_ID, version=1, snapshot_json=snapshot.model_dump_json(), active=True))
+            db.add(RoadmapVersion(student_id=DEMO_STUDENT_ID, version=1, snapshot_json=default_roadmap_snapshot().model_dump_json(), active=True))
         if db.scalar(select(func.count()).select_from(ChatThread).where(ChatThread.student_id == DEMO_STUDENT_ID)) == 0:
             db.add(ChatThread(student_id=DEMO_STUDENT_ID, title="My Hermes Coach"))
         db.commit()
@@ -91,13 +101,49 @@ def health() -> dict:
         agent = "ready" if payload.get("status") in {"ok", "ready"} else "degraded"
     except Exception:
         agent = "unavailable"
-    return {"status": "ok", "database": "ready", "agent": agent}
+    return {"status": "ok", "database": "ready", "agent": agent, "started_at": STARTED_AT, "model": HERMES_MODEL, "provider": HERMES_PROVIDER}
 
 
 @app.get("/api/demo")
 def demo(db: Db) -> dict:
     thread = db.scalar(select(ChatThread).where(ChatThread.student_id == DEMO_STUDENT_ID).order_by(ChatThread.created_at))
     return {"student_id": DEMO_STUDENT_ID, "thread_id": thread.id}
+
+
+@app.post("/api/demo/reset")
+def reset_demo(_body: ResetInput, db: Db) -> dict:
+    student = db.get(Student, DEMO_STUDENT_ID)
+    if student is None:
+        raise HTTPException(404, "Student not found")
+
+    active_run_count = db.scalar(
+        select(func.count())
+        .select_from(AgentRun)
+        .join(ChatThread, AgentRun.thread_id == ChatThread.id)
+        .where(ChatThread.student_id == DEMO_STUDENT_ID, AgentRun.status.notin_(["completed", "failed", "cancelled"]))
+    )
+    if active_run_count:
+        raise HTTPException(409, "Hermes is still working; wait for it to finish before resetting")
+
+    snapshot = default_roadmap_snapshot()
+    thread_ids = db.scalars(select(ChatThread.id).where(ChatThread.student_id == DEMO_STUDENT_ID)).all()
+    if thread_ids:
+        db.execute(delete(AgentRun).where(AgentRun.thread_id.in_(thread_ids)))
+        db.execute(delete(ChatMessage).where(ChatMessage.thread_id.in_(thread_ids)))
+    db.execute(delete(RoadmapProposal).where(RoadmapProposal.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(StudentFact).where(StudentFact.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(ChatThread).where(ChatThread.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(RoadmapVersion).where(RoadmapVersion.student_id == DEMO_STUDENT_ID))
+
+    version = RoadmapVersion(student_id=DEMO_STUDENT_ID, version=1, snapshot_json=snapshot.model_dump_json(), active=True)
+    thread = ChatThread(student_id=DEMO_STUDENT_ID, title="My Hermes Coach", hermes_session_id=uid())
+    db.add_all([version, thread])
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"status": "reset", "student_id": DEMO_STUDENT_ID, "thread_id": thread.id, "version_id": version.id, "version": 1}
 
 
 @app.get("/api/students/{student_id}/context")
@@ -151,10 +197,20 @@ def messages(thread_id: str, db: Db) -> list[dict]:
 
 
 @app.post("/api/chat/threads/{thread_id}/messages", status_code=202)
-def send_message(thread_id: str, body: ChatInput, background: BackgroundTasks, db: Db) -> dict:
+def send_message(
+    thread_id: str,
+    body: ChatInput,
+    background: BackgroundTasks,
+    db: Db,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
     thread = db.get(ChatThread, thread_id)
     if thread is None:
         raise HTTPException(404, "Thread not found")
+    try:
+        resolve_hermes_selection(body.provider, body.model)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     message = ChatMessage(thread_id=thread_id, role="user", content=body.content.strip())
     db.add(message)
     db.flush()
@@ -163,8 +219,133 @@ def send_message(thread_id: str, body: ChatInput, background: BackgroundTasks, d
     db.flush()
     message.agent_run_id = run.id
     db.commit()
-    background.add_task(run_agent, run.id, thread.student_id)
+    background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key)
     return {"run_id": run.id, "message_id": message.id, "status": run.status}
+
+
+@app.post("/api/settings/hermes")
+def apply_hermes_settings(body: HermesSettingsApply) -> dict:
+    """Persist Settings-pane Hermes key/model to .env (takes effect on restart).
+
+    The native runner watches .env and restarts its isolated API + gateway, so
+    Apply in the UI is enough there. Other deployments must be restarted
+    manually after a successful apply.
+    """
+    key = body.key.strip()
+    updates = {"HERMES_API_KEY": key}
+    if body.provider is not None or body.model is not None:
+        try:
+            model, provider = resolve_hermes_selection(body.provider, body.model)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        updates["HERMES_MODEL"] = model
+        updates["HERMES_PROVIDER"] = provider
+    try:
+        write_env_values(updates, ENV_PATH)
+    except FileNotFoundError as exc:
+        raise HTTPException(409, "No .env file in this deployment; set HERMES_API_KEY in the server environment instead") from exc
+    except OSError as exc:
+        raise HTTPException(500, f"Could not write .env: {exc}") from exc
+    return {"status": "applied", "model": updates.get("HERMES_MODEL"), "provider": updates.get("HERMES_PROVIDER"), "restart_required": True}
+
+
+@app.post("/api/quiz/generate")
+async def generate_quiz(
+    body: QuizGenerateInput,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Generate quiz source JSON through the Hermes gateway.
+
+    Runs in a worker thread so the event loop stays free for chat streams.
+    The gateway poll can take up to ~180s; the browser aborts via fetch signal.
+    """
+    try:
+        return await asyncio.to_thread(
+            run_quiz,
+            body.source_text,
+            body.count,
+            body.difficulty,
+            list(body.types),
+            body.provider,
+            body.model,
+            x_hermes_api_key,
+        )
+    except QuizRunError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.post("/api/slides/suggest")
+async def suggest_slide_topics(
+    body: SlidesSuggestInput,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Suggest extension topics for a deck through the Hermes gateway.
+
+    Throwaway ``farq:slides:*`` session, no SQLite writes — same rule as
+    quizzes: slide text is not an explicit student statement.
+    """
+    try:
+        return await asyncio.to_thread(
+            run_suggest,
+            body.source_text,
+            body.count,
+            body.provider,
+            body.model,
+            x_hermes_api_key,
+        )
+    except SlidesRunError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.post("/api/slides/extend")
+async def extend_slides(
+    body: SlidesExtendInput,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Generate new slides about a chosen (or custom) topic.
+
+    The model decides the exact slide count within the requested length."""
+    try:
+        return await asyncio.to_thread(
+            run_extend,
+            body.source_text,
+            body.topic,
+            body.length,
+            body.provider,
+            body.model,
+            x_hermes_api_key,
+            body.design_hint,
+        )
+    except SlidesRunError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.post("/api/slides/export")
+def export_slides(body: SlidesExportInput) -> Response:
+    """Build one downloadable .pptx: original slides first, AI slides appended.
+
+    PPTX originals are kept intact with new slides styled to match; PDF
+    originals arrive as client-rendered page images embedded full-bleed.
+    No model call.
+    """
+    try:
+        original_bytes = decode_original_pptx(body.original_pptx_base64)
+        original_images = decode_image_list(body.original_images_base64)
+        data = build_full_deck_pptx(
+            body.original_filename,
+            body.topic,
+            [slide.model_dump() for slide in body.slides],
+            original_bytes,
+            original_images,
+        )
+    except SlidesRunError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    safe = "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in body.original_filename)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="extended-{safe or "slides"}.pptx"'},
+    )
 
 
 @app.get("/api/agent-runs/{run_id}")

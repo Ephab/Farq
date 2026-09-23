@@ -19,6 +19,7 @@ import {
 } from "@/components/motion/animated-sidebar"
 import { FooterSettings } from "@/components/footer-settings"
 import { QuizView } from "@/components/quiz/QuizView"
+import { SlidesView } from "@/components/slides/SlidesView"
 import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { HermesCoach } from "@/components/hermes/HermesCoach"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -152,6 +153,8 @@ export default function App() {
                 <HermesCoach />
               ) : active === "Quizzes" ? (
                 <QuizView />
+              ) : active === "Slides" ? (
+                <SlidesView />
               ) : (
                 <div className="grid flex-1 place-items-center p-8">
                   <div className="text-center">

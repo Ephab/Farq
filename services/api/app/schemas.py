@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 FactCategory = Literal["interest", "goal", "course", "skill", "strength", "weakness", "achievement", "preference"]
+HermesProvider = Literal["gemini", "nim"]
 NodeStatus = Literal["not-started", "in-progress", "done"]
 
 
@@ -102,4 +103,79 @@ class FactCreate(BaseModel):
 
 class ChatInput(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
+    provider: HermesProvider | None = None
+    # Optional per-run model override. Allowlisted in app.hermes so the
+    # gateway /v1/runs payload can switch models without mutating config.
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ResetInput(BaseModel):
+    confirm: Literal["RESET"]
+
+
+QuizDifficulty = Literal["Easy", "Medium", "Hard", "Mixed"]
+QuizQuestionType = Literal["mcq", "true_false", "short_answer"]
+
+
+class QuizGenerateInput(BaseModel):
+    source_text: str = Field(min_length=1, max_length=20000)
+    count: int = Field(ge=1, le=20)
+    difficulty: QuizDifficulty = "Mixed"
+    types: list[QuizQuestionType] = Field(min_length=1, max_length=3)
+    provider: HermesProvider | None = None
+    # Optional per-run model override, allowlisted in app.quiz like chat models.
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class SlidesSuggestInput(BaseModel):
+    source_text: str = Field(min_length=1, max_length=20000)
+    count: int = Field(default=5, ge=1, le=8)
+    provider: HermesProvider | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+SlidesLength = Literal["short", "medium", "long"]
+
+
+class SlidesExtendInput(BaseModel):
+    source_text: str = Field(min_length=1, max_length=20000)
+    topic: str = Field(min_length=1, max_length=300)
+    # Length hint only — the model decides the exact slide count.
+    length: SlidesLength = "medium"
+    # Optional design summary extracted from the original deck (theme,
+    # background, fonts) so new slides match its structure and tone.
+    design_hint: str = Field(default="", max_length=2000)
+    provider: HermesProvider | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class SlidesExportSlide(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    bullets: list[str] = Field(min_length=1, max_length=8)
+    speaker_notes: str = Field(default="", max_length=2000)
+
+
+class SlidesExportInput(BaseModel):
+    original_filename: str = Field(min_length=1, max_length=200)
+    topic: str = Field(min_length=1, max_length=300)
+    slides: list[SlidesExportSlide] = Field(min_length=1, max_length=12)
+    # Optional original .pptx bytes (base64): originals are kept and the new
+    # slides reuse their layouts, backgrounds, and text styling.
+    original_pptx_base64: str | None = Field(default=None, max_length=34_000_000)
+    # Optional rendered original pages (PNG/JPEG data URLs or raw base64, for
+    # PDF decks): each becomes a full-bleed image slide ahead of the new ones.
+    original_images_base64: list[str] = Field(default_factory=list, max_length=60)
+
+
+class HermesSettingsApply(BaseModel):
+    """Persist Settings-pane Hermes choices to .env (takes effect on restart).
+
+    The key becomes both the API's HERMES_API_KEY and the gateway's
+    API_SERVER_KEY once the stack restarts, so it must already satisfy the
+    native runner's minimum (>= 32 chars) or the next start would regenerate it.
+    """
+
+    key: str = Field(min_length=32, max_length=256)
+    provider: HermesProvider | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
 

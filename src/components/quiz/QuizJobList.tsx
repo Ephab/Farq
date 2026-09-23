@@ -13,15 +13,14 @@ export interface GenJob {
   types: QuizQuestionType[];
   model: string;
   modelLabel: string;
-  apiKey: string;
   status: "generating" | "failed";
-  /** Real transfer progress (0–100), driven by streamed bytes + parsed questions. */
+  /** Agent-run progress (0–100): stages are exact, percent ramps with elapsed time. */
   progress: number;
-  /** Complete questions parsed from the stream so far. */
+  /** Complete questions parsed from the finished output (0 until validation). */
   parsed: number;
   /** Questions requested. */
   total: number;
-  /** Genuine stage of the stream. */
+  /** Stage of the Hermes run. */
   liveStage: QuizLiveStage;
   error: string | null;
   /** Transient failure (e.g. 503) — offer the small fast model. */

@@ -14,4 +14,16 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      // NVIDIA NIM sends no CORS headers, so browsers block direct calls.
+      // Same-origin proxy keeps the prototype key-in-browser flow working
+      // under `npm run dev`. Hermes backend will replace this later.
+      '/api/nim': {
+        target: 'https://integrate.api.nvidia.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/nim/, ''),
+      },
+    },
+  },
 })

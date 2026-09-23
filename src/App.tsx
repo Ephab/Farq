@@ -18,6 +18,8 @@ import {
   AnimatedSidebarTrigger,
 } from "@/components/motion/animated-sidebar"
 import { FooterSettings } from "@/components/footer-settings"
+import { QuizView } from "@/components/quiz/QuizView"
+import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { ThemeProvider } from "@/lib/theme-context"
 
 export default function App() {
@@ -132,7 +134,29 @@ export default function App() {
               <p className="text-sm font-medium">{active}</p>
             </header>
 
-            <main className="flex-1 bg-background" />
+            <main className="flex min-h-0 flex-1 flex-col bg-background">
+              {active === "Roadmap" ? (
+                <RoadmapView />
+              ) : active === "Quizzes" ? (
+                <QuizView />
+              ) : (
+                <div className="grid flex-1 place-items-center p-8">
+                  <div className="text-center">
+                    <p className="text-sm font-semibold">{active}</p>
+                    <p className="mt-1 text-[13px] text-muted-foreground">
+                      This section is coming soon — check out the Roadmap tab.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setActive("Roadmap")}
+                      className="mt-3 h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Open Roadmap
+                    </button>
+                  </div>
+                </div>
+              )}
+            </main>
           </AnimatedSidebarInset>
         </AnimatedSidebarProvider>
       </div>

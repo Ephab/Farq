@@ -1,0 +1,949 @@
+{
+  "title": "Computer Vision Roadmap",
+  "stages": [
+    {
+      "id": "prerequisites",
+      "title": "Stage 1 · Prerequisites",
+      "description": "Math, Python and deep-learning groundwork before vision.",
+      "nodeIds": [
+        "python-numpy",
+        "linear-algebra",
+        "prob-calc",
+        "dl-basics"
+      ]
+    },
+    {
+      "id": "classical",
+      "title": "Stage 2 · Classical Computer Vision",
+      "description": "How images work before deep learning automates features.",
+      "nodeIds": [
+        "pixels-color",
+        "filtering",
+        "features",
+        "geometry"
+      ]
+    },
+    {
+      "id": "cnns",
+      "title": "Stage 3 · CNNs & Classification",
+      "description": "Learned features, backbones and transfer learning.",
+      "nodeIds": [
+        "conv-basics",
+        "backbones",
+        "classification",
+        "transfer"
+      ]
+    },
+    {
+      "id": "training",
+      "title": "Stage 4 · Training Vision Models",
+      "description": "Data, augmentation and the craft of making models converge.",
+      "nodeIds": [
+        "datasets",
+        "augmentation",
+        "loss-metrics",
+        "regularization"
+      ]
+    },
+    {
+      "id": "detection",
+      "title": "Stage 5 · Detection & Segmentation",
+      "description": "Answering “where” — the core of most production CV roles.",
+      "nodeIds": [
+        "detection",
+        "yolo",
+        "segmentation",
+        "tracking"
+      ]
+    },
+    {
+      "id": "transformers",
+      "title": "Stage 6 · Transformers, 3D & Video",
+      "description": "Attention in vision plus depth, geometry and time.",
+      "nodeIds": [
+        "vit",
+        "detr",
+        "depth-3d",
+        "video"
+      ]
+    },
+    {
+      "id": "frontier",
+      "title": "Stage 7 · Multimodal, Generative & SSL",
+      "description": "Vision-language models, generation and label-free pretraining.",
+      "nodeIds": [
+        "clip",
+        "sam",
+        "diffusion",
+        "ssl"
+      ]
+    },
+    {
+      "id": "deployment",
+      "title": "Stage 8 · Deployment & Capstones",
+      "description": "Ship it: optimize, serve, monitor — then prove it with projects.",
+      "nodeIds": [
+        "optimization",
+        "serving",
+        "project-realtime",
+        "project-multimodal"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "python-numpy",
+      "stageId": "prerequisites",
+      "title": "Python & NumPy for Images",
+      "icon": "code",
+      "tagline": "Images are just arrays — slice them fluently",
+      "description": "Every image tensor is a multi-dimensional array. Get fluent with indexing, broadcasting, reshaping and vectorized ops so that later PyTorch code reads naturally instead of magically.",
+      "subtopics": [
+        "Array indexing & slicing",
+        "Broadcasting & reshaping",
+        "Vectorized ops over loops",
+        "Loading & visualizing images (OpenCV / Matplotlib)"
+      ],
+      "resources": [
+        {
+          "label": "NumPy quickstart",
+          "url": "https://numpy.org/doc/stable/user/quickstart.html"
+        },
+        {
+          "label": "OpenCV tutorials",
+          "url": "https://opencv.org/university/free-courses/"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Beginner",
+      "deps": [],
+      "status": "not-started"
+    },
+    {
+      "id": "linear-algebra",
+      "stageId": "prerequisites",
+      "title": "Linear Algebra",
+      "icon": "grid",
+      "tagline": "Vectors, matrices & transforms",
+      "description": "Images are matrices, color channels are vectors, and every rotation, projection or convolution is a linear map. Own matrix multiplication, eigen-decomposition and SVD — they resurface in calibration, compression and attention.",
+      "subtopics": [
+        "Vectors, matrices & rank",
+        "Eigenvalues & PCA intuition",
+        "SVD and what it reveals",
+        "Transforms as matrix ops"
+      ],
+      "resources": [
+        {
+          "label": "Essence of linear algebra (3Blue1Brown)",
+          "url": "https://www.youtube.com/playlist?list=PLZHQObOWTQDPD3MizzM2xVFitgF8hE_ab"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Beginner",
+      "deps": [
+        "python-numpy"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "prob-calc",
+      "stageId": "prerequisites",
+      "title": "Probability & Calculus",
+      "icon": "chart",
+      "tagline": "Gradients, distributions & loss",
+      "description": "Training is optimization: gradient descent on a loss surface. Distributions underlie cross-entropy, diffusion and every generative model. Learn enough to debug a diverging run instead of copying hyperparameters blindly.",
+      "subtopics": [
+        "Derivatives & chain rule",
+        "Gradient descent intuition",
+        "Distributions & sampling",
+        "Cross-entropy & MLE"
+      ],
+      "resources": [
+        {
+          "label": "StatQuest: probability basics",
+          "url": "https://www.youtube.com/@statquest"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Beginner",
+      "deps": [
+        "linear-algebra"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "dl-basics",
+      "stageId": "prerequisites",
+      "title": "Neural Net Basics",
+      "icon": "brain",
+      "tagline": "Backprop before backbones",
+      "description": "Build one small MLP from scratch: forward pass, backprop, optimizers, train/val split. If you can explain why a gradient flows, every CNN, ViT and diffusion model later is just a bigger wiring diagram.",
+      "subtopics": [
+        "Perceptrons & activations",
+        "Backpropagation by hand",
+        "SGD, Adam & learning rates",
+        "Overfitting & validation splits"
+      ],
+      "resources": [
+        {
+          "label": "3Blue1Brown neural networks",
+          "url": "https://www.youtube.com/playlist?list=PLZHQObOWTQJ6xB8dHgI5gnJeaYjW9TLN"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Beginner",
+      "deps": [
+        "prob-calc"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "pixels-color",
+      "stageId": "classical",
+      "title": "Pixels & Color Spaces",
+      "icon": "image",
+      "tagline": "RGB, HSV, grayscale & histograms",
+      "description": "Learn how sensors encode light: resolution, channels, bit depth, gamma. Switching color spaces (RGB → HSV/LAB) still solves real segmentation and tracking problems faster than any network.",
+      "subtopics": [
+        "Resolution, channels & bit depth",
+        "RGB vs HSV vs LAB",
+        "Histograms & equalization",
+        "Thresholding & masking"
+      ],
+      "resources": [
+        {
+          "label": "LearnOpenCV: color spaces",
+          "url": "https://learnopencv.com/color-spaces-in-opencv-cpp-python/"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Beginner",
+      "deps": [
+        "dl-basics"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "filtering",
+      "stageId": "classical",
+      "title": "Filtering & Convolution",
+      "icon": "waves",
+      "tagline": "Blur, sharpen, convolve",
+      "description": "Convolution as a sliding window: Gaussian blur for denoising, Sobel/Canny for edges, morphology for cleanup. This is the exact operation CNNs later learn — learn it by hand first and kernels stop being magic.",
+      "subtopics": [
+        "Convolution mechanics",
+        "Gaussian blur & sharpening",
+        "Sobel, Prewitt & Canny edges",
+        "Erosion, dilation, opening/closing"
+      ],
+      "resources": [
+        {
+          "label": "OpenCV geometric transforms",
+          "url": "https://docs.opencv.org/4.x/da/d6e/tutorial_py_geometric_transformations.html"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Beginner",
+      "deps": [
+        "pixels-color"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "features",
+      "stageId": "classical",
+      "title": "Keypoints & Matching",
+      "icon": "scan",
+      "tagline": "Harris, SIFT, ORB & HOG",
+      "description": "Before learned features there were hand-engineered ones: Harris corners, SIFT/ORB descriptors, HOG + SVM pedestrian detectors. They power panorama stitching, tracking and visual odometry — and explain what CNNs made obsolete.",
+      "subtopics": [
+        "Harris corners",
+        "SIFT / ORB descriptors",
+        "Brute-force & FLANN matching",
+        "HOG + SVM detectors"
+      ],
+      "resources": [
+        {
+          "label": "OpenCV feature tutorials",
+          "url": "https://docs.opencv.org/4.x/db/d27/tutorial_py_table_of_contents_feature2d.html"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Beginner",
+      "deps": [
+        "filtering"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "geometry",
+      "stageId": "classical",
+      "title": "Geometry & Camera Models",
+      "icon": "aperture",
+      "tagline": "Homography, calibration & warps",
+      "description": "Cameras project a 3D world onto 2D. Learn affine/perspective transforms, homographies, lens distortion and calibration — the foundation of AR, robotics and every depth-estimation interview question.",
+      "subtopics": [
+        "Affine & perspective transforms",
+        "Homography & warping",
+        "Camera intrinsics & calibration",
+        "Interpolation tradeoffs"
+      ],
+      "resources": [
+        {
+          "label": "OpenCV camera calibration",
+          "url": "https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Intermediate",
+      "deps": [
+        "features"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "conv-basics",
+      "stageId": "cnns",
+      "title": "Convolutional Layers",
+      "icon": "layers",
+      "tagline": "Kernels, stride, padding, pooling",
+      "description": "The inductive bias that made vision work: parameter sharing over space. Master receptive fields, stride/padding math and pooling so you can read any backbone diagram and predict its output shapes.",
+      "subtopics": [
+        "Kernels as learned filters",
+        "Stride, padding & output shapes",
+        "Pooling & translation invariance",
+        "Receptive fields"
+      ],
+      "resources": [
+        {
+          "label": "CS231n: conv nets",
+          "url": "https://cs231n.github.io/convolutional-networks/"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Intermediate",
+      "deps": [
+        "geometry"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "backbones",
+      "stageId": "cnns",
+      "title": "Backbones: ResNet & Beyond",
+      "icon": "network",
+      "tagline": "VGG → ResNet → EfficientNet",
+      "description": "Implement a residual block from scratch and explain why skip connections fix degradation (not just vanishing gradients — interviewers probe this). Then tour the backbone zoo you will reuse everywhere as a feature extractor.",
+      "subtopics": [
+        "AlexNet / VGG intuition",
+        "Residual blocks from scratch",
+        "BatchNorm & optimization",
+        "MobileNet / EfficientNet for edge"
+      ],
+      "resources": [
+        {
+          "label": "ResNet paper",
+          "url": "https://arxiv.org/abs/1512.03385"
+        },
+        {
+          "label": "StatQuest: ResNet",
+          "url": "https://www.youtube.com/watch?v=GWt6Fu05voI"
+        }
+      ],
+      "duration": "2 weeks",
+      "level": "Intermediate",
+      "deps": [
+        "conv-basics"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "classification",
+      "stageId": "cnns",
+      "title": "Image Classification",
+      "icon": "target",
+      "tagline": "CIFAR-10 to ImageNet",
+      "description": "Train a full classifier: splits, baselines, confusion matrices, top-k accuracy. Capstone: beat a simple baseline on CIFAR-10 with your own training loop before touching pretrained weights.",
+      "subtopics": [
+        "Splits & baselines",
+        "Accuracy, top-k & confusion matrices",
+        "Learning-rate schedules",
+        "CIFAR-10 capstone"
+      ],
+      "resources": [
+        {
+          "label": "CS231n classification notes",
+          "url": "https://cs231n.github.io/classification/"
+        },
+        {
+          "label": "CIFAR-10 on Kaggle",
+          "url": "https://www.kaggle.com/c/cifar-10"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Intermediate",
+      "deps": [
+        "backbones"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "transfer",
+      "stageId": "cnns",
+      "title": "Transfer Learning",
+      "icon": "rocket",
+      "tagline": "Pretrained backbones that work",
+      "description": "Nobody trains ImageNet from scratch at work. Learn linear probing vs full fine-tuning, freezing strategies and domain gaps — the highest-ROI skill for shipping vision features on small datasets.",
+      "subtopics": [
+        "Linear probe vs fine-tune",
+        "Freezing & LR layering",
+        "Domain shift pitfalls",
+        "timm & torchvision zoos"
+      ],
+      "resources": [
+        {
+          "label": "CS231n transfer learning",
+          "url": "https://cs231n.github.io/transfer-learning/"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Intermediate",
+      "deps": [
+        "classification"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "datasets",
+      "stageId": "training",
+      "title": "Vision Datasets",
+      "icon": "database",
+      "tagline": "COCO, ImageNet & your own labels",
+      "description": "Vision lives or dies on data: formats (COCO JSON), loaders, class imbalance and label quality. Learn to audit a dataset — most “model bugs” are data bugs wearing a trench coat.",
+      "subtopics": [
+        "COCO / ImageNet formats",
+        "PyTorch DataLoader patterns",
+        "Class imbalance tactics",
+        "Labeling & active learning"
+      ],
+      "resources": [
+        {
+          "label": "COCO dataset",
+          "url": "https://cocodataset.org/"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Intermediate",
+      "deps": [
+        "transfer"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "augmentation",
+      "stageId": "training",
+      "title": "Augmentation",
+      "icon": "shapes",
+      "tagline": "Albumentations, MixUp & CutMix",
+      "description": "The cheapest accuracy in vision: flips, crops, color jitter, then MixUp/CutMix and test-time augmentation. Learn which transforms preserve labels (classification) vs which must move boxes and masks too.",
+      "subtopics": [
+        "Geometric vs photometric",
+        "Box/mask-aware transforms",
+        "MixUp, CutMix & Mosaic",
+        "Test-time augmentation"
+      ],
+      "resources": [
+        {
+          "label": "Albumentations",
+          "url": "https://albumentations.ai/"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Intermediate",
+      "deps": [
+        "datasets"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "loss-metrics",
+      "stageId": "training",
+      "title": "Losses & Metrics",
+      "icon": "gauge",
+      "tagline": "mAP, IoU, Dice & friends",
+      "description": "Classification accuracy lies; detection needs mAP, segmentation needs IoU/Dice, tracking needs MOTA. Pair each task with its loss (focal, Dice, CIoU) and know exactly what a 2-point gain means.",
+      "subtopics": [
+        "mAP for detection",
+        "IoU & Dice for masks",
+        "Focal / Dice / IoU losses",
+        "Reading leaderboards honestly"
+      ],
+      "resources": [
+        {
+          "label": "Papers With Code: detection",
+          "url": "https://paperswithcode.com/task/object-detection"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Intermediate",
+      "deps": [
+        "augmentation"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "regularization",
+      "stageId": "training",
+      "title": "Regularization & Debugging",
+      "icon": "wrench",
+      "tagline": "Fix the diverging run",
+      "description": "A checklist for broken training: overfit one batch first, then scale up. Weight decay, dropout, early stopping, gradient clipping, mixed precision — plus Weights & Biases-style experiment hygiene.",
+      "subtopics": [
+        "Overfit-one-batch test",
+        "LR finder & schedulers",
+        "Weight decay, dropout, clipping",
+        "Experiment tracking"
+      ],
+      "resources": [
+        {
+          "label": "PyTorch training recipes",
+          "url": "https://pytorch.org/tutorials/"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Intermediate",
+      "deps": [
+        "loss-metrics"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "detection",
+      "stageId": "detection",
+      "title": "Object Detection Basics",
+      "icon": "scan-eye",
+      "tagline": "Anchors, NMS & two-stage vs one-stage",
+      "description": "From R-CNN to RetinaNet: region proposals, anchors, NMS and why one-stage detectors won on speed. Implement NMS yourself once — you will never misread a detection paper again.",
+      "subtopics": [
+        "R-CNN → Fast → Faster",
+        "Anchors & matching",
+        "NMS from scratch",
+        "SSD & RetinaNet"
+      ],
+      "resources": [
+        {
+          "label": "Papers With Code: detection",
+          "url": "https://paperswithcode.com/task/object-detection"
+        }
+      ],
+      "duration": "2 weeks",
+      "level": "Intermediate",
+      "deps": [
+        "regularization"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "yolo",
+      "stageId": "detection",
+      "title": "YOLO & Real-Time Detection",
+      "icon": "zap",
+      "tagline": "Ship the demo that wows",
+      "description": "The industry default for real-time: train and deploy a YOLOv8 detector on a custom dataset (COCO128 → your own labels). Learn confidence thresholds, export formats and the latency/accuracy dial.",
+      "subtopics": [
+        "YOLO architecture tour",
+        "Custom dataset training",
+        "Thresholds & NMS tuning",
+        "Ultralytics ecosystem"
+      ],
+      "resources": [
+        {
+          "label": "Ultralytics docs",
+          "url": "https://docs.ultralytics.com/"
+        },
+        {
+          "label": "COCO128 dataset",
+          "url": "https://www.kaggle.com/datasets/ultralytics/coco128"
+        }
+      ],
+      "duration": "2 weeks",
+      "level": "Intermediate",
+      "deps": [
+        "detection"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "segmentation",
+      "stageId": "detection",
+      "title": "Segmentation",
+      "icon": "spline",
+      "tagline": "U-Net, Mask R-CNN & DeepLab",
+      "description": "Pixel-perfect masks: semantic vs instance vs panoptic. Train a U-Net on a small biomedical or street-scene dataset, then graduate to Mask R-CNN for instances that overlap.",
+      "subtopics": [
+        "Semantic vs instance vs panoptic",
+        "U-Net from scratch",
+        "Mask R-CNN & DeepLab",
+        "Medical/street capstones"
+      ],
+      "resources": [
+        {
+          "label": "U-Net paper",
+          "url": "https://arxiv.org/abs/1505.04597"
+        },
+        {
+          "label": "Papers With Code: segmentation",
+          "url": "https://paperswithcode.com/task/semantic-segmentation"
+        }
+      ],
+      "duration": "2–3 weeks",
+      "level": "Intermediate",
+      "deps": [
+        "yolo"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "tracking",
+      "stageId": "detection",
+      "title": "Tracking & Pose",
+      "icon": "video",
+      "tagline": "SORT, DeepSORT & keypoints",
+      "description": "Extend detection through time: associate boxes across frames, re-identify through occlusions, and estimate human pose keypoints. The gateway to sports analytics, retail and autonomy.",
+      "subtopics": [
+        "SORT & DeepSORT",
+        "Re-ID embeddings",
+        "Human pose (COCO keypoints)",
+        "Multi-object metrics"
+      ],
+      "resources": [
+        {
+          "label": "Hugging Face vision models",
+          "url": "https://huggingface.co/models?pipeline_tag=object-detection"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "segmentation"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "vit",
+      "stageId": "transformers",
+      "title": "Vision Transformers",
+      "icon": "sparkles",
+      "tagline": "Patches + attention",
+      "description": "Images as sequences of patches: how self-attention replaces convolution's inductive bias with scale. Compare ViT vs Swin vs hybrid CNN-ViT, and know when transformers beat CNNs (big data) and when they don't.",
+      "subtopics": [
+        "Patch embeddings",
+        "ViT vs Swin",
+        "Pretraining at scale",
+        "CNN vs ViT tradeoffs"
+      ],
+      "resources": [
+        {
+          "label": "ViT paper",
+          "url": "https://arxiv.org/abs/2010.11929"
+        },
+        {
+          "label": "Illustrated Transformer",
+          "url": "https://jalammar.github.io/illustrated-transformer/"
+        }
+      ],
+      "duration": "2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "tracking"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "detr",
+      "stageId": "transformers",
+      "title": "DETR & Query Detection",
+      "icon": "focus",
+      "tagline": "End-to-end, NMS-free",
+      "description": "DETR reframed detection as set prediction with bipartite matching — no anchors, no NMS. Understand queries, Hungarian loss and why convergence was slow (and how deformable attention fixed it).",
+      "subtopics": [
+        "Set prediction & queries",
+        "Hungarian matching loss",
+        "Deformable DETR",
+        "When to use DETR vs YOLO"
+      ],
+      "resources": [
+        {
+          "label": "DETR paper",
+          "url": "https://arxiv.org/abs/2005.12872"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "vit"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "depth-3d",
+      "stageId": "transformers",
+      "title": "Depth & 3D Vision",
+      "icon": "boxes",
+      "tagline": "Stereo, NeRFs & point clouds",
+      "description": "Recover the 3D world the camera saw: monocular depth ambiguity, stereo disparity, point clouds and NeRFs. Essential for robotics, autonomy and AR — and a rare differentiator on CV résumés.",
+      "subtopics": [
+        "Monocular vs stereo depth",
+        "Point clouds & voxel grids",
+        "NeRF intuition",
+        "Calibration meets learning"
+      ],
+      "resources": [
+        {
+          "label": "Papers With Code: depth",
+          "url": "https://paperswithcode.com/task/monocular-depth-estimation"
+        }
+      ],
+      "duration": "2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "detr"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "video",
+      "stageId": "transformers",
+      "title": "Video Understanding",
+      "icon": "clapperboard",
+      "tagline": "Action recognition & VOS",
+      "description": "Add time: 3D CNNs, TimeSformer-style attention, optical flow and video object segmentation. Learn to sample clips, handle long tails of actions and evaluate on Kinetics-style benchmarks.",
+      "subtopics": [
+        "Clip sampling strategies",
+        "3D CNNs vs video transformers",
+        "Optical flow features",
+        "Action & VOS benchmarks"
+      ],
+      "resources": [
+        {
+          "label": "Papers With Code: action recognition",
+          "url": "https://paperswithcode.com/task/action-recognition-in-videos"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "depth-3d"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "clip",
+      "stageId": "frontier",
+      "title": "CLIP & Vision-Language",
+      "icon": "eye",
+      "tagline": "Zero-shot everything",
+      "description": "Contrastive image-text pretraining unlocked zero-shot classification, retrieval and open-vocabulary detection. Build a zero-shot classifier and an image search engine in an afternoon with open CLIP weights.",
+      "subtopics": [
+        "Contrastive pretraining",
+        "Zero-shot classification",
+        "Retrieval & search",
+        "Open-vocabulary detection"
+      ],
+      "resources": [
+        {
+          "label": "CLIP paper",
+          "url": "https://arxiv.org/abs/2103.00020"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "video"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "sam",
+      "stageId": "frontier",
+      "title": "SAM & Promptable Segmentation",
+      "icon": "milestone",
+      "tagline": "Click to segment anything",
+      "description": "Segment Anything turned segmentation into a promptable interaction: points, boxes, masks. Combine SAM with a detector for auto-labeling pipelines that cut annotation cost by an order of magnitude.",
+      "subtopics": [
+        "Prompt encoders",
+        "Auto-mask generation",
+        "Detector + SAM labeling loops",
+        "MobileSAM & efficiency"
+      ],
+      "resources": [
+        {
+          "label": "Segment Anything",
+          "url": "https://segment-anything.com/"
+        }
+      ],
+      "duration": "1 week",
+      "level": "Advanced",
+      "deps": [
+        "clip"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "diffusion",
+      "stageId": "frontier",
+      "title": "Diffusion & Generative Vision",
+      "icon": "orbit",
+      "tagline": "From noise to images",
+      "description": "Reverse a noising process to generate images — then reuse it for synthetic training data, inpainting and augmentation. Grasp score matching intuition plus ControlNet-style conditioning for production use.",
+      "subtopics": [
+        "Forward/reverse diffusion",
+        "Latent diffusion & Stable Diffusion",
+        "Conditioning & ControlNet",
+        "Synthetic data for training"
+      ],
+      "resources": [
+        {
+          "label": "Hugging Face diffusion docs",
+          "url": "https://huggingface.co/docs/diffusers"
+        }
+      ],
+      "duration": "2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "sam"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "ssl",
+      "stageId": "frontier",
+      "title": "Self-Supervised Learning",
+      "icon": "microscope",
+      "tagline": "Labels are expensive — steal signal",
+      "description": "SimCLR, MoCo, DINO and MAE extract training signal from unlabeled images — how modern backbones are actually pretrained. Fine-tune a DINO backbone on your small dataset and watch it beat supervised pretraining.",
+      "subtopics": [
+        "Contrastive (SimCLR/MoCo)",
+        "DINO & distillation",
+        "Masked autoencoders",
+        "Linear-probe evaluation"
+      ],
+      "resources": [
+        {
+          "label": "Lilian Weng on self-supervised",
+          "url": "https://lilianweng.github.io/posts/2020-04-07-self-supervised/"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "diffusion"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "optimization",
+      "stageId": "deployment",
+      "title": "Optimization & Edge AI",
+      "icon": "cpu",
+      "tagline": "ONNX, quantization & TensorRT",
+      "description": "A notebook model is not a product. Quantize, prune and export to ONNX/TensorRT, benchmark latency vs accuracy, and hit real-time on edge hardware without rewriting your pipeline.",
+      "subtopics": [
+        "Quantization (PTQ/QAT)",
+        "Pruning & distillation",
+        "ONNX export & runtimes",
+        "Latency/accuracy budgeting"
+      ],
+      "resources": [
+        {
+          "label": "ONNX",
+          "url": "https://onnx.ai/"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "ssl"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "serving",
+      "stageId": "deployment",
+      "title": "Serving & MLOps",
+      "icon": "cloud",
+      "tagline": "APIs, drift & monitoring",
+      "description": "Serve behind an API with batching and GPU sharing, version datasets and weights, and monitor for drift — lighting changes silently kill vision models. Log predictions, sample for review, retrain on a schedule.",
+      "subtopics": [
+        "Batching & GPU serving",
+        "Dataset/model versioning",
+        "Drift & data monitoring",
+        "Human-in-the-loop review"
+      ],
+      "resources": [
+        {
+          "label": "PyTorch production",
+          "url": "https://pytorch.org/tutorials/"
+        }
+      ],
+      "duration": "1–2 weeks",
+      "level": "Advanced",
+      "deps": [
+        "optimization"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "project-realtime",
+      "stageId": "deployment",
+      "title": "Capstone: Real-Time System",
+      "icon": "camera",
+      "tagline": "Prove you can ship",
+      "description": "End-to-end real-time counter: detect, track and count objects from a webcam or traffic video at 25+ FPS on your hardware, with an optimized export and a small dashboard. This is the project interviewers actually click.",
+      "subtopics": [
+        "Custom YOLO training",
+        "Tracking + counting logic",
+        "ONNX/TensorRT export",
+        "Live demo & dashboard"
+      ],
+      "resources": [
+        {
+          "label": "Ultralytics docs",
+          "url": "https://docs.ultralytics.com/"
+        }
+      ],
+      "duration": "2–3 weeks",
+      "level": "Advanced",
+      "deps": [
+        "serving"
+      ],
+      "status": "not-started"
+    },
+    {
+      "id": "project-multimodal",
+      "stageId": "deployment",
+      "title": "Capstone: Multimodal Search",
+      "icon": "trophy",
+      "tagline": "CLIP + SAM over your photos",
+      "description": "Natural-language search over an image collection: CLIP embeddings in a vector index, SAM masks on click, zero-shot tags for the long tail. Deploys as a shareable web demo — the portfolio piece that looks like 2026.",
+      "subtopics": [
+        "CLIP embeddings & vector DB",
+        "Text-to-image retrieval UI",
+        "SAM click-to-mask",
+        "Deployed web demo"
+      ],
+      "resources": [
+        {
+          "label": "CLIP paper",
+          "url": "https://arxiv.org/abs/2103.00020"
+        }
+      ],
+      "duration": "2–3 weeks",
+      "level": "Advanced",
+      "deps": [
+        "project-realtime"
+      ],
+      "status": "not-started"
+    }
+  ]
+}

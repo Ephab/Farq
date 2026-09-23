@@ -1,0 +1,30 @@
+model:
+  default: gemini-2.5-flash
+  provider: gemini
+  base_url: https://generativelanguage.googleapis.com/v1beta
+
+platform_toolsets:
+  api_server:
+    - farq
+    - memory
+    - skills
+
+plugins:
+  enabled:
+    - farq
+  disabled: []
+  entries:
+    farq:
+      allow_tool_override: false
+
+agent:
+  disabled_toolsets:
+    - bfl
+
+gateway:
+  api_server:
+    enabled: true
+    host: 0.0.0.0
+    port: 8642
+    model_name: farq-hermes
+    max_concurrent_runs: 4

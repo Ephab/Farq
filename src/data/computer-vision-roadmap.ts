@@ -21,6 +21,8 @@ export interface RoadmapNodeData {
   level: RoadmapLevel;
   /** Ids of prerequisite nodes — rendered as connector edges. */
   deps: string[];
+  /** Persisted separately from learning content; supplied by the Farq API. */
+  status?: NodeStatus;
 }
 
 export interface RoadmapStage {

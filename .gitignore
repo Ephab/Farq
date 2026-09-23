@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment and local runtime state
+.env
+.venv
+services/api/data/
+*.db
+*.db-shm
+*.db-wal
+.hermes-runtime/
+__pycache__/
+.pytest_cache/
+*.pyc

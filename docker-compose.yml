@@ -1,0 +1,59 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      DATABASE_URL: sqlite:////data/farq.db
+      HERMES_URL: http://hermes:8642
+      HERMES_API_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
+      HERMES_MODEL: ${HERMES_MODEL:-gemini-2.5-flash}
+      HERMES_PROVIDER: ${HERMES_PROVIDER:-gemini}
+      FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
+    volumes:
+      - farq-data:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  hermes:
+    image: nousresearch/hermes-agent:v2026.9.14
+    command: gateway
+    working_dir: /workspace
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: 8642
+      API_SERVER_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
+      HERMES_ENABLE_PROJECT_PLUGINS: "1"
+      HERMES_MODEL: ${HERMES_MODEL:-gemini-2.5-flash}
+      FARQ_API_INTERNAL_URL: http://api:8000
+      FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
+    volumes:
+      - hermes-data:/opt/data
+      - ./services/hermes/config.yaml:/opt/data/config.yaml:ro
+      - ./services/hermes/SOUL.md:/opt/data/SOUL.md:ro
+      - ./.hermes/plugins/farq:/opt/data/plugins/farq:ro
+      - ./.hermes/skills/farq-student-coach:/opt/data/skills/farq-student-coach:ro
+    ports:
+      - "8642:8642"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  farq-data:
+  hermes-data:

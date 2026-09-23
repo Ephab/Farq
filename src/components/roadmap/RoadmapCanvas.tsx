@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
-import { NODES, STAGES, type NodeStatus } from "@/data/computer-vision-roadmap";
+import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap";
 import { computeRoadmapLayout } from "@/lib/roadmap-layout";
 import { RoadmapEdges } from "@/components/roadmap/RoadmapEdges";
 import { RoadmapNode } from "@/components/roadmap/RoadmapNode";
 
 interface RoadmapCanvasProps {
+  nodes: RoadmapNodeData[];
+  stages: RoadmapStage[];
   statuses: Record<string, NodeStatus>;
   selectedId: string | null;
   dimmedIds: Set<string>;
@@ -18,6 +20,8 @@ const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 1.5;
 
 export function RoadmapCanvas({
+  nodes,
+  stages,
   statuses,
   selectedId,
   dimmedIds,
@@ -40,17 +44,17 @@ export function RoadmapCanvas({
     return () => ro.disconnect();
   }, []);
 
-  const layout = useMemo(() => computeRoadmapLayout(compact), [compact]);
+  const layout = useMemo(() => computeRoadmapLayout(nodes, stages, compact), [nodes, stages, compact]);
 
   const stageProgress = useMemo(() => {
     const map: Record<string, { done: number; total: number }> = {};
-    for (const stage of STAGES) {
+    for (const stage of stages) {
       const total = stage.nodeIds.length;
       const done = stage.nodeIds.filter((id) => statuses[id] === "done").length;
       map[stage.id] = { done, total };
     }
     return map;
-  }, [statuses]);
+  }, [stages, statuses]);
 
   // Keep the selected node in view.
   useEffect(() => {
@@ -105,7 +109,7 @@ export function RoadmapCanvas({
     onSelect(null);
   };
 
-  const allDimmed = dimmedIds.size >= NODES.length;
+  const allDimmed = dimmedIds.size >= nodes.length;
 
   return (
     <div className="relative min-h-[480px] flex-1">
@@ -139,7 +143,7 @@ export function RoadmapCanvas({
           >
             <RoadmapEdges layout={layout} statuses={statuses} selectedId={selectedId} />
 
-            {STAGES.map((stage, si) => {
+            {stages.map((stage, si) => {
               const anchor = layout.stageAnchors.find((a) => a.stageId === stage.id);
               if (!anchor) return null;
               const prog = stageProgress[stage.id] ?? { done: 0, total: stage.nodeIds.length };
@@ -150,7 +154,7 @@ export function RoadmapCanvas({
                   style={{ left: anchor.x, top: anchor.y, width: compact ? layout.width - 32 : 460, maxWidth: layout.width - 32 }}
                 >
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Stage {si + 1} of {STAGES.length}
+                    Stage {si + 1} of {stages.length}
                   </p>
                   <p className="truncate text-sm font-semibold">{stage.title.replace(/^Stage \d+ · /, "")}</p>
                   <p className="truncate text-xs text-muted-foreground">{stage.description}</p>
@@ -164,7 +168,7 @@ export function RoadmapCanvas({
               );
             })}
 
-            {NODES.map((node, i) => {
+            {nodes.map((node, i) => {
               const p = layout.positions[node.id];
               if (!p) return null;
               return (

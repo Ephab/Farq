@@ -1,4 +1,4 @@
-import { NODES, STAGES } from "@/data/computer-vision-roadmap";
+import type { RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap";
 
 export interface PositionedNode {
   id: string;
@@ -46,7 +46,11 @@ const COLS = 3;
  * Canvas width/height derive from the content, so the canvas always fits
  * the roadmap no matter how many nodes it holds.
  */
-export function computeRoadmapLayout(compact = false): RoadmapLayout {
+export function computeRoadmapLayout(
+  nodes: RoadmapNodeData[],
+  stages: RoadmapStage[],
+  compact = false,
+): RoadmapLayout {
   const cols = compact ? 1 : COLS;
   const width = compact
     ? NODE_W + PAD_X * 2
@@ -57,11 +61,11 @@ export function computeRoadmapLayout(compact = false): RoadmapLayout {
   const stageAnchors: StageAnchor[] = [];
   let y = PAD_TOP;
 
-  for (const stage of STAGES) {
+  for (const stage of stages) {
     stageAnchors.push({ stageId: stage.id, x: spineX, y });
     y += STAGE_HEADER_H;
 
-    const ids = stage.nodeIds.filter((id) => NODES.some((n) => n.id === id));
+    const ids = stage.nodeIds.filter((id) => nodes.some((n) => n.id === id));
     const gridLeft = (width - (cols * NODE_W + (cols - 1) * GAP_X)) / 2;
 
     ids.forEach((id, i) => {
@@ -104,7 +108,7 @@ export function computeRoadmapLayout(compact = false): RoadmapLayout {
   const height = y - STAGE_GAP + PAD_BOTTOM;
 
   const edges: RoadmapEdge[] = [];
-  for (const node of NODES) {
+  for (const node of nodes) {
     for (const dep of node.deps) {
       if (positions[dep] && positions[node.id]) {
         edges.push({ id: `${dep}->${node.id}`, from: dep, to: node.id });

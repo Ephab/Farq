@@ -1,6 +1,6 @@
 "use client"
 
-import { Command, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, SquareDashed } from "lucide-react"
+import { Bot, Command, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, SquareDashed } from "lucide-react"
 import { useState } from "react"
 import {
   AnimatedSidebar,
@@ -20,6 +20,7 @@ import {
 import { FooterSettings } from "@/components/footer-settings"
 import { QuizView } from "@/components/quiz/QuizView"
 import { RoadmapView } from "@/components/roadmap/RoadmapView"
+import { HermesCoach } from "@/components/hermes/HermesCoach"
 import { ThemeProvider } from "@/lib/theme-context"
 
 export default function App() {
@@ -45,6 +46,16 @@ export default function App() {
               <AnimatedSidebarGroup>
                 <AnimatedSidebarGroupContent>
                   <AnimatedSidebarMenu>
+                    <AnimatedSidebarMenuItem>
+                      <AnimatedSidebarMenuButton
+                        icon={<Bot className="size-4" />}
+                        isActive={active === "Hermes Coach"}
+                        onSelect={() => setActive("Hermes Coach")}
+                        className="text-[15px]"
+                      >
+                        Hermes Coach
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
                         icon={<Home className="size-4" />}
@@ -137,6 +148,8 @@ export default function App() {
             <main className="flex min-h-0 flex-1 flex-col bg-background">
               {active === "Roadmap" ? (
                 <RoadmapView />
+              ) : active === "Hermes Coach" ? (
+                <HermesCoach />
               ) : active === "Quizzes" ? (
                 <QuizView />
               ) : (

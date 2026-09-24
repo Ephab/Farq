@@ -112,7 +112,7 @@ export function RoadmapCanvas({
   const allDimmed = dimmedIds.size >= nodes.length;
 
   return (
-    <div className="relative min-h-[480px] flex-1">
+    <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
         onPointerDown={onPointerDown}
@@ -120,9 +120,9 @@ export function RoadmapCanvas({
         onPointerUp={endDrag}
         onPointerLeave={endDrag}
         onClick={onBackgroundClick}
-        className="h-full cursor-grab overflow-auto overscroll-contain active:cursor-grabbing"
+        className="absolute inset-0 cursor-grab overflow-auto overscroll-contain active:cursor-grabbing"
         role="application"
-        aria-label="Computer vision roadmap canvas. Drag to pan, click a node for details."
+        aria-label="Roadmap canvas. Scroll to explore, drag to pan, click a node for details."
       >
         <div
           className="relative"

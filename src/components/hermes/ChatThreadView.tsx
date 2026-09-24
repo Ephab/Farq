@@ -29,9 +29,12 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, 
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState("")
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages, stage])
+  useEffect(() => {
+    const container = messagesRef.current
+    container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+  }, [messages, stage])
   useEffect(() => { if (draft) setInput(draft) }, [draft])
   const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant")
   const isLast = (message: ChatMessage) => message.id === lastAssistant?.id && messages[messages.length - 1]?.id === message.id
@@ -73,7 +76,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, 
 
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"><div className="mx-auto max-w-3xl space-y-5">
+      <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8"><div className="mx-auto max-w-3xl space-y-5">
         {messages.length === 0 ? empty : null}
         {messages.map((message, index) => {
           const { text, options } = message.role === "assistant" ? splitOptions(message.content) : { text: message.content, options: [] }
@@ -116,7 +119,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, 
         })}
         {afterMessages}
         {busy ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />{stage || "Hermes is working"}</div> : null}
-        {error ? <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><span>{error}</span><button type="button" aria-label="Retry" onClick={onRetry}><RefreshCw className="size-4" /></button></div> : null}<div ref={bottomRef} />
+        {error ? <div className="flex items-start justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><span>{error}</span><button type="button" aria-label="Retry" onClick={onRetry}><RefreshCw className="size-4" /></button></div> : null}
       </div></div>
       <div className="border-t border-border p-3 sm:p-5"><div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring"><textarea ref={textareaRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(input) } }} placeholder={placeholder} rows={2} className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" /><button type="button" aria-label="Send" disabled={!input.trim() || busy || disabled} onClick={() => submit(input)} className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40"><Send className="size-4" /></button></div></div>
     </>

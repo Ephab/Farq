@@ -67,7 +67,7 @@ export function RoadmapView() {
   };
 
   return (
-    <div className="flex min-h-[calc(100svh-4rem)] flex-1 flex-col bg-background">
+    <div className="flex h-[calc(100dvh-4rem)] min-h-0 flex-none flex-col overflow-hidden bg-background">
       <RoadmapHeader title={title} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} onReset={reset} />
       {version ? <div className="border-b border-border px-6 py-1.5 text-right text-[11px] text-muted-foreground">Personal roadmap · version {version}</div> : null}
       {loadError ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">Backend unavailable: showing the bundled roadmap. {loadError}</div> : null}

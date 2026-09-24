@@ -39,6 +39,9 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 The script runs FastAPI and Hermes in the background and Vite in the foreground. Hermes
 uses `.hermes-runtime` as its isolated local profile and loads the checked-in Farq plugin.
+Press Ctrl+C to stop Vite and clean up the FastAPI and Hermes process trees started by
+that script. Allow cleanup to finish before closing the terminal; forcibly ending the
+PowerShell process bypasses its cleanup.
 
 ## Verify
 

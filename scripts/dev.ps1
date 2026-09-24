@@ -17,7 +17,25 @@ if ($env:HERMES_API_KEY.Length -lt 16) { throw "HERMES_API_KEY is missing or too
 $env:API_SERVER_KEY = $env:HERMES_API_KEY
 $env:FARQ_INTERNAL_TOKEN = if ($env:FARQ_INTERNAL_TOKEN) { $env:FARQ_INTERNAL_TOKEN } else { "farq-internal-dev" }
 
-Start-Process -FilePath ".venv\Scripts\python.exe" -ArgumentList "-m", "uvicorn", "app.main:app", "--app-dir", "services/api", "--reload", "--port", "8000" -WorkingDirectory $repo -WindowStyle Hidden
-Start-Process -FilePath "hermes" -ArgumentList "gateway" -WorkingDirectory $repo -WindowStyle Hidden
-Write-Host "FastAPI and Hermes started in the background. Starting Vite at http://127.0.0.1:5173"
-npm run dev
+# Retain the exact processes started by this invocation. Never kill by image
+# name: other projects (and editors) may also be running Python or Node.
+$services = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+try {
+  $services.Add((Start-Process -FilePath ".venv\Scripts\python.exe" -ArgumentList "-m", "uvicorn", "app.main:app", "--app-dir", "services/api", "--reload", "--port", "8000" -WorkingDirectory $repo -WindowStyle Hidden -PassThru))
+  $services.Add((Start-Process -FilePath "hermes" -ArgumentList "gateway" -WorkingDirectory $repo -WindowStyle Hidden -PassThru))
+  Write-Host "FastAPI and Hermes started in the background. Ctrl+C stops this session's services. Starting Vite at http://127.0.0.1:5173"
+  npm run dev
+}
+finally {
+  Write-Host "Stopping Farq background services..."
+  foreach ($service in $services) {
+    try {
+      if (-not $service.HasExited) {
+        # /T includes the Uvicorn reloader worker and Hermes launcher children.
+        & taskkill.exe /PID $service.Id /T /F 2>&1 | Out-Null
+      }
+    }
+    catch { Write-Warning "Could not stop Farq process $($service.Id): $_" }
+    finally { $service.Dispose() }
+  }
+}

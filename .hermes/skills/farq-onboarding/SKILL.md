@@ -18,7 +18,8 @@ to index a folder for Farq.
 
 ## Gap-filling chat
 
-1. Call `farq_get_student_profile` first. Do not ask about anything already there.
+1. Call `farq_get_student_profile` first with the user_id UUID from the run message header
+   (never the student's display name). Do not ask about anything already there.
 2. Ask at most five questions in total, one per message, in plain friendly language.
    Priorities: career direction, main interests, weekly hours, learning style, weak areas,
    deadlines (exams, internships, graduation).

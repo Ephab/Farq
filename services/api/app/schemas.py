@@ -222,6 +222,12 @@ class ResetInput(BaseModel):
     confirm: Literal["RESET"]
 
 
+class RewindInput(BaseModel):
+    # Edit-and-resend: delete this user message and everything after it so
+    # the edited prompt restarts the thread from that point (no duplication).
+    message_id: str = Field(min_length=1, max_length=36)
+
+
 QuizDifficulty = Literal["Easy", "Medium", "Hard", "Mixed"]
 QuizQuestionType = Literal["mcq", "true_false", "short_answer"]
 
@@ -241,6 +247,9 @@ class SlidesSuggestInput(BaseModel):
     count: int = Field(default=5, ge=1, le=8)
     provider: HermesProvider | None = None
     model: str | None = Field(default=None, min_length=1, max_length=200)
+    # Optional student whose verified profile + active roadmap are injected
+    # server-side as prompt data. Omitted/unknown => deck-only suggestions.
+    student_id: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 SlidesLength = Literal["short", "medium", "long"]
@@ -251,8 +260,9 @@ class SlidesExtendInput(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     # Length hint only — the model decides the exact slide count.
     length: SlidesLength = "medium"
-    # Optional design summary extracted from the original deck (theme,
-    # background, fonts) so new slides match its structure and tone.
+    # Optional design summary extracted from the original deck (fonts, colors,
+    # layout density, visuals) so new slides match its structure, tone, and
+    # visual habits. Styling itself is applied locally at export/preview.
     design_hint: str = Field(default="", max_length=2000)
     provider: HermesProvider | None = None
     model: str | None = Field(default=None, min_length=1, max_length=200)

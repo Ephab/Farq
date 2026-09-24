@@ -97,6 +97,65 @@ def test_suggest_uses_gateway_and_writes_nothing(client: TestClient, monkeypatch
     assert after == before
 
 
+def test_suggest_with_student_injects_learner_context(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from sqlalchemy import func, select
+
+    FakeClient, calls = _fake_slides_client({"status": "completed", "output": CANNED_SUGGEST})
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
+
+    student = client.post("/api/students", json={"display_name": "Slides Learner"}).json()
+    db = SessionLocal()
+    before = db.scalar(select(func.count()).select_from(AgentRun))
+    db.close()
+
+    response = client.post(
+        "/api/slides/suggest",
+        headers={"X-Hermes-Api-Key": "k" * 64},
+        json={"source_text": "Transformers intro.", "count": 3, "student_id": student["student_id"]},
+    )
+    assert response.status_code == 200
+    assert "LEARNER CONTEXT" in calls["input"]
+    assert "source=roadmap" in calls["input"]
+
+    db = SessionLocal()
+    after = db.scalar(select(func.count()).select_from(AgentRun))
+    db.close()
+    assert after == before
+
+
+def test_suggest_unknown_student_falls_back_to_deck_only(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    FakeClient, calls = _fake_slides_client({"status": "completed", "output": CANNED_SUGGEST})
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
+
+    response = client.post(
+        "/api/slides/suggest",
+        headers={"X-Hermes-Api-Key": "k" * 64},
+        json={"source_text": "Transformers intro.", "count": 3, "student_id": "no-such-student"},
+    )
+    assert response.status_code == 200
+    assert "LEARNER CONTEXT" not in calls["input"]
+
+
+def test_build_learner_context_uses_verified_data_only():
+    from app.slides import build_learner_context_block
+
+    block = build_learner_context_block(
+        {
+            "program": "BSc CS",
+            "discipline": "cs",
+            "year": "Year 2",
+            "stated_facts": [{"category": "goal", "key": "role", "value": "AI engineer"}],
+            "confirmed_evidence": {"project": [{"title": "Vision classifier"}]},
+        },
+        {"snapshot": {"title": "AI Roadmap", "nodes": [{"title": "Transformers", "status": "in-progress"}]}},
+    )
+    assert "AI engineer" in block
+    assert "Vision classifier" in block
+    assert "Transformers [in-progress]" in block
+    assert build_learner_context_block({}, {}) == ""
+    assert build_learner_context_block(None, None) == ""
+
+
 def test_extend_uses_gateway_and_includes_topic(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     FakeClient, calls = _fake_slides_client({"status": "completed", "output": CANNED_EXTEND})
     monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)

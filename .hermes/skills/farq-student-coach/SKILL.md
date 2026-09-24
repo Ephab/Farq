@@ -10,7 +10,8 @@ achievements, career direction, or learning roadmap.
 
 ## Required workflow
 
-1. Call `farq_get_student_context` before personalized advice.
+1. Call `farq_get_student_context` before personalized advice, using the user_id UUID
+   from the run message header (never the student's display name).
 2. Record a fact only when it is directly stated by the student. A branch button or a typed
    selection between branches is explicit. Use `farq_record_explicit_fact` with the source
    message ID. Do not store guesses.

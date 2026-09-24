@@ -13,6 +13,10 @@ export interface SuggestedTopic {
   title: string;
   rationale?: string;
   relatedSlides?: string;
+  /** "roadmap" = linked to the student's roadmap/profile, "deck" = deck-only. */
+  source?: "deck" | "roadmap";
+  /** Roadmap node title this topic links to (only when source is roadmap). */
+  roadmapNode?: string;
 }
 
 export interface ExtendedSlide {
@@ -58,11 +62,17 @@ function sanitizeTopics(input: unknown[]): SuggestedTopic[] {
     const r = t as Record<string, unknown>;
     const title = String(r.title ?? "").trim();
     if (!title) return;
+    const rawSource = String(r.source ?? "").trim().toLowerCase();
+    const source: SuggestedTopic["source"] = rawSource === "roadmap" ? "roadmap" : "deck";
+    const roadmapNode = String(r.roadmap_node ?? r.roadmapNode ?? "").trim().slice(0, 120) || undefined;
     out.push({
       id: String(r.id ?? `t${i + 1}`),
       title: title.slice(0, 160),
       rationale: String(r.rationale ?? "").trim().slice(0, 300) || undefined,
       relatedSlides: String(r.related_slides ?? r.relatedSlides ?? "").trim().slice(0, 120) || undefined,
+      source,
+      // Keep the linked node only on roadmap topics so deck topics stay clean.
+      ...(source === "roadmap" && roadmapNode ? { roadmapNode } : {}),
     });
   });
   return out.map((t, i) => ({ ...t, id: t.id || `t${i + 1}` })).slice(0, 8);
@@ -234,6 +244,8 @@ async function postSlides(
 
 export interface SuggestOptions {
   count?: number;
+  /** Current student id — enables roadmap-aware suggestions server-side. */
+  studentId?: string;
   signal?: AbortSignal;
   onProgress?: (p: SlidesProgress) => void;
 }
@@ -243,9 +255,10 @@ export async function suggestTopics(sourceText: string, options: SuggestOptions 
   const source = sourceText.length > MAX_SLIDES_SOURCE_CHARS ? sourceText.slice(0, MAX_SLIDES_SOURCE_CHARS) : sourceText;
   const stop = startTicker(options.count ?? 5, options.onProgress);
   try {
+    const studentId = options.studentId?.trim();
     const { output } = await postSlides(
       "/api/slides/suggest",
-      { source_text: source, count: options.count ?? 5 },
+      { source_text: source, count: options.count ?? 5, ...(studentId ? { student_id: studentId } : {}) },
       options.signal,
     );
     options.onProgress?.({ percent: 96, stage: "validating", charsReceived: output.length });
@@ -261,7 +274,7 @@ export type SlidesLength = "short" | "medium" | "long";
 
 export interface ExtendOptions {
   length?: SlidesLength;
-  /** Design summary from the original deck so new slides match its structure. */
+  /** Rich design summary from the original deck (fonts, colors, layout, visuals). */
   designHint?: string;
   signal?: AbortSignal;
   onProgress?: (p: SlidesProgress) => void;
@@ -284,7 +297,7 @@ export async function extendSlides(
         source_text: source,
         topic: topic.trim().slice(0, 300),
         length,
-        design_hint: (options.designHint ?? "").slice(0, 1500),
+        design_hint: (options.designHint ?? "").slice(0, 2000),
       },
       options.signal,
     );

@@ -13,7 +13,7 @@ def register(ctx):
             "Read verified facts the student explicitly shared with Farq.",
             {
                 "type": "object",
-                "properties": {"user_id": {"type": "string"}},
+                "properties": {"user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header (never the student's display name)"}},
                 "required": ["user_id"],
             },
             lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/context"),
@@ -23,7 +23,7 @@ def register(ctx):
             "Read the student's authoritative active roadmap, progress, and version id.",
             {
                 "type": "object",
-                "properties": {"user_id": {"type": "string"}},
+                "properties": {"user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header (never the student's display name)"}},
                 "required": ["user_id"],
             },
             lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/roadmap"),
@@ -34,7 +34,7 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header (never the student's display name)"},
                     "category": {"type": "string", "enum": ["interest", "goal", "course", "skill", "strength", "weakness", "achievement", "preference"]},
                     "key": {"type": "string"},
                     "value": {},
@@ -51,7 +51,7 @@ def register(ctx):
             "Read the student's onboarding basics plus the evidence they confirmed (courses, grades, projects, skills, experience) and stated facts.",
             {
                 "type": "object",
-                "properties": {"user_id": {"type": "string"}},
+                "properties": {"user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header (never the student's display name)"}},
                 "required": ["user_id"],
             },
             lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/profile"),
@@ -63,7 +63,7 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header (never the student's display name)"},
                     "source_id": {"type": "string"},
                     "path": {"type": "string"},
                     "purpose": {"type": "string", "enum": ["projects", "coursework"]},
@@ -104,7 +104,7 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header (never the student's display name)"},
                     "source_id": {"type": "string"},
                     "items": {
                         "type": "array",
@@ -130,7 +130,7 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header (never the student's display name)"},
                     "base_version_id": {"type": "string"},
                     "summary": {"type": "string"},
                     "reasoning": {"type": "string"},

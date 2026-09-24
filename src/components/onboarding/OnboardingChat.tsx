@@ -65,7 +65,15 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
             error={chat.error}
             onSend={(text) => void chat.send(text)}
             onRetry={() => { chat.refresh().catch(() => undefined) }}
+            onEditResend={(messageId, text) => void chat.editAndResend(messageId, text)}
             placeholder={answered ? "Answer Hermes, or press Generate when you're ready…" : "Say hi to start…"}
+            afterMessages={chat.messages.length > 0 ? (
+              <div className="flex justify-center pt-1">
+                <button type="button" onClick={() => void generate()} disabled={generating || chat.busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground disabled:opacity-40">
+                  {generating ? <LoaderCircle className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}Generate my roadmap
+                </button>
+              </div>
+            ) : undefined}
             empty={<div className="rounded-3xl border border-dashed border-border p-8 text-center"><Sparkles className="mx-auto size-7 text-primary" /><h2 className="mt-3 font-semibold">Hermes has read what you confirmed</h2><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Answer up to five short questions about your goals and how you like to learn. You can skip straight to generating at any time.</p><button type="button" onClick={() => void chat.send(KICKOFF)} className="mt-5 h-9 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground">Start the chat</button></div>}
           />
         </>

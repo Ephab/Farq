@@ -90,7 +90,13 @@ explicit student statement, so it must not become a fact, message, or proposal.
 `POST /api/slides/suggest` and `POST /api/slides/extend` follow the same
 pattern on throwaway `farq:slides:*` sessions (tools forbidden, JSON-only
 `{"topics": [...]}` / `{"slides": [...]}`). Slide text is never written to
-SQLite for the same reason as quizzes. `POST /api/slides/export` is a local
+SQLite for the same reason as quizzes. Suggest accepts an optional
+`student_id`: the API reads the verified profile brief plus the active
+roadmap and injects them server-side as prompt data (confirmed facts and
+evidence only, never `suggested` items awaiting review). The model marks
+those topics `"source": "roadmap"` with the linked `roadmap_node`, and the
+browser renders them with a distinct "For your roadmap" badge versus plain
+"From this deck" topics. `POST /api/slides/export` is a local
 `python-pptx` build with no model call that returns ONE file: the original
 slides are kept and the AI slides are appended after a provenance divider,
 reusing the deck's most-used content layout with its background and title/body

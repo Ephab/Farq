@@ -54,7 +54,31 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     }
   }, [threadId, busy, refresh, onRunFinished])
 
-  return { messages, busy, stage, error, setError, send, refresh }
+  /** Edit-and-resend: rewind the thread to `messageId`, then send the edited
+   * prompt so the conversation restarts there instead of stacking a copy. */
+  const editAndResend = useCallback(async (messageId: string, text: string) => {
+    const content = text.trim()
+    if (!content || !threadId || busy) return
+    setBusy(true); setError(null)
+    try {
+      await api(`/api/chat/threads/${threadId}/rewind`, {
+        method: "POST",
+        body: JSON.stringify({ message_id: messageId }),
+      })
+    } catch (reason) {
+      setBusy(false); setError(reason instanceof Error ? reason.message : "Could not rewind to that message")
+      return
+    }
+    // Prune locally first so the optimistic resend lands where the edit was.
+    setMessages((items) => {
+      const index = items.findIndex((message) => message.id === messageId)
+      return index < 0 ? items : items.slice(0, index)
+    })
+    setBusy(false)
+    await send(content)
+  }, [threadId, busy, send])
+
+  return { messages, busy, stage, error, setError, send, refresh, editAndResend }
 }
 
 const OPTIONS_LINE = /^\s*Options:\s*(.+)$/im

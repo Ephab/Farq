@@ -469,18 +469,27 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
     slides.push({ background, shapes, images });
   }
 
-  // Theme sampled from the deck itself.
+  // Theme + visual habits sampled from the deck itself so the AI
+  // extension can match fonts, colors, layout density, and visual style.
   const bgCounts: Record<string, number> = {};
   const titleColors: Record<string, number> = {};
   const bodyColors: Record<string, number> = {};
+  const alignCounts: Record<string, number> = {};
+  const fillCounts: Record<string, number> = {};
   const titleSizes: number[] = [];
+  const bodySizes: number[] = [];
   let bulletParas = 0;
   let textShapes = 0;
+  let imageSlides = 0;
+  let totalImages = 0;
   for (const slide of slides) {
     const bg = slide.background ?? "#FFFFFF";
     bgCounts[bg] = (bgCounts[bg] ?? 0) + 1;
+    if (slide.images.length > 0) imageSlides++;
+    totalImages += slide.images.length;
     for (const shape of slide.shapes) {
       textShapes++;
+      if (shape.fill) fillCounts[shape.fill] = (fillCounts[shape.fill] ?? 0) + 1;
       const first = shape.paragraphs[0]?.runs.find((r) => r.text.trim());
       if (shape.isTitle && first) {
         titleColors[first.color] = (titleColors[first.color] ?? 0) + 1;
@@ -488,6 +497,11 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
       } else if (first) {
         bodyColors[first.color] = (bodyColors[first.color] ?? 0) + 1;
         bulletParas += shape.paragraphs.length;
+        for (const para of shape.paragraphs) {
+          alignCounts[para.align] = (alignCounts[para.align] ?? 0) + 1;
+          const run = para.runs.find((r) => r.text.trim());
+          if (run) bodySizes.push(run.sizePt);
+        }
       }
     }
   }
@@ -500,8 +514,13 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
   const dark = luminance(background) < 0.25;
   const titleColor = top(titleColors, scheme.accent1 ?? (dark ? "#FFFFFF" : "#111111"));
   const bodyColor = top(bodyColors, dark ? "#F5F5F5" : "#222222");
+  const accent = scheme.accent1 ?? titleColor;
   const avgTitle = titleSizes.length ? Math.round(titleSizes.reduce((a, b) => a + b, 0) / titleSizes.length) : 32;
   const avgBullets = slides.length ? Math.max(1, Math.round(bulletParas / Math.max(1, slides.length))) : 4;
+  const avgBody = bodySizes.length
+    ? Math.round(bodySizes.reduce((a, b) => a + b, 0) / bodySizes.length)
+    : 18;
+  const topAlign = top(alignCounts, "left");
   const ratio = slideW / slideH;
   const shape = ratio > 1.7 ? "16:9 widescreen" : ratio > 1.4 ? "4:3 standard" : "custom ratio";
 
@@ -509,16 +528,27 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
     background,
     titleColor,
     bodyColor,
-    accent: scheme.accent1 ?? titleColor,
+    accent,
     titleFont: majorFont,
     bodyFont: minorFont,
     dark,
   };
+  // Rich design context for the extend prompt: fonts, colors, layout
+  // density, and visual habits. Kept to one compact block so it fits the
+  // ~2000-char design_hint budget with room to spare.
+  const visualSummary =
+    totalImages === 0
+      ? "text-only deck, no embedded images"
+      : `images on ${imageSlides}/${slides.length} slides (${totalImages} total)`;
+  const fillsSummary =
+    Object.keys(fillCounts).length === 0 ? "no shape fills" : `shape fills used (${Object.keys(fillCounts).length} colors)`;
   const designHint = [
-    `${shape} slides`,
+    `${shape} slides (${slides.length} sampled)`,
     `${dark ? "dark" : "light"} ${background} backgrounds`,
-    `${avgTitle}pt bold ${majorFont} titles in ${titleColor}`,
-    `${minorFont} body text in ${bodyColor} (~${avgBullets} bullets per slide)`,
+    `titles: ${avgTitle}pt bold ${majorFont} in ${titleColor}, ${topAlign}-aligned, short titles`,
+    `body: ${avgBody}pt ${minorFont} in ${bodyColor} (~${avgBullets} bullets/slide, parallel phrasing)`,
+    `accent ${accent}`,
+    `visuals: ${visualSummary}; ${fillsSummary}`,
   ].join("; ");
 
   return {

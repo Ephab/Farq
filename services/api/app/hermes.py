@@ -19,7 +19,15 @@ HERMES_URL = os.getenv("HERMES_URL", "http://127.0.0.1:8642").rstrip("/")
 HERMES_API_KEY = os.getenv("HERMES_API_KEY", "")
 HERMES_MODEL = os.getenv("HERMES_MODEL", "gemini-3-flash-preview")
 HERMES_PROVIDER = os.getenv("HERMES_PROVIDER", "gemini")
-NIM_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
+
+# NVIDIA NIM ladder, best first. Used whenever the run key is an nvapi key
+# (see is_nvapi_key) or the nim provider is selected explicitly.
+NIM_CHAIN = [
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+]
+NIM_MODEL = NIM_CHAIN[0]
 
 # Rate-limit fallback ladders, best first. A run that fails with a rate-limit
 # or quota error retries on the next rung. Google order follows the free-tier
@@ -52,12 +60,10 @@ FALLBACK_CHAIN: list[tuple[str, str]] = [(m, "gemini") for m in GEMINI_CHAIN] + 
 
 # Keep in sync with src/lib/farq-api.ts model lists.
 # The env default is always allowed so custom server deployments keep working.
+# The retired llama-3.1-nemotron-ultra stays allowlisted so previously saved
+# per-tab selections keep working; new runs use NIM_CHAIN.
 GEMINI_MODELS = frozenset({*GEMINI_CHAIN, "gemini-2.5-pro", HERMES_MODEL})
-NIM_MODELS = frozenset({
-    "nvidia/nemotron-3-ultra-550b-a55b",
-    "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-    "nvidia/nemotron-3.5-lightning-30b-a3b",
-})
+NIM_MODELS = frozenset({*NIM_CHAIN, "nvidia/llama-3.1-nemotron-ultra-253b-v1"})
 HF_MODELS = frozenset(HF_CHAIN)
 
 RATE_LIMIT = re.compile(r"\b429\b|\b402\b|resource.?exhausted|rate.?limit|quota|too many requests|insufficient.?(credit|balance)", re.IGNORECASE)
@@ -155,11 +161,28 @@ def effective_hermes_key(override: str | None) -> str:
     """Tab-only override wins when long enough; otherwise the server env.
 
     The override is held in memory for one request only — never persisted,
-    never written to .env, never sent to a system Hermes.
+    never written to .env, never sent to a system Hermes. An nvapi value is
+    not a gateway key (the gateway only accepts its API_SERVER_KEY as
+    Bearer), so it never becomes Authorization — it only routes the run onto
+    the NIM ladder (see candidate_chain); gateway auth falls back to the
+    server key.
     """
+    if is_nvapi_key(override):
+        return HERMES_API_KEY
     if isinstance(override, str) and len(override.strip()) >= 16:
         return override.strip()
     return HERMES_API_KEY
+
+
+def is_nvapi_key(key: str | None) -> bool:
+    """True when the run key is an NVIDIA API key, not a Farq gateway key.
+
+    The gateway only accepts its own API_SERVER_KEY as Bearer, so an nvapi
+    value must never be sent as Authorization — it only selects the NIM
+    ladder (ultra 550b -> super 120b -> lightning) instead of the Gemini one.
+    NVIDIA billing then uses the gateway's server-side NVIDIA_API_KEY.
+    """
+    return isinstance(key, str) and key.strip().lower().startswith("nvapi")
 
 
 def raise_for_gateway_status(response: httpx.Response) -> None:
@@ -182,15 +205,27 @@ def raise_for_gateway_status(response: httpx.Response) -> None:
         raise
 
 
-def candidate_chain(provider: str | None, model: str | None) -> list[tuple[str, str]]:
+def candidate_chain(provider: str | None, model: str | None, hermes_api_key: str | None = None) -> list[tuple[str, str]]:
     """The selected model first, then every lower rung, skipping models cooling down.
 
-    NIM has no ladder of its own; after it the whole chain is tried.
+    An nvapi run key stays on the NIM ladder only — ultra 550b -> super 120b
+    -> lightning — instead of degrading through the Gemini chain. Anything
+    else descends the Gemini + Hugging Face chain.
     """
+    if is_nvapi_key(hermes_api_key):
+        ladder = [(item, "nvidia") for item in NIM_CHAIN]
+        if model in NIM_CHAIN:
+            ladder = ladder[NIM_CHAIN.index(model):]
+        now_ = time.monotonic()
+        ready = [item for item in ladder if _cooldown.get(item[0], 0) <= now_]
+        return ready or ladder[-1:]
     first = resolve_hermes_selection(provider, model)
     chain = [first]
     if first in FALLBACK_CHAIN:
         chain += FALLBACK_CHAIN[FALLBACK_CHAIN.index(first) + 1:]
+    elif first[1] == "nvidia":
+        chain += [(item, "nvidia") for item in NIM_CHAIN if item != first[0]]
+        chain += [item for item in FALLBACK_CHAIN if item != first]
     else:
         chain += [item for item in FALLBACK_CHAIN if item != first]
     now_ = time.monotonic()
@@ -207,17 +242,18 @@ class RunFailed(RuntimeError):
 ATTEMPT_TIMEOUT_SECONDS = 120
 
 
-def execute_with_fallback(client, headers: dict, payload: dict, provider: str | None, model: str | None, timeout_seconds: int, on_state=None) -> tuple[str, str, str]:
+def execute_with_fallback(client, headers: dict, payload: dict, provider: str | None, model: str | None, timeout_seconds: int, on_state=None, hermes_api_key: str | None = None) -> tuple[str, str, str]:
     """Run on the gateway, moving to the next model on any model-side failure.
 
     Rate limits, quota, overload (503), provider auth or model errors, failed or
     cancelled runs, and per-model timeouts all descend the chain. Only a
     rejected Farq gateway key (401) stops immediately, since no model can fix it.
+    An nvapi run key selects the NIM-only ladder (see candidate_chain).
     Returns (output, model, provider).
     """
     errors: list[str] = []
     budget_end = time.monotonic() + timeout_seconds * 2
-    for attempt, (run_model, run_provider) in enumerate(candidate_chain(provider, model)):
+    for attempt, (run_model, run_provider) in enumerate(candidate_chain(provider, model, hermes_api_key)):
         if time.monotonic() >= budget_end:
             break
         body = {**payload, "model": run_model, "provider": run_provider}
@@ -308,7 +344,7 @@ def run_json_prompt(
     payload = {"input": prompt, "session_id": session_id, "instructions": instructions}
     try:
         with httpx.Client(timeout=20) as client:
-            output, used_model, used_provider = execute_with_fallback(client, headers, payload, provider, model, timeout_seconds)
+            output, used_model, used_provider = execute_with_fallback(client, headers, payload, provider, model, timeout_seconds, hermes_api_key=hermes_api_key)
     except TimeoutError as exc:
         raise HermesJsonError(str(exc), status=504) from exc
     except RuntimeError as exc:
@@ -392,7 +428,7 @@ def run_agent(
             db.commit()
 
         with httpx.Client(timeout=20) as client:
-            output, _model, _provider = execute_with_fallback(client, headers, payload, provider, model, 180, on_state)
+            output, _model, _provider = execute_with_fallback(client, headers, payload, provider, model, 180, on_state, hermes_api_key=hermes_api_key)
         db.add(ChatMessage(thread_id=thread.id, role="assistant", content=output or "I finished, but did not return a message.", agent_run_id=run.id))
         run.status = "completed"
         run.stage = "Complete"

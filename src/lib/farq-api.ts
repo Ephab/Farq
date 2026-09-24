@@ -30,9 +30,10 @@ export const HERMES_GEMINI_MODELS = [
 ] as const
 
 // Keep in sync with src/lib/quiz-ai.ts QUIZ_MODELS and the backend allowlist.
+// Order = NIM fallback order (see NIM_CHAIN in services/api/app/hermes.py).
 export const HERMES_NIM_MODELS = [
-  { id: "nvidia/nemotron-3-ultra-550b-a55b", label: "Nemotron 3 Ultra 550B (recommended)" },
-  { id: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Llama Nemotron Ultra 253B" },
+  { id: "nvidia/nemotron-3-ultra-550b-a55b", label: "Nemotron 3 Ultra 550B (default)" },
+  { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super 120B" },
   { id: "nvidia/nemotron-3.5-lightning-30b-a3b", label: "Nemotron 3.5 Lightning 30B (fast)" },
 ] as const
 
@@ -84,6 +85,11 @@ export function getHermesModel(provider: HermesProvider): string {
 
 export function saveHermesModel(provider: HermesProvider, model: string): void {
   window.sessionStorage.setItem(modelKeyFor(provider), model)
+}
+
+/** True when the value is an NVIDIA API key, not a Farq gateway key. */
+export function isNvapiKey(key: string): boolean {
+  return key.trim().toLowerCase().startsWith("nvapi")
 }
 
 /** Tab-only Farq Hermes gateway key override. Empty string means "use server env". */
@@ -171,10 +177,15 @@ export function notifyRoadmapChanged(): void {
   window.dispatchEvent(new Event(ROADMAP_CHANGED_EVENT))
 }
 
-/** Provider/model/key for any call that runs Hermes, matching the chat composer. */
+/** Provider/model/key for any call that runs Hermes, matching the chat composer.
+ *
+ * An nvapi key forces the nim provider: the backend routes it onto the NIM
+ * ladder (ultra -> super -> lightning) and never forwards it as gateway
+ * auth, so it is safe to keep sending it in the header.
+ */
 export function hermesRequestParts(): { body: { provider: HermesProvider; model: string }; headers: Record<string, string> } {
-  const provider = getHermesProvider()
   const key = getHermesApiKey().trim()
+  const provider: HermesProvider = isNvapiKey(key) ? "nim" : getHermesProvider()
   return { body: { provider, model: getHermesModel(provider) }, headers: key ? { [HERMES_API_KEY_HEADER]: key } : {} }
 }
 

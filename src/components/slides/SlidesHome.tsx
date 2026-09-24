@@ -8,6 +8,7 @@ import {
   FileText,
   Loader2,
   Presentation,
+  Route,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -337,6 +338,11 @@ export function SlidesHome(props: SlidesHomeProps) {
           </div>
 
           <h3 className="mt-5 text-sm font-semibold">Suggested topics</h3>
+          {topics.some((t) => t.source === "roadmap") ? (
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Topics badged “For your roadmap” connect this deck to your roadmap and background; “From this deck” topics come from the slides alone.
+            </p>
+          ) : null}
           {topicsLoading ? (
             topicsProgress ? (
               <SlidesProgressBar progress={topicsProgress} label="Hermes is reading your deck" />
@@ -355,22 +361,44 @@ export function SlidesHome(props: SlidesHomeProps) {
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {topics.map((topic) => {
                 const active = selectedTopic === topic.title && !customTopic.trim();
+                const roadmapLinked = topic.source === "roadmap";
                 return (
                   <button
                     key={topic.id}
                     type="button"
                     onClick={() => onSelectTopic(topic.title)}
                     aria-pressed={active}
+                    aria-label={`${topic.title}${roadmapLinked ? " (for your roadmap)" : ""}`}
                     className={cn(
                       "rounded-2xl border p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                      active ? "border-primary bg-muted" : "border-border hover:bg-muted/50",
+                      active
+                        ? "border-primary bg-muted"
+                        : roadmapLinked
+                          ? "border-emerald-500/50 bg-emerald-500/[0.06] hover:bg-emerald-500/10"
+                          : "border-border hover:bg-muted/50",
                     )}
                   >
-                    <span className="flex items-center gap-2 text-[15px] font-semibold">
-                      {active ? <Check className="size-4 text-primary" aria-hidden="true" /> : null}
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                        roadmapLinked
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {roadmapLinked ? <Route className="size-3" aria-hidden="true" /> : null}
+                      {roadmapLinked ? "For your roadmap" : "From this deck"}
+                    </span>
+                    <span className="mt-1.5 flex items-center gap-2 text-[15px] font-semibold">
+                      {active ? <Check className="size-4 shrink-0 text-primary" aria-hidden="true" /> : null}
                       <span className="truncate">{topic.title}</span>
                     </span>
                     {topic.rationale ? <span className="mt-1 block text-[13px] text-muted-foreground">{topic.rationale}</span> : null}
+                    {roadmapLinked && topic.roadmapNode ? (
+                      <span className="mt-1 block text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        Links to roadmap: {topic.roadmapNode}
+                      </span>
+                    ) : null}
                     {topic.relatedSlides ? <span className="mt-1 block text-xs text-muted-foreground">{topic.relatedSlides}</span> : null}
                   </button>
                 );

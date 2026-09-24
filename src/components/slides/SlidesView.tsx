@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/farq-api";
+import { api, getCurrentStudentId } from "@/lib/farq-api";
 import { extractSource } from "@/lib/quiz-extract";
 import {
   combineDeckTexts,
@@ -183,6 +183,7 @@ export function SlidesView() {
     setTopicsLoading(true);
     suggestTopics(combineDeckTexts([deck]), {
       count: 5,
+      studentId: getCurrentStudentId(),
       signal: ctrl.signal,
       onProgress: (p) => {
         if (!ctrl.signal.aborted) setTopicsProgress(p);
@@ -335,7 +336,21 @@ export function SlidesView() {
       const visual = visuals[deckId];
       if (visual?.parsed) return visual.parsed.designHint;
       const deck = library.decks.find((d) => d.id === deckId);
-      if (deck?.kind === "pdf") return `PDF document with ${deck.units} pages; use clean light slides with short titles`;
+      if (deck?.kind === "pdf") {
+        const pages = visual?.pdfImages?.length ?? deck.units;
+        // PDF text extraction carries no font/color info, so describe what we
+        // do know: page count, image-based pages, and content density from the
+        // extracted text. The backend uses this like the PPTX context.
+        const charsPerPage = deck.units > 0 ? Math.round(deck.chars / deck.units) : 0;
+        return [
+          `PDF document with ${deck.units} pages (${pages} rendered as full-page images; visually structured)`,
+          "original fonts/colors not extracted — use clean light slides (#FFFFFF backgrounds, short titles, parallel bullets)",
+          charsPerPage ? `dense pages (~${charsPerPage} chars/page); keep bullets concise and visual-friendly` : null,
+          "suggest one visual idea in speaker_notes where a diagram would help",
+        ]
+          .filter(Boolean)
+          .join("; ");
+      }
       return "";
     },
     [library.decks, visuals],

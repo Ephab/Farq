@@ -326,3 +326,97 @@ def test_quiz_generate_maps_gateway_failure(client: TestClient, monkeypatch: pyt
     )
     assert response.status_code == 502
     assert "model exploded" in response.json()["detail"]
+
+
+def test_nvapi_key_selects_nim_ladder_only():
+    from app import hermes as hermes_module
+
+    hermes_module._cooldown.clear()
+    assert hermes_module.is_nvapi_key("nvapi-abc123")
+    assert hermes_module.is_nvapi_key("  NVAPI-xyz ")
+    assert not hermes_module.is_nvapi_key("sk-ant-123")
+    assert not hermes_module.is_nvapi_key(None)
+    assert hermes_module.resolve_hermes_selection("nim") == (hermes_module.NIM_CHAIN[0], "nvidia")
+    assert hermes_module.resolve_hermes_selection("nim", "nvidia/nemotron-3-super-120b-a12b") == ("nvidia/nemotron-3-super-120b-a12b", "nvidia")
+    # Even an explicit Gemini selection degrades within NIM only on an nvapi key.
+    chain = hermes_module.candidate_chain("gemini", "gemini-3.8-flash", "nvapi-test-key")
+    assert [model for model, _ in chain] == hermes_module.NIM_CHAIN
+    assert {provider for _, provider in chain} == {"nvidia"}
+
+
+def test_nvapi_key_never_becomes_gateway_bearer(monkeypatch: pytest.MonkeyPatch):
+    from app import hermes as hermes_module
+
+    monkeypatch.setattr(hermes_module, "HERMES_API_KEY", "server-gateway-key-0123456789abcdef")
+    assert hermes_module.effective_hermes_key("nvapi-abc123") == "server-gateway-key-0123456789abcdef"
+    assert hermes_module.effective_hermes_key("plain-tab-key-0123456789abcdef") == "plain-tab-key-0123456789abcdef"
+
+
+def test_internal_endpoints_resolve_display_name(client: TestClient):
+    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    # The agent sometimes passes the display name instead of the UUID.
+    profile = client.get("/internal/hermes/students/Demo Student/profile", headers=internal)
+    assert profile.status_code == 200
+    assert client.get("/internal/hermes/students/demo-student/context", headers=internal).status_code == 200
+    fact = client.post("/internal/hermes/facts", headers=internal, json={
+        "user_id": "demo student",
+        "category": "preference",
+        "key": "display_name_fallback",
+        "value": "works",
+        "source_message_id": "test-message",
+        "explicit": True,
+    })
+    assert fact.status_code == 200
+    assert client.get("/internal/hermes/students/No Such Person/profile", headers=internal).status_code == 404
+    # Ambiguous names still 404 rather than guessing.
+    client.post("/api/students", json={"display_name": "Sam Same"})
+    client.post("/api/students", json={"display_name": "sam same"})
+    assert client.get("/internal/hermes/students/Sam Same/profile", headers=internal).status_code == 404
+
+
+def test_rewind_drops_message_and_later(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from app.database import SessionLocal
+    from app.models import AgentRun, ChatMessage
+
+    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    thread_id = client.get("/api/demo").json()["thread_id"]
+
+    first = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "First prompt"}).json()["message_id"]
+    second = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Second prompt"}).json()["message_id"]
+    db = SessionLocal()
+    for run in db.query(AgentRun).filter(AgentRun.thread_id == thread_id, AgentRun.status == "queued").all():
+        run.status = "completed"
+    db.commit()
+    db.close()
+
+    rewound = client.post(f"/api/chat/threads/{thread_id}/rewind", json={"message_id": first})
+    assert rewound.status_code == 200
+    assert rewound.json()["deleted"] >= 2
+    remaining = {message["id"] for message in client.get(f"/api/chat/threads/{thread_id}/messages").json()}
+    assert first not in remaining
+    assert second not in remaining
+
+    assert client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "x"}).status_code == 202
+    db = SessionLocal()
+    for run in db.query(AgentRun).filter(AgentRun.thread_id == thread_id, AgentRun.status == "queued").all():
+        run.status = "completed"
+    db.commit()
+    db.close()
+    assert client.post(f"/api/chat/threads/{thread_id}/rewind", json={"message_id": "nope"}).status_code == 404
+
+    # A live run blocks the rewind so it cannot append onto truncated history.
+    ours = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Blocked prompt"}).json()["message_id"]
+    db = SessionLocal()
+    for run in db.query(AgentRun).filter(AgentRun.thread_id == thread_id, AgentRun.status == "queued").all():
+        run.status = "completed"
+    live = AgentRun(thread_id=thread_id, user_message_id=ours, status="running")
+    db.add(live)
+    db.commit()
+    assert client.post(f"/api/chat/threads/{thread_id}/rewind", json={"message_id": ours}).status_code == 409
+    live.status = "failed"
+    db.commit()
+    db.close()
+    assert client.post(f"/api/chat/threads/{thread_id}/rewind", json={"message_id": ours}).status_code == 200
+    db = SessionLocal()
+    assert db.get(ChatMessage, ours) is None
+    db.close()

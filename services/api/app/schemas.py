@@ -268,10 +268,28 @@ class SlidesExtendInput(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
+class SlideColumn(BaseModel):
+    heading: str = Field(default="", max_length=120)
+    bullets: list[str] = Field(default_factory=list, max_length=4)
+
+
+class SlideStat(BaseModel):
+    value: str = Field(min_length=1, max_length=60)
+    label: str = Field(min_length=1, max_length=120)
+
+
 class SlidesExportSlide(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     bullets: list[str] = Field(min_length=1, max_length=8)
     speaker_notes: str = Field(default="", max_length=2000)
+    # Optional visual structure (mirrors the farq-slides skill schema).
+    # Unknown layouts fall back to plain bullets at export/preview.
+    layout: str = Field(default="bullets", max_length=20)
+    kicker: str = Field(default="", max_length=60)
+    columns: list[SlideColumn] = Field(default_factory=list, max_length=2)
+    stats: list[SlideStat] = Field(default_factory=list, max_length=3)
+    visual: str = Field(default="", max_length=200)
+    quote_cite: str = Field(default="", max_length=120)
 
 
 class SlidesExportInput(BaseModel):

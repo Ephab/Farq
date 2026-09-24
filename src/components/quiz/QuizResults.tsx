@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import {
   Award,
@@ -27,6 +27,7 @@ interface QuizResultsProps {
 
 export function QuizResults({ questions, answers, sourceName, onRetry, onHome }: QuizResultsProps) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const reduce = useReducedMotion();
 
   const correct = questions.filter((q) => answers[q.id]?.correct).length;
   const total = questions.length;
@@ -41,7 +42,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
   ).best;
 
   const headline =
-    pct === 100 ? "Flawless — you own this deck." : pct >= 70 ? "Strong. A quick review locks it in." : pct >= 40 ? "Warming up — review the misses below." : "Tough deck. Review, then retry.";
+    pct === 100 ? "Flawless. You own this deck." : pct >= 70 ? "Strong. A quick review locks it in." : pct >= 40 ? "Warming up. Review the misses below." : "Tough deck. Review, then retry.";
 
   const R = 44;
   const circ = 2 * Math.PI * R;
@@ -51,9 +52,9 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
       <div className="grid w-full items-start gap-8 lg:grid-cols-[360px_minmax(0,1fr)]">
       <div className="min-w-0 text-center lg:sticky lg:top-6 lg:text-left">
         <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
+          initial={reduce ? false : { scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.4, ease: EASE_OUT }}
+          transition={{ duration: reduce ? 0 : 0.4, ease: EASE_OUT }}
           className="relative mx-auto grid size-36 place-items-center lg:mx-0"
           role="img"
           aria-label={`Score ${correct} out of ${total}`}
@@ -69,9 +70,9 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
               strokeLinecap="round"
               className="stroke-primary"
               strokeDasharray={circ}
-              initial={{ strokeDashoffset: circ }}
+              initial={reduce ? false : { strokeDashoffset: circ }}
               animate={{ strokeDashoffset: circ - (circ * pct) / 100 }}
-              transition={{ duration: 0.9, ease: EASE_OUT, delay: 0.15 }}
+              transition={{ duration: reduce ? 0 : 0.9, ease: EASE_OUT, delay: reduce ? 0 : 0.15 }}
             />
           </svg>
           <div>
@@ -96,9 +97,9 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
           ].map((s, i) => (
             <motion.div
               key={s.label}
-              initial={{ opacity: 0, y: 14 }}
+              initial={reduce ? false : { opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: EASE_OUT, delay: 0.2 + i * 0.08 }}
+              transition={{ duration: reduce ? 0 : 0.35, ease: EASE_OUT, delay: reduce ? 0 : 0.2 + i * 0.08 }}
               className="rounded-2xl border border-border bg-background px-3 py-3"
             >
               <s.icon className="mx-auto size-4 text-muted-foreground" aria-hidden="true" />
@@ -127,7 +128,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
       </div>
 
       <div className="min-w-0">
-        <h2 className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+        <h2 className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
           Review ({total})
         </h2>
         <div className="mt-3 flex flex-col gap-4">
@@ -159,9 +160,9 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                     >
                       {ok ? <Check className="size-4" /> : <X className="size-4" />}
                     </span>
-                    <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      Question {i + 1} · {typeLabel}
-                      {q.source ? ` · ${q.source}` : ""}
+                    <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                      Question {i + 1}, {typeLabel}
+                      {q.source ? `, ${q.source}` : ""}
                     </span>
                     <ChevronDown
                       className={cn("ml-auto size-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
@@ -181,7 +182,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                   >
                     <span className="block">
                       <span className="font-semibold">Your answer: </span>
-                      {a?.given ?? "—"}
+                      {a?.given ?? "-"}
                     </span>
                     {!ok ? (
                       <span className="mt-1.5 block">

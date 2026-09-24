@@ -196,7 +196,7 @@ export function QuizConfigure({
         Generate quiz <ArrowRight className="size-5" aria-hidden="true" />
       </button>
       <p className="mt-2 text-center text-[13px] text-muted-foreground">
-        Takes up to a minute on large decks — you will see live progress.
+        Takes up to a minute on large decks. You will see live progress.
       </p>
     </div>
   );

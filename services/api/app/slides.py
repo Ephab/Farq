@@ -57,18 +57,21 @@ SUGGEST_INSTRUCTIONS = " ".join([
 
 EXTEND_INSTRUCTIONS = " ".join([
     "You write new lecture slides that extend an existing deck.",
+    "Load the farq-slides skill and follow it.",
     "Do not call any tools. Return ONLY a JSON object: {\"slides\": [...]}. No markdown, no prose.",
-    "Each slide: {\"title\":\"...\",\"bullets\":[\"...\",\"...\"],\"speaker_notes\":\"one or two sentences\"}.",
-    "Rules: 3-6 bullets per slide, each one concise sentence.",
+    "Each slide: {\"title\":\"...\",\"kicker\":\"...\",\"layout\":\"bullets|steps|two-column|stats|quote|takeaway\","
+    "\"bullets\":[\"...\",\"...\"],\"columns\":[{\"heading\":\"...\",\"bullets\":[\"...\"]}],"
+    "\"stats\":[{\"value\":\"...\",\"label\":\"...\"}],\"visual\":\"one concrete visual idea\","
+    "\"quote_cite\":\"...\",\"speaker_notes\":\"one or two sentences\"}.",
+    "Only title and bullets are required; include the other fields when the layout needs them.",
+    "Vary layouts across the deck: never two adjacent slides with the same layout, and use at"
+    " least 3 different layouts in every extension of 4 or more slides.",
     "You decide how many slides the topic needs within the requested length.",
     "Match the deck's terminology, depth, and reading level; do not contradict the source.",
     "When a DECK DESIGN CONTEXT block is present it describes the original slides (fonts,"
     " colors, layout density, bullet habits, visuals). Use it: mirror the title brevity and"
     " bullet density (~N bullets/slide), keep the same parallel phrasing, and stay at the"
     " same level of concreteness.",
-    "When the context says the deck uses images or shape fills, keep bullets visual-friendly"
-    " (concrete, diagram-ready) and put one short visual idea in speaker_notes where it helps"
-    " (e.g. 'Visual: simple flowchart of ...'). When it says text-only, do not force visuals.",
     "Styling (fonts, colors, backgrounds) is applied by the app — focus on matching"
     " structure, tone, and density, not on naming colors or fonts in the text.",
     "Ground new claims in the requested topic; keep speaker_notes brief.",
@@ -408,8 +411,44 @@ def _reference_styling(prs, content_layout):
     return bg, title_style, body_style
 
 
-def _write_content_slide(prs, layout, bg, title_style, body_style, title: str, bullets: list[str], notes: str) -> None:
-    from pptx.util import Pt
+SLIDE_LAYOUTS = ("bullets", "steps", "two-column", "stats", "quote", "takeaway")
+
+
+def _normalize_layout(value: object) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in SLIDE_LAYOUTS else "bullets"
+
+
+def _write_content_slide(
+    prs,
+    layout,
+    bg,
+    title_style,
+    body_style,
+    title: str,
+    bullets: list[str],
+    notes: str,
+    kicker: str = "",
+    slide_layout: str = "bullets",
+    columns: list[dict] | None = None,
+    stats: list[dict] | None = None,
+    visual: str = "",
+    quote_cite: str = "",
+) -> None:
+    from pptx.enum.text import PP_ALIGN
+    from pptx.util import Inches, Pt
+
+    kind = _normalize_layout(slide_layout)
+    # Layouts that need structured data fall back to plain bullets when it is
+    # missing, so a model that only sends title + bullets still renders fine.
+    cols = [c for c in (columns or []) if isinstance(c, dict) and c.get("bullets")] [:2]
+    figures = [s for s in (stats or []) if isinstance(s, dict) and s.get("value")] [:3]
+    if kind == "two-column" and len(cols) < 2:
+        kind = "bullets"
+    if kind == "stats" and not figures:
+        kind = "bullets"
+    if kind == "quote" and not bullets:
+        kind = "bullets"
 
     new_slide = prs.slides.add_slide(layout)
     if bg is not None:
@@ -419,31 +458,113 @@ def _write_content_slide(prs, layout, bg, title_style, body_style, title: str, b
         except Exception:
             pass
     if new_slide.shapes.title is not None:
-        new_slide.shapes.title.text = ""
         tf = new_slide.shapes.title.text_frame
         tf.clear()
-        run = tf.paragraphs[0].add_run()
+        if kicker.strip():
+            kick = tf.paragraphs[0].add_run()
+            kick.text = kicker.strip()
+            _apply_style(kick, title_style)
+            try:
+                kick.font.size = Pt(14)
+                kick.font.bold = True
+            except Exception:
+                pass
+            para = tf.add_paragraph()
+        else:
+            para = tf.paragraphs[0]
+        run = para.add_run()
         run.text = title
         _apply_style(run, title_style)
     else:
-        tx_box = new_slide.shapes.add_textbox(Pt(36), Pt(28), Pt(648), Pt(80))
+        tx_box = new_slide.shapes.add_textbox(Inches(prs.slide_width.inches * 0.06), Inches(0.3), Inches(prs.slide_width.inches * 0.88), Inches(1.1))
         run = tx_box.text_frame.paragraphs[0].add_run()
         run.text = title
         _apply_style(run, title_style)
+
     body_written = False
     body = body_placeholder(new_slide)
     if body is not None:
         tf = body.text_frame
         tf.clear()
-        for i, bullet in enumerate(bullets):
-            para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-            para.level = 0
-            run = para.add_run()
-            run.text = bullet
-            _apply_style(run, body_style)
+        if kind == "steps":
+            for i, bullet in enumerate(bullets):
+                para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                para.level = 0
+                num = para.add_run()
+                num.text = f"{i + 1}. "
+                _apply_style(num, title_style)
+                try:
+                    num.font.bold = True
+                except Exception:
+                    pass
+                run = para.add_run()
+                run.text = bullet
+                _apply_style(run, body_style)
+        elif kind == "stats":
+            for i, stat in enumerate(figures):
+                value_para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                value_para.level = 0
+                value_run = value_para.add_run()
+                value_run.text = str(stat.get("value", "")).strip()
+                _apply_style(value_run, title_style)
+                try:
+                    value_run.font.size = Pt(32)
+                    value_run.font.bold = True
+                except Exception:
+                    pass
+                label_para = tf.add_paragraph()
+                label_para.level = 0
+                label_run = label_para.add_run()
+                label_run.text = str(stat.get("label", "")).strip()
+                _apply_style(label_run, body_style)
+                if i < len(figures) - 1:
+                    tf.add_paragraph()
+        elif kind == "quote":
+            quote_para = tf.paragraphs[0]
+            quote_run = quote_para.add_run()
+            quote_run.text = f"\u201c{bullets[0]}\u201d"
+            _apply_style(quote_run, title_style)
+            try:
+                quote_run.font.size = Pt(28)
+                quote_run.font.italic = True
+            except Exception:
+                pass
+            if quote_cite.strip():
+                cite_para = tf.add_paragraph()
+                cite_run = cite_para.add_run()
+                cite_run.text = f"\u2014 {quote_cite.strip()}"
+                _apply_style(cite_run, body_style)
+        elif kind == "takeaway":
+            line = bullets[0] if bullets else ""
+            for para in tf.paragraphs:
+                para.alignment = PP_ALIGN.CENTER
+            if line:
+                support = tf.paragraphs[0].add_run()
+                support.text = line
+                _apply_style(support, body_style)
+                try:
+                    support.font.size = Pt(20)
+                except Exception:
+                    pass
+        else:
+            for i, bullet in enumerate(bullets):
+                para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                para.level = 0
+                run = para.add_run()
+                run.text = bullet
+                _apply_style(run, body_style)
         body_written = True
+    if kind == "two-column" and body_written:
+        # The layout body becomes the left column; a second box holds the right.
+        try:
+            body.text_frame.clear()
+        except Exception:
+            pass
+        left, right = cols[0], cols[1]
+        _write_column_box(prs, new_slide, left, title_style, body_style, left_frac=0.06, width_frac=0.41)
+        _write_column_box(prs, new_slide, right, title_style, body_style, left_frac=0.53, width_frac=0.41)
     if not body_written:
-        tx_box = new_slide.shapes.add_textbox(Pt(36), Pt(120), Pt(648), Pt(360))
+        tx_box = new_slide.shapes.add_textbox(Inches(prs.slide_width.inches * 0.06), Inches(1.8), Inches(prs.slide_width.inches * 0.88), Inches(4.5))
         tf = tx_box.text_frame
         tf.word_wrap = True
         for i, bullet in enumerate(bullets):
@@ -452,11 +573,48 @@ def _write_content_slide(prs, layout, bg, title_style, body_style, title: str, b
             run = para.add_run()
             run.text = f"• {bullet}"
             _apply_style(run, body_style)
-    if notes:
+    merged_notes = notes
+    if visual.strip():
+        visual_line = f"Visual: {visual.strip()}"
+        merged_notes = f"{merged_notes}\n{visual_line}" if merged_notes else visual_line
+    if merged_notes:
         try:
-            new_slide.notes_slide.notes_text_frame.text = notes
+            new_slide.notes_slide.notes_text_frame.text = merged_notes
         except Exception:
             pass
+
+
+def _write_column_box(prs, slide, column: dict, title_style, body_style, left_frac: float, width_frac: float) -> None:
+    """One side of a two-column slide: bold heading plus its bullets."""
+    from pptx.util import Inches
+
+    heading = str(column.get("heading", "")).strip()
+    items = [str(b).strip() for b in column.get("bullets", []) if str(b).strip()][:4]
+    box = slide.shapes.add_textbox(
+        Inches(prs.slide_width.inches * left_frac),
+        Inches(1.8),
+        Inches(prs.slide_width.inches * width_frac),
+        Inches(4.5),
+    )
+    tf = box.text_frame
+    tf.word_wrap = True
+    first = True
+    if heading:
+        run = tf.paragraphs[0].add_run()
+        run.text = heading
+        _apply_style(run, title_style)
+        try:
+            run.font.bold = True
+        except Exception:
+            pass
+        first = False
+    for bullet in items:
+        para = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        para.level = 0
+        run = para.add_run()
+        run.text = f"• {bullet}"
+        _apply_style(run, body_style)
 
 
 def build_full_deck_pptx(
@@ -531,7 +689,17 @@ def build_full_deck_pptx(
         title = str(slide.get("title", "")).strip() or "New slide"
         bullets = [str(b).strip() for b in slide.get("bullets", []) if str(b).strip()][:8]
         notes = str(slide.get("speaker_notes", "") or "").strip()
-        _write_content_slide(prs, content_layout, bg, title_style, body_style, title, bullets, notes)
+        columns = slide.get("columns") if isinstance(slide.get("columns"), list) else None
+        stats = slide.get("stats") if isinstance(slide.get("stats"), list) else None
+        _write_content_slide(
+            prs, content_layout, bg, title_style, body_style, title, bullets, notes,
+            kicker=str(slide.get("kicker", "") or "")[:60],
+            slide_layout=str(slide.get("layout", "") or "bullets"),
+            columns=columns,
+            stats=stats,
+            visual=str(slide.get("visual", "") or "")[:200],
+            quote_cite=str(slide.get("quote_cite", "") or "")[:120],
+        )
 
     buf = io.BytesIO()
     prs.save(buf)

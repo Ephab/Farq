@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -75,6 +75,7 @@ export function QuizRunner({
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState(""); // selection / textarea before check
   const [shakeKey, setShakeKey] = useState(0);
+  const reduce = useReducedMotion();
   const q = questions[index];
   const saved = answers[q.id];
   const revealed = saved?.revealed ?? false;
@@ -185,7 +186,7 @@ export function QuizRunner({
             className="h-full rounded-full bg-primary"
             initial={false}
             animate={{ width: `${(answeredCount / questions.length) * 100}%` }}
-            transition={{ duration: 0.35, ease: EASE_OUT }}
+            transition={{ duration: reduce ? 0 : 0.35, ease: EASE_OUT }}
           />
         </div>
         <span className="shrink-0 text-sm font-medium tabular-nums text-muted-foreground">
@@ -208,7 +209,7 @@ export function QuizRunner({
         role="group"
         aria-label="Jump to question"
       >
-        <span className="shrink-0 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">
+        <span className="shrink-0 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {answeredCount}/{questions.length}
         </span>
         <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
@@ -236,19 +237,19 @@ export function QuizRunner({
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={q.id}
-          initial={{ opacity: 0, x: 48 }}
+          initial={reduce ? false : { opacity: 0, x: 48 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -48 }}
-          transition={{ duration: 0.28, ease: EASE_OUT }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -48 }}
+          transition={{ duration: reduce ? 0 : 0.28, ease: EASE_OUT }}
           className="mt-6 rounded-3xl border border-border bg-muted/30 px-6 py-6 sm:px-8 sm:py-8"
         >
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
             {typeLabel}
             {q.source ? ` · ${q.source}` : ""}
           </p>
           <motion.div
             key={shakeKey}
-            animate={shakeKey ? { x: [0, -10, 10, -6, 6, 0] } : undefined}
+            animate={shakeKey && !reduce ? { x: [0, -10, 10, -6, 6, 0] } : undefined}
             transition={{ duration: 0.35 }}
           >
             <h2 className="mt-2 text-2xl font-semibold leading-snug tracking-tight sm:text-3xl">
@@ -263,7 +264,7 @@ export function QuizRunner({
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={revealed}
                 rows={4}
-                placeholder="Type your answer in 1–2 sentences…"
+                placeholder="Type your answer in 1-2 sentences…"
                 aria-label="Your answer"
                 className="w-full resize-none rounded-2xl border border-border bg-background px-5 py-4 text-base leading-relaxed outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-80 sm:text-lg"
               />
@@ -284,7 +285,7 @@ export function QuizRunner({
                     aria-checked={selected}
                     disabled={revealed}
                     onClick={() => setDraft(opt)}
-                    whileTap={revealed ? undefined : { scale: 0.985 }}
+                    whileTap={revealed || reduce ? undefined : { scale: 0.985 }}
                     transition={SPRING_PRESS}
                     className={cn(
                       "flex items-center gap-4 rounded-2xl border-2 px-5 py-4 text-left text-base outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring sm:py-5 sm:text-lg",
@@ -332,10 +333,10 @@ export function QuizRunner({
           <AnimatePresence initial={false}>
             {revealed ? (
               <motion.div
-                initial={{ opacity: 0, y: 12 }}
+                initial={reduce ? false : { opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.25, ease: EASE_OUT }}
+                transition={{ duration: reduce ? 0 : 0.25, ease: EASE_OUT }}
                 className={cn(
                   "mt-5 rounded-2xl border px-5 py-4",
                   q.type === "short_answer"
@@ -388,8 +389,8 @@ export function QuizRunner({
                   </div>
                 ) : (
                   <div>
-                    <p className="text-[15px] font-semibold">
-                      {saved?.correct ? "Correct — nice." : `Not quite. Answer: ${q.answer}`}
+                      <p className="text-[15px] font-semibold">
+                      {saved?.correct ? "Correct. Nice." : `Not quite. Answer: ${q.answer}`}
                     </p>
                     {q.explanation ? (
                       <p className="mt-1 text-sm leading-relaxed opacity-90">{q.explanation}</p>
@@ -440,7 +441,7 @@ export function QuizRunner({
           )}
         </div>
         <p className="mt-2 text-center text-[13px] text-muted-foreground">
-          {q.type === "short_answer" ? "Answer, reveal, then grade yourself" : "Keys 1–4 / A–D select · Enter checks"}
+          {q.type === "short_answer" ? "Answer, reveal, then grade yourself" : "Keys 1-4 / A-D select · Enter checks"}
         </p>
       </div>
     </div>

@@ -90,7 +90,12 @@ explicit student statement, so it must not become a fact, message, or proposal.
 `POST /api/slides/suggest` and `POST /api/slides/extend` follow the same
 pattern on throwaway `farq:slides:*` sessions (tools forbidden, JSON-only
 `{"topics": [...]}` / `{"slides": [...]}`). Slide text is never written to
-SQLite for the same reason as quizzes. Suggest accepts an optional
+SQLite for the same reason as quizzes. The extend prompt loads the
+`farq-slides` skill (`.hermes/skills/farq-slides/SKILL.md`): new slides use
+varied layouts (`bullets`, `steps`, `two-column`, `stats`, `quote`,
+`takeaway`) with kickers and concrete visual ideas instead of uniform
+title-plus-bullets, and the app renders those layouts both in the in-page
+preview and in the exported file. Suggest accepts an optional
 `student_id`: the API reads the verified profile brief plus the active
 roadmap and injects them server-side as prompt data (confirmed facts and
 evidence only, never `suggested` items awaiting review). The model marks

@@ -1,5 +1,10 @@
 "use client";
 
+// Quizzes shape scale (documented rule, Section 4.4 lock):
+// controls rounded-xl (12px), cards rounded-2xl (16px),
+// expanded question/review rounded-3xl (24px), status pills
+// rounded-full, checkboxes rounded-md/lg. No other radii here.
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   generateQuiz,
@@ -74,7 +79,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
     libraryRef.current = next;
     setLibrary(next);
     if (!saveLibrary(next)) {
-      setError("Browser storage is full — delete old decks or quizzes to free space.");
+      setError("Browser storage is full. Delete old decks or quizzes to free space.");
     }
   }, []);
 

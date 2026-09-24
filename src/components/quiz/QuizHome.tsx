@@ -67,7 +67,7 @@ function quizBreakdown(questions: QuizQuestion[]): string {
     sa ? `${sa} short-answer` : "",
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(", ");
 }
 
 export function QuizHome({
@@ -238,9 +238,9 @@ export function QuizHome({
             <span className="grid size-12 place-items-center rounded-2xl bg-muted">
               <Upload className="size-6 text-muted-foreground" aria-hidden="true" />
             </span>
-            <span className="mt-3 text-[15px] font-medium">No slides yet — upload your first deck</span>
+            <span className="mt-3 text-[15px] font-medium">No slides yet. Upload your first deck</span>
             <span className="mt-1 text-[13px] text-muted-foreground">
-              PDF or PPTX · up to 25MB · parsed in your browser
+              PDF or PPTX, up to 25MB · parsed in your browser
             </span>
           </button>
         ) : (
@@ -418,7 +418,7 @@ export function QuizHome({
         </div>
         {quizzes.length === 0 ? (
           <p className="mt-3 rounded-2xl border border-border bg-background px-5 py-6 text-center text-sm text-muted-foreground">
-            Nothing here yet — your generated quizzes will show up here to retake anytime.
+            Nothing here yet. Your generated quizzes will show up here to retake anytime.
           </p>
         ) : (
           <p className="mt-1 text-[13px] text-muted-foreground">
@@ -471,7 +471,7 @@ export function QuizHome({
                     ) : null}
                   </p>
                   <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
-                    {quiz.questions.length} questions · {quiz.difficulty} ·{" "}
+                    {quiz.questions.length} questions · {quiz.difficulty},{" "}
                     {quizBreakdown(quiz.questions)}
                   </p>
                   <p className="text-xs text-muted-foreground">

@@ -6,6 +6,15 @@ if (-not (Test-Path .venv)) { throw "Run scripts/setup.ps1 first." }
 Get-Content .env -ErrorAction Stop | ForEach-Object {
   if ($_ -match '^([^#][^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process') }
 }
+# Refresh the checked-in Hermes soul, plugin and skills so edits apply on every start.
+New-Item -ItemType Directory -Force -Path .hermes-runtime\plugins\farq | Out-Null
+Copy-Item services\hermes\config.yaml .hermes-runtime\config.yaml -Force
+Copy-Item services\hermes\SOUL.md .hermes-runtime\SOUL.md -Force
+Copy-Item .hermes\plugins\farq\* .hermes-runtime\plugins\farq -Recurse -Force
+foreach ($skill in Get-ChildItem .hermes\skills -Directory) {
+  New-Item -ItemType Directory -Force -Path ".hermes-runtime\skills\$($skill.Name)" | Out-Null
+  Copy-Item "$($skill.FullName)\*" ".hermes-runtime\skills\$($skill.Name)" -Recurse -Force
+}
 $env:HERMES_ENABLE_PROJECT_PLUGINS = "1"
 $env:HERMES_HOME = Join-Path $repo ".hermes-runtime"
 $env:API_SERVER_ENABLED = "true"

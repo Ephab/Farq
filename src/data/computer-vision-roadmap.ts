@@ -23,6 +23,10 @@ export interface RoadmapNodeData {
   deps: string[];
   /** Persisted separately from learning content; supplied by the Farq API. */
   status?: NodeStatus;
+  /** Evidence item ids that justify this node (generated roadmaps). */
+  evidence?: string[];
+  /** Why this node is on this student's roadmap (generated roadmaps). */
+  rationale?: string;
 }
 
 export interface RoadmapStage {

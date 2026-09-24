@@ -1,4 +1,4 @@
-import { API_BASE, HERMES_API_KEY_HEADER, HERMES_GEMINI_MODELS, HERMES_NIM_MODELS, getHermesApiKey } from "./farq-api";
+import { API_BASE, HERMES_API_KEY_HEADER, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_NIM_MODELS, getHermesApiKey } from "./farq-api";
 
 // ─────────────────────────────────────────────────────────────
 // quiz-ai.ts — THE swappable AI backbone for SmartLearn quizzes.
@@ -59,7 +59,7 @@ export interface QuizProgress {
 /** Quiz models served through the Hermes gateway (allowlisted server-side).
  * Used for display labels only — generation uses the server's Hermes model
  * unless a fallback override is passed per-run. */
-export const QUIZ_MODELS = [...HERMES_GEMINI_MODELS, ...HERMES_NIM_MODELS];
+export const QUIZ_MODELS = [...HERMES_GEMINI_MODELS, ...HERMES_NIM_MODELS, ...HERMES_HF_MODELS];
 
 /** Max chars of slide text sent for generation — keeps it fast + cheap. */
 export const MAX_SOURCE_CHARS = 12_000;

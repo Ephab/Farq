@@ -1,7 +1,7 @@
 "use client"
 
-import { Bot, Command, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, SquareDashed } from "lucide-react"
-import { useState } from "react"
+import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, SquareDashed } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
 import {
   AnimatedSidebar,
   AnimatedSidebarContent,
@@ -22,10 +22,34 @@ import { QuizView } from "@/components/quiz/QuizView"
 import { SlidesView } from "@/components/slides/SlidesView"
 import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { HermesCoach } from "@/components/hermes/HermesCoach"
+import { MyDataView } from "@/components/onboarding/MyDataView"
+import { OnboardingView } from "@/components/onboarding/OnboardingView"
+import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/farq-api"
 import { ThemeProvider } from "@/lib/theme-context"
 
 export default function App() {
   const [active, setActive] = useState("Home")
+  const [coachDraft, setCoachDraft] = useState("")
+  // null = still checking; a student who hasn't finished onboarding sees only onboarding.
+  const [profile, setProfile] = useState<StudentProfile | null>(null)
+  const [onboarding, setOnboarding] = useState(!hasChosenStudent())
+
+  const loadProfile = useCallback(() => {
+    if (!hasChosenStudent()) { setOnboarding(true); return }
+    api<StudentProfile>(`/api/students/${getCurrentStudentId()}/profile`)
+      .then((next) => { setProfile(next); setOnboarding(next.onboarding_status !== "done") })
+      .catch(() => setOnboarding(true))
+  }, [])
+
+  useEffect(() => { loadProfile() }, [loadProfile])
+
+  if (onboarding) {
+    return (
+      <ThemeProvider>
+        <OnboardingView onDone={() => { setActive("Roadmap"); loadProfile() }} />
+      </ThemeProvider>
+    )
+  }
 
   return (
     <ThemeProvider>
@@ -89,6 +113,16 @@ export default function App() {
                     </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
+                        icon={<Database className="size-4" />}
+                        isActive={active === "My data"}
+                        onSelect={() => setActive("My data")}
+                        className="text-[15px]"
+                      >
+                        My data
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
+                    <AnimatedSidebarMenuItem>
+                      <AnimatedSidebarMenuButton
                         icon={<Presentation className="size-4" />}
                         isActive={active === "Slides"}
                         onSelect={() => setActive("Slides")}
@@ -125,10 +159,10 @@ export default function App() {
             <AnimatedSidebarFooter>
               <div className="flex items-center gap-2 overflow-hidden rounded-xl p-1">
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-foreground">
-                  S
+                  {(profile?.display_name ?? "S").slice(0, 1).toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[15px] group-data-[state=collapsed]/sidebar:hidden">
-                  User
+                  {profile?.display_name ?? "User"}
                 </span>
                 <FooterSettings />
               </div>
@@ -150,7 +184,9 @@ export default function App() {
               {active === "Roadmap" ? (
                 <RoadmapView />
               ) : active === "Hermes Coach" ? (
-                <HermesCoach />
+                <HermesCoach key={coachDraft} initialDraft={coachDraft} />
+              ) : active === "My data" ? (
+                <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Quizzes" ? (
                 <QuizView />
               ) : active === "Slides" ? (

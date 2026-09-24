@@ -21,6 +21,31 @@ engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
+# Columns added after the first release. create_all() never alters existing
+# tables, so older local SQLite databases get them here (no migration tool yet).
+ADDED_COLUMNS = {
+    "student_facts": {
+        "source_kind": "VARCHAR(24) NOT NULL DEFAULT 'chat'",
+        "evidence_id": "VARCHAR(36)",
+    },
+    "roadmap_proposals": {
+        "kind": "VARCHAR(16) NOT NULL DEFAULT 'ops'",
+        "snapshot_json": "TEXT",
+    },
+}
+
+
+def ensure_added_columns() -> None:
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        for table, columns in ADDED_COLUMNS.items():
+            existing = {row[1] for row in connection.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for name, ddl in columns.items():
+                if existing and name not in existing:
+                    connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:

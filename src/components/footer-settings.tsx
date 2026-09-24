@@ -1,6 +1,6 @@
 "use client"
 
-import { Eye, EyeOff, KeyRound, LoaderCircle, RotateCcw, Settings } from "lucide-react"
+import { Eye, EyeOff, KeyRound, LoaderCircle, RotateCcw, Settings, UserPlus } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useAnimatedSidebar } from "@/components/motion/animated-sidebar"
 import {
@@ -10,17 +10,18 @@ import {
 } from "@/components/motion/popover"
 import {
   DEFAULT_HERMES_GEMINI_MODEL,
+  DEFAULT_HERMES_HF_MODEL,
   DEFAULT_HERMES_NIM_MODEL,
-  HERMES_GEMINI_MODELS,
-  HERMES_NIM_MODELS,
   api,
   clearLocalFarqState,
   getHermesApiKey,
   getHermesModel,
   getHermesProvider,
+  modelsFor,
   saveHermesApiKey,
   saveHermesModel,
   saveHermesProvider,
+  setCurrentStudentId,
   type HermesProvider,
 } from "@/lib/farq-api"
 import { useTheme } from "@/lib/theme-context"
@@ -39,7 +40,7 @@ export function FooterSettings() {
   const [resetError, setResetError] = useState<string | null>(null)
   const [applyState, setApplyState] = useState<"idle" | "saving" | "waiting" | "live" | "saved" | "error">("idle")
   const [applyError, setApplyError] = useState<string | null>(null)
-  const modelOptions = hermesProvider === "nim" ? HERMES_NIM_MODELS : HERMES_GEMINI_MODELS
+  const modelOptions = modelsFor(hermesProvider)
   const modelChoices =
     hermesModel && !modelOptions.some((m) => m.id === hermesModel)
       ? [{ id: hermesModel, label: hermesModel }, ...modelOptions]
@@ -204,6 +205,7 @@ export function FooterSettings() {
           >
             <option value="gemini">Gemini</option>
             <option value="nim">NVIDIA NIM</option>
+            <option value="hf">Hugging Face</option>
           </select>
 
           <label htmlFor="hermes-model" className="mt-3 block px-1 text-xs font-medium text-foreground">
@@ -266,7 +268,11 @@ export function FooterSettings() {
               {showKey ? <EyeOff className="size-3.5" aria-hidden="true" /> : <Eye className="size-3.5" aria-hidden="true" />}
             </button>
           </div>
-          {hermesProvider === "nim" ? (
+          {hermesProvider === "hf" ? (
+            <p className="mt-2 px-1 text-[11px] leading-4 text-muted-foreground">
+              Active model default: {DEFAULT_HERMES_HF_MODEL}. Billed to the HF_TOKEN in Farq&apos;s server .env.
+            </p>
+          ) : hermesProvider === "nim" ? (
             <p className="mt-2 px-1 text-[11px] text-muted-foreground">
               Active model default: {DEFAULT_HERMES_NIM_MODEL}. The NVIDIA provider key stays in Farq&apos;s server env.
             </p>
@@ -295,6 +301,14 @@ export function FooterSettings() {
           <p className="mt-1 px-1 text-[11px] leading-4 text-muted-foreground">
             Erase your coach memory, chat, roadmap changes, proposals, and local app data.
           </p>
+          <button
+            type="button"
+            onClick={() => { setCurrentStudentId(null); window.location.reload() }}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <UserPlus className="size-3.5" aria-hidden="true" />
+            Switch or add student
+          </button>
           <button
             type="button"
             disabled={resetting}

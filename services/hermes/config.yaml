@@ -1,5 +1,5 @@
 model:
-  default: gemini-3-flash-preview
+  default: gemini-3.8-flash
   provider: gemini
   base_url: https://generativelanguage.googleapis.com/v1beta
 
@@ -20,6 +20,15 @@ plugins:
 agent:
   disabled_toolsets:
     - bfl
+  # Fail fast: Farq's API already falls back to the next model (app.hermes.FALLBACK_CHAIN),
+  # so Hermes' own retries on an exhausted model only add minutes of waiting.
+  api_max_retries: 1
+
+tools:
+  tool_search:
+    # Farq exposes only a handful of tools; load them directly instead of spending a
+    # model round trip on tool_search before every Farq tool call.
+    enabled: "off"
 
 gateway:
   api_server:
@@ -27,4 +36,4 @@ gateway:
     host: 0.0.0.0
     port: 8642
     model_name: farq-hermes
-    max_concurrent_runs: 4
+    max_concurrent_runs: 8

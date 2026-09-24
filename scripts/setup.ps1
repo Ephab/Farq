@@ -22,6 +22,8 @@ Copy-Item services\hermes\config.yaml .hermes-runtime\config.yaml -Force
 Copy-Item services\hermes\SOUL.md .hermes-runtime\SOUL.md -Force
 New-Item -ItemType Directory -Force -Path .hermes-runtime\plugins\farq | Out-Null
 Copy-Item .hermes\plugins\farq\* .hermes-runtime\plugins\farq -Recurse -Force
-New-Item -ItemType Directory -Force -Path .hermes-runtime\skills\farq-student-coach | Out-Null
-Copy-Item .hermes\skills\farq-student-coach\* .hermes-runtime\skills\farq-student-coach -Recurse -Force
+foreach ($skill in Get-ChildItem .hermes\skills -Directory) {
+  New-Item -ItemType Directory -Force -Path ".hermes-runtime\skills\$($skill.Name)" | Out-Null
+  Copy-Item "$($skill.FullName)\*" ".hermes-runtime\skills\$($skill.Name)" -Recurse -Force
+}
 Write-Host "Setup complete. Add GEMINI_API_KEY to .env, then run scripts/dev.ps1."

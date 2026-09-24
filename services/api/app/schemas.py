@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 FactCategory = Literal["interest", "goal", "course", "skill", "strength", "weakness", "achievement", "preference"]
-HermesProvider = Literal["gemini", "nim"]
+HermesProvider = Literal["gemini", "nim", "hf"]
 NodeStatus = Literal["not-started", "in-progress", "done"]
 
 
@@ -28,6 +28,9 @@ class RoadmapNode(BaseModel):
     level: Literal["Beginner", "Intermediate", "Advanced"] = "Beginner"
     deps: list[str] = Field(default_factory=list)
     status: NodeStatus = "not-started"
+    # Evidence item ids that justify a node (e.g. a passed course marking it done).
+    evidence: list[str] = Field(default_factory=list)
+    rationale: str = ""
 
 
 class RoadmapStage(BaseModel):
@@ -74,6 +77,55 @@ class RoadmapSnapshot(BaseModel):
         return self
 
 
+# Keep in sync with src/components/roadmap/roadmap-icons.ts.
+ROADMAP_ICONS = frozenset({
+    "code", "grid", "chart", "brain", "image", "waves", "scan", "aperture", "layers", "network",
+    "target", "rocket", "database", "shapes", "gauge", "wrench", "scan-eye", "zap", "spline",
+    "video", "sparkles", "focus", "boxes", "clapperboard", "eye", "milestone", "orbit",
+    "microscope", "cpu", "cloud", "camera", "trophy", "book", "scale", "stethoscope", "heart",
+    "briefcase", "graduation", "calculator", "flask", "pen", "users", "route", "file", "building",
+    "globe", "landmark", "hammer", "cog", "lightbulb",
+})
+
+MAX_GENERATED_STAGES = 8
+MAX_GENERATED_NODES = 40
+
+
+def validate_generated(snapshot: RoadmapSnapshot, confirmed_evidence: set[str]) -> RoadmapSnapshot:
+    """Stricter checks for a whole model-generated roadmap.
+
+    RoadmapSnapshot already guarantees unique node ids, known stages and deps,
+    and a DAG. Here we also require a consistent stage layout, bounded size, and
+    known icons. A node may only start `done` when it cites evidence the student
+    confirmed; anything else is reset rather than trusted.
+    """
+    stage_ids = [stage.id for stage in snapshot.stages]
+    if len(stage_ids) != len(set(stage_ids)):
+        raise ValueError("Roadmap contains duplicate stage IDs")
+    if not 2 <= len(snapshot.stages) <= MAX_GENERATED_STAGES:
+        raise ValueError(f"Roadmap must have between 2 and {MAX_GENERATED_STAGES} stages")
+    if not 4 <= len(snapshot.nodes) <= MAX_GENERATED_NODES:
+        raise ValueError(f"Roadmap must have between 4 and {MAX_GENERATED_NODES} nodes")
+    by_stage = {stage.id: [node.id for node in snapshot.nodes if node.stageId == stage.id] for stage in snapshot.stages}
+    for stage in snapshot.stages:
+        if not by_stage[stage.id]:
+            raise ValueError(f"Stage {stage.id} has no nodes")
+        # The canvas only renders ids listed in nodeIds, so rebuild the list in
+        # the model's order and append any node it forgot to list.
+        ordered = [node_id for node_id in stage.nodeIds if node_id in by_stage[stage.id]]
+        ordered += [node_id for node_id in by_stage[stage.id] if node_id not in ordered]
+        stage.nodeIds = list(dict.fromkeys(ordered))
+    for node in snapshot.nodes:
+        if node.icon not in ROADMAP_ICONS:
+            node.icon = "target"
+        node.evidence = [item for item in node.evidence if item in confirmed_evidence]
+        if node.status != "not-started" and not node.evidence:
+            node.status = "not-started"
+        if node.status == "in-progress":
+            node.status = "not-started"
+    return snapshot
+
+
 class RoadmapOperation(BaseModel):
     type: Literal["add_node", "update_node", "remove_node", "move_node", "set_dependencies"]
     node_id: str
@@ -99,6 +151,63 @@ class FactCreate(BaseModel):
     value: Any
     source_message_id: str | None = None
     explicit: bool = True
+    source_kind: Literal["chat", "branch", "onboarding"] = "chat"
+
+
+Discipline = Literal["cs", "engineering", "medicine", "law", "business", "sciences", "design", "other"]
+SourceKind = Literal["transcript_pdf", "cv_pdf", "linkedin_pdf", "linkedin_zip", "github", "folder", "portfolio_url", "orcid"]
+EvidenceKind = Literal["course", "project", "skill", "experience", "certificate", "publication", "activity", "education"]
+
+
+class StudentCreate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+
+
+class ProfileUpdate(BaseModel):
+    institution: str | None = Field(default=None, max_length=200)
+    program: str | None = Field(default=None, max_length=200)
+    discipline: Discipline | None = None
+    year_label: str | None = Field(default=None, max_length=80)
+    grad_target: str | None = Field(default=None, max_length=80)
+    onboarding_status: Literal["basics", "sources", "review", "chat"] | None = None
+
+
+class SourceCreate(BaseModel):
+    kind: SourceKind
+    # username / path / url / orcid, validated per kind in app.sources.
+    value: str = Field(default="", max_length=500)
+    purpose: Literal["projects", "coursework"] | None = None
+
+
+class EvidenceIn(BaseModel):
+    kind: EvidenceKind
+    title: str = Field(min_length=1, max_length=240)
+    data: dict[str, Any] = Field(default_factory=dict)
+    source_ref: str = Field(default="", max_length=500)
+    fingerprint: str | None = Field(default=None, max_length=300)
+
+
+class EvidenceSubmit(BaseModel):
+    user_id: str
+    source_id: str
+    items: list[EvidenceIn] = Field(min_length=1, max_length=200)
+
+
+class EvidenceDecision(BaseModel):
+    confirm: list[str] = Field(default_factory=list, max_length=500)
+    dismiss: list[str] = Field(default_factory=list, max_length=500)
+    # Optional student edits to a title before confirming.
+    titles: dict[str, str] = Field(default_factory=dict)
+
+
+class GenerateInput(BaseModel):
+    provider: HermesProvider | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class AcceptInput(BaseModel):
+    # Only for `initial` proposals: node ids the student unticked from `done`.
+    not_done: list[str] = Field(default_factory=list, max_length=MAX_GENERATED_NODES)
 
 
 class ChatInput(BaseModel):

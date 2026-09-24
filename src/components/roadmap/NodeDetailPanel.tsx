@@ -130,6 +130,12 @@ function DetailBody({
         <p className="text-[13px] leading-relaxed text-foreground/90">
           {node.description}
         </p>
+        {node.rationale ? (
+          <p className="mt-2 rounded-lg border border-border bg-muted/50 px-2.5 py-2 text-xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">Why this is on your roadmap: </span>
+            {node.rationale}
+          </p>
+        ) : null}
 
         <div
           className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-muted p-1"

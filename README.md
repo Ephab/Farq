@@ -6,6 +6,10 @@ reasoning model. FastAPI and SQLite keep the auditable product state.
 
 ## What works
 
+- Onboarding for new students in any field: sign in, basics, optional sources (transcript, CV,
+  LinkedIn export or PDF, GitHub, a local folder, portfolio page, ORCID), a review screen, a short
+  Hermes chat, then a generated first roadmap you preview and accept.
+
 - Existing Computer Vision roadmap and quiz experience.
 - Persistent roadmap progress and immutable structural versions.
 - Dedicated Hermes Coach with persistent chat and live run status.
@@ -42,6 +46,10 @@ uses `.hermes-runtime` as its isolated local profile and loads the checked-in Fa
 Press Ctrl+C to stop Vite and clean up the FastAPI and Hermes process trees started by
 that script. Allow cleanup to finish before closing the terminal; forcibly ending the
 PowerShell process bypasses its cleanup.
+
+Folder scans run inside Hermes, so in Docker Hermes only sees folders you mount into its
+container (see the commented example in `docker-compose.yml`). Natively it can read any path you
+type. Set `GITHUB_TOKEN` on the API if you hit GitHub's anonymous rate limit.
 
 ## Verify
 

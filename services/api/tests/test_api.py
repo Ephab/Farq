@@ -227,6 +227,9 @@ CANNED_QUIZ = '{"questions": [{"id": "q1", "type": "true_false", "question": "Th
 
 
 class _FakeQuizResponse:
+    status_code = 200
+    text = ""
+
     def __init__(self, payload: dict):
         self._payload = payload
 
@@ -269,7 +272,7 @@ def test_quiz_generate_uses_gateway_and_writes_nothing(client: TestClient, monke
     from app.models import AgentRun as AgentRunModel
 
     FakeClient, calls = _fake_quiz_client({"status": "completed", "output": CANNED_QUIZ})
-    monkeypatch.setattr("app.quiz.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
     db = SessionLocal()
     before = db.scalar(select(func.count()).select_from(AgentRunModel))
     db.close()
@@ -315,7 +318,7 @@ def test_quiz_generate_rejects_bad_input(client: TestClient):
 
 def test_quiz_generate_maps_gateway_failure(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     FakeClient, _ = _fake_quiz_client({"status": "failed", "error": "model exploded"})
-    monkeypatch.setattr("app.quiz.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
     response = client.post(
         "/api/quiz/generate",
         headers={"X-Hermes-Api-Key": "k" * 64},

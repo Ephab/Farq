@@ -9,17 +9,21 @@ from pathlib import Path
 from typing import Annotated
 
 import httpx
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from .database import Base, SessionLocal, engine, get_db
-from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, resolve_hermes_selection, run_agent
-from .models import AgentRun, ChatMessage, ChatThread, RoadmapProposal, RoadmapVersion, Student, StudentFact, now, uid
+from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
+from .disciplines import classify_program, public_registry
+from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
+from .models import AgentRun, ChatMessage, ChatThread, DataSource, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentProfile, now, uid
+from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
 from .roadmaps import apply_operations
-from .schemas import ChatInput, FactCreate, HermesSettingsApply, ProposalCreate, QuizGenerateInput, ResetInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput
+from .schemas import AcceptInput, ChatInput, EvidenceDecision, EvidenceSubmit, FactCreate, GenerateInput, HermesSettingsApply, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StudentCreate
+from .sources import SourceError, normalize_value, store_evidence
+from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
 from .quiz import QuizRunError, run_quiz
 from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, decode_original_pptx, run_extend, run_suggest
@@ -61,9 +65,62 @@ def proposal_dict(item: RoadmapProposal) -> dict:
         "summary": item.summary,
         "reasoning": item.reasoning,
         "operations": json.loads(item.operations_json),
+        "kind": item.kind,
+        "snapshot": json.loads(item.snapshot_json) if item.snapshot_json else None,
         "status": item.status,
         "created_at": item.created_at.isoformat(),
     }
+
+
+def require_student(db: Session, student_id: str) -> Student:
+    student = db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(404, "Student not found")
+    return student
+
+
+def profile_dict(student: Student, profile: StudentProfile | None) -> dict:
+    # Students created before onboarding existed (the demo) count as onboarded.
+    return {
+        "student_id": student.id,
+        "display_name": student.display_name,
+        "institution": profile.institution if profile else "",
+        "program": profile.program if profile else "",
+        "discipline": profile.discipline if profile else "other",
+        "year_label": profile.year_label if profile else "",
+        "grad_target": profile.grad_target if profile else "",
+        "onboarding_status": profile.onboarding_status if profile else "done",
+    }
+
+
+def source_dict(item: DataSource) -> dict:
+    return {
+        "id": item.id,
+        "kind": item.kind,
+        "label": item.label,
+        "config": json.loads(item.config_json),
+        "status": item.status,
+        "error": item.error,
+        "last_synced_at": item.last_synced_at.isoformat() if item.last_synced_at else None,
+    }
+
+
+def evidence_dict(item: EvidenceItem) -> dict:
+    return {
+        "id": item.id,
+        "source_id": item.source_id,
+        "kind": item.kind,
+        "title": item.title,
+        "data": json.loads(item.data_json),
+        "source_ref": item.source_ref,
+        "status": item.status,
+    }
+
+
+EVIDENCE_FACT_CATEGORY = {
+    "course": "course", "education": "course", "skill": "skill", "project": "achievement",
+    "experience": "achievement", "certificate": "achievement", "publication": "achievement", "activity": "achievement",
+}
 
 
 def require_internal(x_farq_internal_token: Annotated[str | None, Header()] = None) -> None:
@@ -74,6 +131,7 @@ def require_internal(x_farq_internal_token: Annotated[str | None, Header()] = No
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(engine)
+    ensure_added_columns()
     db = SessionLocal()
     try:
         if db.get(Student, DEMO_STUDENT_ID) is None:
@@ -132,6 +190,8 @@ def reset_demo(_body: ResetInput, db: Db) -> dict:
         db.execute(delete(ChatMessage).where(ChatMessage.thread_id.in_(thread_ids)))
     db.execute(delete(RoadmapProposal).where(RoadmapProposal.student_id == DEMO_STUDENT_ID))
     db.execute(delete(StudentFact).where(StudentFact.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(EvidenceItem).where(EvidenceItem.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(DataSource).where(DataSource.student_id == DEMO_STUDENT_ID))
     db.execute(delete(ChatThread).where(ChatThread.student_id == DEMO_STUDENT_ID))
     db.execute(delete(RoadmapVersion).where(RoadmapVersion.student_id == DEMO_STUDENT_ID))
 
@@ -144,6 +204,282 @@ def reset_demo(_body: ResetInput, db: Db) -> dict:
         db.rollback()
         raise
     return {"status": "reset", "student_id": DEMO_STUDENT_ID, "thread_id": thread.id, "version_id": version.id, "version": 1}
+
+
+EMPTY_ROADMAP = RoadmapSnapshot(title="Your roadmap", stages=[], nodes=[])
+
+
+@app.post("/api/students", status_code=201)
+def create_student(body: StudentCreate, db: Db) -> dict:
+    """Lightweight sign-up: a student record with an empty v0 roadmap.
+
+    There is no password or auth yet (see docs/future-work.md); the browser
+    remembers the returned id. v0 exists so generated roadmaps are still
+    proposals against a base version.
+    """
+    student = Student(display_name=body.display_name.strip())
+    db.add(student)
+    db.flush()
+    db.add_all([
+        StudentProfile(student_id=student.id),
+        RoadmapVersion(student_id=student.id, version=0, snapshot_json=EMPTY_ROADMAP.model_dump_json(), reason="Awaiting onboarding", active=True),
+        ChatThread(student_id=student.id, title="My Hermes Coach"),
+    ])
+    db.commit()
+    return {**profile_dict(student, db.get(StudentProfile, student.id)), "thread_id": first_thread(db, student.id).id}
+
+
+def first_thread(db: Session, student_id: str) -> ChatThread:
+    thread = db.scalar(select(ChatThread).where(ChatThread.student_id == student_id).order_by(ChatThread.created_at))
+    if thread is None:
+        raise HTTPException(404, "Student has no chat thread")
+    return thread
+
+
+@app.get("/api/disciplines")
+def disciplines() -> list[dict]:
+    return public_registry()
+
+
+@app.get("/api/students/{student_id}/profile")
+def get_profile(student_id: str, db: Db) -> dict:
+    student = require_student(db, student_id)
+    return {**profile_dict(student, db.get(StudentProfile, student_id)), "thread_id": first_thread(db, student_id).id}
+
+
+@app.put("/api/students/{student_id}/profile")
+def update_profile(student_id: str, body: ProfileUpdate, db: Db) -> dict:
+    student = require_student(db, student_id)
+    profile = db.get(StudentProfile, student_id)
+    if profile is None:
+        profile = StudentProfile(student_id=student_id)
+        db.add(profile)
+    changes = body.model_dump(exclude_none=True)
+    for key, value in changes.items():
+        setattr(profile, key, value.strip() if isinstance(value, str) else value)
+    if "program" in changes and "discipline" not in changes:
+        profile.discipline = classify_program(profile.program)
+    db.commit()
+    return {**profile_dict(student, profile), "thread_id": first_thread(db, student_id).id}
+
+
+@app.get("/api/students/{student_id}/sources")
+def list_sources(student_id: str, db: Db) -> list[dict]:
+    require_student(db, student_id)
+    items = db.scalars(select(DataSource).where(DataSource.student_id == student_id).order_by(DataSource.created_at)).all()
+    return [source_dict(item) for item in items]
+
+
+@app.post("/api/students/{student_id}/sources", status_code=201)
+def add_source(student_id: str, body: SourceCreate, db: Db) -> dict:
+    require_student(db, student_id)
+    try:
+        config = normalize_value(body.kind, body.value)
+    except SourceError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    if body.kind == "folder":
+        config["purpose"] = body.purpose or "projects"
+    label = next(iter(config.values()), body.kind) if config else body.kind
+    item = DataSource(student_id=student_id, kind=body.kind, label=str(label)[:200], config_json=json.dumps(config))
+    db.add(item)
+    db.commit()
+    return source_dict(item)
+
+
+@app.delete("/api/students/{student_id}/sources/{source_id}")
+def delete_source(student_id: str, source_id: str, db: Db) -> dict:
+    item = db.get(DataSource, source_id)
+    if item is None or item.student_id != student_id:
+        raise HTTPException(404, "Source not found")
+    # Unconfirmed evidence goes with its source; confirmed evidence is the student's own record.
+    db.execute(delete(EvidenceItem).where(EvidenceItem.source_id == source_id, EvidenceItem.status != "confirmed"))
+    remaining = db.scalar(select(func.count()).select_from(EvidenceItem).where(EvidenceItem.source_id == source_id))
+    if remaining:
+        item.status = "removed"
+    else:
+        db.delete(item)
+    db.commit()
+    return {"status": "deleted"}
+
+
+def _hermes_opts(provider: str | None, model: str | None, key: str | None) -> dict:
+    return {"provider": provider, "model": model, "key": key}
+
+
+def _run_source_job(source_id: str, job) -> dict:
+    """Run one sync in a worker thread with its own session; record success or failure."""
+    db = SessionLocal()
+    try:
+        source = db.get(DataSource, source_id)
+        source.status = "syncing"
+        db.commit()
+        try:
+            added = job(db, source)
+        except SourceError as exc:
+            db.rollback()
+            source = db.get(DataSource, source_id)
+            mark_synced(source, str(exc))
+            db.commit()
+            raise
+        mark_synced(source)
+        db.commit()
+        return {**source_dict(source), "added": added}
+    finally:
+        db.close()
+
+
+@app.post("/api/students/{student_id}/sources/{source_id}/upload")
+async def upload_source(
+    student_id: str,
+    source_id: str,
+    db: Db,
+    file: UploadFile = File(...),
+    provider: str | None = Form(default=None),
+    model: str | None = Form(default=None),
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Read an uploaded transcript/CV/LinkedIn file into suggested evidence.
+
+    The file itself is never stored; only the extracted, redacted evidence is.
+    """
+    source = db.get(DataSource, source_id)
+    if source is None or source.student_id != student_id:
+        raise HTTPException(404, "Source not found")
+    if source.kind not in UPLOAD_KINDS:
+        raise HTTPException(422, "This source is not a file upload")
+    data = await file.read(MAX_UPLOAD_BYTES * 3 + 1)
+    hermes = _hermes_opts(provider or None, model or None, x_hermes_api_key)
+    try:
+        return await asyncio.to_thread(_run_source_job, source_id, lambda session, src: sync_upload(session, src, data, file.filename or "", hermes))
+    except SourceError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.post("/api/students/{student_id}/sources/{source_id}/sync")
+async def sync_source(
+    student_id: str,
+    source_id: str,
+    db: Db,
+    body: GenerateInput = Body(default_factory=GenerateInput),
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    source = db.get(DataSource, source_id)
+    if source is None or source.student_id != student_id:
+        raise HTTPException(404, "Source not found")
+    if source.kind in UPLOAD_KINDS:
+        raise HTTPException(422, "Upload a file for this source")
+    hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
+    try:
+        return await asyncio.to_thread(_run_source_job, source_id, lambda session, src: sync_remote(session, src, hermes))
+    except SourceError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.get("/api/students/{student_id}/evidence")
+def list_evidence(student_id: str, db: Db) -> list[dict]:
+    require_student(db, student_id)
+    items = db.scalars(select(EvidenceItem).where(EvidenceItem.student_id == student_id, EvidenceItem.status != "dismissed").order_by(EvidenceItem.kind, EvidenceItem.created_at)).all()
+    return [evidence_dict(item) for item in items]
+
+
+@app.post("/api/students/{student_id}/evidence/decide")
+def decide_evidence(student_id: str, body: EvidenceDecision, db: Db) -> dict:
+    """The student's explicit review: confirmed evidence becomes StudentFacts.
+
+    Ticking an item is an explicit statement by the student, so it is the one
+    non-chat path into StudentFact (source_kind="confirmed_evidence").
+    """
+    require_student(db, student_id)
+    ids = set(body.confirm) | set(body.dismiss)
+    items = {item.id: item for item in db.scalars(select(EvidenceItem).where(EvidenceItem.student_id == student_id, EvidenceItem.id.in_(ids))).all()}
+    for evidence_id in body.dismiss:
+        item = items.get(evidence_id)
+        if item is None:
+            continue
+        item.status = "dismissed"
+        for fact in db.scalars(select(StudentFact).where(StudentFact.evidence_id == evidence_id, StudentFact.active.is_(True))).all():
+            fact.active = False
+    confirmed = 0
+    for evidence_id in body.confirm:
+        item = items.get(evidence_id)
+        if item is None or evidence_id in body.dismiss:
+            continue
+        title = body.titles.get(evidence_id, "").strip()
+        if title:
+            item.title = title[:240]
+        item.status = "confirmed"
+        for fact in db.scalars(select(StudentFact).where(StudentFact.evidence_id == evidence_id, StudentFact.active.is_(True))).all():
+            fact.active = False
+        data = json.loads(item.data_json)
+        data.pop("readme_excerpt", None)
+        db.add(StudentFact(
+            student_id=student_id,
+            category=EVIDENCE_FACT_CATEGORY[item.kind],
+            key=f"{item.kind}: {item.title}"[:120],
+            value_json=json.dumps({k: v for k, v in data.items() if v not in ("", [], None)}),
+            source_kind="confirmed_evidence",
+            evidence_id=item.id,
+            confidence=100,
+        ))
+        confirmed += 1
+    db.commit()
+    return {"confirmed": confirmed, "dismissed": len([i for i in body.dismiss if i in items])}
+
+
+@app.post("/api/students/{student_id}/onboarding/generate")
+async def generate_roadmap(
+    student_id: str,
+    db: Db,
+    body: GenerateInput = Body(default_factory=GenerateInput),
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Ask Hermes for a whole first roadmap and store it as an `initial` proposal.
+
+    Only the accept endpoint activates it. Allowed while the active roadmap is
+    still the empty v0.
+    """
+    require_student(db, student_id)
+    current = active_roadmap(db, student_id)
+    if RoadmapSnapshot.model_validate_json(current.snapshot_json).nodes:
+        raise HTTPException(409, "This student already has a roadmap; ask Hermes Coach to revise it instead")
+    profile = db.get(StudentProfile, student_id)
+    base_id = current.id
+    hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
+
+    def job() -> dict:
+        session = SessionLocal()
+        try:
+            snapshot = generate_initial_roadmap(session, student_id, hermes)
+            for stale in session.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id, RoadmapProposal.kind == "initial", RoadmapProposal.status == "pending")).all():
+                stale.status = "rejected"
+                stale.decided_at = now()
+            proposal = RoadmapProposal(
+                student_id=student_id, base_version_id=base_id, kind="initial",
+                summary=f"First roadmap: {snapshot.title}"[:240],
+                reasoning="Generated from your confirmed evidence and onboarding answers.",
+                operations_json="[]", snapshot_json=snapshot.model_dump_json(),
+            )
+            session.add(proposal)
+            saved_profile = session.get(StudentProfile, student_id)
+            if saved_profile is not None:
+                saved_profile.onboarding_status = "preview"
+            session.commit()
+            return proposal_dict(proposal)
+        finally:
+            session.close()
+
+    if profile is not None:
+        profile.onboarding_status = "generating"
+        db.commit()
+    try:
+        return await asyncio.to_thread(job)
+    except Exception as exc:
+        if profile is not None:
+            profile.onboarding_status = "chat"
+            db.commit()
+        if isinstance(exc, HermesJsonError):
+            raise HTTPException(exc.status, str(exc)) from exc
+        raise
 
 
 @app.get("/api/students/{student_id}/context")
@@ -360,7 +696,8 @@ def get_run(run_id: str, db: Db) -> dict:
 def run_events(run_id: str) -> StreamingResponse:
     def stream():
         last = None
-        deadline = time.monotonic() + 210
+        # Room for several fallback models (see app.hermes.execute_with_fallback).
+        deadline = time.monotonic() + 420
         while time.monotonic() < deadline:
             db = SessionLocal()
             run = db.get(AgentRun, run_id)
@@ -390,29 +727,47 @@ def get_proposal(proposal_id: str, db: Db) -> dict:
 
 
 @app.post("/api/roadmap-proposals/{proposal_id}/accept")
-def accept_proposal(proposal_id: str, db: Db) -> dict:
+def accept_proposal(proposal_id: str, db: Db, body: AcceptInput = Body(default_factory=AcceptInput)) -> dict:
     proposal = db.get(RoadmapProposal, proposal_id)
     if proposal is None or proposal.status != "pending":
         raise HTTPException(409, "Proposal is no longer pending")
     current = active_roadmap(db, proposal.student_id)
     if current.id != proposal.base_version_id:
         raise HTTPException(409, "Proposal is stale because the roadmap has changed")
-    operations = ProposalCreate.model_validate({
-        "user_id": proposal.student_id,
-        "base_version_id": proposal.base_version_id,
-        "summary": proposal.summary,
-        "reasoning": proposal.reasoning,
-        "operations": json.loads(proposal.operations_json),
-    }).operations
-    try:
-        updated = apply_operations(RoadmapSnapshot.model_validate_json(current.snapshot_json), operations)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+    if proposal.kind == "initial":
+        base = RoadmapSnapshot.model_validate_json(current.snapshot_json)
+        if base.nodes:
+            raise HTTPException(409, "A first roadmap can only replace the empty onboarding roadmap")
+        try:
+            updated = RoadmapSnapshot.model_validate_json(proposal.snapshot_json or "")
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        # The student's review: anything they unticked starts from scratch.
+        unticked = set(body.not_done)
+        for node in updated.nodes:
+            if node.id in unticked:
+                node.status = "not-started"
+    else:
+        operations = ProposalCreate.model_validate({
+            "user_id": proposal.student_id,
+            "base_version_id": proposal.base_version_id,
+            "summary": proposal.summary,
+            "reasoning": proposal.reasoning,
+            "operations": json.loads(proposal.operations_json),
+        }).operations
+        try:
+            updated = apply_operations(RoadmapSnapshot.model_validate_json(current.snapshot_json), operations)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
     current.active = False
     version = RoadmapVersion(student_id=proposal.student_id, version=current.version + 1, snapshot_json=updated.model_dump_json(), reason=proposal.summary, active=True)
     db.add(version)
     proposal.status = "accepted"
     proposal.decided_at = now()
+    if proposal.kind == "initial":
+        profile = db.get(StudentProfile, proposal.student_id)
+        if profile is not None:
+            profile.onboarding_status = "done"
     db.commit()
     return {"status": "accepted", "version_id": version.id, "version": version.version}
 
@@ -447,10 +802,27 @@ def record_fact(body: FactCreate, db: Db) -> dict:
     existing = db.scalars(select(StudentFact).where(StudentFact.student_id == body.user_id, StudentFact.category == body.category, StudentFact.key == body.key, StudentFact.active.is_(True))).all()
     for fact in existing:
         fact.active = False
-    fact = StudentFact(student_id=body.user_id, category=body.category, key=body.key, value_json=json.dumps(body.value), source_message_id=body.source_message_id, confidence=100)
+    fact = StudentFact(student_id=body.user_id, category=body.category, key=body.key, value_json=json.dumps(body.value), source_message_id=body.source_message_id, source_kind=body.source_kind, confidence=100)
     db.add(fact)
     db.commit()
     return {"success": True, "fact_id": fact.id}
+
+
+@app.get("/internal/hermes/students/{student_id}/profile", dependencies=[Depends(require_internal)])
+def internal_profile(student_id: str, db: Db) -> dict:
+    require_student(db, student_id)
+    return build_profile_brief(db, student_id)
+
+
+@app.post("/internal/hermes/evidence", dependencies=[Depends(require_internal)])
+def submit_evidence(body: EvidenceSubmit, db: Db) -> dict:
+    """Hermes' folder scan results. Stored as `suggested` until the student confirms."""
+    source = db.get(DataSource, body.source_id)
+    if source is None or source.student_id != body.user_id:
+        raise HTTPException(404, "Source not found for this student")
+    added = store_evidence(db, body.user_id, source.id, body.items)
+    db.commit()
+    return {"success": True, "added": added, "status": "awaiting student review"}
 
 
 @app.post("/internal/hermes/roadmap-proposals", dependencies=[Depends(require_internal)])

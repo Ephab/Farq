@@ -13,21 +13,10 @@ The model returns raw text; the frontend keeps the battle-tested
 parse/salvage logic and turns it into UI-ready questions.
 """
 
-import time
-import uuid
-
-import httpx
-
-from .hermes import (
-    HERMES_URL,
-    effective_hermes_key,
-    raise_for_gateway_status,
-    resolve_hermes_selection,
-)
+from .hermes import LAST_JSON_MODEL, HermesJsonError, effective_hermes_key, run_json_prompt
 
 MAX_SOURCE_CHARS = 12_000
 RUN_TIMEOUT_SECONDS = 180
-POLL_INTERVAL_SECONDS = 2
 
 QUIZ_INSTRUCTIONS = " ".join([
     "You generate study quizzes from lecture slides.",
@@ -87,47 +76,17 @@ def run_quiz(
             status=401,
         )
     try:
-        quiz_model, quiz_provider = resolve_hermes_selection(provider, model)
-    except ValueError as exc:
-        raise QuizRunError(str(exc), status=422) from exc
-    session_id = f"quiz-{uuid.uuid4().hex[:12]}"
-    headers = {
-        "Authorization": f"Bearer {gateway_key}",
-        "Idempotency-Key": f"quiz-{session_id}",
-        "X-Hermes-Session-Key": f"farq:quiz:{session_id}",
-    }
-    payload = {
-        "input": build_quiz_input(source_text, count, difficulty, types),
-        "session_id": session_id,
-        "instructions": QUIZ_INSTRUCTIONS,
-        "model": quiz_model,
-        "provider": quiz_provider,
-    }
-    try:
-        with httpx.Client(timeout=20) as client:
-            try:
-                response = client.post(f"{HERMES_URL}/v1/runs", headers=headers, json=payload)
-                raise_for_gateway_status(response)
-            except RuntimeError as exc:
-                # 401 already carries an actionable message.
-                raise QuizRunError(str(exc), status=401) from exc
-            run_id = response.json()["run_id"]
-            deadline = time.monotonic() + RUN_TIMEOUT_SECONDS
-            while time.monotonic() < deadline:
-                poll = client.get(f"{HERMES_URL}/v1/runs/{run_id}", headers=headers)
-                raise_for_gateway_status(poll)
-                state = poll.json()
-                status = state.get("status")
-                if status == "completed":
-                    output = (state.get("output") or "").strip()
-                    if not output:
-                        raise QuizRunError("Hermes returned an empty answer — try fewer questions", status=502)
-                    return {"output": output, "model": quiz_model, "provider": quiz_provider}
-                if status in {"failed", "cancelled"}:
-                    raise QuizRunError(state.get("error") or f"Hermes run {status}", status=502)
-                time.sleep(POLL_INTERVAL_SECONDS)
-            raise QuizRunError("Hermes did not finish within 180 seconds", status=504)
-    except QuizRunError:
-        raise
-    except httpx.HTTPError as exc:
-        raise QuizRunError(f"Hermes gateway unavailable: {exc}", status=502) from exc
+        output = run_json_prompt(
+            "quiz",
+            build_quiz_input(source_text, count, difficulty, types),
+            QUIZ_INSTRUCTIONS,
+            provider,
+            model,
+            hermes_api_key,
+            RUN_TIMEOUT_SECONDS,
+        )
+    except HermesJsonError as exc:
+        message = "Hermes returned an empty answer — try fewer questions" if "empty answer" in str(exc) else str(exc)
+        raise QuizRunError(message, status=exc.status) from exc
+    used_model, used_provider = LAST_JSON_MODEL["quiz"]
+    return {"output": output, "model": used_model, "provider": used_provider}

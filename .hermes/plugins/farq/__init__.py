@@ -1,6 +1,9 @@
 """Hermes project plugin: the only application capabilities exposed to the coach."""
 
+from .scanner import index_folder, read_project_file, scan_folder
 from .tools import request
+
+EVIDENCE_KINDS = ["course", "project", "skill", "experience", "certificate", "publication", "activity", "education"]
 
 
 def register(ctx):
@@ -37,10 +40,89 @@ def register(ctx):
                     "value": {},
                     "source_message_id": {"type": "string"},
                     "explicit": {"type": "boolean", "const": True},
+                    "source_kind": {"type": "string", "enum": ["chat", "branch", "onboarding"], "description": "Use onboarding for answers during the onboarding chat."},
                 },
                 "required": ["user_id", "category", "key", "value", "source_message_id", "explicit"],
             },
             lambda p, **_: request("POST", "/internal/hermes/facts", p),
+        ),
+        (
+            "farq_get_student_profile",
+            "Read the student's onboarding basics plus the evidence they confirmed (courses, grades, projects, skills, experience) and stated facts.",
+            {
+                "type": "object",
+                "properties": {"user_id": {"type": "string"}},
+                "required": ["user_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/profile"),
+        ),
+        (
+            "farq_index_folder",
+            "Index a folder the student typed during onboarding AND submit the results as evidence for their review, in one call. "
+            "Use this for folder indexing. Never opens .env files, keys, credentials or identity documents.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "source_id": {"type": "string"},
+                    "path": {"type": "string"},
+                    "purpose": {"type": "string", "enum": ["projects", "coursework"]},
+                },
+                "required": ["user_id", "source_id", "path", "purpose"],
+            },
+            lambda p, **_: index_folder(p["user_id"], p["source_id"], p["path"], p.get("purpose", "projects"),
+                                        lambda body: request("POST", "/internal/hermes/evidence", body)),
+        ),
+        (
+            "farq_scan_folder",
+            "Index a folder on this computer that the student typed during onboarding. Returns a compact manifest "
+            "(projects: manifests, README heads, git remotes, file types; coursework: terms, courses, material types). "
+            "Never opens .env files, keys, credentials or identity documents.",
+            {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "purpose": {"type": "string", "enum": ["projects", "coursework"]},
+                },
+                "required": ["path", "purpose"],
+            },
+            lambda p, **_: scan_folder(p["path"], p.get("purpose", "projects")),
+        ),
+        (
+            "farq_read_project_file",
+            "Read one small README, manifest or text file found by farq_scan_folder (max 20 KB). Secrets and identity documents are refused.",
+            {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "Absolute path"}},
+                "required": ["path"],
+            },
+            lambda p, **_: read_project_file(p["path"]),
+        ),
+        (
+            "farq_submit_evidence",
+            "Submit evidence found in a scanned folder. It is stored as a suggestion the student must confirm; it never becomes a fact on its own.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "source_id": {"type": "string"},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "kind": {"type": "string", "enum": EVIDENCE_KINDS},
+                                "title": {"type": "string"},
+                                "data": {"type": "object"},
+                                "source_ref": {"type": "string", "description": "Relative path of the project or course folder"},
+                            },
+                            "required": ["kind", "title"],
+                        },
+                    },
+                },
+                "required": ["user_id", "source_id", "items"],
+            },
+            lambda p, **_: request("POST", "/internal/hermes/evidence", p),
         ),
         (
             "farq_submit_roadmap_proposal",

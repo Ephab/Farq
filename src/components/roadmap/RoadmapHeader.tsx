@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 export type LevelFilter = RoadmapLevel | "All";
 
 interface RoadmapHeaderProps {
+  title: string;
   done: number;
   total: number;
   percent: number;
@@ -20,6 +21,7 @@ interface RoadmapHeaderProps {
 const LEVELS: LevelFilter[] = ["All", "Beginner", "Intermediate", "Advanced"];
 
 export function RoadmapHeader({
+  title,
   done,
   total,
   percent,
@@ -34,10 +36,10 @@ export function RoadmapHeader({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0">
           <h1 className="truncate text-base font-semibold sm:text-lg">
-            Computer Vision Roadmap
+            {title}
           </h1>
           <p className="truncate text-xs text-muted-foreground sm:text-[13px]">
-            From pixels to production — click any node for details.{" "}
+            Click any node for details.{" "}
             <span className="font-medium text-foreground">
               {done}/{total} done · {percent}%
             </span>

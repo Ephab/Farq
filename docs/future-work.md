@@ -4,12 +4,20 @@ The backbone deliberately ships only chat-driven memory and roadmap revision.
 
 ## Near term
 
-- Generate an initial roadmap from onboarding rather than seeding Computer Vision.
+- Threat model for the onboarding folder scan: path allowlisting, symlink escapes, what a
+  malicious README can make Hermes submit, and whether indexing should move to a sandbox.
+- OCR for scanned transcripts and exam PDFs; Arabic-aware transcript parsing.
+- DNS-rebinding hardening for the portfolio fetch (pin the resolved address per request).
+- "Coming soon" sources per discipline (`services/api/app/disciplines.py`): Kaggle, LeetCode,
+  GrabCAD, clinical logbooks, Anki stats, question-bank exports, SSRN, Credly, Behance.
+- Automatic re-sync of existing sources (GitHub, folders) on a schedule. Adding sources later
+  already works from the "My data" page, which hands off to Hermes Coach for a proposal.
 - Show richer visual diffs for moved dependencies and added branches.
 - Let students inspect, correct, and delete stored facts.
 - Add an agent tool for quiz generation while keeping scoring deterministic in FastAPI.
 - Connect lesson generation and quiz performance to roadmap proposals.
-- Add authentication and enforce user identity at the tool boundary.
+- Add authentication (onboarding currently creates a student and the browser remembers its id)
+  and enforce user identity at the tool boundary.
 
 ## University data
 

@@ -32,8 +32,53 @@ class StudentFact(Base):
     key: Mapped[str] = mapped_column(String(120))
     value_json: Mapped[str] = mapped_column(Text)
     source_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # chat | branch | onboarding | confirmed_evidence
+    source_kind: Mapped[str] = mapped_column(String(24), default="chat")
+    evidence_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     confidence: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class StudentProfile(Base):
+    __tablename__ = "student_profiles"
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), primary_key=True)
+    institution: Mapped[str] = mapped_column(String(200), default="")
+    program: Mapped[str] = mapped_column(String(200), default="")
+    discipline: Mapped[str] = mapped_column(String(32), default="other")
+    year_label: Mapped[str] = mapped_column(String(80), default="")
+    grad_target: Mapped[str] = mapped_column(String(80), default="")
+    # basics | sources | review | chat | generating | preview | done
+    onboarding_status: Mapped[str] = mapped_column(String(16), default="basics")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class DataSource(Base):
+    __tablename__ = "data_sources"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(24))
+    label: Mapped[str] = mapped_column(String(200), default="")
+    # Non-secret configuration only (username, path, URL, ORCID iD).
+    config_json: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvidenceItem(Base):
+    __tablename__ = "evidence_items"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("data_sources.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(24), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    data_json: Mapped[str] = mapped_column(Text, default="{}")
+    source_ref: Mapped[str] = mapped_column(String(500), default="")
+    fingerprint: Mapped[str] = mapped_column(String(300), index=True)
+    # suggested | confirmed | dismissed
+    status: Mapped[str] = mapped_column(String(16), default="suggested", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -75,6 +120,9 @@ class RoadmapProposal(Base):
     summary: Mapped[str] = mapped_column(String(240))
     reasoning: Mapped[str] = mapped_column(Text)
     operations_json: Mapped[str] = mapped_column(Text)
+    # ops (diff against base) | initial (full generated graph in snapshot_json)
+    kind: Mapped[str] = mapped_column(String(16), default="ops")
+    snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

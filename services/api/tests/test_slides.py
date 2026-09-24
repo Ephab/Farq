@@ -22,6 +22,9 @@ CANNED_EXTEND = '{"slides": [{"title": "Attention", "bullets": ["Query-key-value
 
 
 class _FakeSlidesResponse:
+    status_code = 200
+    text = ""
+
     def __init__(self, payload: dict):
         self._payload = payload
 
@@ -70,7 +73,7 @@ def test_suggest_uses_gateway_and_writes_nothing(client: TestClient, monkeypatch
     from sqlalchemy import func, select
 
     FakeClient, calls = _fake_slides_client({"status": "completed", "output": CANNED_SUGGEST})
-    monkeypatch.setattr("app.slides.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
     db = SessionLocal()
     before = db.scalar(select(func.count()).select_from(AgentRun))
     db.close()
@@ -96,7 +99,7 @@ def test_suggest_uses_gateway_and_writes_nothing(client: TestClient, monkeypatch
 
 def test_extend_uses_gateway_and_includes_topic(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     FakeClient, calls = _fake_slides_client({"status": "completed", "output": CANNED_EXTEND})
-    monkeypatch.setattr("app.slides.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
 
     response = client.post(
         "/api/slides/extend",
@@ -137,7 +140,7 @@ def test_slides_reject_bad_input(client: TestClient):
 
 def test_slides_map_gateway_failure(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     FakeClient, _ = _fake_slides_client({"status": "failed", "error": "model exploded"})
-    monkeypatch.setattr("app.slides.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
     response = client.post(
         "/api/slides/extend",
         headers={"X-Hermes-Api-Key": "k" * 64},
@@ -247,7 +250,7 @@ def test_export_embeds_pdf_page_images(client: TestClient):
 
 def test_extend_design_hint_reaches_prompt(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     FakeClient, calls = _fake_slides_client({"status": "completed", "output": CANNED_EXTEND})
-    monkeypatch.setattr("app.slides.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.hermes.httpx.Client", FakeClient)
 
     response = client.post(
         "/api/slides/extend",

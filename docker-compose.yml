@@ -15,7 +15,7 @@ services:
       DATABASE_URL: sqlite:////data/farq.db
       HERMES_URL: http://hermes:8642
       HERMES_API_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
-      HERMES_MODEL: ${HERMES_MODEL:-gemini-3-flash-preview}
+      HERMES_MODEL: ${HERMES_MODEL:-gemini-3.8-flash}
       HERMES_PROVIDER: ${HERMES_PROVIDER:-gemini}
       FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
     volumes:
@@ -35,12 +35,13 @@ services:
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
       API_SERVER_ENABLED: "true"
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: 8642
       API_SERVER_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
       HERMES_ENABLE_PROJECT_PLUGINS: "1"
-      HERMES_MODEL: ${HERMES_MODEL:-gemini-3-flash-preview}
+      HERMES_MODEL: ${HERMES_MODEL:-gemini-3.8-flash}
       FARQ_API_INTERNAL_URL: http://api:8000
       FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
     volumes:
@@ -49,6 +50,10 @@ services:
       - ./services/hermes/SOUL.md:/opt/data/SOUL.md:ro
       - ./.hermes/plugins/farq:/opt/data/plugins/farq:ro
       - ./.hermes/skills/farq-student-coach:/opt/data/skills/farq-student-coach:ro
+      - ./.hermes/skills/farq-onboarding:/opt/data/skills/farq-onboarding:ro
+      # Onboarding folder scans only see paths inside this container. To let Hermes index
+      # a host folder, mount it read-only and type the container path, e.g.:
+      # - C:/Users/me/Projects:/scan/projects:ro
     ports:
       - "8642:8642"
     depends_on:

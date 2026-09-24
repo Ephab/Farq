@@ -26,12 +26,7 @@ import uuid
 
 import httpx
 
-from .hermes import (
-    HERMES_URL,
-    effective_hermes_key,
-    raise_for_gateway_status,
-    resolve_hermes_selection,
-)
+from .hermes import LAST_JSON_MODEL, HermesJsonError, effective_hermes_key, run_json_prompt
 
 MAX_SOURCE_CHARS = 12_000
 RUN_TIMEOUT_SECONDS = 180
@@ -122,51 +117,14 @@ def _run_prompt(
     model: str | None,
     gateway_key: str,
 ) -> dict:
-    try:
-        run_model, run_provider = resolve_hermes_selection(provider, model)
-    except ValueError as exc:
-        raise SlidesRunError(str(exc), status=422) from exc
-    session_id = f"slides-{kind}-{uuid.uuid4().hex[:12]}"
-    headers = {
-        "Authorization": f"Bearer {gateway_key}",
-        "Idempotency-Key": f"slides-{session_id}",
-        "X-Hermes-Session-Key": f"farq:slides:{session_id}",
-    }
     instructions = SUGGEST_INSTRUCTIONS if kind == "suggest" else EXTEND_INSTRUCTIONS
-    payload = {
-        "input": prompt,
-        "session_id": session_id,
-        "instructions": instructions,
-        "model": run_model,
-        "provider": run_provider,
-    }
     try:
-        with httpx.Client(timeout=20) as client:
-            try:
-                response = client.post(f"{HERMES_URL}/v1/runs", headers=headers, json=payload)
-                raise_for_gateway_status(response)
-            except RuntimeError as exc:
-                raise SlidesRunError(str(exc), status=401) from exc
-            run_id = response.json()["run_id"]
-            deadline = time.monotonic() + RUN_TIMEOUT_SECONDS
-            while time.monotonic() < deadline:
-                poll = client.get(f"{HERMES_URL}/v1/runs/{run_id}", headers=headers)
-                raise_for_gateway_status(poll)
-                state = poll.json()
-                status = state.get("status")
-                if status == "completed":
-                    output = (state.get("output") or "").strip()
-                    if not output:
-                        raise SlidesRunError("Hermes returned an empty answer — try a smaller deck", status=502)
-                    return {"output": output, "model": run_model, "provider": run_provider}
-                if status in {"failed", "cancelled"}:
-                    raise SlidesRunError(state.get("error") or f"Hermes run {status}", status=502)
-                time.sleep(POLL_INTERVAL_SECONDS)
-            raise SlidesRunError("Hermes did not finish within 180 seconds", status=504)
-    except SlidesRunError:
-        raise
-    except httpx.HTTPError as exc:
-        raise SlidesRunError(f"Hermes gateway unavailable: {exc}", status=502) from exc
+        output = run_json_prompt(f"slides-{kind}", prompt, instructions, provider, model, gateway_key, RUN_TIMEOUT_SECONDS)
+    except HermesJsonError as exc:
+        message = "Hermes returned an empty answer — try a smaller deck" if "empty answer" in str(exc) else str(exc)
+        raise SlidesRunError(message, status=exc.status) from exc
+    used_model, used_provider = LAST_JSON_MODEL[f"slides-{kind}"]
+    return {"output": output, "model": used_model, "provider": used_provider}
 
 
 def run_suggest(

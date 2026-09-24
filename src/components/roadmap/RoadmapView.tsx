@@ -6,7 +6,7 @@ import { useRoadmapProgress } from "@/hooks/use-roadmap-progress";
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas";
 import { RoadmapHeader, type LevelFilter } from "@/components/roadmap/RoadmapHeader";
 import { NodeDetailPanel } from "@/components/roadmap/NodeDetailPanel";
-import { api, DEMO_STUDENT_ID } from "@/lib/farq-api";
+import { api, getCurrentStudentId, ROADMAP_CHANGED_EVENT } from "@/lib/farq-api";
 
 interface RoadmapResponse {
   version: number;
@@ -17,6 +17,8 @@ export function RoadmapView() {
   const [nodes, setNodes] = useState<RoadmapNodeData[]>(NODES);
   const [stages, setStages] = useState<RoadmapStage[]>(STAGES);
   const [version, setVersion] = useState<number | null>(null);
+  const [title, setTitle] = useState("Computer Vision Roadmap");
+  const studentId = getCurrentStudentId();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -24,15 +26,19 @@ export function RoadmapView() {
 
   const initialStatuses = useMemo(() => Object.fromEntries(nodes.map((node) => [node.id, node.status ?? "not-started"])) as Record<string, NodeStatus>, [nodes]);
   const persist = useCallback(async (id: string, status: NodeStatus) => {
-    await api(`/api/students/${DEMO_STUDENT_ID}/roadmap/nodes/${id}`, { method: "PUT", body: JSON.stringify({ status }) });
-  }, []);
+    await api(`/api/students/${studentId}/roadmap/nodes/${id}`, { method: "PUT", body: JSON.stringify({ status }) });
+  }, [studentId]);
   const { statuses, setStatus, reset, summary } = useRoadmapProgress(nodes, initialStatuses, persist);
 
   useEffect(() => {
-    api<RoadmapResponse>(`/api/students/${DEMO_STUDENT_ID}/roadmap`).then((response) => {
-      setNodes(response.snapshot.nodes); setStages(response.snapshot.stages); setVersion(response.version); setLoadError(null);
+    const load = () => api<RoadmapResponse>(`/api/students/${studentId}/roadmap`).then((response) => {
+      setNodes(response.snapshot.nodes); setStages(response.snapshot.stages); setVersion(response.version); setTitle(response.snapshot.title); setLoadError(null);
     }).catch((reason: unknown) => setLoadError(reason instanceof Error ? reason.message : "Could not load the persistent roadmap"));
-  }, []);
+    void load();
+    // Accepting a proposal anywhere (Hermes Coach, onboarding) creates a new version.
+    window.addEventListener(ROADMAP_CHANGED_EVENT, load);
+    return () => window.removeEventListener(ROADMAP_CHANGED_EVENT, load);
+  }, [studentId]);
 
   const dimmedIds = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -62,7 +68,7 @@ export function RoadmapView() {
 
   return (
     <div className="flex min-h-[calc(100svh-4rem)] flex-1 flex-col bg-background">
-      <RoadmapHeader done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} onReset={reset} />
+      <RoadmapHeader title={title} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} onReset={reset} />
       {version ? <div className="border-b border-border px-6 py-1.5 text-right text-[11px] text-muted-foreground">Personal roadmap · version {version}</div> : null}
       {loadError ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">Backend unavailable: showing the bundled roadmap. {loadError}</div> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">

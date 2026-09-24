@@ -41,6 +41,41 @@ selected. Reusing a category/key supersedes the old fact without erasing its aud
 This prevents fuzzy agent memory from becoming the only record of courses, achievements,
 strengths, weaknesses, or career direction.
 
+## Onboarding and the first roadmap
+
+A new student is created by `POST /api/students` with an empty v0 roadmap. Onboarding then runs:
+
+1. **Basics**: program text is mapped to a discipline (`app/disciplines.py`) that orders the
+   source cards, supplies chat question hints, and gives the generator a stage-shape hint.
+2. **Sources** (all optional): transcript/CV/LinkedIn PDFs are text-extracted with `pypdf`,
+   redacted (long ID numbers, emails, phones), and turned into evidence by a JSON-only run on a
+   throwaway `farq:ingest:*` session. LinkedIn ZIP exports are parsed without a model. GitHub and
+   ORCID use their fixed public APIs. A portfolio page is fetched once with SSRF guards. A
+   **folder** is indexed by Hermes itself on the student's machine through `farq_scan_folder`
+   and `farq_read_project_file`, which submit results with `farq_submit_evidence`.
+3. **Review**: every `EvidenceItem` starts `suggested`. The student ticks what is true; ticked
+   items become `StudentFact` rows with `source_kind="confirmed_evidence"`, the rest are dismissed.
+4. **Chat**: while `onboarding_status == "chat"`, chat turns use `ONBOARDING_INSTRUCTIONS` and
+   the `farq-onboarding` skill. Hermes reads `farq_get_student_profile`, asks at most five gap
+   questions (ending choice questions with `Options: A | B | C`, rendered as buttons), and records
+   answers with `source_kind="onboarding"`. The same thread continues as the coach afterwards.
+5. **Generate**: `POST /api/students/{id}/onboarding/generate` builds a deterministic profile
+   brief and asks for a whole `RoadmapSnapshot` on a throwaway `farq:roadmap:*` session. The
+   output is validated (`validate_generated`: consistent stages, size limits, icon allowlist), and
+   retried once with the error. A node may start `done` only if it cites evidence the student
+   confirmed; otherwise it is reset. The result is stored as a `RoadmapProposal(kind="initial")`.
+6. **Accept**: the student can untick pre-completed nodes; `accept` applies those overrides and
+   creates v1. An initial proposal can only replace the empty v0.
+
+## Model fallback on rate limits
+
+Every gateway run (coach chat, onboarding ingest, roadmap generation, quizzes, slides) goes through
+`execute_with_fallback` in `services/api/app/hermes.py`. If a run fails with a rate-limit or quota
+error (429, `RESOURCE_EXHAUSTED`, 402/credits), it is retried on the next rung of `FALLBACK_CHAIN`:
+Gemini Flash models newest first, then Flash-Lite, then Gemma, then Hugging Face (paid, `HF_TOKEN`)
+ordered by a tool-call + strict-JSON smoke test. A rate-limited model cools down (65 s, or 30 min
+for daily quotas) so later runs skip it. Other errors are reported as-is, never retried elsewhere.
+
 ## Quiz generation
 
 `POST /api/quiz/generate` sends a JSON-only quiz prompt to `POST /v1/runs` on a
@@ -72,6 +107,10 @@ library; original files stay in memory only.
 - `farq_get_active_roadmap(user_id)` reads the active version, graph, and progress.
 - `farq_record_explicit_fact(...)` records a direct statement or explicit choice.
 - `farq_submit_roadmap_proposal(...)` validates and stores a pending revision.
+- `farq_get_student_profile(user_id)` reads onboarding basics, confirmed evidence and stated facts.
+- `farq_scan_folder(path, purpose)` / `farq_read_project_file(path)` index a student-typed local
+  folder; secrets, keys and identity documents are refused in code.
+- `farq_submit_evidence(user_id, source_id, items)` stores suggested evidence for review.
 
 The plugin calls only `/internal/hermes/*` endpoints with `FARQ_INTERNAL_TOKEN`. It never opens
 SQLite. Hermes cannot accept proposals; the student-facing endpoint performs that transaction.

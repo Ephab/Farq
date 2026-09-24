@@ -19,10 +19,32 @@ export interface SuggestedTopic {
   roadmapNode?: string;
 }
 
+export type SlideLayout = "bullets" | "steps" | "two-column" | "stats" | "quote" | "takeaway";
+
+export const SLIDE_LAYOUTS: SlideLayout[] = ["bullets", "steps", "two-column", "stats", "quote", "takeaway"];
+
+export interface SlideColumn {
+  heading?: string;
+  bullets: string[];
+}
+
+export interface SlideStat {
+  value: string;
+  label: string;
+}
+
 export interface ExtendedSlide {
   title: string;
   bullets: string[];
   speakerNotes?: string;
+  /** Visual structure from the farq-slides skill; unknown values render as bullets. */
+  layout?: SlideLayout;
+  kicker?: string;
+  columns?: SlideColumn[];
+  stats?: SlideStat[];
+  /** One concrete visual idea, rendered as a placeholder block in preview. */
+  visual?: string;
+  quoteCite?: string;
 }
 
 export type SlidesLiveStage = "waiting" | "receiving" | "validating" | "done";
@@ -88,7 +110,52 @@ function sanitizeSlides(input: unknown[]): ExtendedSlide[] {
       : [];
     if (!title || bullets.length === 0) continue;
     const notes = String(r.speaker_notes ?? r.speakerNotes ?? "").trim().slice(0, 1000);
-    out.push({ title: title.slice(0, 160), bullets, speakerNotes: notes || undefined });
+    const rawLayout = String(r.layout ?? "bullets").trim().toLowerCase();
+    const layout: SlideLayout = (SLIDE_LAYOUTS as string[]).includes(rawLayout) ? (rawLayout as SlideLayout) : "bullets";
+    const kicker = String(r.kicker ?? "").trim().slice(0, 60) || undefined;
+    const visual = String(r.visual ?? r.visual_idea ?? r.visualIdea ?? "").trim().slice(0, 200) || undefined;
+    const quoteCite = String(r.quote_cite ?? r.quoteCite ?? "").trim().slice(0, 120) || undefined;
+    let columns: SlideColumn[] | undefined;
+    if (Array.isArray(r.columns)) {
+      const cols = (r.columns as unknown[])
+        .filter((c) => c && typeof c === "object")
+        .map((c) => {
+          const col = c as Record<string, unknown>;
+          return {
+            heading: String(col.heading ?? "").trim().slice(0, 120) || undefined,
+            bullets: (Array.isArray(col.bullets) ? col.bullets : []).map((b) => String(b).trim()).filter(Boolean).slice(0, 4),
+          };
+        })
+        .filter((c) => c.bullets.length > 0)
+        .slice(0, 2);
+      if (cols.length > 0) columns = cols;
+    }
+    let stats: SlideStat[] | undefined;
+    if (Array.isArray(r.stats)) {
+      const figures = (r.stats as unknown[])
+        .filter((st) => st && typeof st === "object")
+        .map((st) => {
+          const row = st as Record<string, unknown>;
+          return {
+            value: String(row.value ?? "").trim().slice(0, 60),
+            label: String(row.label ?? "").trim().slice(0, 120),
+          };
+        })
+        .filter((st) => st.value && st.label)
+        .slice(0, 3);
+      if (figures.length > 0) stats = figures;
+    }
+    out.push({
+      title: title.slice(0, 160),
+      bullets,
+      ...(notes ? { speakerNotes: notes } : {}),
+      ...(layout !== "bullets" ? { layout } : {}),
+      ...(kicker ? { kicker } : {}),
+      ...(columns ? { columns } : {}),
+      ...(stats ? { stats } : {}),
+      ...(visual ? { visual } : {}),
+      ...(quoteCite ? { quoteCite } : {}),
+    });
     if (out.length >= 12) break;
   }
   return out;
@@ -96,7 +163,7 @@ function sanitizeSlides(input: unknown[]): ExtendedSlide[] {
 
 function parseTopicsJson(raw: string): SuggestedTopic[] {
   const cleaned = stripFences(raw);
-  if (!cleaned) throw new SlidesAIError("Model returned an empty answer — try a smaller deck.");
+  if (!cleaned) throw new SlidesAIError("Model returned an empty answer. Try a smaller deck.");
   try {
     const parsed = JSON.parse(cleaned) as { topics?: unknown };
     if (Array.isArray(parsed.topics)) {
@@ -134,7 +201,7 @@ function parseTopicsJson(raw: string): SuggestedTopic[] {
 
 function parseSlidesJson(raw: string): ExtendedSlide[] {
   const cleaned = stripFences(raw);
-  if (!cleaned) throw new SlidesAIError("Model returned an empty answer — try again.");
+  if (!cleaned) throw new SlidesAIError("Model returned an empty answer. Try again.");
   try {
     const parsed = JSON.parse(cleaned) as { slides?: unknown };
     if (Array.isArray(parsed.slides)) {
@@ -178,7 +245,7 @@ function requestFailed(status: number, detail: string, what: string): SlidesAIEr
     );
   if (status === 422) return new SlidesAIError(detail || `Invalid ${what} request.`, status, false);
   if (status === 502 || status === 503 || status === 504)
-    return new SlidesAIError(detail || "Hermes is unavailable or timed out — transient, retry in a bit.", status, true);
+    return new SlidesAIError(detail || "Hermes is unavailable or timed out. Transient, retry in a bit.", status, true);
   return new SlidesAIError(detail || `${what} request failed (${status}).`, status);
 }
 
@@ -334,6 +401,12 @@ export async function exportExtensionPptx(args: {
           title: s.title,
           bullets: s.bullets,
           speaker_notes: s.speakerNotes ?? "",
+          layout: s.layout ?? "bullets",
+          kicker: s.kicker ?? "",
+          columns: (s.columns ?? []).map((c) => ({ heading: c.heading ?? "", bullets: c.bullets })),
+          stats: s.stats ?? [],
+          visual: s.visual ?? "",
+          quote_cite: s.quoteCite ?? "",
         })),
         ...(args.originalPptxBase64 ? { original_pptx_base64: args.originalPptxBase64 } : {}),
         ...(args.originalImagesBase64?.length ? { original_images_base64: args.originalImagesBase64 } : {}),

@@ -325,6 +325,75 @@ def test_extend_design_hint_reaches_prompt(client: TestClient, monkeypatch: pyte
     assert "Dark navy background" in calls["input"]
 
 
+def test_extend_instructions_load_slide_skill_and_layouts():
+    from app.slides import EXTEND_INSTRUCTIONS
+
+    assert "farq-slides" in EXTEND_INSTRUCTIONS
+    for layout in ("two-column", "stats", "quote", "takeaway", "steps"):
+        assert layout in EXTEND_INSTRUCTIONS
+
+
+def test_slide_skill_exists_and_covers_layouts():
+    skill = Path(__file__).resolve().parents[3] / ".hermes" / "skills" / "farq-slides" / "SKILL.md"
+    assert skill.is_file()
+    text = skill.read_text(encoding="utf-8")
+    for layout in ("two-column", "stats", "quote", "takeaway", "steps"):
+        assert layout in text
+
+
+def test_export_renders_rich_layouts(client: TestClient):
+    response = client.post(
+        "/api/slides/export",
+        json={
+            "original_filename": "lecture.pdf",
+            "topic": "Attention mechanisms",
+            "slides": [
+                {"title": "Why attention", "bullets": ["Long-range links", "Parallel training"], "kicker": "Motivation", "layout": "bullets", "visual": "Diagram: RNN chain vs attention star"},
+                {"title": "How it flows", "bullets": ["Score queries", "Weight values", "Mix output"], "layout": "steps"},
+                {"title": "Heads compared", "bullets": ["Local patterns", "Global patterns"], "layout": "two-column",
+                 "columns": [{"heading": "Local heads", "bullets": ["Syntax nearby"]}, {"heading": "Global heads", "bullets": ["Long links"]}]},
+                {"title": "Attention at scale", "bullets": ["Adoption"], "layout": "stats",
+                 "stats": [{"value": "90%", "label": "Top models use it"}, {"value": "2017", "label": "Transformer year"}]},
+                {"title": "What the paper says", "bullets": ["Attention is all you need"], "layout": "quote", "quote_cite": "Vaswani et al."},
+                {"title": "Attention wins", "bullets": ["Use it where order matters less than relations"], "layout": "takeaway"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    from pptx import Presentation
+
+    prs = Presentation(io.BytesIO(response.content))
+    # Divider + 6 new slides (no originals supplied).
+    assert len(prs.slides) == 7
+    assert prs.slides[2].shapes.title.text == "How it flows"
+    # Steps are numbered, stats show values, quote keeps its cite.
+    step_text = prs.slides[2].placeholders[1].text_frame.text
+    assert "1. " in step_text
+    stats_text = prs.slides[4].placeholders[1].text_frame.text
+    assert "90%" in stats_text and "2017" in stats_text
+    quote_text = prs.slides[5].placeholders[1].text_frame.text
+    assert "Vaswani" in quote_text
+    # The visual idea lands in the speaker notes, not the slide body.
+    assert "Visual:" in prs.slides[1].notes_slide.notes_text_frame.text
+
+
+def test_export_unknown_layout_falls_back_to_bullets(client: TestClient):
+    response = client.post(
+        "/api/slides/export",
+        json={
+            "original_filename": "lecture.pdf",
+            "topic": "Attention",
+            "slides": [{"title": "New idea", "bullets": ["Point one", "Point two"], "layout": "hologram"}],
+        },
+    )
+    assert response.status_code == 200
+    from pptx import Presentation
+
+    prs = Presentation(io.BytesIO(response.content))
+    assert len(prs.slides) == 2
+    assert "Point one" in prs.slides[1].placeholders[1].text_frame.text
+
+
 def test_export_rejects_bad_payload(client: TestClient):
     assert client.post("/api/slides/export", json={"original_filename": "a.pdf", "topic": "t", "slides": []}).status_code == 422
     bad = client.post(

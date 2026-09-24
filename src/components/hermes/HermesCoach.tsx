@@ -63,7 +63,7 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
       <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-border">
         <div className="shrink-0 border-b border-border px-5 py-4 sm:px-8"><div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
           <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground"><Bot className="size-5" /></span><div><h1 className="font-semibold">Hermes Coach</h1><p className="text-xs text-muted-foreground">Learns from your words and the paths you choose</p></div></div>
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${agent === "ready" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-700"}`}>{agent === "ready" ? "Agent online" : agent === "checking" ? "Checking agent" : "Agent unavailable"}</span>
+          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${agent === "ready" ? "bg-emerald-500/10 text-emerald-600" : agent === "unavailable" ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-700"}`}>{agent === "ready" ? "Agent online" : agent === "checking" ? "Checking agent" : agent === "degraded" ? "Agent degraded" : "Agent unavailable"}</span>
         </div></div>
         <ChatThreadView
           messages={chat.messages}

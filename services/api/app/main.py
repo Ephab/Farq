@@ -177,10 +177,35 @@ def health() -> dict:
         )
         response.raise_for_status()
         payload = response.json()
-        agent = "ready" if payload.get("status") in {"ok", "ready"} else "degraded"
+        agent = _hermes_agent_status(payload)
     except Exception:
         agent = "unavailable"
     return {"status": "ok", "database": "ready", "agent": agent, "started_at": STARTED_AT, "model": HERMES_MODEL, "provider": HERMES_PROVIDER}
+
+
+def _hermes_agent_status(payload: dict) -> str:
+    """Map the Hermes gateway detailed health to ready/degraded.
+
+    The gateway reports top-level ``degraded`` for non-fatal issues such as
+    a full disk while it can still run (``gateway_state == "running"`` with
+    ``model`` and ``gateway`` checks ok). Treat that as ready so the UI does
+    not claim the agent is down while chat works.
+    """
+    status = payload.get("status") if isinstance(payload, dict) else None
+    if status in {"ok", "ready"}:
+        return "ready"
+    if isinstance(payload, dict) and payload.get("gateway_state") == "running":
+        readiness = payload.get("readiness")
+        checks = readiness.get("checks") if isinstance(readiness, dict) else None
+        if not isinstance(checks, dict):
+            return "ready"
+        critical = []
+        for name in ("model", "gateway"):
+            check = checks.get(name)
+            critical.append(check.get("status") if isinstance(check, dict) else None)
+        if all(item in {"ok", None} for item in critical):
+            return "ready"
+    return "degraded"
 
 
 @app.get("/api/demo")

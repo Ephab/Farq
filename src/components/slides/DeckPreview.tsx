@@ -110,10 +110,276 @@ function VectorShapes({
   );
 }
 
+function AiKicker({ text, theme, deckWidthPx }: { text: string; theme: PptxTheme; deckWidthPx: number }) {
+  return (
+    <div
+      style={{
+        fontFamily: theme.bodyFont,
+        fontWeight: 700,
+        color: theme.accent,
+        fontSize: `${cqw(11, deckWidthPx)}cqw`,
+        letterSpacing: "0.14em",
+        textTransform: "uppercase",
+        marginBottom: "1%",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function AiVisual({ idea, theme, deckWidthPx }: { idea: string; theme: PptxTheme; deckWidthPx: number }) {
+  return (
+    <div
+      className="absolute"
+      style={{ left: "7%", bottom: "4%", width: "86%", border: `1px dashed ${theme.accent}`, borderRadius: 6, padding: "1.2% 2%" }}
+    >
+      <span
+        style={{
+          fontFamily: theme.bodyFont,
+          fontWeight: 700,
+          color: theme.accent,
+          fontSize: `${cqw(10, deckWidthPx)}cqw`,
+          letterSpacing: "0.12em",
+          marginRight: "0.8em",
+        }}
+      >
+        VISUAL
+      </span>
+      <span style={{ fontFamily: theme.bodyFont, color: theme.bodyColor, fontSize: `${cqw(12, deckWidthPx)}cqw`, lineHeight: 1.35 }}>
+        {idea}
+      </span>
+    </div>
+  );
+}
+
+function AiBullets({ bullets, theme, deckWidthPx }: { bullets: string[]; theme: PptxTheme; deckWidthPx: number }) {
+  return (
+    <>
+      {bullets.map((bullet, i) => (
+        <div
+          key={i}
+          style={{
+            fontFamily: theme.bodyFont,
+            color: theme.bodyColor,
+            fontSize: `${cqw(18, deckWidthPx)}cqw`,
+            lineHeight: 1.4,
+            marginBottom: "1.2%",
+            display: "flex",
+            gap: "0.6em",
+          }}
+        >
+          <span style={{ color: theme.accent, flexShrink: 0 }}>•</span>
+          <span>{bullet}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function AiContent({ slide, theme, deckWidthPx }: { slide: ExtendedSlide; theme: PptxTheme; deckWidthPx: number }) {
+  const layout = slide.layout ?? "bullets";
+  const hasVisual = !!slide.visual?.trim();
+  const bodyBottom = hasVisual ? "22%" : "6%";
+
+  if (layout === "takeaway") {
+    return (
+      <>
+        <div className="absolute" style={{ left: "10%", top: "20%", width: "80%", textAlign: "center" }}>
+          {slide.kicker?.trim() ? <AiKicker text={slide.kicker} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+          <div
+            style={{
+              fontFamily: theme.titleFont,
+              fontWeight: 700,
+              color: theme.titleColor,
+              fontSize: `${cqw(36, deckWidthPx)}cqw`,
+              lineHeight: 1.15,
+            }}
+          >
+            {slide.title}
+          </div>
+          <div style={{ background: theme.accent, height: 3, width: "12%", margin: "2.5% auto 0", borderRadius: 2 }} />
+          {slide.bullets[0] ? (
+            <div
+              style={{
+                fontFamily: theme.bodyFont,
+                color: theme.bodyColor,
+                fontSize: `${cqw(18, deckWidthPx)}cqw`,
+                lineHeight: 1.45,
+                marginTop: "2.5%",
+              }}
+            >
+              {slide.bullets[0]}
+            </div>
+          ) : null}
+        </div>
+        {hasVisual ? <AiVisual idea={slide.visual!} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+      </>
+    );
+  }
+
+  if (layout === "quote") {
+    return (
+      <>
+        <div className="absolute" style={{ left: "10%", top: "16%", width: "80%" }}>
+          {slide.kicker?.trim() ? <AiKicker text={slide.kicker} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+          <div
+            style={{
+              fontFamily: theme.titleFont,
+              fontStyle: "italic",
+              fontWeight: 700,
+              color: theme.titleColor,
+              fontSize: `${cqw(26, deckWidthPx)}cqw`,
+              lineHeight: 1.3,
+            }}
+          >
+            &ldquo;{slide.bullets[0]}&rdquo;
+          </div>
+          {slide.quoteCite?.trim() ? (
+            <div
+              style={{
+                fontFamily: theme.bodyFont,
+                color: theme.bodyColor,
+                fontSize: `${cqw(15, deckWidthPx)}cqw`,
+                marginTop: "2%",
+              }}
+            >
+              &mdash; {slide.quoteCite}
+            </div>
+          ) : null}
+        </div>
+        {hasVisual ? <AiVisual idea={slide.visual!} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+      </>
+    );
+  }
+
+  if (layout === "stats") {
+    const figures = slide.stats?.length ? slide.stats : null;
+    return (
+      <>
+        <div className="absolute" style={{ left: "7%", top: "6%", width: "86%" }}>
+          {slide.kicker?.trim() ? <AiKicker text={slide.kicker} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+          <div
+            style={{
+              fontFamily: theme.titleFont,
+              fontWeight: 700,
+              color: theme.titleColor,
+              fontSize: `${cqw(30, deckWidthPx)}cqw`,
+              lineHeight: 1.15,
+            }}
+          >
+            {slide.title}
+          </div>
+          <div style={{ background: theme.accent, height: 3, width: "12%", marginTop: "1.5%", borderRadius: 2 }} />
+        </div>
+        <div className="absolute" style={{ left: "7%", top: "34%", width: "86%", display: "flex", gap: "4%" }}>
+          {figures ? (
+            figures.map((stat, i) => (
+              <div key={i} style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontFamily: theme.titleFont,
+                    fontWeight: 700,
+                    color: theme.accent,
+                    fontSize: `${cqw(34, deckWidthPx)}cqw`,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {stat.value}
+                </div>
+                <div
+                  style={{
+                    fontFamily: theme.bodyFont,
+                    color: theme.bodyColor,
+                    fontSize: `${cqw(14, deckWidthPx)}cqw`,
+                    lineHeight: 1.4,
+                    marginTop: "1%",
+                  }}
+                >
+                  {stat.label}
+                </div>
+              </div>
+            ))
+          ) : (
+            <AiBullets bullets={slide.bullets} theme={theme} deckWidthPx={deckWidthPx} />
+          )}
+        </div>
+        {hasVisual ? <AiVisual idea={slide.visual!} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+      </>
+    );
+  }
+
+  if (layout === "two-column") {
+    const cols = slide.columns?.length === 2
+      ? slide.columns
+      : [
+          { heading: undefined, bullets: slide.bullets.filter((_, i) => i % 2 === 0) },
+          { heading: undefined, bullets: slide.bullets.filter((_, i) => i % 2 === 1) },
+        ];
+    return (
+      <>
+        <div className="absolute" style={{ left: "7%", top: "6%", width: "86%" }}>
+          {slide.kicker?.trim() ? <AiKicker text={slide.kicker} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+          <div
+            style={{
+              fontFamily: theme.titleFont,
+              fontWeight: 700,
+              color: theme.titleColor,
+              fontSize: `${cqw(30, deckWidthPx)}cqw`,
+              lineHeight: 1.15,
+            }}
+          >
+            {slide.title}
+          </div>
+          <div style={{ background: theme.accent, height: 3, width: "12%", marginTop: "1.5%", borderRadius: 2 }} />
+        </div>
+        <div className="absolute" style={{ left: "7%", top: "34%", width: "86%", display: "flex", gap: "6%" }}>
+          {cols.map((col, i) => (
+            <div key={i} style={{ flex: 1, minWidth: 0 }}>
+              {col.heading ? (
+                <div
+                  style={{
+                    fontFamily: theme.titleFont,
+                    fontWeight: 700,
+                    color: theme.titleColor,
+                    fontSize: `${cqw(17, deckWidthPx)}cqw`,
+                    lineHeight: 1.3,
+                    marginBottom: "2%",
+                  }}
+                >
+                  {col.heading}
+                </div>
+              ) : null}
+              {col.bullets.map((bullet, j) => (
+                <div
+                  key={j}
+                  style={{
+                    fontFamily: theme.bodyFont,
+                    color: theme.bodyColor,
+                    fontSize: `${cqw(16, deckWidthPx)}cqw`,
+                    lineHeight: 1.4,
+                    marginBottom: "2%",
+                    display: "flex",
+                    gap: "0.6em",
+                  }}
+                >
+                  <span style={{ color: theme.accent, flexShrink: 0 }}>•</span>
+                  <span>{bullet}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        {hasVisual ? <AiVisual idea={slide.visual!} theme={theme} deckWidthPx={deckWidthPx} /> : null}
+      </>
+    );
+  }
+
+  // bullets + steps share the header; steps render numbered.
   return (
     <>
       <div className="absolute" style={{ left: "7%", top: "6%", width: "86%" }}>
+        {slide.kicker?.trim() ? <AiKicker text={slide.kicker} theme={theme} deckWidthPx={deckWidthPx} /> : null}
         <div
           style={{
             fontFamily: theme.titleFont,
@@ -127,25 +393,41 @@ function AiContent({ slide, theme, deckWidthPx }: { slide: ExtendedSlide; theme:
         </div>
         <div style={{ background: theme.accent, height: 3, width: "12%", marginTop: "1.5%", borderRadius: 2 }} />
       </div>
-      <div className="absolute" style={{ left: "7%", top: "30%", width: "86%" }}>
-        {slide.bullets.map((bullet, i) => (
-          <div
-            key={i}
-            style={{
-              fontFamily: theme.bodyFont,
-              color: theme.bodyColor,
-              fontSize: `${cqw(18, deckWidthPx)}cqw`,
-              lineHeight: 1.4,
-              marginBottom: "1.2%",
-              display: "flex",
-              gap: "0.6em",
-            }}
-          >
-            <span style={{ color: theme.accent, flexShrink: 0 }}>•</span>
-            <span>{bullet}</span>
-          </div>
-        ))}
+      <div className="absolute" style={{ left: "7%", top: slide.kicker?.trim() ? "34%" : "30%", width: "86%", bottom: bodyBottom, overflow: "hidden" }}>
+        {layout === "steps" ? (
+          slide.bullets.map((bullet, i) => (
+            <div
+              key={i}
+              style={{
+                fontFamily: theme.bodyFont,
+                color: theme.bodyColor,
+                fontSize: `${cqw(18, deckWidthPx)}cqw`,
+                lineHeight: 1.4,
+                marginBottom: "1.6%",
+                display: "flex",
+                gap: "0.7em",
+                alignItems: "baseline",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: theme.titleFont,
+                  fontWeight: 700,
+                  color: theme.accent,
+                  fontSize: `${cqw(20, deckWidthPx)}cqw`,
+                  flexShrink: 0,
+                }}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span>{bullet}</span>
+            </div>
+          ))
+        ) : (
+          <AiBullets bullets={slide.bullets} theme={theme} deckWidthPx={deckWidthPx} />
+        )}
       </div>
+      {hasVisual ? <AiVisual idea={slide.visual!} theme={theme} deckWidthPx={deckWidthPx} /> : null}
     </>
   );
 }
@@ -221,6 +503,8 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       if (e.key === "ArrowRight") go(index + 1);
       else if (e.key === "ArrowLeft") go(index - 1);
     };
@@ -235,7 +519,8 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
   const dividerAt = slides.findIndex((s) => s.isNew);
 
   return (
-    <div>
+    <div className="w-full min-w-0">
+      {/* Shape lock: viewer rounded-2xl, thumbs rounded-lg, arrows/badges rounded-full */}
       <div className="relative overflow-hidden rounded-2xl border border-border shadow-sm" style={{ aspectRatio: `${aspect}` }}>
         <SlideFrame slide={current} deckWidthPx={deckWidthPx} titleFont={current.theme.titleFont} bodyFont={current.theme.bodyFont} />
         {total > 1 ? (
@@ -244,7 +529,7 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
               type="button"
               onClick={() => go(index - 1)}
               aria-label="Previous slide"
-              className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur transition-transform hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
             >
               <ChevronLeft className="size-5" aria-hidden="true" />
             </button>
@@ -252,7 +537,7 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
               type="button"
               onClick={() => go(index + 1)}
               aria-label="Next slide"
-              className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur transition-transform hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
             >
               <ChevronRight className="size-5" aria-hidden="true" />
             </button>

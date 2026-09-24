@@ -127,7 +127,7 @@ export function ActiveJobList({ jobs, onCancel, onRetry, onFallback, onDismiss }
                       {job.liveStage === "receiving" && job.total > 0
                         ? ` · ${Math.min(job.parsed, job.total)}/${job.total} questions`
                         : ""}
-                      {" · "}{job.difficulty}
+                      {", "}{job.difficulty}
                     </p>
                     <p className="text-xs tabular-nums text-muted-foreground">
                       {pct}% · {elapsed}s

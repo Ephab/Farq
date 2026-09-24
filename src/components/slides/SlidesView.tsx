@@ -79,7 +79,7 @@ export function SlidesView() {
     libraryRef.current = next;
     setLibrary(next);
     if (!saveLibrary(next)) {
-      setError("Browser storage is full — delete old decks or extensions to free space.");
+      setError("Browser storage is full. Delete old decks or extensions to free space.");
     }
   }, []);
 
@@ -344,7 +344,7 @@ export function SlidesView() {
         const charsPerPage = deck.units > 0 ? Math.round(deck.chars / deck.units) : 0;
         return [
           `PDF document with ${deck.units} pages (${pages} rendered as full-page images; visually structured)`,
-          "original fonts/colors not extracted — use clean light slides (#FFFFFF backgrounds, short titles, parallel bullets)",
+          "original fonts/colors not extracted, use clean light slides (#FFFFFF backgrounds, short titles, parallel bullets)",
           charsPerPage ? `dense pages (~${charsPerPage} chars/page); keep bullets concise and visual-friendly` : null,
           "suggest one visual idea in speaker_notes where a diagram would help",
         ]

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bot, CheckCircle2, LoaderCircle } from "lucide-react"
+import { Bot, LoaderCircle } from "lucide-react"
 import { EvidenceReview } from "@/components/onboarding/EvidenceReview"
 import { SourcesStep } from "@/components/onboarding/SourcesStep"
 import { api, getCurrentStudentId, type StudentProfile } from "@/lib/farq-api"
@@ -31,17 +31,23 @@ export function MyDataView({ onAskHermes }: MyDataViewProps) {
     ? `I added new records to my profile: ${kept.slice(0, 15).join(", ")}${kept.length > 15 ? `, and ${kept.length - 15} more` : ""}. Please review my confirmed evidence and propose any roadmap updates.`
     : ""
   return (
-    <div className="mx-auto w-full max-w-xl p-4 sm:p-8">
-      <CheckCircle2 className="size-7 text-emerald-600" />
-      <h1 className="mt-3 text-lg font-semibold">{kept.length ? `Saved ${kept.length} new item${kept.length === 1 ? "" : "s"} to your profile` : "Nothing new to save"}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {kept.length
-          ? "Your roadmap hasn't changed. Hermes can suggest updates based on these; finished and in-progress topics stay as they are, and nothing changes until you accept."
-          : "Add a source when you're ready."}
-      </p>
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button type="button" onClick={() => setStep("sources")} className="h-10 rounded-xl border border-border px-4 text-sm">Add more</button>
-        {kept.length ? <button type="button" onClick={() => onAskHermes(draft)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground"><Bot className="size-4" />Ask Hermes to update my roadmap</button> : null}
+    <div className="h-[calc(100dvh-4rem)] overflow-y-auto bg-background">
+      <div className="mx-auto w-full max-w-[760px] px-4 py-10 sm:px-8">
+        <section className="rounded-[32px] border border-border bg-card p-8 text-center shadow-sm sm:p-14">
+          <span className="mx-auto mb-5 grid size-[52px] place-items-center rounded-full bg-emerald-500/10 text-xl font-bold text-emerald-600">✓</span>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">Profile updated</p>
+          <h1 className="mx-auto mt-2 max-w-[16ch] text-4xl font-semibold tracking-tight sm:text-5xl">{kept.length ? `${kept.length} record${kept.length === 1 ? "" : "s"} saved.` : "Nothing new to save."}</h1>
+          <p className="mx-auto mt-4 max-w-[56ch] text-[15px] text-muted-foreground">
+            {kept.length
+              ? "Your roadmap has not changed. Hermes can compare these records with future milestones and draft changes for your review."
+              : "Add a source when you're ready."}
+          </p>
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
+            {kept.length ? <button type="button" onClick={() => onAskHermes(draft)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"><Bot className="size-4" />Review roadmap suggestions →</button> : null}
+            <button type="button" onClick={() => setStep("sources")} className="inline-flex min-h-11 items-center rounded-full border border-border bg-card px-5 text-sm font-semibold outline-none transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Add more records</button>
+          </div>
+        </section>
+        <p className="mt-4 text-center text-[13px] text-muted-foreground">Completed work stays protected · Nothing changes silently</p>
       </div>
     </div>
   )

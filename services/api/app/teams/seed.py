@@ -172,7 +172,7 @@ def seed_teams(db: Session) -> None:
     team = Team(id="team-falcon", assignment_id="asg-swe363-term", name="Team Falcon", cover_seed="f41c0n5eed01", lead_user_id="demo-student", charter_json=json.dumps(FALCON_CHARTER), created_at=ago(9.2))
     db.add(team)
     db.flush()
-    members = {user_id: TeamMember(team_id=team.id, user_id=user_id, role_label=FALCON_CHARTER["roles"][user_id], joined_at=ago(9.2 - index * 0.05)) for index, user_id in enumerate(FALCON)}
+    members = {user_id: TeamMember(team_id=team.id, assignment_id=team.assignment_id, user_id=user_id, role_label=FALCON_CHARTER["roles"][user_id], joined_at=ago(9.2 - index * 0.05)) for index, user_id in enumerate(FALCON)}
     db.add_all(members.values())
     for milestone_id, title, deliverable, due in FALCON_MILESTONES:
         db.add(Milestone(id=milestone_id, team_id=team.id, title=title, deliverable_key=deliverable, due=due, created_at=ago(8.1)))

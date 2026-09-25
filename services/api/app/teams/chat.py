@@ -14,6 +14,7 @@ from ..models import now
 from .common import Db, iso, loads, require, require_team
 from .events import emit
 from .models import Decision, MessageReaction, TeamMember, TeamMessage
+from .models import PollVote as PollVoteRow
 from .policy import authorize
 
 router = APIRouter()
@@ -53,12 +54,24 @@ def reactions_for(db: Session, message_ids: list[str]) -> dict[str, dict[str, li
     return {message_id: dict(emojis) for message_id, emojis in grouped.items()}
 
 
-def message_dict(message: TeamMessage, reactions: dict[str, list[str]] | None = None) -> dict:
+def votes_for(db: Session, message_ids: list[str]) -> dict[str, dict[str, int]]:
+    grouped: dict[str, dict[str, int]] = defaultdict(dict)
+    if message_ids:
+        for vote in db.scalars(select(PollVoteRow).where(PollVoteRow.message_id.in_(message_ids))).all():
+            grouped[vote.message_id][vote.user_id] = vote.option
+    return dict(grouped)
+
+
+def message_dict(message: TeamMessage, reactions: dict[str, list[str]] | None = None, votes: dict[str, int] | None = None) -> dict:
+    """Poll tallies live in `poll_votes` (one row per voter); pass them in as `votes`."""
     deleted = message.deleted_at is not None
+    metadata = None if deleted else loads(message.metadata_json, None)
+    if message.kind == "poll" and metadata is not None:
+        metadata = {**metadata, "votes": votes or {}}
     return {
         "id": message.id, "team_id": message.team_id, "author_user_id": message.author_user_id, "kind": message.kind,
         "content": "" if deleted else message.content,
-        "metadata": None if deleted else loads(message.metadata_json, None),
+        "metadata": metadata,
         "reply_to_id": message.reply_to_id, "visible_to_user_id": message.visible_to_user_id,
         "created_at": iso(message.created_at), "edited_at": iso(message.edited_at), "deleted": deleted,
         "reactions": reactions or {},
@@ -99,7 +112,7 @@ def _visible_message(db: Session, message_id: str, user_id: str) -> TeamMessage:
 
 
 def _emit_edited(db: Session, message: TeamMessage, actor: str) -> dict:
-    payload = message_dict(message, reactions_for(db, [message.id]).get(message.id))
+    payload = message_dict(message, reactions_for(db, [message.id]).get(message.id), votes_for(db, [message.id]).get(message.id))
     emit(db, message.team_id, "message.edited", actor, payload, visible_to_user_id=message.visible_to_user_id)
     return payload
 
@@ -118,7 +131,7 @@ def create_message(team_id: str, body: MessageCreate, db: Db, user: CurrentUser)
         options = [option.strip()[:120] for option in body.poll_options if option.strip()]
         if len(options) < 2:
             raise HTTPException(422, "A poll needs at least two options")
-        kind, metadata = "poll", {"options": options, "votes": {}}
+        kind, metadata = "poll", {"options": options}
     message = post_message(db, team.id, user.id, content, kind=kind, metadata=metadata, reply_to_id=body.reply_to_id)
     db.commit()
     return message_dict(message)
@@ -182,8 +195,12 @@ def vote_in_poll(message_id: str, body: PollVote, db: Db, user: CurrentUser) -> 
     metadata = loads(message.metadata_json, {})
     if body.option >= len(metadata.get("options", [])):
         raise HTTPException(422, "Unknown poll option")
-    metadata.setdefault("votes", {})[user.id] = body.option
-    message.metadata_json = json.dumps(metadata, ensure_ascii=False)
+    vote = db.scalar(select(PollVoteRow).where(PollVoteRow.message_id == message.id, PollVoteRow.user_id == user.id))
+    if vote is None:
+        db.add(PollVoteRow(message_id=message.id, user_id=user.id, option=body.option))
+    else:
+        vote.option = body.option
+    db.flush()
     payload = _emit_edited(db, message, user.id)
     db.commit()
     return payload

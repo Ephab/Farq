@@ -1,24 +1,26 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..identity import CurrentUser
 from ..models import now
 from .chat import post_message
-from .common import Db, iso, loads, require, require_team
+from .common import Db, iso, loads, require, require_team, utc
 from .events import emit
 from .models import Milestone, Task, Team, TeamMember
 from .policy import authorize
 
 router = APIRouter()
 TASK_STATUSES = ("todo", "doing", "review", "done")
+UtcDatetime = Annotated[datetime | None, AfterValidator(utc)]
 
 
 class TaskCreate(BaseModel):
@@ -26,7 +28,7 @@ class TaskCreate(BaseModel):
     description: str = Field(default="", max_length=5000)
     assignee_id: str | None = None
     estimate_points: int = Field(default=1, ge=1, le=8)
-    due: datetime | None = None
+    due: UtcDatetime = None
     depends_on: list[str] = Field(default_factory=list, max_length=20)
     milestone_id: str | None = None
     rubric_refs: list[str] = Field(default_factory=list, max_length=12)
@@ -38,7 +40,7 @@ class TaskPatch(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     assignee_id: str | None = None
     estimate_points: int | None = Field(default=None, ge=1, le=8)
-    due: datetime | None = None
+    due: UtcDatetime = None
     depends_on: list[str] | None = Field(default=None, max_length=20)
     milestone_id: str | None = None
     rubric_refs: list[str] | None = Field(default=None, max_length=12)
@@ -51,13 +53,13 @@ class TaskMove(BaseModel):
 
 class MilestoneCreate(BaseModel):
     title: str = Field(min_length=1, max_length=160)
-    due: datetime | None = None
+    due: UtcDatetime = None
     deliverable_key: str | None = Field(default=None, max_length=24)
 
 
 class MilestonePatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
-    due: datetime | None = None
+    due: UtcDatetime = None
 
 
 def task_dict(task: Task) -> dict:
@@ -154,6 +156,7 @@ def create_task(team_id: str, body: TaskCreate, db: Db, user: CurrentUser) -> di
     db.add(task)
     db.flush()
     emit(db, team.id, "task.created", user.id, task_dict(task))
+    _sync_milestone(db, team.id, task.milestone_id, user.id)
     db.commit()
     return task_dict(task)
 
@@ -199,6 +202,10 @@ def move_task(task_id: str, body: TaskMove, db: Db, user: CurrentUser) -> dict:
     task = require(db, Task, task_id, "Task")
     team = require_team(db, task.team_id)
     authorize(db, user, team, "write")
+    if body.position is not None and not math.isfinite(body.position):
+        # Checked here, not by Pydantic: its 422 body would echo inf/NaN, which is not JSON,
+        # and a stored Infinity would break every client's JSON.parse of the event.
+        raise HTTPException(422, "Position must be a finite number")
     previous = task.status
     position = body.position if body.position is not None else _next_position(db, team.id, body.status)
     task.status = body.status

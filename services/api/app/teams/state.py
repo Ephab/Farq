@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from sqlalchemy import func, select
 
 from ..identity import CurrentUser, User
-from .chat import decision_dict, message_dict, reactions_for
+from .chat import decision_dict, message_dict, reactions_for, votes_for
 from .common import Db, require_team
 from .docs import document_dict
 from .models import Decision, DocSection, Milestone, Task, TeamDocument, TeamEvent, TeamMember, TeamMessage
@@ -40,7 +40,8 @@ def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
             ).order_by(TeamMessage.created_at.desc()).limit(MESSAGE_WINDOW)
         ).all()[::-1]
         reactions = reactions_for(db, [row.id for row in rows])
-        messages = [message_dict(row, reactions.get(row.id)) for row in rows]
+        votes = votes_for(db, [row.id for row in rows if row.kind == "poll"])
+        messages = [message_dict(row, reactions.get(row.id), votes.get(row.id)) for row in rows]
         last_seen = db.scalar(select(TeamMember.last_seen_seq).where(TeamMember.team_id == team.id, TeamMember.user_id == user.id))
     return {
         "team": team_dict(db, team, role), "tasks": [task_dict(item) for item in tasks],

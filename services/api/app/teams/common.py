@@ -20,6 +20,14 @@ def aware(value: datetime | None) -> datetime | None:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
+def utc(value: datetime | None) -> datetime | None:
+    """Normalise an incoming datetime to UTC before storage: SQLite keeps the
+    wall-clock time and drops the offset, so "10:00+03:00" must become 07:00Z."""
+    if value is None:
+        return None
+    return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
 def iso(value: datetime | None) -> str | None:
     value = aware(value)
     return value.isoformat() if value else None

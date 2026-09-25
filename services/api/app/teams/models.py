@@ -62,9 +62,15 @@ class Team(Base):
 
 class TeamMember(Base):
     __tablename__ = "team_members"
-    __table_args__ = (UniqueConstraint("team_id", "user_id", name="uq_team_member"),)
+    # One team per student per assignment, enforced by the database so racing
+    # "create team" / "accept invite" requests cannot both succeed.
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", name="uq_team_member"),
+        UniqueConstraint("assignment_id", "user_id", name="uq_team_member_assignment"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     team_id: Mapped[str] = mapped_column(ForeignKey("teams.id"), index=True)
+    assignment_id: Mapped[str] = mapped_column(ForeignKey("assignments.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     role_label: Mapped[str] = mapped_column(String(40), default="")
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -150,6 +156,17 @@ class MessageReaction(Base):
     message_id: Mapped[str] = mapped_column(ForeignKey("team_messages.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     emoji: Mapped[str] = mapped_column(String(16))
+
+
+class PollVote(Base):
+    """One row per voter, so concurrent votes never overwrite each other."""
+
+    __tablename__ = "poll_votes"
+    __table_args__ = (UniqueConstraint("message_id", "user_id", name="uq_poll_vote"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    message_id: Mapped[str] = mapped_column(ForeignKey("team_messages.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    option: Mapped[int] = mapped_column(Integer)
 
 
 class TeamDocument(Base):

@@ -5,6 +5,7 @@ import hashlib
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..identity import CurrentUser, User, user_dict
@@ -141,6 +142,28 @@ def teams_home(db: Db, user: CurrentUser) -> dict:
     return {"user": user_dict(user), "teams": cards, "needs_team": needs, "invites": [invite_dict(db, item) for item in invites]}
 
 
+def _join(db: Session, team: Team, user: User, role_label: str = "") -> None:
+    """Add a membership and cancel the user's other pending invites for this
+    assignment. The unique (assignment_id, user_id) constraint makes a racing
+    second join fail here instead of leaving the student on two teams."""
+    db.add(TeamMember(team_id=team.id, assignment_id=team.assignment_id, user_id=user.id, role_label=role_label))
+    try:
+        db.flush()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, "You already have a team for this assignment") from error
+    stale = db.scalars(
+        select(TeamInvite).join(Team, Team.id == TeamInvite.team_id).where(
+            Team.assignment_id == team.assignment_id, TeamInvite.invited_user_id == user.id,
+            TeamInvite.status == "pending", TeamInvite.team_id != team.id,
+        )
+    ).all()
+    for invite in stale:
+        invite.status = "cancelled"
+        emit(db, invite.team_id, "invite.cancelled", user.id, {"id": invite.id, "user_id": user.id})
+    emit(db, team.id, "member.joined", user.id, {"user_id": user.id, "display_name": user.display_name})
+
+
 @router.post("/api/assignments/{assignment_id}/teams", status_code=201)
 def create_team(assignment_id: str, body: TeamCreate, db: Db, user: CurrentUser) -> dict:
     assignment = require(db, Assignment, assignment_id, "Assignment")
@@ -156,8 +179,7 @@ def create_team(assignment_id: str, body: TeamCreate, db: Db, user: CurrentUser)
     team = Team(assignment_id=assignment.id, name=name, cover_seed=seed, lead_user_id=user.id)
     db.add(team)
     db.flush()
-    db.add(TeamMember(team_id=team.id, user_id=user.id, role_label="Lead"))
-    emit(db, team.id, "member.joined", user.id, {"user_id": user.id, "display_name": user.display_name})
+    _join(db, team, user, "Lead")
     db.commit()
     return team_dict(db, team, "lead")
 
@@ -203,9 +225,8 @@ def accept_invite(invite_id: str, db: Db, user: CurrentUser) -> dict:
         raise HTTPException(409, "You already joined a team for this assignment")
     if len(_members(db, team.id)) >= assignment.team_size_max:
         raise HTTPException(409, "This team filled up")
-    db.add(TeamMember(team_id=team.id, user_id=user.id))
     invite.status = "accepted"
-    emit(db, team.id, "member.joined", user.id, {"user_id": user.id, "display_name": user.display_name})
+    _join(db, team, user)
     db.commit()
     return team_dict(db, team, "member")
 

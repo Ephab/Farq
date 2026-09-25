@@ -75,7 +75,7 @@ def make_world(students: int = 4, team_members: int = 3, size_max: int = 4) -> d
             db.add(team)
             db.flush()
             for student_id in ids[:team_members]:
-                db.add(TeamMember(team_id=team.id, user_id=student_id))
+                db.add(TeamMember(team_id=team.id, assignment_id=assignment.id, user_id=student_id))
             team_id = team.id
         db.commit()
         return {"course_id": course.id, "assignment_id": assignment.id, "team_id": team_id, "students": ids, "instructor": instructor.id, "outsider": outsider}

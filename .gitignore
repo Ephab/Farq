@@ -23,10 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 
-# Personal local runners (not for sharing). The macOS/Linux runner is checked in
-# because tests/test_hermes_packaging.py imports it to verify skill provisioning.
+# Personal local runners (not for sharing). The macOS/Linux and Windows runners are
+# checked in because tests/test_hermes_packaging.py imports them to verify skill provisioning.
 scripts/firas_*.py
 !scripts/firas_run_mac.py
+!scripts/firas_run_windows.py
 
 # Environment and local runtime state
 .env

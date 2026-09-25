@@ -171,6 +171,42 @@ def register(ctx):
             },
             lambda p, **_: request("POST", "/internal/hermes/roadmap-proposals", p),
         ),
+        (
+            "farq_get_project",
+            "Read one project's accepted brief, rubric, progress, and evaluation history.",
+            {
+                "type": "object",
+                "properties": {"project_id": {"type": "string"}},
+                "required": ["project_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/projects/{p['project_id']}"),
+        ),
+        (
+            "farq_submit_project_refinement",
+            "Submit a refined project brief as a draft. The student must explicitly accept it before it changes the roadmap.",
+            {
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "brief": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"}, "problem": {"type": "string"}, "objective": {"type": "string"},
+                            "deliverables": {"type": "array", "items": {"type": "string"}},
+                            "milestones": {"type": "array", "items": {"type": "string"}},
+                            "constraints": {"type": "array", "items": {"type": "string"}},
+                            "tools": {"type": "array", "items": {"type": "string"}},
+                            "resources": {"type": "array", "items": {"type": "object", "properties": {"label": {"type": "string"}, "url": {"type": "string"}}, "required": ["label", "url"]}},
+                            "rubric": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "description": {"type": "string"}, "weight": {"type": "integer"}}, "required": ["id", "title", "weight"]}},
+                        },
+                        "required": ["title", "problem", "objective", "deliverables", "rubric"],
+                    },
+                    "source": {"type": "string", "const": "hermes"},
+                },
+                "required": ["project_id", "brief"],
+            },
+            lambda p, **_: request("POST", f"/internal/hermes/projects/{p['project_id']}/refinements", {"brief": p["brief"], "source": "hermes"}),
+        ),
     ]
     for name, description, parameters, handler in tools:
         ctx.register_tool(

@@ -15,6 +15,7 @@ interface RoadmapCanvasProps {
   dimmedIds: Set<string>;
   onSelect: (id: string | null) => void;
   onToggleDone: (id: string) => void;
+  onOpenProject?: (projectId: string) => void;
 }
 
 const MIN_ZOOM = 0.4;
@@ -28,6 +29,7 @@ export function RoadmapCanvas({
   dimmedIds,
   onSelect,
   onToggleDone,
+  onOpenProject,
 }: RoadmapCanvasProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -185,6 +187,7 @@ export function RoadmapCanvas({
                   index={i}
                   onSelect={onSelect}
                   onToggleDone={onToggleDone}
+                  onOpenProject={onOpenProject}
                 />
               );
             })}

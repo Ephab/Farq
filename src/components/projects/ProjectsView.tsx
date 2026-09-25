@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ArrowRight, ExternalLink } from "lucide-react"
+import { ProjectWorkspace } from "@/components/projects/ProjectWorkspace"
 import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap"
 import {
   api,
@@ -9,6 +10,7 @@ import {
   notifyRoadmapChanged,
   ROADMAP_CHANGED_EVENT,
   type EvidenceItem,
+  type FarqProject,
 } from "@/lib/farq-api"
 import { cn } from "@/lib/utils"
 
@@ -19,6 +21,9 @@ interface RoadmapResponse {
 
 interface ProjectsViewProps {
   onNavigate: (tab: string) => void
+  selectedProjectId?: string | null
+  onSelectProject?: (projectId: string | null) => void
+  onAskHermes?: (prompt: string) => void
 }
 
 function statusLabel(status: NodeStatus): string {
@@ -33,7 +38,7 @@ function nextAction(status: NodeStatus): { label: string; next: NodeStatus } {
   return { label: "Start", next: "in-progress" }
 }
 
-export function ProjectsView({ onNavigate }: ProjectsViewProps) {
+export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectProject = () => undefined, onAskHermes = () => undefined }: ProjectsViewProps) {
   const studentId = getCurrentStudentId()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,17 +46,20 @@ export function ProjectsView({ onNavigate }: ProjectsViewProps) {
   const [stages, setStages] = useState<RoadmapStage[]>([])
   const [evidence, setEvidence] = useState<EvidenceItem[]>([])
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [projects, setProjects] = useState<FarqProject[]>([])
 
   const load = useCallback(async () => {
     setError(null)
     try {
-      const [roadmap, items] = await Promise.all([
+      const [roadmap, items, projectItems] = await Promise.all([
         api<RoadmapResponse>(`/api/students/${studentId}/roadmap`),
         api<EvidenceItem[]>(`/api/students/${studentId}/evidence`).catch(() => [] as EvidenceItem[]),
+        api<FarqProject[]>(`/api/students/${studentId}/projects`).catch(() => [] as FarqProject[]),
       ])
       setNodes(roadmap.snapshot.nodes)
       setStages(roadmap.snapshot.stages)
       setEvidence(items)
+      setProjects(projectItems)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load projects")
     } finally {
@@ -84,6 +92,7 @@ export function ProjectsView({ onNavigate }: ProjectsViewProps) {
     (node: RoadmapNodeData) => stages.find((stage) => stage.nodeIds.includes(node.id)),
     [stages],
   )
+  const selectedProject = projects.find((item) => item.id === selectedProjectId) ?? null
 
   const setNodeStatus = useCallback(
     async (id: string, status: NodeStatus) => {
@@ -103,6 +112,10 @@ export function ProjectsView({ onNavigate }: ProjectsViewProps) {
     },
     [studentId],
   )
+
+  if (selectedProject) {
+    return <ProjectWorkspace project={selectedProject} onBack={() => onSelectProject(null)} onRefresh={() => void load()} onAskHermes={(prompt) => { onAskHermes(prompt); onNavigate("Hermes Coach") }} />
+  }
 
   if (loading) {
     return (
@@ -160,6 +173,7 @@ export function ProjectsView({ onNavigate }: ProjectsViewProps) {
             const status = (node.status ?? "not-started") as NodeStatus
             const action = nextAction(status)
             const stage = stageOf(node)
+            const project = node.projectId ? projects.find((item) => item.id === node.projectId) : projects.find((item) => item.roadmap_node_id === node.id)
             return (
               <article key={node.id} className="flex flex-col rounded-2xl border border-border p-6 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
@@ -175,6 +189,7 @@ export function ProjectsView({ onNavigate }: ProjectsViewProps) {
                   </span>
                   <span className="text-xs text-muted-foreground">{node.duration}</span>
                 </div>
+                {project?.latest_score !== null && project?.latest_score !== undefined ? <p className="mt-3 text-3xl font-semibold tabular-nums">{project.latest_score}% <span className="text-xs font-medium text-muted-foreground">latest evaluation</span></p> : null}
                 <h2 className="mt-3 text-xl font-semibold">{node.title}</h2>
                 {node.tagline || node.description ? (
                   <p className="mt-1.5 text-sm text-muted-foreground">
@@ -233,11 +248,12 @@ export function ProjectsView({ onNavigate }: ProjectsViewProps) {
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+                  {node.nodeType === "project" && project ? <button type="button" onClick={() => onSelectProject(project.id)} className="inline-flex h-9 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">Open workspace</button> : null}
                   <button
                     type="button"
                     disabled={savingId === node.id}
                     onClick={() => void setNodeStatus(node.id, action.next)}
-                    className="inline-flex h-9 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    className="inline-flex h-9 items-center rounded-xl border border-border px-4 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
                     {savingId === node.id ? "Saving…" : action.label}
                   </button>

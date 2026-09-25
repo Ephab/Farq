@@ -5,6 +5,20 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 
 ## What was built
 
+### Project milestones and evaluator backbone
+- Staged generation now labels stage types and requires one final project for each new
+  `skill_sequence`; legacy plans without stage types remain readable.
+- Roadmap project nodes materialize into persistent briefs with weighted rubrics, explicit draft
+  acceptance, submissions, evaluation attempts, latest/best scores and completion history.
+- Firas's Projects view is extended into Brief, Refine, Submit and Evaluations workspaces. Project
+  nodes open it on double-click/right-click; normal nodes keep their completion shortcut.
+- Hermes has bounded `farq_get_project` / `farq_submit_project_refinement` tools and a
+  `farq-project-coach` skill. Drafts never apply themselves.
+- `scripts/evaluator.ps1` starts the authenticated host worker. It accepts public GitHub, ZIP and
+  local-directory snapshots and runs only fixed recipes inside disposable limited Docker containers.
+- Evaluation progress is available through SSE. A successful evaluation marks the milestone done at
+  any score; the rating communicates quality separately and can be improved through retakes.
+
 ### Current Saudi hackathons
 - Hackathonat is the primary cached source. FastAPI refreshes its public JSON feed every six hours
   in Docker, preserves the last good cache on failure, and ranks matches without an LLM.
@@ -92,7 +106,8 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 ### 6. Smaller fixes
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.
 - `scripts/dev.ps1` re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start.
-  `scripts/firas_run_mac.py` copies the same set (every dir under `.hermes/skills`); Docker mounts each
+  `scripts/firas_run_mac.py` and its Windows port `scripts/run_windows.py` copy the same set
+  (every dir under `.hermes/skills`); Docker mounts each
   skill into `/opt/data/skills`. `tests/test_hermes_packaging.py` fails if a checked-in skill is not
   provisioned on every launch path.
 - `database.ensure_added_columns()` adds new columns to existing SQLite DBs (no migration tool).
@@ -100,7 +115,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
-- Automated: 64 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
+- Automated: 88 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
   `npm run build` pass.
 - Verified live: sign-in, basics, GitHub import (37 repos), transcript/CV/LinkedIn PDF/portfolio
   extraction, scanner on real folders, Gemini Flash-Lite through the gateway.

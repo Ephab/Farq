@@ -43,6 +43,9 @@ connector contract and merge duplicate registration URLs while preserving both s
 - Updated lesson/slide generation with provenance.
 - Co-op matching, portfolio-gap analysis, and company research.
 - Group-project agents with bounded task assignment and student ownership.
+- Add Playwright interaction/screenshot capture and richer headless CAD/KiCad adapters to the project
+  evaluator. The current worker deeply runs common Python/Node recipes and performs bounded structural
+  review for document, CAD and circuit artifacts; physical claims remain explicitly unverified.
 - Notifications, calendars, and deadline-aware study plans.
 - Production database, encrypted secrets, backups, observability, quotas, and deployment.
 

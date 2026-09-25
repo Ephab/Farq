@@ -23,10 +23,12 @@ def build_plan_prompt(brief: dict, error: str | None = None) -> str:
         "Plan the student's first roadmap from this profile brief.",
         f"Typical shape for this field: {discipline['stage_hint']}. Adapt it to the student's goals and gaps.",
         "JSON schema: {\"title\": str, \"stages\": [{\"id\": kebab-case, \"title\": \"Stage N · Name\",",
-        "\"description\": str, \"node_count\": 2-6, \"goal\": \"one sentence: what finishing this stage unlocks\"}]}.",
+        "\"description\": str, \"node_count\": 2-6, \"goal\": \"one sentence: what finishing this stage unlocks\",",
+        "\"stage_type\": \"foundation|skill_sequence|career|opportunity\"}]}.",
         f"Rules: 2-{MAX_GENERATED_STAGES} stages, each with a unique kebab-case id. Later stages build on",
         "earlier ones (foundations first, career readiness last). The title should name the student's",
-        "direction, e.g. \"AI Engineer Roadmap\".",
+        "direction, e.g. \"AI Engineer Roadmap\". Use skill_sequence for each cohesive sequence of",
+        "knowledge that should end in a practical project. Every roadmap needs at least one skill_sequence.",
     ]
     if error:
         lines += ["", f"Your previous answer was rejected: {error}. Fix it and return the full corrected JSON."]

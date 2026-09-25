@@ -42,6 +42,22 @@ SQLite values before storing it. The feed's `date` is labelled "Date shown by Ha
 the public endpoint does not define it as a registration deadline. A future Outlook connector
 will write into the same normalized opportunity boundary.
 
+## Roadmap projects and evaluation
+
+Skill-sequence stages end in a visible `nodeType="project"` milestone. The roadmap snapshot keeps
+the node and its dependency position; the mutable brief, rubric, submissions and evaluation history
+live in dedicated project tables linked by `projectId`. Hermes can read a project and submit a draft
+refinement, but only **Save to roadmap** accepts it and versions the visible node.
+
+Evaluation deliberately does not grant Hermes terminal, Docker or host filesystem access. A separate
+host-side worker (`scripts/evaluator.ps1`) claims leased jobs through authenticated internal endpoints,
+copies a filtered immutable snapshot, detects an adapter, and runs fixed recipes in disposable,
+resource-limited Docker containers. GitHub, ZIP and absolute local-directory sources share this path.
+The worker may download dependencies, but evaluated code receives no Farq credentials or database.
+Evaluation completion stores evidence and a 0-100 score and marks the project node done; retakes append
+history and update latest/best scores. Unsupported artifact types get a lower-coverage structural review
+with explicit limitations instead of fabricated execution claims.
+
 ## Memory ownership
 
 Hermes owns conversational continuity and agent execution. Farq owns verified facts and

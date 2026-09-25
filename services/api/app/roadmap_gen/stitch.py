@@ -14,7 +14,7 @@ from ..schemas import RoadmapNode, RoadmapPlan, RoadmapSnapshot, RoadmapStage
 def merge_stages(title: str, plan: RoadmapPlan, completed: dict[str, list[RoadmapNode]]) -> RoadmapSnapshot:
     """Combine per-stage nodes into a snapshot in plan order."""
     stages = [
-        RoadmapStage(id=item.id, title=item.title, description=item.description, nodeIds=[node.id for node in completed.get(item.id, [])])
+        RoadmapStage(id=item.id, title=item.title, description=item.description, nodeIds=[node.id for node in completed.get(item.id, [])], stageType=item.stage_type)
         for item in plan.stages
     ]
     nodes = [node for item in plan.stages for node in completed.get(item.id, [])]

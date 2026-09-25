@@ -155,11 +155,11 @@ export function RoadmapCanvas({
                   className="absolute -translate-x-1/2 rounded-2xl border border-border bg-background/95 px-4 py-2 text-center shadow-sm backdrop-blur"
                   style={{ left: anchor.x, top: anchor.y, width: compact ? layout.width - 32 : 460, maxWidth: layout.width - 32 }}
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Stage {si + 1} of {stages.length}
                   </p>
-                  <p className="truncate text-sm font-semibold">{stage.title.replace(/^Stage \d+ · /, "")}</p>
-                  <p className="truncate text-xs text-muted-foreground">{stage.description}</p>
+                  <p className="truncate text-[15px] font-semibold">{stage.title.replace(/^Stage \d+ · /, "")}</p>
+                  <p className="truncate text-[13px] text-muted-foreground">{stage.description}</p>
                   <div className="mx-auto mt-1.5 h-1 w-3/4 overflow-hidden rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-primary transition-[width]"
@@ -191,8 +191,8 @@ export function RoadmapCanvas({
 
             {allDimmed ? (
               <div className="absolute left-1/2 top-1/3 w-72 -translate-x-1/2 rounded-2xl border border-border bg-background p-5 text-center shadow-lg">
-                <p className="text-sm font-semibold">No topics match</p>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="text-[15px] font-semibold">No topics match</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">
                   Try a different search term or level filter.
                 </p>
               </div>
@@ -215,7 +215,7 @@ export function RoadmapCanvas({
           type="button"
           onClick={() => setZoom(1)}
           title="Reset zoom to 100%"
-          className="min-w-12 rounded-lg px-1 text-xs font-medium tabular-nums text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-12 rounded-lg px-1 text-[13px] font-medium tabular-nums text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {Math.round(zoom * 100)}%
         </button>

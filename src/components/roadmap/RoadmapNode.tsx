@@ -96,10 +96,10 @@ export const RoadmapNode = memo(function RoadmapNode({
           <RoadmapNodeIcon icon={node.icon} className="size-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-semibold leading-tight">
+          <span className="block truncate text-sm font-semibold leading-tight">
             {node.title}
           </span>
-          <span className={cn("mt-0.5 block truncate text-xs", isDone ? "text-background/65" : "text-muted-foreground")}>
+          <span className={cn("mt-0.5 block truncate text-[13px]", isDone ? "text-background/65" : "text-muted-foreground")}>
             {node.tagline}
           </span>
         </span>
@@ -111,7 +111,7 @@ export const RoadmapNode = memo(function RoadmapNode({
           <span className={cn("size-2.5 shrink-0 rounded-full", STATUS_DOT[status])} aria-hidden="true" />
         )}
       </span>
-      <span className={cn("mt-2.5 flex items-center justify-between border-t pt-2 text-[11px]", isDone ? "border-background/15" : "border-border")}>
+      <span className={cn("mt-2.5 flex items-center justify-between border-t pt-2 text-xs", isDone ? "border-background/15" : "border-border")}>
         <span
           className={cn(
             "rounded-full px-2 py-0.5 font-medium",

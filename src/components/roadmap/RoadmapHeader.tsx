@@ -35,10 +35,10 @@ export function RoadmapHeader({
     <div className="shrink-0 border-b border-border bg-background px-4 py-3 sm:px-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h1 className="truncate text-base font-semibold sm:text-lg">
+          <h1 className="truncate text-lg font-semibold sm:text-xl">
             {title}
           </h1>
-          <p className="truncate text-xs text-muted-foreground sm:text-[13px]">
+          <p className="truncate text-[13px] text-muted-foreground sm:text-sm">
             Click any node for details.{" "}
             <span className="font-medium text-foreground">
               {done}/{total} done · {percent}%
@@ -56,7 +56,7 @@ export function RoadmapHeader({
               onChange={(e) => onQuery(e.target.value)}
               placeholder="Search topics…"
               aria-label="Search roadmap topics"
-              className="h-8 w-44 rounded-lg border border-border bg-background pl-8 pr-2 text-[13px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:w-52"
+              className="h-8 w-44 rounded-lg border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:w-52"
             />
           </label>
           <div className="flex items-center gap-1" role="group" aria-label="Filter by level">
@@ -67,7 +67,7 @@ export function RoadmapHeader({
                 onClick={() => onLevel(l)}
                 aria-pressed={level === l}
                 className={cn(
-                  "h-8 rounded-lg px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  "h-8 rounded-lg px-2.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   level === l
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -101,7 +101,7 @@ export function RoadmapHeader({
           style={{ width: `${percent}%` }}
         />
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="size-2 rounded-full bg-muted-foreground/40" /> To do
         </span>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyEvent, fromSnapshot, isBlocked, progressOf, tasksByStatus, upsertMessage } from "@/lib/team-store"
+import { applyEvent, fromSnapshot, isBlocked, progressOf, rebase, tasksByStatus, upsertMessage } from "@/lib/team-store"
 import type { TeamEvent, TeamMessage, TeamState, TeamTask } from "@/lib/teams-api"
 
 const T0 = "2026-09-20T10:00:00+00:00"
@@ -142,5 +142,19 @@ describe("selectors", () => {
     expect(progressOf(store)).toBe(Math.round((100 * 3) / 7))
     expect(isBlocked(store, store.tasks.x)).toBe(true)
     expect(isBlocked(store, store.tasks.a)).toBe(false)
+  })
+})
+
+describe("rebase", () => {
+  it("keeps stream events newer than a reloaded snapshot, and the presence list", () => {
+    const reloaded = fromSnapshot(snapshot({ last_seq: 20 }))
+    const older: TeamEvent = { seq: 19, type: "task.created", actor_user_id: "u1", payload: task("old") as unknown as Record<string, unknown>, created_at: T0 }
+    const newer: TeamEvent = { seq: 21, type: "task.created", actor_user_id: "u1", payload: task("new") as unknown as Record<string, unknown>, created_at: T0 }
+    const presence = [{ user_id: "u2", focus: null, typing: false }]
+    const result = rebase(reloaded, [older, newer], presence)
+    expect(result.tasks.new).toBeDefined()
+    expect(result.tasks.old).toBeUndefined()
+    expect(result.lastSeq).toBe(21)
+    expect(result.presence).toEqual(presence)
   })
 })

@@ -1,22 +1,28 @@
-import { useCallback, useEffect, useState } from "react"
-import { TEAM_EVENT_TYPES, applyEvent, fromSnapshot, type TeamStore } from "@/lib/team-store"
-import { errorMessage, teams, type PresenceEntry, type TeamEvent } from "@/lib/teams-api"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { TEAM_EVENT_TYPES, applyEvent, fromSnapshot, rebase, type TeamStore } from "@/lib/team-store"
+import { errorMessage, type PresenceEntry, type TeamEvent } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 export type StoreUpdate = (fn: (store: TeamStore) => TeamStore) => void
 
 /** Snapshot, then one EventSource from its cursor. The browser resends
  * Last-Event-ID on reconnect, and applyEvent drops anything already seen. */
 export function useTeamStream(teamId: string) {
+  const teams = useTeamClient()
   const [store, setStore] = useState<TeamStore | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [live, setLive] = useState(false)
 
+  // Recent stream events, so a reload can re-apply anything that arrived
+  // while its /state request was in flight (see rebase).
+  const recent = useRef<TeamEvent[]>([])
+
   const reload = useCallback(async () => {
     const next = fromSnapshot(await teams.state(teamId))
-    setStore(next)
+    setStore((current) => rebase(next, recent.current, current?.presence ?? []))
     setError(null)
     return next
-  }, [teamId])
+  }, [teams, teamId])
 
   useEffect(() => {
     let source: EventSource | null = null
@@ -27,6 +33,7 @@ export function useTeamStream(teamId: string) {
         source = new EventSource(teams.eventsUrl(teamId, initial.lastSeq))
         const onEvent = (raw: Event) => {
           const event = JSON.parse((raw as MessageEvent<string>).data) as TeamEvent
+          recent.current = [...recent.current.slice(-199), event]
           setStore((current) => (current ? applyEvent(current, event) : current))
         }
         for (const type of TEAM_EVENT_TYPES) source.addEventListener(type, onEvent)
@@ -42,7 +49,7 @@ export function useTeamStream(teamId: string) {
       cancelled = true
       source?.close()
     }
-  }, [teamId, reload])
+  }, [teams, teamId, reload])
 
   const update = useCallback<StoreUpdate>((fn) => setStore((current) => (current ? fn(current) : current)), [])
   return { store, error, live, reload, update }
@@ -50,17 +57,19 @@ export function useTeamStream(teamId: string) {
 
 /** Tell teammates what this member is looking at, every 20 s while open. */
 export function usePresence(teamId: string, enabled: boolean, focus: string | null) {
+  const teams = useTeamClient()
   useEffect(() => {
     if (!enabled) return
     const send = () => { teams.presence(teamId, focus).catch(() => undefined) }
     send()
     const timer = window.setInterval(send, 20_000)
     return () => window.clearInterval(timer)
-  }, [teamId, enabled, focus])
+  }, [teams, teamId, enabled, focus])
 }
 
 /** Advance the member's read pointer shortly after new events arrive. */
 export function useMarkSeen(teamId: string, store: TeamStore | null, update: StoreUpdate) {
+  const teams = useTeamClient()
   const lastSeq = store?.lastSeq ?? 0
   const lastSeen = store?.lastSeenSeq ?? null
   useEffect(() => {
@@ -71,5 +80,5 @@ export function useMarkSeen(teamId: string, store: TeamStore | null, update: Sto
         .catch(() => undefined)
     }, 1500)
     return () => window.clearTimeout(timer)
-  }, [teamId, lastSeq, lastSeen, update])
+  }, [teams, teamId, lastSeq, lastSeen, update])
 }

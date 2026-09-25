@@ -6,7 +6,8 @@ import { Sheet } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { fromDateInput, toDateInput } from "@/lib/team-format"
 import { TASK_COLUMNS, removeTask, upsertTask, type TeamStore } from "@/lib/team-store"
-import { teams, type TaskStatus, type TeamTask } from "@/lib/teams-api"
+import type { TaskStatus, TeamTask } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 export type TaskSheetState = { mode: "create"; title?: string } | { mode: "edit"; task: TeamTask }
 
@@ -20,6 +21,7 @@ interface TaskSheetProps {
 }
 
 export function TaskSheet({ state, store, canEdit, update, onError, onClose }: TaskSheetProps) {
+  const teams = useTeamClient()
   const existing = state.mode === "edit" ? store.tasks[state.task.id] ?? state.task : null
   const [title, setTitle] = useState(existing?.title ?? (state.mode === "create" ? state.title ?? "" : ""))
   const [description, setDescription] = useState(existing?.description ?? "")

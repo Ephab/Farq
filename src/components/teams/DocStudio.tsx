@@ -6,7 +6,8 @@ import { MarkdownText } from "@/components/hermes/markdown"
 import { Avatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { memberName, upsertDocument, upsertSection, type TeamStore } from "@/lib/team-store"
-import { errorMessage, getActingUserId, teams, type DocSectionInfo, type DocumentKind } from "@/lib/teams-api"
+import { errorMessage, type DocSectionInfo, type DocumentKind } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 const DOC_KINDS: { kind: DocumentKind; label: string; full: string }[] = [
   { kind: "srs", label: "SRS", full: "Software Requirements Specification" },
@@ -23,7 +24,8 @@ function lockedByOther(section: DocSectionInfo, me: string): boolean {
 interface DocStudioProps { store: TeamStore; canEdit: boolean; update: StoreUpdate; onFocus: (focus: string | null) => void }
 
 export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
-  const me = getActingUserId()
+  const teams = useTeamClient()
+  const me = teams.userId
   const docs = Object.values(store.documents).sort((a, b) => a.created_at.localeCompare(b.created_at))
   const [docId, setDocId] = useState<string | null>(null)
   const [sectionId, setSectionId] = useState<string | null>(null)

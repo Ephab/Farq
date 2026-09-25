@@ -136,9 +136,9 @@ def lock_section(section_id: str, db: Db, user: CurrentUser) -> dict:
         raise HTTPException(409, "Someone else is editing this section")
     section.lock_user_id = user.id
     section.lock_expires_at = at + timedelta(seconds=LOCK_SECONDS)
-    if not active:
-        # Re-locking your own live lock is a heartbeat and emits nothing.
-        emit(db, team.id, "section.locked", user.id, {"id": section.id, "lock_user_id": user.id, "lock_expires_at": iso(section.lock_expires_at)})
+    # Heartbeats emit too: teammates only learn the extended expiry from this
+    # event, and would otherwise see a live lock as released after 90 s.
+    emit(db, team.id, "section.locked", user.id, {"id": section.id, "lock_user_id": user.id, "lock_expires_at": iso(section.lock_expires_at)})
     db.commit()
     return section_dict(section)
 

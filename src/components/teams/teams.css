@@ -143,8 +143,9 @@
 .fq .tm-deleted { margin: 2px 0 0; color: var(--fq-faint); font-style: italic; }
 .fq .tm-reply { margin: 4px 0; padding: 4px 8px; border-left: 3px solid var(--fq-line-strong); color: var(--fq-muted); font-size: 12px; }
 .fq .tm-system { align-self: center; margin: 6px 0; padding: 3px 12px; border-radius: var(--fq-r-pill); background: var(--fq-success-soft); color: var(--fq-success); font-size: 12px; font-weight: 600; }
-.fq .tm-msg-actions { position: absolute; top: -12px; right: 8px; z-index: 2; display: none; gap: 2px; padding: 2px; border: 1px solid var(--fq-line); border-radius: 10px; background: var(--fq-surface-solid); box-shadow: var(--fq-shadow-sm); }
-.fq .tm-msg:hover .tm-msg-actions, .fq .tm-msg:focus-within .tm-msg-actions { display: flex; }
+/* Hidden by opacity, not display:none, so keyboard focus can still reach the buttons. */
+.fq .tm-msg-actions { position: absolute; top: -12px; right: 8px; z-index: 2; display: flex; gap: 2px; opacity: 0; pointer-events: none; transition: opacity 0.12s; padding: 2px; border: 1px solid var(--fq-line); border-radius: 10px; background: var(--fq-surface-solid); box-shadow: var(--fq-shadow-sm); }
+.fq .tm-msg:hover .tm-msg-actions, .fq .tm-msg:focus-within .tm-msg-actions { opacity: 1; pointer-events: auto; }
 .fq .tm-msg-actions button { display: grid; place-items: center; min-width: 26px; height: 26px; border-radius: 8px; background: none; color: var(--fq-muted); font-size: 13px; cursor: pointer; }
 .fq .tm-msg-actions button:hover { background: var(--fq-surface-muted); color: var(--fq-text); }
 .fq .tm-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }

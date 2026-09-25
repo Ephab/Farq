@@ -196,6 +196,14 @@ export function applyEvent(store: TeamStore, event: TeamEvent): TeamStore {
   return { ...reduce(store, event), lastSeq: event.seq }
 }
 
+/** After a reload, re-apply stream events newer than the fresh snapshot.
+ * Events can arrive while /state is in flight; they were folded into the old
+ * store and would otherwise be lost, because the stream never resends them. */
+export function rebase(reloaded: TeamStore, recent: TeamEvent[], presence: PresenceEntry[]): TeamStore {
+  const newer = recent.filter((event) => event.seq > reloaded.lastSeq).sort((a, b) => a.seq - b.seq)
+  return newer.reduce(applyEvent, { ...reloaded, presence })
+}
+
 export function memberName(store: TeamStore, userId: string | null): string {
   if (userId === null) return "Hermes"
   return store.team.members.find((member) => member.user_id === userId)?.display_name ?? "A classmate"

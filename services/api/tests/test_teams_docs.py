@@ -35,7 +35,7 @@ def test_section_lock_and_versioned_save(client):
     base = f"/api/sections/{section['id']}"
     assert client.post(f"{base}/lock", headers=hdr(s0)).json()["lock_user_id"] == s0
     client.post(f"{base}/lock", headers=hdr(s0))
-    assert [event["type"] for event in events_for(world["team_id"])].count("section.locked") == 1
+    assert [event["type"] for event in events_for(world["team_id"])].count("section.locked") == 2
     assert client.post(f"{base}/lock", headers=hdr(s1)).status_code == 409
     assert client.put(f"{base}/content", json={"content_md": "Mine", "version": 0}, headers=hdr(s1)).status_code == 409
     saved = client.put(f"{base}/content", json={"content_md": "FR-1 The system shall list found items.", "version": 0}, headers=hdr(s0))

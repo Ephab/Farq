@@ -4,9 +4,11 @@ import { Fragment, useEffect, useState } from "react"
 import { Avatar } from "@/components/teams/ui"
 import { timeAgo } from "@/lib/team-format"
 import type { TeamStore } from "@/lib/team-store"
-import { errorMessage, teams, type ContributionRow } from "@/lib/teams-api"
+import { errorMessage, type ContributionRow } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 export function InstructorPanel({ store }: { store: TeamStore }) {
+  const teams = useTeamClient()
   const [rows, setRows] = useState<ContributionRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const teamId = store.team.id
@@ -18,7 +20,7 @@ export function InstructorPanel({ store }: { store: TeamStore }) {
       .then((result) => { if (!cancelled) setRows(result.members) })
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)) })
     return () => { cancelled = true }
-  }, [teamId, seq])
+  }, [teams, teamId, seq])
 
   const maxPoints = Math.max(1, ...(rows ?? []).map((row) => row.done_points + row.open_points))
   const milestones = Object.values(store.milestones)

@@ -69,11 +69,12 @@ export interface TaskInput {
 export interface MessageInput { content: string; reply_to_id?: string | null; poll_options?: string[] }
 export interface MilestoneInput { title: string; due?: string | null; deliverable_key?: string | null }
 
-/** Who team features act as. Defaults to the signed-in demo student. */
+/** Who team features act as in this tab. Per tab (sessionStorage) so two
+ * windows can demo two classmates at once. Defaults to the demo student. */
 export function getActingUserId(): string {
   if (typeof window === "undefined") return getCurrentStudentId()
   try {
-    return window.localStorage.getItem(ACTING_USER_STORAGE_KEY) || getCurrentStudentId()
+    return window.sessionStorage.getItem(ACTING_USER_STORAGE_KEY) || getCurrentStudentId()
   } catch {
     return getCurrentStudentId()
   }
@@ -81,8 +82,8 @@ export function getActingUserId(): string {
 
 export function setActingUserId(id: string | null): void {
   try {
-    if (id) window.localStorage.setItem(ACTING_USER_STORAGE_KEY, id)
-    else window.localStorage.removeItem(ACTING_USER_STORAGE_KEY)
+    if (id) window.sessionStorage.setItem(ACTING_USER_STORAGE_KEY, id)
+    else window.sessionStorage.removeItem(ACTING_USER_STORAGE_KEY)
   } catch {
     // Storage can be unavailable (private mode); the event still switches this tab.
   }
@@ -93,17 +94,23 @@ export function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "Something went wrong"
 }
 
-function teamApi<T>(path: string, init?: RequestInit): Promise<T> {
-  return api<T>(path, { ...init, headers: { "X-Farq-User": getActingUserId(), ...(init?.headers as Record<string, string> | undefined) } })
-}
-
 function send(method: string, body?: unknown): RequestInit {
   return { method, body: body === undefined ? undefined : JSON.stringify(body) }
 }
 
-export const teams = {
+export function demoUsers(): Promise<TeamUser[]> {
+  return api<TeamUser[]>("/api/demo/users")
+}
+
+/** A client that always acts as `userId`. Bound once per view so a View-as
+ * switch (or another tab) can never make an in-flight view act as someone else. */
+export function teamClient(userId: string) {
+  function teamApi<T>(path: string, init?: RequestInit): Promise<T> {
+    return api<T>(path, { ...init, headers: { "X-Farq-User": userId, ...(init?.headers as Record<string, string> | undefined) } })
+  }
+  return {
+  userId,
   home: () => teamApi<TeamsHomeData>("/api/me/teams-home"),
-  demoUsers: () => api<TeamUser[]>("/api/demo/users"),
   classmates: (assignmentId: string) => teamApi<Classmate[]>(`/api/assignments/${assignmentId}/classmates`),
   createTeam: (assignmentId: string, name: string) => teamApi<TeamInfo>(`/api/assignments/${assignmentId}/teams`, send("POST", { name })),
   invite: (teamId: string, userId: string) => teamApi<TeamInvite>(`/api/teams/${teamId}/invites`, send("POST", { user_id: userId })),
@@ -136,5 +143,8 @@ export const teams = {
   presence: (teamId: string, focus: string | null) => teamApi<{ ok: boolean }>(`/api/teams/${teamId}/presence`, send("POST", { focus })),
   typing: (teamId: string) => teamApi<{ ok: boolean }>(`/api/teams/${teamId}/typing`, send("POST")),
   eventsUrl: (teamId: string, after: number) =>
-    `${API_BASE}/api/teams/${teamId}/events?as=${encodeURIComponent(getActingUserId())}&after=${after}`,
+    `${API_BASE}/api/teams/${teamId}/events?as=${encodeURIComponent(userId)}&after=${after}`,
+  }
 }
+
+export type TeamClient = ReturnType<typeof teamClient>

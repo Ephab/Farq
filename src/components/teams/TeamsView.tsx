@@ -1,16 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { TeamWorkspace } from "@/components/teams/TeamWorkspace"
 import { TeamsHome } from "@/components/teams/TeamsHome"
 import { ViewAsSwitcher } from "@/components/teams/ViewAsSwitcher"
-import { ACTING_USER_EVENT, getActingUserId } from "@/lib/teams-api"
+import { TeamClientContext } from "@/components/teams/team-client-context"
+import { ACTING_USER_EVENT, getActingUserId, teamClient } from "@/lib/teams-api"
 import "@/components/hermes/coach-concept.css"
 import "./teams.css"
 
 export function TeamsView() {
   const [actingUser, setActingUser] = useState(getActingUserId)
   const [teamId, setTeamId] = useState<string | null>(null)
+  // One client per acting user: views bound to it keep acting as that user
+  // until they unmount, even if View-as changes mid-request.
+  const client = useMemo(() => teamClient(actingUser), [actingUser])
 
   useEffect(() => {
     const onChange = () => {
@@ -22,6 +26,7 @@ export function TeamsView() {
   }, [])
 
   return (
+    <TeamClientContext.Provider value={client}>
     <div className="fq tm-page">
       <div className="tm-topbar">
         <div>
@@ -36,5 +41,6 @@ export function TeamsView() {
         <TeamsHome key={actingUser} onOpenTeam={setTeamId} />
       )}
     </div>
+    </TeamClientContext.Provider>
   )
 }

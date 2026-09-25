@@ -8,14 +8,16 @@ import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { HERMES_COMMANDS, insertMention, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
 import { timeAgo } from "@/lib/team-format"
 import { markMessageDeleted, memberName, setReaction, upsertDecision, upsertMessage, type TeamStore } from "@/lib/team-store"
-import { errorMessage, getActingUserId, teams, type TeamMessage } from "@/lib/teams-api"
+import { errorMessage, type TeamMessage } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"]
 
 interface TeamChatProps { store: TeamStore; update: StoreUpdate; onMakeTask: (title: string) => void }
 
 export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
-  const me = getActingUserId()
+  const teams = useTeamClient()
+  const me = teams.userId
   const teamId = store.team.id
   const messages = store.messages ?? []
   const [draft, setDraft] = useState("")

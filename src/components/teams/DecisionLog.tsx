@@ -3,11 +3,12 @@
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { timeAgo } from "@/lib/team-format"
 import { memberName, removeDecision, type TeamStore } from "@/lib/team-store"
-import { teams } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 interface DecisionLogProps { store: TeamStore; canEdit: boolean; update: StoreUpdate; onError: (reason: unknown) => void }
 
 export function DecisionLog({ store, canEdit, update, onError }: DecisionLogProps) {
+  const teams = useTeamClient()
   const decisions = Object.values(store.decisions).sort((a, b) => b.created_at.localeCompare(a.created_at))
   const unpin = async (decisionId: string) => {
     try {

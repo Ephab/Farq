@@ -4,11 +4,12 @@ import { useState } from "react"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { dueLabel, fromDateInput, shortDate } from "@/lib/team-format"
 import { upsertMilestone, type TeamStore } from "@/lib/team-store"
-import { teams } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 interface TaskTimelineProps { store: TeamStore; canEdit: boolean; update: StoreUpdate; onError: (reason: unknown) => void }
 
 export function TaskTimeline({ store, canEdit, update, onError }: TaskTimelineProps) {
+  const teams = useTeamClient()
   const [title, setTitle] = useState("")
   const [due, setDue] = useState("")
   const tasks = Object.values(store.tasks)

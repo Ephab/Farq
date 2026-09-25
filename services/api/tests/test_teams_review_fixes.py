@@ -2,7 +2,7 @@
 import threading
 import time
 
-from team_world import client, hdr, make_world  # noqa: F401
+from team_world import client, events_for, hdr, make_world  # noqa: F401
 
 from app.teams import chat as chat_module
 from app.teams import teams as teams_module
@@ -80,3 +80,15 @@ def test_non_finite_positions_are_rejected(client):
     task = client.post(f"/api/teams/{team}/tasks", json={"title": "A"}, headers=hdr(s0)).json()
     response = client.post(f"/api/tasks/{task['id']}/move", content='{"status": "doing", "position": 1e999}', headers={**hdr(s0), "Content-Type": "application/json"})
     assert response.status_code == 422
+
+
+def test_lock_heartbeat_tells_teammates_the_new_expiry(client):
+    world = make_world()
+    s0 = world["students"][0]
+    document = client.post(f"/api/teams/{world['team_id']}/documents", json={"kind": "srs"}, headers=hdr(s0)).json()
+    section = next(item for item in document["sections"] if item["key"] == "3.2")
+    first = client.post(f"/api/sections/{section['id']}/lock", headers=hdr(s0)).json()
+    renewed = client.post(f"/api/sections/{section['id']}/lock", headers=hdr(s0)).json()
+    locks = [event for event in events_for(world["team_id"]) if event["type"] == "section.locked"]
+    assert len(locks) == 2
+    assert locks[-1]["payload"]["lock_expires_at"] == renewed["lock_expires_at"] >= first["lock_expires_at"]

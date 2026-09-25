@@ -8,7 +8,8 @@ import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { EASE_OUT } from "@/lib/ease"
 import { dueLabel } from "@/lib/team-format"
 import { TASK_COLUMNS, isBlocked, memberName, moveTaskLocal, tasksByStatus, type TeamStore } from "@/lib/team-store"
-import { teams, type TaskStatus, type TeamTask } from "@/lib/teams-api"
+import type { TaskStatus, TeamTask } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 interface TaskBoardProps {
   store: TeamStore
@@ -20,6 +21,7 @@ interface TaskBoardProps {
 }
 
 export function TaskBoard({ store, canEdit, update, onError, onOpenTask, onNewTask }: TaskBoardProps) {
+  const teams = useTeamClient()
   const columns = tasksByStatus(store)
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<TaskStatus | null>(null)

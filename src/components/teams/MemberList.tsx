@@ -4,11 +4,13 @@ import { useState } from "react"
 import { UserPlus } from "lucide-react"
 import { Avatar } from "@/components/teams/ui"
 import type { TeamStore } from "@/lib/team-store"
-import { teams, type Classmate } from "@/lib/teams-api"
+import type { Classmate } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 interface MemberListProps { store: TeamStore; canInvite: boolean; onError: (reason: unknown) => void }
 
 export function MemberList({ store, canInvite, onError }: MemberListProps) {
+  const teams = useTeamClient()
   const [picking, setPicking] = useState(false)
   const [classmates, setClassmates] = useState<Classmate[] | null>(null)
   const [invited, setInvited] = useState<string[]>([])

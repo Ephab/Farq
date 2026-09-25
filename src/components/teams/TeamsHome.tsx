@@ -5,14 +5,16 @@ import { Sparkles, UserPlus, Users } from "lucide-react"
 import { TeamCover } from "@/components/teams/TeamCover"
 import { coverFor } from "@/lib/team-cover"
 import { briefingLines, dueLabel } from "@/lib/team-format"
-import { errorMessage, teams, type NeedsTeam, type TeamInvite, type TeamsHomeData } from "@/lib/teams-api"
+import { errorMessage, type NeedsTeam, type TeamInvite, type TeamsHomeData } from "@/lib/teams-api"
+import { useTeamClient } from "@/components/teams/team-client-context"
 
 export function TeamsHome({ onOpenTeam }: { onOpenTeam: (teamId: string) => void }) {
+  const teams = useTeamClient()
   const [home, setHome] = useState<TeamsHomeData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const load = useCallback(() => {
     teams.home().then((data) => { setHome(data); setError(null) }).catch((reason) => setError(errorMessage(reason)))
-  }, [])
+  }, [teams])
   useEffect(() => { load() }, [load])
 
   if (error) {
@@ -60,6 +62,7 @@ export function TeamsHome({ onOpenTeam }: { onOpenTeam: (teamId: string) => void
 interface InviteRowProps { invite: TeamInvite; onJoined: (teamId: string) => void; onChanged: () => void }
 
 function InviteRow({ invite, onJoined, onChanged }: InviteRowProps) {
+  const teams = useTeamClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const act = async (accept: boolean) => {
@@ -93,6 +96,7 @@ function InviteRow({ invite, onJoined, onChanged }: InviteRowProps) {
 }
 
 function NeedsTeamRow({ item, onCreated }: { item: NeedsTeam; onCreated: (teamId: string) => void }) {
+  const teams = useTeamClient()
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState("")
   const [busy, setBusy] = useState(false)

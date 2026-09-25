@@ -20,8 +20,14 @@ from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
 from .models import AgentRun, ChatMessage, ChatThread, DataSource, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
+from .pipeline.brief_step import readiness as readiness_for
+from .pipeline.review_step import decide_evidence as decide_evidence_step
+from .roadmap_gen import planner as roadmap_planner
+from .roadmap_gen import stage as roadmap_stage
+from .roadmap_gen import stitch as roadmap_stitch
+from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
-from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, GenerateInput, HermesSettingsApply, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StudentCreate
+from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
@@ -138,15 +144,28 @@ def evidence_dict(item: EvidenceItem) -> dict:
     }
 
 
-EVIDENCE_FACT_CATEGORY = {
-    "course": "course", "education": "course", "skill": "skill", "project": "achievement",
-    "experience": "achievement", "certificate": "achievement", "publication": "achievement", "activity": "achievement",
-}
-
-
 def require_internal(x_farq_internal_token: Annotated[str | None, Header()] = None) -> None:
     if x_farq_internal_token != INTERNAL_TOKEN:
         raise HTTPException(401, "Invalid internal token")
+
+
+def _store_initial_proposal(db: Session, student_id: str, base_id: str, snapshot: RoadmapSnapshot) -> dict:
+    """Persist a generated first roadmap as a pending `initial` proposal."""
+    for stale in db.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id, RoadmapProposal.kind == "initial", RoadmapProposal.status == "pending")).all():
+        stale.status = "rejected"
+        stale.decided_at = now()
+    proposal = RoadmapProposal(
+        student_id=student_id, base_version_id=base_id, kind="initial",
+        summary=f"First roadmap: {snapshot.title}"[:240],
+        reasoning="Generated from your confirmed evidence and onboarding answers.",
+        operations_json="[]", snapshot_json=snapshot.model_dump_json(),
+    )
+    db.add(proposal)
+    saved_profile = db.get(StudentProfile, student_id)
+    if saved_profile is not None:
+        saved_profile.onboarding_status = "preview"
+    db.commit()
+    return proposal_dict(proposal)
 
 
 @app.on_event("startup")
@@ -436,40 +455,7 @@ def decide_evidence(student_id: str, body: EvidenceDecision, db: Db) -> dict:
     non-chat path into StudentFact (source_kind="confirmed_evidence").
     """
     require_student(db, student_id)
-    ids = set(body.confirm) | set(body.dismiss)
-    items = {item.id: item for item in db.scalars(select(EvidenceItem).where(EvidenceItem.student_id == student_id, EvidenceItem.id.in_(ids))).all()}
-    for evidence_id in body.dismiss:
-        item = items.get(evidence_id)
-        if item is None:
-            continue
-        item.status = "dismissed"
-        for fact in db.scalars(select(StudentFact).where(StudentFact.evidence_id == evidence_id, StudentFact.active.is_(True))).all():
-            fact.active = False
-    confirmed = 0
-    for evidence_id in body.confirm:
-        item = items.get(evidence_id)
-        if item is None or evidence_id in body.dismiss:
-            continue
-        title = body.titles.get(evidence_id, "").strip()
-        if title:
-            item.title = title[:240]
-        item.status = "confirmed"
-        for fact in db.scalars(select(StudentFact).where(StudentFact.evidence_id == evidence_id, StudentFact.active.is_(True))).all():
-            fact.active = False
-        data = json.loads(item.data_json)
-        data.pop("readme_excerpt", None)
-        db.add(StudentFact(
-            student_id=student_id,
-            category=EVIDENCE_FACT_CATEGORY[item.kind],
-            key=f"{item.kind}: {item.title}"[:120],
-            value_json=json.dumps({k: v for k, v in data.items() if v not in ("", [], None)}),
-            source_kind="confirmed_evidence",
-            evidence_id=item.id,
-            confidence=100,
-        ))
-        confirmed += 1
-    db.commit()
-    return {"confirmed": confirmed, "dismissed": len([i for i in body.dismiss if i in items])}
+    return decide_evidence_step(db, student_id, list(body.confirm), list(body.dismiss), dict(body.titles))
 
 
 @app.post("/api/students/{student_id}/onboarding/generate")
@@ -526,6 +512,210 @@ async def generate_roadmap(
         if isinstance(exc, HermesJsonError):
             raise HTTPException(exc.status, str(exc)) from exc
         raise
+
+
+@app.get("/api/students/{student_id}/onboarding/readiness")
+def onboarding_readiness(student_id: str, db: Db) -> dict:
+    """Readiness gate: is the background collection complete enough to generate?"""
+    require_student(db, student_id)
+    return readiness_for(db, student_id)
+
+
+def _require_empty_roadmap(db: Session, student_id: str):
+    current = active_roadmap(db, student_id)
+    if RoadmapSnapshot.model_validate_json(current.snapshot_json).nodes:
+        raise HTTPException(409, "This student already has a roadmap; ask Hermes Coach to revise it instead")
+    return current
+
+
+@app.post("/api/students/{student_id}/onboarding/roadmap/plan")
+async def plan_staged_roadmap(
+    student_id: str,
+    db: Db,
+    body: GenerateInput = Body(default_factory=GenerateInput),
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Step 0 of staged generation: plan stage titles + shapes, no nodes yet.
+
+    Returns a job_id used by the per-stage endpoints. The plan fixes stage
+    IDs upfront so later wiring checks can enforce backwards-only deps.
+    """
+    require_student(db, student_id)
+    current = _require_empty_roadmap(db, student_id)
+    hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
+    brief = build_profile_brief(db, student_id)
+    base_id = current.id
+    try:
+        plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
+    except HermesJsonError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
+    return {"job_id": job_id, "plan": plan.model_dump()}
+
+
+@app.post("/api/students/{student_id}/onboarding/roadmap/stages/{stage_id}/generate")
+async def generate_roadmap_stage(
+    student_id: str,
+    stage_id: str,
+    db: Db,
+    body: StageGenerateInput = Body(...),
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Generate exactly one planned stage. Safe to call for two stages in
+    parallel: generation is stateless and only the append is serialized."""
+    require_student(db, student_id)
+    _require_empty_roadmap(db, student_id)
+    job = staged_store.get_job(body.job_id)
+    if job is None or job["student_id"] != student_id:
+        raise HTTPException(404, "Generation job not found")
+    if job["base_version_id"] != active_roadmap(db, student_id).id:
+        raise HTTPException(409, "The roadmap changed since planning; plan again")
+    plan: RoadmapPlan = job["plan"]
+    if stage_id not in [item.id for item in plan.stages]:
+        raise HTTPException(404, "Stage not in this plan")
+    hermes = {
+        "provider": body.provider or job["hermes"].get("provider"),
+        "model": body.model or job["hermes"].get("model"),
+        "key": x_hermes_api_key or job["hermes"].get("key"),
+    }
+    prior, used = staged_store.prior_node_summaries(job, stage_id)
+    try:
+        nodes = await asyncio.to_thread(
+            roadmap_stage.generate_stage_nodes,
+            job["brief"], plan, stage_id, prior, used, job["confirmed"], hermes,
+        )
+    except HermesJsonError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    merged = {**job["completed"], stage_id: nodes}
+    wiring_error = roadmap_stitch.check_wiring(plan, merged)
+    if wiring_error:
+        raise HTTPException(422, wiring_error)
+    try:
+        staged_store.append_stage(body.job_id, stage_id, nodes)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(body.job_id)["completed"])
+    return {
+        "job_id": body.job_id,
+        "stage_id": stage_id,
+        "nodes": [node.model_dump() for node in nodes],
+        "snapshot": snapshot.model_dump(),
+    }
+
+
+@app.post("/api/students/{student_id}/onboarding/roadmap/finalize")
+def finalize_staged_roadmap(student_id: str, body: FinalizeInput, db: Db) -> dict:
+    """Validate the stitched stages and store the `initial` proposal."""
+    require_student(db, student_id)
+    current = _require_empty_roadmap(db, student_id)
+    job = staged_store.get_job(body.job_id)
+    if job is None or job["student_id"] != student_id:
+        raise HTTPException(404, "Generation job not found")
+    if job["base_version_id"] != current.id:
+        raise HTTPException(409, "The roadmap changed since planning; plan again")
+    plan: RoadmapPlan = job["plan"]
+    missing = [item.id for item in plan.stages if item.id not in job["completed"]]
+    if missing:
+        raise HTTPException(409, f"Stage(s) not generated yet: {', '.join(missing)}")
+    wiring_error = roadmap_stitch.check_wiring(plan, job["completed"])
+    if wiring_error:
+        raise HTTPException(422, wiring_error)
+    snapshot = roadmap_stitch.merge_stages(plan.title, plan, job["completed"])
+    try:
+        finished = validate_generated(snapshot, job["confirmed"])
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    proposal = _store_initial_proposal(db, student_id, job["base_version_id"], finished)
+    staged_store.drop_job(body.job_id)
+    return proposal
+
+
+@app.get("/api/students/{student_id}/onboarding/generate/stream")
+async def generate_staged_stream(
+    student_id: str,
+    provider: str | None = None,
+    model: str | None = None,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> StreamingResponse:
+    """Sequential staged generation as SSE: plan, then each finished stage
+    with the snapshot so far, then done. The canvas renders each stage as
+    it arrives. Only the finalize step writes the proposal."""
+    hermes = _hermes_opts(provider, model, x_hermes_api_key)
+
+    async def stream():
+        db = SessionLocal()
+        try:
+            require_student(db, student_id)
+            try:
+                current = _require_empty_roadmap(db, student_id)
+            except HTTPException as exc:
+                yield f"event: error\ndata: {json.dumps({'error': exc.detail})}\n\n"
+                return
+            brief = build_profile_brief(db, student_id)
+            base_id = current.id
+            profile = db.get(StudentProfile, student_id)
+            if profile is not None:
+                profile.onboarding_status = "generating"
+                db.commit()
+        finally:
+            db.close()
+        try:
+            plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
+        except Exception as exc:
+            _reset_to_chat(student_id)
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+            return
+        job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
+        yield f"event: plan\ndata: {json.dumps({'job_id': job_id, 'plan': plan.model_dump()})}\n\n"
+        for item in plan.stages:
+            job = staged_store.get_job(job_id)
+            prior, used = staged_store.prior_node_summaries(job, item.id)
+            try:
+                nodes = await asyncio.to_thread(
+                    roadmap_stage.generate_stage_nodes,
+                    brief, plan, item.id, prior, used, job["confirmed"], hermes,
+                )
+            except Exception as exc:
+                _reset_to_chat(student_id)
+                yield f"event: error\ndata: {json.dumps({'error': str(exc), 'stage_id': item.id})}\n\n"
+                return
+            merged = {**staged_store.get_job(job_id)["completed"], item.id: nodes}
+            wiring_error = roadmap_stitch.check_wiring(plan, merged)
+            if wiring_error:
+                _reset_to_chat(student_id)
+                yield f"event: error\ndata: {json.dumps({'error': wiring_error, 'stage_id': item.id})}\n\n"
+                return
+            staged_store.append_stage(job_id, item.id, nodes)
+            snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(job_id)["completed"])
+            yield f"event: stage\ndata: {json.dumps({'job_id': job_id, 'stage_id': item.id, 'nodes': [n.model_dump() for n in nodes], 'snapshot': snapshot.model_dump()})}\n\n"
+        db = SessionLocal()
+        try:
+            job = staged_store.get_job(job_id)
+            snapshot = roadmap_stitch.merge_stages(plan.title, plan, job["completed"])
+            try:
+                finished = validate_generated(snapshot, job["confirmed"])
+            except ValueError as exc:
+                _reset_to_chat(student_id)
+                yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+                return
+            proposal = _store_initial_proposal(db, student_id, base_id, finished)
+            staged_store.drop_job(job_id)
+            yield f"event: done\ndata: {json.dumps({'job_id': job_id, 'proposal_id': proposal['id']})}\n\n"
+        finally:
+            db.close()
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+def _reset_to_chat(student_id: str) -> None:
+    db = SessionLocal()
+    try:
+        profile = db.get(StudentProfile, student_id)
+        if profile is not None:
+            profile.onboarding_status = "chat"
+            db.commit()
+    finally:
+        db.close()
 
 
 @app.get("/api/students/{student_id}/context")

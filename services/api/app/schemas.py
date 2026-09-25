@@ -89,6 +89,68 @@ ROADMAP_ICONS = frozenset({
 
 MAX_GENERATED_STAGES = 8
 MAX_GENERATED_NODES = 40
+MIN_NODES_PER_STAGE = 2
+MAX_NODES_PER_STAGE = 6
+
+
+class RoadmapPlanStage(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=600)
+    # How many nodes the stage generation step should produce.
+    node_count: int = Field(default=4, ge=MIN_NODES_PER_STAGE, le=MAX_NODES_PER_STAGE)
+    goal: str = Field(default="", max_length=600)
+
+
+class RoadmapPlan(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    stages: list[RoadmapPlanStage] = Field(min_length=2, max_length=MAX_GENERATED_STAGES)
+
+
+def validate_plan(plan: RoadmapPlan) -> RoadmapPlan:
+    """Structural checks for an LLM-produced stage plan (no nodes yet)."""
+    ids = [stage.id for stage in plan.stages]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Roadmap plan contains duplicate stage IDs")
+    return plan
+
+
+def validate_stage_nodes(
+    nodes: list[RoadmapNode],
+    stage_id: str,
+    confirmed_evidence: set[str],
+    legal_dep_ids: set[str],
+) -> list[RoadmapNode]:
+    """Checks for one freshly generated stage.
+
+    Connections may only point backwards: every dep must be a node from
+    this stage (already accepted in this batch) or an earlier stage.
+    Unknown or forward references are rejected so the caller retries
+    the stage with the error instead of storing a broken graph.
+    """
+    if not MIN_NODES_PER_STAGE <= len(nodes) <= MAX_NODES_PER_STAGE:
+        raise ValueError(f"Stage {stage_id} must have between {MIN_NODES_PER_STAGE} and {MAX_NODES_PER_STAGE} nodes, got {len(nodes)}")
+    batch_ids = {node.id for node in nodes}
+    seen: set[str] = set()
+    for node in nodes:
+        if node.stageId != stage_id:
+            raise ValueError(f"{node.id} belongs to stage {node.stageId}, expected {stage_id}")
+        if node.id in seen:
+            raise ValueError(f"Stage {stage_id} contains duplicate node ID {node.id}")
+        seen.add(node.id)
+        if node.icon not in ROADMAP_ICONS:
+            node.icon = "target"
+        node.evidence = [item for item in node.evidence if item in confirmed_evidence]
+        if node.status != "not-started" and not node.evidence:
+            node.status = "not-started"
+        if node.status == "in-progress":
+            node.status = "not-started"
+        # Deps may target earlier stages or any node in this same batch
+        # (order within a stage carries no meaning on the canvas).
+        unknown = [dep for dep in node.deps if dep not in legal_dep_ids and dep not in batch_ids]
+        if unknown:
+            raise ValueError(f"{node.id} references unknown prerequisite(s): {', '.join(unknown)}. Only nodes from this or earlier stages are allowed")
+    return nodes
 
 
 def validate_generated(snapshot: RoadmapSnapshot, confirmed_evidence: set[str]) -> RoadmapSnapshot:
@@ -203,6 +265,16 @@ class EvidenceDecision(BaseModel):
 class GenerateInput(BaseModel):
     provider: HermesProvider | None = None
     model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class StageGenerateInput(BaseModel):
+    job_id: str = Field(min_length=1, max_length=36)
+    provider: HermesProvider | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class FinalizeInput(BaseModel):
+    job_id: str = Field(min_length=1, max_length=36)
 
 
 class AcceptInput(BaseModel):

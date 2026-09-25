@@ -121,7 +121,13 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 ## Key files
 - Backend: `services/api/app/{main,onboarding,disciplines,hermes,schemas,models,database}.py`,
   `services/api/app/sources/*`
+- Staged generation: `services/api/app/pipeline/{profile_step,evidence_step,review_step,brief_step}.py`
+  (background collection + readiness gate), `services/api/app/roadmap_gen/{planner,stage,stitch,store}.py`
+  (plan → per-stage nodes → wiring check → stitch; sequential default, parallel-safe stage jobs),
+  SSE via `GET /api/students/{id}/onboarding/generate/stream`, live canvas in `OnboardingChat.tsx`
+  + `src/hooks/use-staged-generation.ts`
 - Hermes: `.hermes/plugins/farq/{__init__,scanner,tools}.py`,
-  `.hermes/skills/farq-onboarding/SKILL.md`, `services/hermes/{SOUL.md,config.yaml}`
+  `.hermes/skills/{farq-onboarding,farq-student-coach,farq-quiz,farq-slides}/SKILL.md`,
+  `services/hermes/{SOUL.md,config.yaml}`
 - Frontend: `src/components/onboarding/*`, `src/components/hermes/*`, `src/lib/farq-api.ts`
-- Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps}.py`
+- Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps,test_staged_roadmap}.py`

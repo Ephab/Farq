@@ -1,13 +1,15 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { Bot, LoaderCircle, Sparkles, Wand2 } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Bot, Check, LoaderCircle, Sparkles, Wand2 } from "lucide-react"
 import { ChatThreadView } from "@/components/hermes/ChatThreadView"
 import { useHermesChat } from "@/components/hermes/use-hermes-chat"
+import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas"
+import { streamStagedRoadmap, type StagedPlan, type StagedSnapshot } from "@/hooks/use-staged-generation"
+import type { NodeStatus } from "@/data/computer-vision-roadmap"
 import { api, hermesRequestParts, type StudentProfile } from "@/lib/farq-api"
 
 const KICKOFF = "Hi Hermes! I've connected my records. Ask me what you still need to know to build my roadmap."
-const GENERATING_STAGES = ["Reading your confirmed evidence", "Choosing stages for your field", "Placing topics and prerequisites", "Checking what you've already mastered", "Validating the roadmap"]
 
 interface OnboardingChatProps {
   profile: StudentProfile
@@ -18,24 +20,57 @@ interface OnboardingChatProps {
 export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatProps) {
   const chat = useHermesChat(profile.thread_id)
   const [generating, setGenerating] = useState(profile.onboarding_status === "generating")
-  const [tick, setTick] = useState(0)
+  const [plan, setPlan] = useState<StagedPlan | null>(null)
+  const [snapshot, setSnapshot] = useState<StagedSnapshot | null>(null)
+  const [doneStageIds, setDoneStageIds] = useState<Set<string>>(new Set())
+  const [activeStageId, setActiveStageId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [genError, setGenError] = useState<string | null>(null)
-  const timer = useRef<number | null>(null)
+  const abort = useRef<AbortController | null>(null)
 
-  useEffect(() => () => { if (timer.current) window.clearInterval(timer.current) }, [])
+  useEffect(() => () => abort.current?.abort(), [])
+
+  const statuses = useMemo(() => {
+    const map: Record<string, NodeStatus> = {}
+    for (const node of snapshot?.nodes ?? []) map[node.id] = node.status ?? "not-started"
+    return map
+  }, [snapshot])
 
   const generate = async () => {
-    setGenerating(true); setGenError(null); setTick(0)
-    timer.current = window.setInterval(() => setTick((value) => value + 1), 6000)
+    abort.current?.abort()
+    const controller = new AbortController()
+    abort.current = controller
+    setGenerating(true); setGenError(null); setPlan(null); setSnapshot(null)
+    setDoneStageIds(new Set()); setActiveStageId(null); setSelectedId(null)
     try {
       const { body, headers } = hermesRequestParts()
-      await api(`/api/students/${profile.student_id}/onboarding/generate`, { method: "POST", body: JSON.stringify(body), headers })
-      onGenerated()
+      await streamStagedRoadmap(profile.student_id, body, headers, controller.signal, {
+        onPlan: (_jobId, next) => {
+          setPlan(next)
+          setActiveStageId(next.stages[0]?.id ?? null)
+        },
+        onStage: (stageId, next) => {
+          setSnapshot(next)
+          setDoneStageIds((current) => new Set(current).add(stageId))
+          setActiveStageId(next.stages.find((stage) => stage.nodeIds.length === 0)?.id ?? null)
+        },
+        onDone: () => onGenerated(),
+        onError: (message) => {
+          setGenError(message)
+          setGenerating(false)
+        },
+      })
     } catch (reason) {
-      setGenError(reason instanceof Error ? reason.message : "Hermes could not generate your roadmap")
-      setGenerating(false)
-    } finally {
-      if (timer.current) window.clearInterval(timer.current)
+      if (controller.signal.aborted) return
+      // Fall back to the whole-roadmap endpoint so a dropped stream never blocks onboarding.
+      try {
+        const { body, headers } = hermesRequestParts()
+        await api(`/api/students/${profile.student_id}/onboarding/generate`, { method: "POST", body: JSON.stringify(body), headers })
+        onGenerated()
+      } catch (fallbackReason) {
+        setGenError(fallbackReason instanceof Error ? fallbackReason.message : reason instanceof Error ? reason.message : "Hermes could not generate your roadmap")
+        setGenerating(false)
+      }
     }
   }
 
@@ -52,8 +87,48 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
         </button>
       </div></div>
       {generating ? (
-        <div className="grid flex-1 place-items-center p-8 text-center">
-          <div><LoaderCircle className="mx-auto size-6 animate-spin text-primary" /><p className="mt-3 text-sm font-medium">{GENERATING_STAGES[Math.min(tick, GENERATING_STAGES.length - 1)]}…</p><p className="mt-1 text-xs text-muted-foreground">This usually takes under a minute.</p></div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="border-b border-border px-4 py-3 sm:px-8">
+            <div className="mx-auto w-full max-w-3xl">
+              <p className="text-sm font-medium">
+                {plan ? `${plan.title} — stage ${doneStageIds.size + 1} of ${plan.stages.length}` : "Planning your stages…"}
+              </p>
+              {plan ? (
+                <ol className="mt-2 flex flex-wrap gap-1.5" aria-label="Stage progress">
+                  {plan.stages.map((stage) => {
+                    const done = doneStageIds.has(stage.id)
+                    const active = stage.id === activeStageId
+                    return (
+                      <li key={stage.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${done ? "border-emerald-500/40 bg-emerald-500/10" : active ? "border-primary/40 bg-primary/5" : "border-border text-muted-foreground"}`}>
+                        {done ? <Check className="size-3" /> : active ? <LoaderCircle className="size-3 animate-spin" /> : null}
+                        {stage.title.replace(/^Stage \d+ · /, "")}
+                      </li>
+                    )
+                  })}
+                </ol>
+              ) : (
+                <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" />Reading your confirmed evidence and choosing stages…</p>
+              )}
+              <p className="mt-2 text-[11px] text-muted-foreground">Each finished stage appears below immediately; connections are re-checked before the next one starts.</p>
+            </div>
+          </div>
+          <div className="relative flex min-h-[50svh] min-h-0 flex-1 flex-col">
+            {snapshot ? (
+              <RoadmapCanvas
+                nodes={snapshot.nodes}
+                stages={snapshot.stages}
+                statuses={statuses}
+                selectedId={selectedId}
+                dimmedIds={new Set()}
+                onSelect={setSelectedId}
+                onToggleDone={() => undefined}
+              />
+            ) : (
+              <div className="grid flex-1 place-items-center p-8 text-center">
+                <div><LoaderCircle className="mx-auto size-6 animate-spin text-primary" /><p className="mt-3 text-sm font-medium">Building your first stage…</p><p className="mt-1 text-xs text-muted-foreground">This usually takes under a minute.</p></div>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <>

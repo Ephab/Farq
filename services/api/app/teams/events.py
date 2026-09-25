@@ -14,12 +14,14 @@ from ..database import SessionLocal
 from ..identity import resolve_user
 from .common import Db, iso, loads, require_team
 from .models import TeamEvent
-from .policy import authorize
+from .policy import authorize, is_member
+from .presence import presence_frame, touch
 
 # Event types an instructor must never receive (spec §5: the chat is private).
 CHAT_PREFIXES = ("message.", "reaction.", "typing.")
 POLL_SECONDS = 0.4
 HEARTBEAT_SECONDS = 15
+PRESENCE_SECONDS = 2
 # Tests set this to stop the otherwise endless stream after N polls.
 MAX_POLLS: int | None = None
 
@@ -94,7 +96,7 @@ def team_event_stream(
     user_id = user.id
 
     def stream():
-        cursor, polls, last_beat = start, 0, time.monotonic()
+        cursor, polls, last_beat, last_presence = start, 0, time.monotonic(), 0.0
         yield "retry: 2000\n\n"
         while True:
             session = SessionLocal()
@@ -104,6 +106,11 @@ def team_event_stream(
             finally:
                 session.close()
             yield from frames
+            if is_member(role):
+                touch(team_id, user_id)  # an open stream means this member is online
+            if time.monotonic() - last_presence >= PRESENCE_SECONDS:
+                yield presence_frame(team_id, include_typing=role != "instructor")
+                last_presence = time.monotonic()
             if time.monotonic() - last_beat >= HEARTBEAT_SECONDS:
                 yield ": keep-alive\n\n"
                 last_beat = time.monotonic()

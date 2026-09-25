@@ -30,6 +30,7 @@ scripts/firas_*.py
 
 # Environment and local runtime state
 .env
+.env.bak
 .venv
 services/data/
 *.db

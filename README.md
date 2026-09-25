@@ -28,6 +28,16 @@ reasoning model. FastAPI and SQLite keep the auditable product state.
 docker compose up --build
 ```
 
+To evaluate roadmap projects from GitHub, ZIP files, or local directories, keep Docker running and
+start the host-side sandbox worker in a second PowerShell window:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/evaluator.ps1
+```
+
+The worker runs fixed framework recipes in disposable Docker containers. Hermes itself never receives
+host terminal or Docker access.
+
 Open `http://127.0.0.1:5173`. FastAPI docs are at `http://127.0.0.1:8000/docs`
 and Hermes health is at `http://127.0.0.1:8642/health`.
 

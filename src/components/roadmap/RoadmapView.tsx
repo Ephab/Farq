@@ -13,7 +13,7 @@ interface RoadmapResponse {
   snapshot: { title: string; nodes: RoadmapNodeData[]; stages: RoadmapStage[] };
 }
 
-export function RoadmapView() {
+export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: string) => void }) {
   const [nodes, setNodes] = useState<RoadmapNodeData[]>(NODES);
   const [stages, setStages] = useState<RoadmapStage[]>(STAGES);
   const [version, setVersion] = useState<number | null>(null);
@@ -80,6 +80,7 @@ export function RoadmapView() {
           dimmedIds={dimmedIds}
           onSelect={setSelectedId}
           onToggleDone={(id) => setStatus(id, statuses[id] === "done" ? "not-started" : "done")}
+          onOpenProject={onOpenProject}
         />
         <NodeDetailPanel node={selectedNode} status={selectedId ? (statuses[selectedId] ?? "not-started") : "not-started"} hasPrev={selectedIndex > 0} hasNext={selectedIndex >= 0 && selectedIndex < nodes.length - 1} onStatus={(status) => selectedId && setStatus(selectedId, status)} onClose={() => setSelectedId(null)} onNavigate={setSelectedId} onPrev={() => step(-1)} onNext={() => step(1)} />
       </div>

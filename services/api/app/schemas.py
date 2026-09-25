@@ -45,6 +45,7 @@ class RoadmapNode(BaseModel):
     evidence: list[str] = Field(default_factory=list)
     rationale: str = ""
     nodeType: Literal["learning", "project", "resource", "opportunity"] = "learning"
+    projectId: str | None = None
     opportunity: RoadmapOpportunity | None = None
 
     @model_validator(mode="after")
@@ -61,6 +62,7 @@ class RoadmapStage(BaseModel):
     title: str
     description: str = ""
     nodeIds: list[str] = Field(default_factory=list)
+    stageType: Literal["foundation", "skill_sequence", "career", "opportunity"] = "skill_sequence"
 
 
 class RoadmapSnapshot(BaseModel):
@@ -123,6 +125,9 @@ class RoadmapPlanStage(BaseModel):
     # How many nodes the stage generation step should produce.
     node_count: int = Field(default=4, ge=MIN_NODES_PER_STAGE, le=MAX_NODES_PER_STAGE)
     goal: str = Field(default="", max_length=600)
+    # Foundation is the backward-compatible default for plans produced before
+    # stage typing existed. New planner prompts always provide this field.
+    stage_type: Literal["foundation", "skill_sequence", "career", "opportunity"] = "foundation"
 
 
 class RoadmapPlan(BaseModel):
@@ -143,6 +148,7 @@ def validate_stage_nodes(
     stage_id: str,
     confirmed_evidence: set[str],
     legal_dep_ids: set[str],
+    stage_type: str | None = None,
 ) -> list[RoadmapNode]:
     """Checks for one freshly generated stage.
 
@@ -154,6 +160,13 @@ def validate_stage_nodes(
     if not MIN_NODES_PER_STAGE <= len(nodes) <= MAX_NODES_PER_STAGE:
         raise ValueError(f"Stage {stage_id} must have between {MIN_NODES_PER_STAGE} and {MAX_NODES_PER_STAGE} nodes, got {len(nodes)}")
     batch_ids = {node.id for node in nodes}
+    projects = [node for node in nodes if node.nodeType == "project"]
+    if stage_type == "skill_sequence" and len(projects) != 1:
+        raise ValueError(f"Skill-sequence stage {stage_id} must end with exactly one project node")
+    if stage_type and stage_type != "skill_sequence" and projects:
+        raise ValueError(f"Stage {stage_id} is {stage_type} and must not contain a project node")
+    if projects and nodes[-1].id != projects[0].id:
+        raise ValueError(f"Project node must be last in stage {stage_id}")
     seen: set[str] = set()
     for node in nodes:
         if node.stageId != stage_id:
@@ -173,6 +186,10 @@ def validate_stage_nodes(
         unknown = [dep for dep in node.deps if dep not in legal_dep_ids and dep not in batch_ids]
         if unknown:
             raise ValueError(f"{node.id} references unknown prerequisite(s): {', '.join(unknown)}. Only nodes from this or earlier stages are allowed")
+    if projects:
+        local_learning_ids = {node.id for node in nodes if node.nodeType != "project"}
+        if local_learning_ids and not (set(projects[0].deps) & local_learning_ids):
+            raise ValueError("The project must depend on learning from its own skill sequence")
     return nodes
 
 
@@ -374,6 +391,76 @@ class ChatInput(BaseModel):
 
 class ResetInput(BaseModel):
     confirm: Literal["RESET"]
+
+
+class ProjectCriterion(BaseModel):
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    title: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=800)
+    weight: int = Field(ge=1, le=100)
+
+
+class ProjectBrief(BaseModel):
+    title: str = Field(min_length=3, max_length=240)
+    problem: str = Field(min_length=3, max_length=3000)
+    objective: str = Field(min_length=3, max_length=3000)
+    deliverables: list[str] = Field(min_length=1, max_length=20)
+    milestones: list[str] = Field(default_factory=list, max_length=20)
+    constraints: list[str] = Field(default_factory=list, max_length=20)
+    tools: list[str] = Field(default_factory=list, max_length=30)
+    resources: list[RoadmapResource] = Field(default_factory=list, max_length=20)
+    rubric: list[ProjectCriterion] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def rubric_totals_one_hundred(self) -> "ProjectBrief":
+        if sum(item.weight for item in self.rubric) != 100:
+            raise ValueError("Project rubric weights must total 100")
+        return self
+
+
+class ProjectRevisionCreate(BaseModel):
+    brief: ProjectBrief
+    source: Literal["student", "hermes"] = "student"
+
+
+class ProjectSubmissionCreate(BaseModel):
+    source_type: Literal["github", "zip", "local_directory"]
+    source_ref: str = Field(min_length=1, max_length=1000)
+    snapshot_hash: str = Field(default="", max_length=64)
+    manifest: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectEvaluationCreate(BaseModel):
+    submission_id: str = Field(min_length=1, max_length=36)
+
+
+class EvaluationCriterionResult(BaseModel):
+    criterion_id: str = Field(min_length=1, max_length=64)
+    score: int = Field(ge=0, le=100)
+    evidence: list[str] = Field(default_factory=list, max_length=20)
+    feedback: str = Field(default="", max_length=3000)
+
+
+class EvaluationComplete(BaseModel):
+    lease_token: str = Field(min_length=16, max_length=64)
+    adapter: Literal["software", "web", "data_ml", "document", "cad", "circuit", "generic"]
+    score: int = Field(ge=0, le=100)
+    coverage: Literal["low", "medium", "high"]
+    criteria: list[EvaluationCriterionResult] = Field(min_length=1, max_length=12)
+    strengths: list[str] = Field(default_factory=list, max_length=20)
+    improvements: list[str] = Field(default_factory=list, max_length=20)
+    limitations: list[str] = Field(default_factory=list, max_length=20)
+    summary: str = Field(min_length=1, max_length=5000)
+
+
+class EvaluationProgress(BaseModel):
+    lease_token: str = Field(min_length=16, max_length=64)
+    stage: str = Field(min_length=1, max_length=100)
+
+
+class EvaluationFailure(BaseModel):
+    lease_token: str = Field(min_length=16, max_length=64)
+    error: str = Field(min_length=1, max_length=3000)
 
 
 class OpportunityIds(BaseModel):

@@ -32,6 +32,7 @@ import { ThemeProvider } from "@/lib/theme-context"
 export default function App() {
   const [active, setActive] = useState("Home")
   const [coachDraft, setCoachDraft] = useState("")
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [onboarding, setOnboarding] = useState(!hasChosenStudent())
@@ -176,7 +177,7 @@ export default function App() {
               {active === "Home" ? (
                 <TodayView onNavigate={(tab) => setActive(tab)} />
               ) : active === "Roadmap" ? (
-                <RoadmapView />
+                <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} />
               ) : active === "Hermes Coach" ? (
                 <HermesCoach key={coachDraft} initialDraft={coachDraft} />
               ) : active === "My data" ? (
@@ -186,7 +187,7 @@ export default function App() {
               ) : active === "Slides" ? (
                 <SlidesView />
               ) : active === "Projects" ? (
-                <ProjectsView onNavigate={(tab) => setActive(tab)} />
+                <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
               ) : (
                 <div className="grid flex-1 place-items-center p-8">
                   <div className="text-center">

@@ -21,6 +21,7 @@ achievements, career direction, or learning roadmap.
    the student to choose. Present them with the `farq-ui` choice contract from the run
    instructions. Do not propose every branch at once.
 5. After the choice, submit future-only operations through `farq_submit_roadmap_proposal`.
+6. For a roadmap project, load `farq-project-coach`, call `farq_get_project`, and refine the project through a draft revision. Never accept that revision for the student.
 6. Explain the proposal and remind the student that it is awaiting their approval.
 
 Never rewrite completed or in-progress work. Never claim an active roadmap changed after merely

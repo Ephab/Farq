@@ -34,6 +34,7 @@ interface RoadmapNodeProps {
   index: number;
   onSelect: (id: string) => void;
   onToggleDone: (id: string) => void;
+  onOpenProject?: (projectId: string) => void;
 }
 
 export const RoadmapNode = memo(function RoadmapNode({
@@ -46,6 +47,7 @@ export const RoadmapNode = memo(function RoadmapNode({
   index,
   onSelect,
   onToggleDone,
+  onOpenProject,
 }: RoadmapNodeProps) {
   const isDone = status === "done";
   const isOpportunity = node.nodeType === "opportunity";
@@ -61,15 +63,17 @@ export const RoadmapNode = memo(function RoadmapNode({
       onDoubleClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        onToggleDone(node.id);
+        if (node.nodeType === "project" && node.projectId) onOpenProject?.(node.projectId);
+        else onToggleDone(node.id);
       }}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        onToggleDone(node.id);
+        if (node.nodeType === "project" && node.projectId) onOpenProject?.(node.projectId);
+        else onToggleDone(node.id);
       }}
-      title="Click for details · Double-click or right-click to mark done"
-      aria-label={`${node.title} — ${status.replace("-", " ")}. Double-click or right-click to ${isDone ? "mark not started" : "mark done"}.`}
+      title={node.nodeType === "project" ? "Click for details · Double-click or right-click for project workspace" : "Click for details · Double-click or right-click to mark done"}
+      aria-label={`${node.title} — ${status.replace("-", " ")}. ${node.nodeType === "project" ? "Double-click or right-click to open the project workspace." : `Double-click or right-click to ${isDone ? "mark not started" : "mark done"}.`}`}
       aria-pressed={selected}
       className={cn(
         "group absolute flex flex-col rounded-xl border p-3 text-left outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md",

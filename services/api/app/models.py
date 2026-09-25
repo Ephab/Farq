@@ -144,6 +144,65 @@ class AgentRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Project(Base):
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("student_id", "roadmap_node_id", name="uq_project_roadmap_node"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    roadmap_node_id: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    discipline: Mapped[str] = mapped_column(String(32), default="other")
+    project_type: Mapped[str] = mapped_column(String(32), default="generic")
+    lifecycle: Mapped[str] = mapped_column(String(24), default="planned", index=True)
+    current_revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    latest_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    best_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class ProjectRevision(Base):
+    __tablename__ = "project_revisions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    brief_json: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    source: Mapped[str] = mapped_column(String(24), default="student")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProjectSubmission(Base):
+    __tablename__ = "project_submissions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    source_type: Mapped[str] = mapped_column(String(24))
+    source_ref: Mapped[str] = mapped_column(String(1000), default="")
+    snapshot_hash: Mapped[str] = mapped_column(String(64), default="")
+    manifest_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ProjectEvaluation(Base):
+    __tablename__ = "project_evaluations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    submission_id: Mapped[str] = mapped_column(ForeignKey("project_submissions.id"), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    stage: Mapped[str] = mapped_column(String(100), default="Waiting for evaluator")
+    adapter: Mapped[str] = mapped_column(String(32), default="generic")
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    coverage: Mapped[str] = mapped_column(String(16), default="unknown")
+    report_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Opportunity(Base):
     __tablename__ = "opportunities"
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_opportunity_source_external"),)

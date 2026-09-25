@@ -41,6 +41,7 @@ export interface RoadmapNodeData {
   /** Why this node is on this student's roadmap (generated roadmaps). */
   rationale?: string;
   nodeType?: "learning" | "project" | "resource" | "opportunity";
+  projectId?: string | null;
   opportunity?: RoadmapOpportunity | null;
 }
 
@@ -50,6 +51,7 @@ export interface RoadmapStage {
   description: string;
   /** Ordered node ids belonging to this stage. */
   nodeIds: string[];
+  stageType?: "foundation" | "skill_sequence" | "career" | "opportunity";
 }
 
 export const STAGES: RoadmapStage[] = [
@@ -552,6 +554,7 @@ export const NODES: RoadmapNodeData[] = [
   },
   {
     id: "project-realtime",
+    nodeType: "project",
     stageId: "deployment",
     title: "Capstone: Real-Time System",
     icon: "camera",
@@ -566,6 +569,7 @@ export const NODES: RoadmapNodeData[] = [
   },
   {
     id: "project-multimodal",
+    nodeType: "project",
     stageId: "deployment",
     title: "Capstone: Multimodal Search",
     icon: "trophy",

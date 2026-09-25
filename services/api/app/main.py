@@ -28,6 +28,7 @@ from .roadmap_gen import stage as roadmap_stage
 from .roadmap_gen import stitch as roadmap_stitch
 from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
+from .projects import router as projects_router
 from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
@@ -47,6 +48,7 @@ ROADMAP_SEED_PATH = Path(__file__).resolve().parents[1] / "seed-roadmap.json"
 INTERNAL_TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
 Db = Annotated[Session, Depends(get_db)]
 app = FastAPI(title="Farq Hermes Backbone", version="0.1.0")
+app.include_router(projects_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")],

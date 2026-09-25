@@ -123,9 +123,10 @@ export function clearLocalFarqState(): void {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const isForm = typeof FormData !== "undefined" && init?.body instanceof FormData
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...init?.headers },
   })
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`
@@ -209,6 +210,55 @@ export interface OpportunitySummary {
   last_synced_at: string | null
   stale: boolean
   status: "ready" | "stale" | "unavailable"
+}
+
+export interface ProjectBrief {
+  title: string
+  problem: string
+  objective: string
+  deliverables: string[]
+  milestones: string[]
+  constraints: string[]
+  tools: string[]
+  resources: Array<{ label: string; url: string }>
+  rubric: Array<{ id: string; title: string; description: string; weight: number }>
+}
+
+export interface ProjectEvaluation {
+  id: string
+  project_id: string
+  submission_id: string
+  status: "queued" | "running" | "completed" | "failed"
+  stage: string
+  adapter: string
+  score: number | null
+  coverage: "unknown" | "low" | "medium" | "high"
+  report: null | {
+    summary: string
+    strengths: string[]
+    improvements: string[]
+    limitations: string[]
+    criteria: Array<{ criterion_id: string; score: number; evidence: string[]; feedback: string }>
+  }
+  error: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export interface FarqProject {
+  id: string
+  student_id: string
+  roadmap_node_id: string
+  title: string
+  discipline: string
+  project_type: string
+  lifecycle: "planned" | "in-progress" | "evaluating" | "evaluated"
+  latest_score: number | null
+  best_score: number | null
+  current_revision_id: string | null
+  brief: ProjectBrief
+  draft_revisions: Array<{ id: string; version: number; source: string; brief: ProjectBrief; created_at: string }>
+  evaluations: ProjectEvaluation[]
 }
 
 export type SourceKind = "transcript_pdf" | "cv_pdf" | "linkedin_pdf" | "linkedin_zip" | "github" | "folder" | "portfolio_url" | "orcid"

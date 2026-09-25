@@ -895,6 +895,7 @@
     },
     {
       "id": "project-realtime",
+      "nodeType": "project",
       "stageId": "deployment",
       "title": "Capstone: Real-Time System",
       "icon": "camera",
@@ -921,6 +922,7 @@
     },
     {
       "id": "project-multimodal",
+      "nodeType": "project",
       "stageId": "deployment",
       "title": "Capstone: Multimodal Search",
       "icon": "trophy",

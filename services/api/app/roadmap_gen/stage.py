@@ -39,7 +39,8 @@ def build_stage_prompt(
         "\"resources\": [{\"label\": str, \"url\": https url}], \"duration\": \"e.g. 2 weeks\",",
         "\"level\": \"Beginner|Intermediate|Advanced\", \"deps\": [prerequisite node ids],",
         "\"status\": \"not-started|done\", \"evidence\": [evidence_id],",
-        "\"rationale\": \"one sentence: why this node is here for THIS student\"}]}.",
+        "\"rationale\": \"one sentence: why this node is here for THIS student\",",
+        "\"nodeType\": \"learning|project\"}]}.",
         f"icon must be one of: {', '.join(sorted(ROADMAP_ICONS))}.",
         "Mark a node status \"done\" ONLY when confirmed evidence (a passed course with a good grade, or a real",
         "project) shows the student already mastered it, and list those evidence_id values in `evidence`.",
@@ -47,6 +48,10 @@ def build_stage_prompt(
         "Only include resources you are confident exist (official docs, well-known courses or books); an empty list is fine.",
         f"Legal dep targets for this stage: {json.dumps([node['id'] for node in prior_nodes]) or '[] (first stage: use [] or deps within this stage only)'}.",
         "Every dep MUST be one of those IDs or another node in THIS stage. Never invent other IDs.",
+        ("This is a skill_sequence: make the FINAL node exactly one practical project that combines the stage skills, "
+         "is suitable for this student's discipline, and depends on learning nodes in this stage."
+         if stage.stage_type == "skill_sequence" else
+         f"This is a {stage.stage_type} stage: do not include project nodes here."),
         "These node ids are already taken — do not reuse them: "
         + (json.dumps(sorted(used_ids)) if used_ids else "(none yet)").rstrip()[:2000],
     ]
@@ -70,6 +75,7 @@ def generate_stage_nodes(
     hermes: dict,
 ) -> list[RoadmapNode]:
     """Ask Hermes for one stage's nodes, retrying once with the validation error."""
+    stage = next(item for item in plan.stages if item.id == stage_id)
     legal = {node["id"] for node in prior_nodes}
     error: str | None = None
     for _attempt in range(2):
@@ -87,7 +93,7 @@ def generate_stage_nodes(
             nodes = [RoadmapNode.model_validate({**item, "stageId": stage_id}) for item in raw]
             if len({node.id for node in nodes} & set(used_ids)) > 0:
                 raise ValueError("Stage reuses a node ID from an earlier stage")
-            return validate_stage_nodes(nodes, stage_id, confirmed_evidence, legal)
+            return validate_stage_nodes(nodes, stage_id, confirmed_evidence, legal, stage.stage_type)
         except (ValidationError, ValueError, AttributeError) as exc:
             error = str(exc)[:600]
     raise HermesJsonError(f"Hermes could not produce valid nodes for stage {stage_id}: {error}", status=502)

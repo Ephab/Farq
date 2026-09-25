@@ -7,6 +7,11 @@ import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
 import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
+import "./coach-concept.css"
+
+/** A suggestion chip above the composer. `message` is what fills the composer
+ * (follow-ups send immediately instead, via their interaction). */
+export interface SuggestedPrompt { label: string; message: string }
 
 interface ChatThreadViewProps {
   messages: ChatMessage[]
@@ -21,12 +26,14 @@ interface ChatThreadViewProps {
   placeholder: string
   disabled?: boolean
   empty?: ReactNode
-  /** Rendered in-flow under the messages, e.g. the onboarding generate button. */
+  /** Rendered in-flow under the messages, e.g. pending roadmap drafts. */
   afterMessages?: ReactNode
-  /** Prefill (not send) the composer, e.g. from suggestion chips in `empty`. */
+  /** Prefill (not send) the composer, e.g. from another tab's handoff. */
   draft?: string
-  /** Quick prompt chips rendered above the composer; clicking fills the input. */
-  quickPrompts?: string[]
+  /** Shown when Hermes attached no follow-ups to its latest reply. Every entry
+   * must be composed from live backend state (roadmap, facts, drafts) — never
+   * static text — and fills the composer so the student can edit first. */
+  fallbackPrompts?: SuggestedPrompt[]
 }
 
 function formatTime(iso: string): string {
@@ -35,8 +42,8 @@ function formatTime(iso: string): string {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
 }
 
-/** Message list + composer shared by Hermes Coach and the onboarding chat. */
-export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, placeholder, disabled, empty, afterMessages, draft, quickPrompts = [] }: ChatThreadViewProps) {
+/** Message list + composer in the coach concept language (chat-shell interior). */
+export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [] }: ChatThreadViewProps) {
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -72,6 +79,14 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   const interactionAnswer = (sourceMessageId: string) => messages.find((item) =>
     item.role === "user" && item.metadata?.interaction?.source_message_id === sourceMessageId,
   )
+
+  // Backend-suggested next prompts: the follow_ups Hermes attached to the
+  // latest reply. They render as pills above the composer only while that
+  // reply is the thread end and still unanswered — never hardcoded text.
+  const threadEnd = messages.length > 0 ? messages[messages.length - 1] : null
+  const endFollowUps = threadEnd?.role === "assistant" ? (threadEnd.metadata?.follow_ups ?? []) : []
+  const endAnswered = threadEnd ? interactionAnswer(threadEnd.id) : undefined
+  const suggestedPrompts = threadEnd?.role === "assistant" && !endAnswered ? endFollowUps.slice(0, 3) : []
 
   const choose = (message: ChatMessage, optionId: string, title: string) => {
     const group = message.metadata?.choice_group
@@ -131,219 +146,254 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   }
 
   return (
-    <>
-      <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto flex w-full max-w-[680px] flex-col gap-4 px-4 py-6 sm:px-6">
-          {messages.length === 0 ? (
-            <motion.div
-              initial={reduce ? false : { opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, ease: EASE_OUT }}
-            >
-              {empty ?? (
-                <div className="rounded-3xl border border-dashed border-border bg-background p-8 text-center shadow-sm">
-                  <Sparkles className="mx-auto size-7 text-primary" />
-                  <h2 className="mt-3 text-lg font-semibold tracking-tight">Shape your roadmap through conversation</h2>
-                  <p className="mx-auto mt-2 max-w-md text-[15px] text-muted-foreground">Tell Hermes what you enjoy, what you struggle with, or ask it to compare two possible branches.</p>
-                </div>
-              )}
-            </motion.div>
-          ) : null}
-          <AnimatePresence initial={false}>
-            {messages.map((message, index) => {
-              const { text, options } = message.role === "assistant" ? splitOptions(message.content) : { text: message.content, options: [] }
-              const prompt = message.role === "assistant" ? promptFor(index) : null
-              const copied = copiedId === message.id
-              const group = message.role === "assistant" ? message.metadata?.choice_group : null
-              const followUps = message.role === "assistant" ? (message.metadata?.follow_ups ?? []).slice(0, 3) : []
-              const answer = message.role === "assistant" ? interactionAnswer(message.id) : undefined
-              const submittedIds = answer?.metadata?.interaction?.selected_option_ids ?? []
-              const selectedIds = submittedIds.length ? submittedIds : (selections[message.id] ?? [])
-              const controlsEnabled = isLast(message) && !answer && !busy && !disabled
-              const time = formatTime(message.created_at)
-              return (
-                <motion.div
-                  key={message.id}
-                  layout={reduce ? undefined : "position"}
-                  initial={reduce ? false : { opacity: 0, y: 14, scale: 0.985 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.32, ease: EASE_OUT }}
-                  className={cn("flex flex-col", message.role === "user" ? "items-end" : "items-start")}
-                >
-                  {message.role === "user" && editingId === message.id ? (
-                    <div className="w-full max-w-[88%] rounded-3xl rounded-tr-md border border-primary/50 bg-background p-2 shadow-sm sm:max-w-[76%]">
-                      <textarea value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); saveEdit(message.id) } if (event.key === "Escape") setEditingId(null) }} rows={3} autoFocus className="max-h-40 min-h-16 w-full resize-none bg-transparent px-2 py-1 text-[15px] outline-none" />
-                      <div className="flex justify-end gap-1.5 px-1 pb-1">
-                        <button type="button" onClick={() => setEditingId(null)} className="rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground hover:bg-muted">Cancel</button>
-                        <button type="button" disabled={!editDraft.trim() || busy || disabled} onClick={() => saveEdit(message.id)} className="rounded-lg bg-primary px-2.5 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-40">Resend</button>
-                      </div>
+    <div className="fq fq-thread">
+      <div ref={messagesRef} className="chat-messages" role="log" aria-label="Conversation with Hermes">
+        {messages.length === 0 ? (
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: EASE_OUT }}
+            className="fq-empty"
+          >
+            {empty ?? (
+              <>
+                <span className="empty-mark"><Sparkles size={20} /></span>
+                <h2>Shape your roadmap through conversation</h2>
+                <p>Tell Hermes what you enjoy, what you struggle with, or ask it to compare two possible branches.</p>
+              </>
+            )}
+            {fallbackPrompts.length ? (
+              <div className="button-row" style={{ justifyContent: "center", marginTop: 18 }}>
+                {fallbackPrompts.map((prompt) => (
+                  <button key={prompt.label} type="button" disabled={busy || disabled} title={prompt.label} onClick={() => setInput(prompt.message)} className="button secondary small">
+                    {prompt.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </motion.div>
+        ) : null}
+        <AnimatePresence initial={false}>
+          {messages.map((message, index) => {
+            const { text, options } = message.role === "assistant" ? splitOptions(message.content) : { text: message.content, options: [] }
+            const prompt = message.role === "assistant" ? promptFor(index) : null
+            const copied = copiedId === message.id
+            const group = message.role === "assistant" ? message.metadata?.choice_group : null
+            const answer = message.role === "assistant" ? interactionAnswer(message.id) : undefined
+            const submittedIds = answer?.metadata?.interaction?.selected_option_ids ?? []
+            const selectedIds = submittedIds.length ? submittedIds : (selections[message.id] ?? [])
+            const controlsEnabled = isLast(message) && !answer && !busy && !disabled
+            const time = formatTime(message.created_at)
+            return (
+              <motion.article
+                key={message.id}
+                layout={reduce ? undefined : "position"}
+                initial={reduce ? false : { opacity: 0, y: 14, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.32, ease: EASE_OUT }}
+                className={cn("message", message.role === "user" ? "user" : "assistant")}
+                aria-label={message.role === "user" ? "Your message" : "Hermes reply"}
+              >
+                <p className="message-meta">
+                  {message.role === "user" ? "You" : "Hermes"}{time ? ` · ${time}` : ""}
+                </p>
+                {message.role === "user" && editingId === message.id ? (
+                  <div className="edit-box">
+                    <textarea
+                      value={editDraft}
+                      onChange={(event) => setEditDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); saveEdit(message.id) }
+                        if (event.key === "Escape") setEditingId(null)
+                      }}
+                      rows={3}
+                      autoFocus
+                      aria-label="Edit your message"
+                    />
+                    <div className="edit-actions">
+                      <button type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                      <button type="button" disabled={!editDraft.trim() || busy || disabled} onClick={() => saveEdit(message.id)} className="edit-save">Resend</button>
                     </div>
-                  ) : (
-                    <div
-                      className={cn(
-                        "px-[17px] py-[15px] text-[15px] leading-7 shadow-sm",
-                        message.role === "user"
-                          ? "max-w-[88%] rounded-3xl rounded-tr-md bg-foreground text-background sm:max-w-[76%]"
-                          : "w-full max-w-[100%] rounded-3xl rounded-tl-md border border-border bg-background sm:max-w-[100%]",
-                      )}
-                    >
-                      <p className={cn("mb-2 text-xs font-semibold", message.role === "user" ? "text-background/60" : "text-muted-foreground")}>
-                        {message.role === "user" ? "You" : "Hermes"}{time ? ` · ${time}` : ""}
-                      </p>
-                      {message.role === "assistant" ? <MarkdownText text={text} /> : <p className="whitespace-pre-wrap">{text}</p>}
-                    </div>
-                  )}
-                  {group ? (
-                    <div className="mt-3 w-full">
-                      <p className="px-1 text-[13px] font-medium text-muted-foreground">{group.prompt}</p>
-                      <div className="mt-2 grid gap-2">
-                        {group.options.slice(0, 3).map((option, optionIndex) => {
-                          const selected = selectedIds.includes(option.id)
-                          const opportunity = option.opportunity
-                          return (
-                            <motion.div
-                              key={option.id}
-                              initial={reduce ? false : { opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.28, delay: Math.min(optionIndex * 0.05, 0.15), ease: EASE_OUT }}
-                              className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm"
+                  </div>
+                ) : message.role === "assistant" ? (
+                  <MarkdownText text={text} />
+                ) : (
+                  <p className="message-p">{text}</p>
+                )}
+                {group ? (
+                  <div>
+                    <p className="choice-prompt">{group.prompt}</p>
+                    <div className="choice-grid">
+                      {group.options.slice(0, 3).map((option, optionIndex) => {
+                        const selected = selectedIds.includes(option.id)
+                        const opportunity = option.opportunity
+                        return (
+                          <motion.div
+                            key={option.id}
+                            initial={reduce ? false : { opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.28, delay: Math.min(optionIndex * 0.05, 0.15), ease: EASE_OUT }}
+                          >
+                            <button
+                              type="button"
+                              disabled={!controlsEnabled}
+                              onClick={() => choose(message, option.id, option.title)}
+                              aria-pressed={selected}
+                              className="choice"
                             >
-                              <motion.button
-                                type="button"
-                                disabled={!controlsEnabled}
-                                onClick={() => choose(message, option.id, option.title)}
-                                whileTap={controlsEnabled && !reduce ? { scale: 0.99 } : undefined}
-                                className={cn(
-                                  "flex w-full items-start gap-3 p-[15px] text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default",
-                                  selected ? "bg-primary/[0.07]" : "hover:bg-muted/50",
-                                )}
-                              >
-                                <span className={cn("mt-0.5 grid size-6 shrink-0 place-items-center border", group.mode === "single" ? "rounded-full" : "rounded-lg", selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40 text-transparent")}>
-                                  {selected ? <Check className="size-3.5" strokeWidth={3} /> : <Check className="size-3.5" strokeWidth={3} />}
-                                </span>
-                                <span className="min-w-0"><span className="block text-[15px] font-semibold">{option.title}</span><span className="mt-0.5 block text-[13px] leading-6 text-muted-foreground">{option.description}</span></span>
-                              </motion.button>
-                              {opportunity ? (
-                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                                  <span className="font-semibold text-foreground">Hackathonat · {opportunity.score}% fit</span>
-                                  {opportunity.source_date ? <span className="flex items-center gap-1"><CalendarDays className="size-3" />{opportunity.source_date}</span> : null}
-                                  {opportunity.locations.length ? <span className="flex items-center gap-1"><MapPin className="size-3" />{opportunity.locations.join(" · ")}</span> : null}
-                                  {(opportunity.registration_url || opportunity.detail_url) ? <a href={opportunity.registration_url || opportunity.detail_url} target="_blank" rel="noreferrer noopener" className="ml-auto flex items-center gap-1 font-medium text-primary hover:underline">View event<ExternalLink className="size-3" /></a> : null}
-                                </div>
-                              ) : null}
-                            </motion.div>
-                          )
-                        })}
+                              <span className="choice-mark" aria-hidden="true"><Check size={13} strokeWidth={3.5} /></span>
+                              <span className="choice-copy">
+                                <strong>{option.title}</strong>
+                                <span>{option.description}</span>
+                                {opportunity ? (
+                                  <span className="choice-opp">
+                                    <span className="opp-fit">Hackathonat · {opportunity.score}% fit</span>
+                                    {opportunity.source_date ? <span className="opp-meta"><CalendarDays size={12} />{opportunity.source_date}</span> : null}
+                                    {opportunity.locations.length ? <span className="opp-meta"><MapPin size={12} />{opportunity.locations.join(" · ")}</span> : null}
+                                    {(opportunity.registration_url || opportunity.detail_url) ? (
+                                      <a
+                                        href={opportunity.registration_url || opportunity.detail_url}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        onClick={(event) => event.stopPropagation()}
+                                      >
+                                        View event<ExternalLink size={12} />
+                                      </a>
+                                    ) : null}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </button>
+                          </motion.div>
+                        )
+                      })}
+                    </div>
+                    {group.mode === "multiple" && controlsEnabled ? (
+                      <div className="choice-continue">
+                        <span>Choose {group.min_selections === group.max_selections ? group.min_selections : `${group.min_selections}–${group.max_selections}`}</span>
+                        <button
+                          type="button"
+                          disabled={selectedIds.length < group.min_selections || selectedIds.length > group.max_selections}
+                          onClick={() => submitMultiple(message)}
+                          className="button small"
+                        >
+                          Continue{selectedIds.length ? ` (${selectedIds.length})` : ""}
+                        </button>
                       </div>
-                      {group.mode === "multiple" && controlsEnabled ? (
-                        <div className="flex items-center justify-between gap-3 px-1 pt-2">
-                          <span className="text-xs text-muted-foreground">Choose {group.min_selections === group.max_selections ? group.min_selections : `${group.min_selections}–${group.max_selections}`}</span>
-                          <button type="button" disabled={selectedIds.length < group.min_selections || selectedIds.length > group.max_selections} onClick={() => submitMultiple(message)} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground disabled:opacity-40">Continue{selectedIds.length ? ` (${selectedIds.length})` : ""}</button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {options.length > 0 && !group && isLast(message) ? (
-                    <div className="mt-2 flex max-w-[88%] flex-wrap gap-2">
-                      {options.map((option) => <button key={option} type="button" disabled={busy || disabled} onClick={() => submit(option)} className="rounded-full border border-primary/40 bg-primary/5 px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-primary/10 disabled:opacity-40">{option}</button>)}
-                    </div>
-                  ) : null}
-                  {followUps.length ? (
-                    <div className="mt-3 w-full">
-                      <p className="px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Explore next</p>
-                      <div className="mt-1.5 flex flex-wrap gap-2">
-                        {followUps.map((item) => {
-                          const selected = answer?.metadata?.interaction?.kind === "follow_up" && submittedIds.includes(item.id)
-                          return <button key={item.id} type="button" disabled={!controlsEnabled} onClick={() => onInteraction({ kind: "follow_up", source_message_id: message.id, selected_option_ids: [item.id] }, item.label)} className={cn("rounded-xl border px-3 py-2 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default", selected ? "border-foreground bg-foreground text-background" : "border-border bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground")}>{item.label}</button>
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    <button type="button" aria-label={message.role === "user" ? "Copy prompt" : "Copy output"} onClick={() => void copyText(message.id, text)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-                      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}{copied ? "Copied" : "Copy"}
-                    </button>
-                    {message.role === "user" ? (
-                      <button type="button" aria-label="Edit prompt and resend" disabled={busy || disabled || editingId !== null} onClick={() => editPrompt(message)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">
-                        <PencilLine className="size-3" />Edit & resend
-                      </button>
-                    ) : prompt ? (
-                      <button type="button" aria-label="Regenerate from prompt" disabled={busy || disabled} onClick={() => submit(prompt)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">
-                        <RotateCcw className="size-3" />Regenerate
-                      </button>
                     ) : null}
                   </div>
-                </motion.div>
-              )
-            })}
-          </AnimatePresence>
-          {afterMessages}
-          <AnimatePresence initial={false}>
-            {busy ? (
-              <motion.div
-                key="typing"
-                initial={reduce ? false : { opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.25, ease: EASE_OUT }}
-                className="flex items-start"
-                aria-live="polite"
-              >
-                <div className="rounded-3xl rounded-tl-md border border-border bg-background px-[17px] py-[15px] shadow-sm">
-                  <div className="flex items-center gap-1.5" aria-hidden="true">
-                    {[0, 1, 2].map((dot) => (
-                      <motion.span
-                        key={dot}
-                        className="size-1.5 rounded-full bg-muted-foreground"
-                        animate={reduce ? undefined : { opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-                        transition={{ duration: 1.1, repeat: Infinity, delay: dot * 0.15, ease: "easeInOut" }}
-                      />
+                ) : null}
+                {options.length > 0 && !group && isLast(message) ? (
+                  <div className="button-row" style={{ marginTop: 14 }}>
+                    {options.map((option) => (
+                      <button key={option} type="button" disabled={busy || disabled} onClick={() => submit(option)} className="button secondary small">
+                        {option}
+                      </button>
                     ))}
                   </div>
-                  <p className="mt-2 text-[13px] text-muted-foreground">{stage || "Hermes is working"}</p>
+                ) : null}
+                <div className="message-tools">
+                  <button type="button" aria-label={message.role === "user" ? "Copy prompt" : "Copy output"} onClick={() => void copyText(message.id, text)}>
+                    {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? "Copied" : "Copy"}
+                  </button>
+                  {message.role === "user" ? (
+                    <button type="button" aria-label="Edit prompt and resend" disabled={busy || disabled || editingId !== null} onClick={() => editPrompt(message)}>
+                      <PencilLine size={12} />Edit &amp; resend
+                    </button>
+                  ) : prompt ? (
+                    <button type="button" aria-label="Regenerate from prompt" disabled={busy || disabled} onClick={() => submit(prompt)}>
+                      <RotateCcw size={12} />Regenerate
+                    </button>
+                  ) : null}
                 </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-          {error ? <div className="flex items-start justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-[15px] text-destructive"><span>{error}</span><button type="button" aria-label="Retry" onClick={onRetry}><RefreshCw className="size-4" /></button></div> : null}
-        </div>
-      </div>
-      <div className="border-t border-border px-4 pb-4 pt-3 sm:px-6">
-        <div className="mx-auto w-full max-w-[680px]">
-          {quickPrompts.length ? (
-            <div className="mb-2.5 flex gap-2 overflow-x-auto pb-0.5">
-              {quickPrompts.map((prompt) => (
-                <button key={prompt} type="button" disabled={busy || disabled} onClick={() => setInput(prompt)} className="shrink-0 rounded-full bg-muted px-3 py-1.5 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted-foreground/15 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2.5 rounded-2xl border border-border bg-background p-2.5 shadow-sm transition focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(input) } }}
-              placeholder={placeholder}
-              rows={1}
-              aria-label="Message Hermes"
-              className="max-h-[130px] min-h-12 w-full resize-none bg-transparent px-3 py-3 text-[15px] leading-7 outline-none placeholder:text-muted-foreground"
-            />
-            <motion.button
-              type="button"
-              aria-label="Send message"
-              disabled={!input.trim() || busy || disabled}
-              onClick={() => submit(input)}
-              whileHover={reduce ? undefined : { y: -1, rotate: -2 }}
-              whileTap={reduce ? undefined : { scale: 0.94 }}
-              className="grid size-[46px] place-items-center rounded-[15px] bg-primary text-primary-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+              </motion.article>
+            )
+          })}
+        </AnimatePresence>
+        {afterMessages}
+        <AnimatePresence initial={false}>
+          {busy ? (
+            <motion.div
+              key="typing"
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25, ease: EASE_OUT }}
+              aria-live="polite"
             >
-              <ArrowUp className="size-5" strokeWidth={2.5} />
-            </motion.button>
+              <div className="message assistant">
+                <p className="message-meta">Hermes</p>
+                <div className="typing-dots" aria-hidden="true"><span /><span /><span /></div>
+                <p className="typing-stage">{stage || "Hermes is working"}</p>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+        {error ? (
+          <div className="fq-error" role="alert">
+            <span>{error}</span>
+            <button type="button" aria-label="Retry" onClick={onRetry}><RefreshCw size={14} /></button>
           </div>
+        ) : null}
+      </div>
+      <div className="composer-wrap">
+        {suggestedPrompts.length && !busy && !disabled ? (
+          <div className="button-row composer-prompts">
+            {suggestedPrompts.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                title={item.label}
+                onClick={() => {
+                  if (threadEnd) onInteraction({ kind: "follow_up", source_message_id: threadEnd.id, selected_option_ids: [item.id] }, item.label)
+                }}
+                className="status"
+                aria-label={`Ask Hermes: ${item.label}`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {!suggestedPrompts.length && fallbackPrompts.length && !busy && !disabled && messages.length > 0 ? (
+          <div className="button-row composer-prompts">
+            {fallbackPrompts.map((prompt) => (
+              <button
+                key={prompt.label}
+                type="button"
+                title={prompt.label}
+                onClick={() => setInput(prompt.message)}
+                className="status"
+                aria-label={`Draft message: ${prompt.label}`}
+              >
+                {prompt.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="composer">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(input) } }}
+            placeholder={placeholder}
+            rows={1}
+            aria-label="Message Hermes"
+          />
+          <motion.button
+            type="button"
+            aria-label="Send message"
+            disabled={!input.trim() || busy || disabled}
+            onClick={() => submit(input)}
+            whileHover={reduce ? undefined : { y: -1, rotate: -2 }}
+            whileTap={reduce ? undefined : { scale: 0.94 }}
+            className="send-button"
+          >
+            <ArrowUp size={19} strokeWidth={2.5} />
+          </motion.button>
         </div>
       </div>
-    </>
+    </div>
   )
 }

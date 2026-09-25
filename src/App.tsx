@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route } from "lucide-react"
+import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, Users } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import {
   AnimatedSidebar,
@@ -20,6 +20,7 @@ import {
 import { FooterSettings } from "@/components/footer-settings"
 import { TodayView } from "@/components/dashboard/TodayView"
 import { ProjectsView } from "@/components/projects/ProjectsView"
+import { TeamsView } from "@/components/teams/TeamsView"
 import { QuizView } from "@/components/quiz/QuizView"
 import { SlidesView } from "@/components/slides/SlidesView"
 import { RoadmapView } from "@/components/roadmap/RoadmapView"
@@ -140,6 +141,16 @@ export default function App() {
                     </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
+                        icon={<Users className="size-4" />}
+                        isActive={active === "Group Projects"}
+                        onSelect={() => setActive("Group Projects")}
+                        className="text-[15px]"
+                      >
+                        Group Projects
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
+                    <AnimatedSidebarMenuItem>
+                      <AnimatedSidebarMenuButton
                         icon={<ListChecks className="size-4" />}
                         isActive={active === "Quizzes"}
                         onSelect={() => setActive("Quizzes")}
@@ -201,6 +212,8 @@ export default function App() {
                 <QuizView />
               ) : active === "Slides" ? (
                 <SlidesView />
+              ) : active === "Group Projects" ? (
+                <TeamsView />
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
               ) : (

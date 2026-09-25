@@ -164,7 +164,7 @@ export default function App() {
           </AnimatedSidebar>
 
           <AnimatedSidebarInset className="bg-background">
-            <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
               <AnimatedSidebarTrigger className="text-muted-foreground hover:bg-muted hover:text-foreground">
                 <PanelLeft aria-hidden="true" className="size-4" />
               </AnimatedSidebarTrigger>

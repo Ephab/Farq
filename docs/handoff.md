@@ -106,7 +106,8 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 ### 6. Smaller fixes
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.
 - `scripts/dev.ps1` re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start.
-  `scripts/firas_run_mac.py` copies the same set (every dir under `.hermes/skills`); Docker mounts each
+  `scripts/firas_run_mac.py` and its Windows port `scripts/run_windows.py` copy the same set
+  (every dir under `.hermes/skills`); Docker mounts each
   skill into `/opt/data/skills`. `tests/test_hermes_packaging.py` fails if a checked-in skill is not
   provisioned on every launch path.
 - `database.ensure_added_columns()` adds new columns to existing SQLite DBs (no migration tool).

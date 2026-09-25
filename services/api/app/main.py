@@ -835,6 +835,24 @@ def messages(thread_id: str, db: Db) -> list[dict]:
     } for item in items]
 
 
+@app.get("/api/chat/threads/{thread_id}/runs/latest")
+def latest_run(thread_id: str, db: Db) -> dict:
+    """Most recent agent run for a thread, so a remounted client can resume
+    watching a run that is still generating after navigation."""
+    if db.get(ChatThread, thread_id) is None:
+        raise HTTPException(404, "Thread not found")
+    run = db.scalar(select(AgentRun).where(AgentRun.thread_id == thread_id).order_by(AgentRun.created_at.desc(), AgentRun.id.desc()))
+    if run is None:
+        return {"run": None}
+    return {"run": {
+        "id": run.id,
+        "status": run.status,
+        "stage": run.stage,
+        "error": run.error,
+        "created_at": run.created_at.isoformat(),
+    }}
+
+
 def interaction_message(thread_id: str, body: ChatInput, db: Session) -> tuple[str, str]:
     """Validate a rendered control response and build canonical persisted text."""
     interaction = body.interaction

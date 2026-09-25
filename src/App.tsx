@@ -24,6 +24,7 @@ import { QuizView } from "@/components/quiz/QuizView"
 import { SlidesView } from "@/components/slides/SlidesView"
 import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { HermesCoach } from "@/components/hermes/HermesCoach"
+import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/farq-api"
@@ -35,6 +36,9 @@ export default function App() {
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [onboarding, setOnboarding] = useState(!hasChosenStudent())
+  // Live Hermes run for this student's coach thread — polled so any section
+  // can show that Hermes is still generating after navigating away.
+  const activeRun = useActiveRun(profile?.thread_id ?? null)
 
   const loadProfile = useCallback(() => {
     if (!hasChosenStudent()) { setOnboarding(true); return }
@@ -170,6 +174,17 @@ export default function App() {
               </AnimatedSidebarTrigger>
               <div className="h-5 w-px bg-border" />
               <p className="text-sm font-medium">{active}</p>
+              {activeRun && active !== "Hermes Coach" ? (
+                <button
+                  type="button"
+                  onClick={() => setActive("Hermes Coach")}
+                  title={activeRun.stage || "Hermes is working"}
+                  className="ml-auto inline-flex max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
+                >
+                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
+                  <span className="truncate">Hermes working{activeRun.stage ? ` · ${activeRun.stage}` : ""}</span>
+                </button>
+              ) : null}
             </header>
 
             <main className="flex min-h-0 flex-1 flex-col bg-background">

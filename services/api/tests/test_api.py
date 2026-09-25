@@ -522,6 +522,81 @@ def test_rewind_drops_message_and_later(client: TestClient, monkeypatch: pytest.
     db.close()
 
 
+def test_latest_run_for_thread(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from app.database import SessionLocal
+    from app.models import AgentRun
+
+    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    student_id = client.post("/api/students", json={"display_name": "Latest Run Student"}).json()["student_id"]
+    thread_id = client.get(f"/api/students/{student_id}/profile").json()["thread_id"]
+
+    assert client.get(f"/api/chat/threads/{thread_id}/runs/latest").json() == {"run": None}
+    assert client.get("/api/chat/threads/nope/runs/latest").status_code == 404
+
+    client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Hello Hermes"})
+    latest = client.get(f"/api/chat/threads/{thread_id}/runs/latest").json()["run"]
+    assert latest["status"] == "queued"
+    assert latest["stage"]
+    assert latest["created_at"]
+
+    db = SessionLocal()
+    run = db.query(AgentRun).filter(AgentRun.thread_id == thread_id).one()
+    run.status = "running"
+    run.stage = "Hermes is thinking"
+    db.commit()
+    db.close()
+    latest = client.get(f"/api/chat/threads/{thread_id}/runs/latest").json()["run"]
+    assert latest["status"] == "running"
+    assert latest["stage"] == "Hermes is thinking"
+
+
+def test_edit_and_resend_rewinds_instead_of_stacking(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from datetime import timedelta
+
+    from app.database import SessionLocal
+    from app.models import AgentRun, ChatMessage
+
+    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    student_id = client.post("/api/students", json={"display_name": "Edit Resend Student"}).json()["student_id"]
+    thread_id = client.get(f"/api/students/{student_id}/profile").json()["thread_id"]
+
+    def complete_runs() -> None:
+        db = SessionLocal()
+        for run in db.query(AgentRun).filter(AgentRun.thread_id == thread_id, AgentRun.status == "queued").all():
+            run.status = "completed"
+        db.commit()
+        db.close()
+
+    client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "First version"})
+    complete_runs()
+    second = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Second version"}).json()["message_id"]
+    complete_runs()
+
+    # An assistant reply arrived after the turn being edited.
+    db = SessionLocal()
+    target = db.get(ChatMessage, second)
+    assert target is not None
+    db.add(ChatMessage(thread_id=thread_id, role="assistant", content="Old reply", created_at=target.created_at + timedelta(seconds=1)))
+    db.commit()
+    db.close()
+
+    before = [message["content"] for message in client.get(f"/api/chat/threads/{thread_id}/messages").json()]
+    assert before == ["First version", "Second version", "Old reply"]
+
+    rewound = client.post(f"/api/chat/threads/{thread_id}/rewind", json={"message_id": second})
+    assert rewound.status_code == 200
+    assert rewound.json()["deleted"] == 2
+    assert [message["content"] for message in client.get(f"/api/chat/threads/{thread_id}/messages").json()] == ["First version"]
+
+    assert client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Second version edited"}).status_code == 202
+    complete_runs()
+    after = [message["content"] for message in client.get(f"/api/chat/threads/{thread_id}/messages").json()]
+    assert after == ["First version", "Second version edited"]
+
+    # Rewinding the already-deleted turn fails loudly instead of resending onto it.
+    assert client.post(f"/api/chat/threads/{thread_id}/rewind", json={"message_id": second}).status_code == 404
+
+
 def test_hackathonat_sync_match_tool_and_seen_flow(client: TestClient):
     student = client.post("/api/students", json={"display_name": "Opportunity Student"}).json()
     internal = {"X-Farq-Internal-Token": "farq-internal-dev"}

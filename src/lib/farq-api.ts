@@ -203,6 +203,14 @@ export interface StudentProfile {
   thread_id: string
 }
 
+export interface OpportunitySummary {
+  source: "hackathonat"
+  unseen_count: number
+  last_synced_at: string | null
+  stale: boolean
+  status: "ready" | "stale" | "unavailable"
+}
+
 export type SourceKind = "transcript_pdf" | "cv_pdf" | "linkedin_pdf" | "linkedin_zip" | "github" | "folder" | "portfolio_url" | "orcid"
 
 export interface DataSourceItem {

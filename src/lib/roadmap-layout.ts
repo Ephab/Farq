@@ -107,10 +107,23 @@ export function computeRoadmapLayout(
 
   const height = y - STAGE_GAP + PAD_BOTTOM;
 
+  // The vertical spine communicates progression between stages. Drawing every
+  // prerequisite across stage boundaries produces long wires that cut through
+  // headers and unrelated cards (and becomes especially noisy on generated
+  // roadmaps). Keep explicit connectors for branching inside a stage only.
+  const stageByNode = new Map<string, string>();
+  for (const stage of stages) {
+    for (const nodeId of stage.nodeIds) stageByNode.set(nodeId, stage.id);
+  }
+
   const edges: RoadmapEdge[] = [];
   for (const node of nodes) {
     for (const dep of node.deps) {
-      if (positions[dep] && positions[node.id]) {
+      if (
+        positions[dep]
+        && positions[node.id]
+        && stageByNode.get(dep) === stageByNode.get(node.id)
+      ) {
         edges.push({ id: `${dep}->${node.id}`, from: dep, to: node.id });
       }
     }

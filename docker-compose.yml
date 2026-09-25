@@ -18,6 +18,7 @@ services:
       HERMES_MODEL: ${HERMES_MODEL:-gemini-3.8-flash}
       HERMES_PROVIDER: ${HERMES_PROVIDER:-gemini}
       FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
+      OPPORTUNITY_SYNC_ENABLED: ${OPPORTUNITY_SYNC_ENABLED:-true}
     volumes:
       - farq-data:/data
     ports:

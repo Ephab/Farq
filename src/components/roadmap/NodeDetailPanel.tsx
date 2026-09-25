@@ -3,11 +3,13 @@
 import { AnimatePresence, motion } from "motion/react";
 import {
   Check,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Clock,
   ExternalLink,
   Loader,
+  MapPin,
   X,
 } from "lucide-react";
 import {
@@ -135,6 +137,15 @@ function DetailBody({
             <span className="font-medium text-foreground">Why this is on your roadmap: </span>
             {node.rationale}
           </p>
+        ) : null}
+
+        {node.nodeType === "opportunity" && node.opportunity ? (
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+            <div className="flex items-center justify-between gap-2"><span className="font-semibold">Hackathonat opportunity</span><span className="text-muted-foreground">Checked {new Date(node.opportunity.fetched_at).toLocaleDateString()}</span></div>
+            {node.opportunity.source_date ? <p className="mt-2 flex items-center gap-1.5"><CalendarDays className="size-3.5 text-amber-600" />{node.opportunity.date_label ?? "Date shown by source"}: {node.opportunity.source_date}</p> : null}
+            {node.opportunity.locations.length ? <p className="mt-1 flex items-center gap-1.5"><MapPin className="size-3.5 text-amber-600" />{node.opportunity.locations.join(" · ")}{node.opportunity.virtual ? " · Virtual available" : ""}</p> : null}
+            <p className="mt-2 text-[11px] leading-4 text-muted-foreground">Confirm eligibility and registration status on the official page before relying on this date.</p>
+          </div>
         ) : null}
 
         <div

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -141,5 +141,55 @@ class AgentRun(Base):
     stage: Mapped[str] = mapped_column(String(80), default="Preparing context")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Opportunity(Base):
+    __tablename__ = "opportunities"
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_opportunity_source_external"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    external_id: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(32), default="hackathon", index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    organizer: Mapped[str] = mapped_column(String(240), default="")
+    locations_json: Mapped[str] = mapped_column(Text, default="[]")
+    topics_json: Mapped[str] = mapped_column(Text, default="[]")
+    virtual: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_date: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    detail_url: Mapped[str] = mapped_column(String(800), default="")
+    registration_url: Mapped[str] = mapped_column(String(1200), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    raw_hash: Mapped[str] = mapped_column(String(64))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class StudentOpportunity(Base):
+    __tablename__ = "student_opportunities"
+    __table_args__ = (UniqueConstraint("student_id", "opportunity_id", name="uq_student_opportunity"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    opportunity_id: Mapped[str] = mapped_column(ForeignKey("opportunities.id"), index=True)
+    score: Mapped[float] = mapped_column(Float, default=0)
+    reasons_json: Mapped[str] = mapped_column(Text, default="[]")
+    # unseen | seen | dismissed | added
+    status: Mapped[str] = mapped_column(String(16), default="unseen", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OpportunitySyncRun(Base):
+    __tablename__ = "opportunity_sync_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="running", index=True)
+    fetched_count: Mapped[int] = mapped_column(Integer, default=0)
+    changed_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

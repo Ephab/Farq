@@ -1,10 +1,10 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
-import { Bot, Brain, Check, GitBranch, Sparkles, X } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Bot, Brain, Check, GitBranch, Sparkles, Trophy, X } from "lucide-react"
 import { ChatThreadView } from "@/components/hermes/ChatThreadView"
 import { useHermesChat } from "@/components/hermes/use-hermes-chat"
-import { api, getCurrentStudentId, notifyRoadmapChanged, type StudentProfile } from "@/lib/farq-api"
+import { api, getCurrentStudentId, notifyRoadmapChanged, type OpportunitySummary, type StudentProfile } from "@/lib/farq-api"
 
 interface Fact { id: string; category: string; key: string; value: unknown }
 interface Proposal {
@@ -27,15 +27,20 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
   const [facts, setFacts] = useState<Fact[]>([])
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [agent, setAgent] = useState("checking")
+  const [opportunities, setOpportunities] = useState<OpportunitySummary | null>(null)
   const [draft, setDraft] = useState(initialDraft)
+  const markedSeen = useRef(new Set<string>())
+  const pendingProposals = proposals.filter((proposal) => proposal.status === "pending")
+  const recentDecisions = proposals.filter((proposal) => proposal.status !== "pending").slice(0, 5)
 
   const refreshSide = useCallback(async () => {
-    const [context, nextProposals, health] = await Promise.all([
+    const [context, nextProposals, health, opportunitySummary] = await Promise.all([
       api<{ facts: Fact[] }>(`/api/students/${studentId}/context`),
       api<Proposal[]>(`/api/students/${studentId}/roadmap/proposals`),
       api<{ agent: string }>("/api/health"),
+      api<OpportunitySummary>(`/api/students/${studentId}/opportunities/summary`),
     ])
-    setFacts(context.facts); setProposals(nextProposals.filter((proposal) => proposal.kind !== "initial")); setAgent(health.agent)
+    setFacts(context.facts); setProposals(nextProposals.filter((proposal) => proposal.kind !== "initial")); setAgent(health.agent); setOpportunities(opportunitySummary)
   }, [studentId])
 
   const onRunFinished = useCallback(() => { refreshSide().catch(() => undefined) }, [refreshSide])
@@ -48,6 +53,18 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
       .then(refreshSide)
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not reach Farq API"))
   }, [studentId, refreshSide, setError])
+
+  useEffect(() => {
+    const ids = chat.messages.flatMap((message) => message.role === "assistant"
+      ? (message.metadata?.choice_group?.options ?? []).map((option) => option.opportunity?.id).filter((id): id is string => Boolean(id))
+      : [])
+    const unseen = [...new Set(ids)].filter((id) => !markedSeen.current.has(id))
+    if (!unseen.length) return
+    unseen.forEach((id) => markedSeen.current.add(id))
+    api<{ updated: number }>(`/api/students/${studentId}/opportunities/mark-seen`, { method: "POST", body: JSON.stringify({ ids: unseen }) })
+      .then(() => refreshSide())
+      .catch(() => unseen.forEach((id) => markedSeen.current.delete(id)))
+  }, [chat.messages, studentId, refreshSide])
 
   const decide = async (proposal: Proposal, decision: "accept" | "reject") => {
     chat.setError(null)
@@ -63,7 +80,10 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
       <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-border">
         <div className="shrink-0 border-b border-border px-5 py-4 sm:px-8"><div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
           <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground"><Bot className="size-5" /></span><div><h1 className="font-semibold">Hermes Coach</h1><p className="text-xs text-muted-foreground">Learns from your words and the paths you choose</p></div></div>
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${agent === "ready" ? "bg-emerald-500/10 text-emerald-600" : agent === "unavailable" ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-700"}`}>{agent === "ready" ? "Agent online" : agent === "checking" ? "Checking agent" : agent === "degraded" ? "Agent degraded" : "Agent unavailable"}</span>
+          <div className="flex items-center gap-2">
+            {opportunities?.unseen_count ? <button type="button" disabled={chat.busy} onClick={() => void chat.send("Show me my new Saudi hackathon matches from Hackathonat.")} className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-500/20 disabled:opacity-50"><Trophy className="size-3" />{opportunities.unseen_count} new</button> : null}
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${agent === "ready" ? "bg-emerald-500/10 text-emerald-600" : agent === "unavailable" ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-700"}`}>{agent === "ready" ? "Agent online" : agent === "checking" ? "Checking agent" : agent === "degraded" ? "Agent degraded" : "Agent unavailable"}</span>
+          </div>
         </div></div>
         <ChatThreadView
           messages={chat.messages}
@@ -82,7 +102,20 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
       </section>
       <aside className="min-h-0 min-w-0 space-y-5 overflow-y-auto overscroll-contain border-t border-border p-4 sm:p-6 lg:border-t-0">
         <div><div className="flex items-center gap-2"><Brain className="size-4 text-primary" /><h2 className="text-sm font-semibold">What Hermes knows</h2></div><p className="mt-1 text-xs text-muted-foreground">Only explicit statements, choices, and evidence you confirmed are stored.</p><div className="mt-3 space-y-2">{facts.length === 0 ? <p className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">No preferences learned yet.</p> : facts.map((fact) => <div key={fact.id} className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{fact.category}</p><p className="mt-1 text-sm font-medium">{fact.key}</p><p className="line-clamp-3 text-xs text-muted-foreground">{formatFactValue(fact.value)}</p></div>)}</div></div>
-        <div><div className="flex items-center gap-2"><GitBranch className="size-4 text-primary" /><h2 className="text-sm font-semibold">Roadmap proposals</h2></div><div className="mt-3 space-y-3">{proposals.length === 0 ? <p className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">Hermes has not proposed a revision.</p> : proposals.map((proposal) => <article key={proposal.id} className="rounded-2xl border border-border bg-card p-4"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">{proposal.summary}</h3><span className="text-[10px] uppercase text-muted-foreground">{proposal.status}</span></div><p className="mt-2 text-xs leading-5 text-muted-foreground">{proposal.reasoning}</p><div className="mt-3 space-y-1">{proposal.operations.map((operation, index) => <p key={`${operation.node_id}-${index}`} className="text-[11px]"><span className="font-semibold">{operation.type.replaceAll("_", " ")}</span> · {operation.node_id}</p>)}</div>{proposal.status === "pending" ? <div className="mt-4 grid grid-cols-2 gap-2"><button onClick={() => void decide(proposal, "reject")} className="flex items-center justify-center gap-1 rounded-xl border border-border px-3 py-2 text-xs font-medium"><X className="size-3.5" />Reject</button><button onClick={() => void decide(proposal, "accept")} className="flex items-center justify-center gap-1 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-primary-foreground"><Check className="size-3.5" />Accept</button></div> : null}</article>)}</div></div>
+        <div>
+          <div className="flex items-center gap-2"><GitBranch className="size-4 text-primary" /><h2 className="text-sm font-semibold">Roadmap proposals</h2></div>
+          <div className="mt-3 space-y-3">
+            {pendingProposals.length === 0 && recentDecisions.length === 0 ? <p className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">Hermes has not proposed a revision.</p> : null}
+            {pendingProposals.length > 0 ? <div className="space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Needs your decision</p>
+              {pendingProposals.map((proposal) => <article key={proposal.id} className="rounded-2xl border border-border bg-card p-4"><h3 className="text-sm font-semibold">{proposal.summary}</h3><p className="mt-2 text-xs leading-5 text-muted-foreground">{proposal.reasoning}</p><div className="mt-3 space-y-1">{proposal.operations.map((operation, index) => <p key={`${operation.node_id}-${index}`} className="text-[11px]"><span className="font-semibold">{operation.type.replaceAll("_", " ")}</span> · {operation.node_id}</p>)}</div><div className="mt-4 grid grid-cols-2 gap-2"><button onClick={() => void decide(proposal, "reject")} className="flex items-center justify-center gap-1 rounded-xl border border-border px-3 py-2 text-xs font-medium"><X className="size-3.5" />Reject</button><button onClick={() => void decide(proposal, "accept")} className="flex items-center justify-center gap-1 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-primary-foreground"><Check className="size-3.5" />Accept</button></div></article>)}
+            </div> : null}
+            {recentDecisions.length > 0 ? <div className="space-y-2 pt-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent decisions</p>
+              {recentDecisions.map((proposal) => <article key={proposal.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5"><span className={`size-1.5 shrink-0 rounded-full ${proposal.status === "accepted" ? "bg-emerald-500" : "bg-muted-foreground/50"}`} /><p className="min-w-0 flex-1 truncate text-xs font-medium" title={proposal.summary}>{proposal.summary}</p><span className={`shrink-0 text-[9px] font-semibold uppercase tracking-wide ${proposal.status === "accepted" ? "text-emerald-600" : "text-muted-foreground"}`}>{proposal.status}</span></article>)}
+            </div> : null}
+          </div>
+        </div>
       </aside>
     </div>
   )

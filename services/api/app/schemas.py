@@ -15,6 +15,19 @@ class RoadmapResource(BaseModel):
     url: str
 
 
+class RoadmapOpportunity(BaseModel):
+    opportunity_id: str
+    external_id: str
+    source: str = "hackathonat"
+    detail_url: str
+    registration_url: str = ""
+    source_date: str | None = None
+    date_label: str | None = None
+    locations: list[str] = Field(default_factory=list)
+    virtual: bool = False
+    fetched_at: str
+
+
 class RoadmapNode(BaseModel):
     id: str
     stageId: str
@@ -31,6 +44,16 @@ class RoadmapNode(BaseModel):
     # Evidence item ids that justify a node (e.g. a passed course marking it done).
     evidence: list[str] = Field(default_factory=list)
     rationale: str = ""
+    nodeType: Literal["learning", "project", "resource", "opportunity"] = "learning"
+    opportunity: RoadmapOpportunity | None = None
+
+    @model_validator(mode="after")
+    def valid_opportunity(self) -> "RoadmapNode":
+        if self.nodeType == "opportunity" and self.opportunity is None:
+            raise ValueError("Opportunity nodes require authoritative source metadata")
+        if self.nodeType != "opportunity" and self.opportunity is not None:
+            raise ValueError("Opportunity metadata is only valid on opportunity nodes")
+        return self
 
 
 class RoadmapStage(BaseModel):
@@ -286,6 +309,8 @@ class ChatChoiceOption(BaseModel):
     id: str = Field(min_length=1, max_length=48, pattern=r"^[a-z0-9][a-z0-9_-]*$")
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(min_length=1, max_length=280)
+    opportunity_id: str | None = Field(default=None, max_length=36)
+    opportunity: dict[str, Any] | None = None
 
 
 class ChatChoiceGroup(BaseModel):
@@ -349,6 +374,10 @@ class ChatInput(BaseModel):
 
 class ResetInput(BaseModel):
     confirm: Literal["RESET"]
+
+
+class OpportunityIds(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=20)
 
 
 class RewindInput(BaseModel):

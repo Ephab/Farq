@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, SquareDashed } from "lucide-react"
+import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import {
   AnimatedSidebar,
@@ -95,16 +95,6 @@ export default function App() {
                     </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
-                        icon={<SquareDashed className="size-4" />}
-                        isActive={active === "Dashboard"}
-                        onSelect={() => setActive("Dashboard")}
-                        className="text-[15px]"
-                      >
-                        Dashboard
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
                         icon={<Route className="size-4" />}
                         isActive={active === "Roadmap"}
                         onSelect={() => setActive("Roadmap")}
@@ -183,7 +173,7 @@ export default function App() {
             </header>
 
             <main className="flex min-h-0 flex-1 flex-col bg-background">
-              {active === "Home" || active === "Dashboard" ? (
+              {active === "Home" ? (
                 <TodayView onNavigate={(tab) => setActive(tab)} />
               ) : active === "Roadmap" ? (
                 <RoadmapView />

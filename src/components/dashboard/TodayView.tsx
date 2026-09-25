@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { motion, useReducedMotion } from "motion/react"
 import {
   ArrowRight,
   Bot,
@@ -22,6 +23,7 @@ import {
   type StudentProfile,
 } from "@/lib/farq-api"
 import { loadLibrary, type QuizLibrary } from "@/lib/quiz-store"
+import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 
 interface RoadmapResponse {
@@ -139,6 +141,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     }
   })
   const [savingId, setSavingId] = useState<string | null>(null)
+  const reduce = useReducedMotion()
 
   const load = useCallback(async () => {
     setError(null)
@@ -408,21 +411,32 @@ export function TodayView({ onNavigate }: TodayViewProps) {
   ]
 
   return (
-    <div className="mx-auto w-full max-w-6xl p-4 sm:p-8">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: EASE_OUT }}
+      className="mx-auto w-full max-w-6xl p-4 sm:p-8"
+    >
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE_OUT }}
+        className="mb-5 flex flex-wrap items-end justify-between gap-4"
+      >
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">{todayLabel}</p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">One useful step today.</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">{subtitle}</p>
         </div>
-        <button
+        <motion.button
           type="button"
           onClick={() => onNavigate("Roadmap")}
+          whileTap={reduce ? undefined : { scale: 0.98 }}
           className="inline-flex h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Route aria-hidden="true" className="size-4" /> Open roadmap
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
 
       {visibleFacts.length > 0 ? (
         <div className="mb-5 flex flex-wrap gap-2" aria-label="What Hermes knows about you">
@@ -440,17 +454,20 @@ export function TodayView({ onNavigate }: TodayViewProps) {
       ) : null}
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6" role="list" aria-label="Today at a glance">
-        {stats.map((stat) => (
-          <button
+        {stats.map((stat, index) => (
+          <motion.button
             key={stat.label}
             type="button"
             role="listitem"
             onClick={() => onNavigate(stat.tab)}
+            initial={reduce ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.25), ease: EASE_OUT }}
             className="rounded-2xl border border-border p-3 text-left shadow-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="block text-xl font-semibold tabular-nums">{stat.value}</span>
             <span className="mt-0.5 block text-xs text-muted-foreground">{stat.label}</span>
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -461,8 +478,11 @@ export function TodayView({ onNavigate }: TodayViewProps) {
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[1.3fr_0.7fr]">
-        <section
+        <motion.section
           aria-labelledby="today-next"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: EASE_OUT }}
           className="relative overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-lg sm:p-10"
         >
           <span className="inline-flex min-h-7 items-center rounded-full bg-primary-foreground/15 px-3 text-xs font-semibold">
@@ -522,9 +542,15 @@ export function TodayView({ onNavigate }: TodayViewProps) {
               </button>
             ) : null}
           </div>
-        </section>
+        </motion.section>
 
-        <section aria-labelledby="today-up-next" className="rounded-2xl border border-border p-6 shadow-sm">
+        <motion.section
+          aria-labelledby="today-up-next"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1, ease: EASE_OUT }}
+          className="rounded-2xl border border-border p-6 shadow-sm"
+        >
           <div className="mb-3 flex items-center justify-between text-[13px] text-muted-foreground">
             <span id="today-up-next">Up next · plan order</span>
             <span>
@@ -585,11 +611,17 @@ export function TodayView({ onNavigate }: TodayViewProps) {
               )
             })}
           </ul>
-        </section>
+        </motion.section>
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <section aria-labelledby="today-stage" className="rounded-2xl border border-border p-6 shadow-sm">
+        <motion.section
+          aria-labelledby="today-stage"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1, ease: EASE_OUT }}
+          className="rounded-2xl border border-border p-6 shadow-sm"
+        >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h2 id="today-stage" className="text-xl font-semibold">{currentStage ? currentStage.title : title}</h2>
@@ -656,9 +688,14 @@ export function TodayView({ onNavigate }: TodayViewProps) {
               )
             })}
           </ul>
-        </section>
+        </motion.section>
 
-        <div className="grid content-start gap-5">
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.15, ease: EASE_OUT }}
+          className="grid content-start gap-5"
+        >
           <section aria-labelledby="today-records" className="rounded-2xl border border-border p-6 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -753,11 +790,17 @@ export function TodayView({ onNavigate }: TodayViewProps) {
               Open Hermes Coach <ArrowRight aria-hidden="true" className="size-4" />
             </button>
           </section>
-        </div>
+        </motion.div>
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <section aria-labelledby="today-sources" className="rounded-2xl border border-border p-6 shadow-sm">
+        <motion.section
+          aria-labelledby="today-sources"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.15, ease: EASE_OUT }}
+          className="rounded-2xl border border-border p-6 shadow-sm"
+        >
           <h2 id="today-sources" className="text-xl font-semibold">Sources</h2>
           <p className="text-[13px] text-muted-foreground">
             {sources.length > 0
@@ -799,9 +842,15 @@ export function TodayView({ onNavigate }: TodayViewProps) {
           >
             Manage sources <ArrowRight aria-hidden="true" className="size-4" />
           </button>
-        </section>
+        </motion.section>
 
-        <section aria-labelledby="today-practice" className="rounded-2xl border border-border p-6 shadow-sm">
+        <motion.section
+          aria-labelledby="today-practice"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2, ease: EASE_OUT }}
+          className="rounded-2xl border border-border p-6 shadow-sm"
+        >
           <h2 id="today-practice" className="text-xl font-semibold">Practice</h2>
           <p className="text-[13px] text-muted-foreground">
             {practice.decks.length} {practice.decks.length === 1 ? "deck" : "decks"} · {practice.quizzes.length}{" "}
@@ -835,8 +884,8 @@ export function TodayView({ onNavigate }: TodayViewProps) {
           >
             Open practice <ArrowRight aria-hidden="true" className="size-4" />
           </button>
-        </section>
+        </motion.section>
       </div>
-    </div>
+    </motion.div>
   )
 }

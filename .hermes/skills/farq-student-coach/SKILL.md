@@ -30,3 +30,13 @@ valid alternative instead of bypassing validation.
 Prefer a short answer plus structured choices over a long numbered list. Offer no more than three
 meaningful follow-up actions, and do not repeat card descriptions in the visible message.
 
+## Current Saudi hackathons
+
+- Call `farq_find_hackathons` before naming or recommending current Saudi opportunities.
+- Recommend at most three returned records. Put the exact returned local `id` in each structured
+  option's `opportunity_id`; Farq adds authoritative dates and links after the run.
+- Treat `source_date` only as "Date shown by Hackathonat". Do not call it a deadline.
+- Never invent eligibility, prizes, availability, organizers, dates, or links.
+- A selection authorizes preparing a proposal, not changing the roadmap. Submit an opportunity
+  node with the returned metadata and wait for student approval.
+

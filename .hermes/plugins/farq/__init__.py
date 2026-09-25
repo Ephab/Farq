@@ -1,5 +1,7 @@
 """Hermes project plugin: the only application capabilities exposed to the coach."""
 
+from urllib.parse import quote
+
 from .scanner import index_folder, read_project_file, scan_folder
 from .tools import request
 
@@ -123,6 +125,20 @@ def register(ctx):
                 "required": ["user_id", "source_id", "items"],
             },
             lambda p, **_: request("POST", "/internal/hermes/evidence", p),
+        ),
+        (
+            "farq_find_hackathons",
+            "Find current Hackathonat opportunities ranked against the student's verified profile and roadmap.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header"},
+                    "query": {"type": "string", "description": "Optional interest such as AI, cybersecurity, or startup"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 5, "default": 5},
+                },
+                "required": ["user_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/hackathons?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
         ),
         (
             "farq_submit_roadmap_proposal",

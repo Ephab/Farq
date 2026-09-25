@@ -98,6 +98,10 @@ nodes are protected. When the student's direction is ambiguous, offer two or thr
 branches and ask them to choose before proposing a change. When the student says they added or
 confirmed new records, call farq_get_student_profile to read the confirmed evidence, then propose
 future-only additions or level changes that reflect it.
+For current Saudi hackathons, call farq_find_hackathons. Use only returned records and never
+invent dates, eligibility, prizes, organizers, or registration status. Recommend at most three.
+Put each record's local id in the option's opportunity_id. A selected hackathon still requires
+a future-only roadmap proposal and student approval.
 """.strip()
 
 
@@ -115,7 +119,7 @@ Schema:
     "mode": "single",
     "prompt": "Short instruction",
     "options": [
-      {"id": "first-path", "title": "First path", "description": "One concise sentence."},
+      {"id": "first-path", "title": "First path", "description": "One concise sentence.", "opportunity_id": null},
       {"id": "second-path", "title": "Second path", "description": "One concise sentence."}
     ],
     "min_selections": 1,
@@ -131,6 +135,8 @@ for mutually exclusive directions and `multiple` only for compatible selections.
 labels should be at most eight words. Do not make artificial choices for a question that needs
 the student's own words. Either key may be omitted when unused. Displaying a roadmap branch
 choice never authorizes a proposal; wait for the student's selection.
+For Hackathonat results, set opportunity_id to the exact Farq opportunity id returned by
+farq_find_hackathons. Never put source URLs or dates in the JSON; Farq adds those from SQLite.
 """.strip()
 
 
@@ -156,6 +162,25 @@ def instructions_for(student_id: str, db) -> str:
 FARQ_UI_BLOCK = re.compile(r"\n*```farq-ui\s*(\{.*?\})\s*```\s*$", re.IGNORECASE | re.DOTALL)
 
 
+def normalize_ordered_lists(text: str) -> str:
+    """Repair the common model output where every top-level item starts at 1."""
+    lines = text.splitlines()
+    repeated = sum(1 for line in lines if re.match(r"^1\.\s+", line))
+    if repeated < 2:
+        return text
+    number = 0
+    fenced = False
+    normalized: list[str] = []
+    for line in lines:
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        if not fenced and re.match(r"^1\.\s+", line):
+            number += 1
+            line = re.sub(r"^1\.", f"{number}.", line, count=1)
+        normalized.append(line)
+    return "\n".join(normalized)
+
+
 def parse_chat_output(output: str) -> tuple[str, str | None]:
     """Separate visible assistant text from an optional validated UI block.
 
@@ -165,8 +190,8 @@ def parse_chat_output(output: str) -> tuple[str, str | None]:
     text = (output or "").strip()
     match = FARQ_UI_BLOCK.search(text)
     if match is None:
-        return text, None
-    visible = text[:match.start()].strip() or "Choose an option to continue."
+        return normalize_ordered_lists(text), None
+    visible = normalize_ordered_lists(text[:match.start()].strip()) or "Choose an option to continue."
     try:
         ui = ChatMessageUi.model_validate(json.loads(match.group(1)))
     except (json.JSONDecodeError, ValueError):
@@ -491,6 +516,9 @@ def run_agent(
         with httpx.Client(timeout=20) as client:
             output, _model, _provider = execute_with_fallback(client, headers, payload, provider, model, 180, on_state, hermes_api_key=hermes_api_key)
         visible, ui_json = parse_chat_output(output or "I finished, but did not return a message.")
+        if ui_json:
+            from .opportunities import enrich_chat_ui
+            ui_json = enrich_chat_ui(db, student_id, ChatMessageUi.model_validate_json(ui_json)).model_dump_json()
         db.add(ChatMessage(thread_id=thread.id, role="assistant", content=visible, metadata_json=ui_json, agent_run_id=run.id))
         run.status = "completed"
         run.stage = "Complete"

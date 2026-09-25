@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { Check, Copy, LoaderCircle, PencilLine, RefreshCw, RotateCcw, Send } from "lucide-react"
+import { CalendarDays, Check, Copy, ExternalLink, LoaderCircle, MapPin, PencilLine, RefreshCw, RotateCcw, Send } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
 import { cn } from "@/lib/utils"
@@ -142,15 +142,16 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                   <div className="grid gap-2">
                     {group.options.slice(0, 3).map((option) => {
                       const selected = selectedIds.includes(option.id)
+                      const opportunity = option.opportunity
                       return (
+                        <div key={option.id} className="overflow-hidden rounded-2xl border border-border bg-card">
                         <button
-                          key={option.id}
                           type="button"
                           disabled={!controlsEnabled}
                           onClick={() => choose(message, option.id, option.title)}
                           className={cn(
-                            "group/choice flex w-full items-start gap-3 rounded-2xl border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
-                            selected ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:border-foreground/30 hover:bg-muted/50",
+                            "group/choice flex w-full items-start gap-3 p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default",
+                            selected ? "bg-foreground text-background" : "hover:bg-muted/50",
                           )}
                         >
                           <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center border", group.mode === "single" ? "rounded-full" : "rounded-md", selected ? "border-background bg-background text-foreground" : "border-muted-foreground/40")}>
@@ -158,6 +159,15 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                           </span>
                           <span className="min-w-0"><span className="block text-sm font-semibold">{option.title}</span><span className={cn("mt-0.5 block text-xs leading-5", selected ? "text-background/65" : "text-muted-foreground")}>{option.description}</span></span>
                         </button>
+                        {opportunity ? (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+                            <span className="font-semibold text-foreground">Hackathonat · {opportunity.score}% fit</span>
+                            {opportunity.source_date ? <span className="flex items-center gap-1"><CalendarDays className="size-3" />{opportunity.source_date}</span> : null}
+                            {opportunity.locations.length ? <span className="flex items-center gap-1"><MapPin className="size-3" />{opportunity.locations.join(" · ")}</span> : null}
+                            {(opportunity.registration_url || opportunity.detail_url) ? <a href={opportunity.registration_url || opportunity.detail_url} target="_blank" rel="noreferrer noopener" className="ml-auto flex items-center gap-1 font-medium text-primary hover:underline">View event<ExternalLink className="size-3" /></a> : null}
+                          </div>
+                        ) : null}
+                        </div>
                       )
                     })}
                   </div>

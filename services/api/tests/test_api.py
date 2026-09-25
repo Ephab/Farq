@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 
@@ -13,7 +14,10 @@ os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 from app.database import SessionLocal, engine  # noqa: E402
 from app.hermes import NIM_MODEL, parse_chat_output, resolve_hermes_selection  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import AgentRun, ChatMessage  # noqa: E402
+from app.models import AgentRun, ChatMessage, Opportunity, RoadmapVersion, StudentOpportunity  # noqa: E402
+from app.opportunities.base import OpportunityRecord  # noqa: E402
+from app.opportunities.hackathonat import HackathonatConnector, OpportunitySourceError  # noqa: E402
+from app.opportunities.service import sync_hackathonat  # noqa: E402
 from app.schemas import ChatMessageUi  # noqa: E402
 
 
@@ -103,6 +107,17 @@ def test_structured_chat_choices_are_validated_and_persisted(client: TestClient,
         "interaction": {"kind": "choice", "source_message_id": source_id, "selected_option_ids": ["vlm"]},
     })
     assert duplicate.status_code == 409
+
+
+def test_chat_output_repairs_repeated_top_level_numbering():
+    text = "Here are two matches:\n\n1. **First**\n\n- Detail\n\n1. **Second**\n\nWould you like either?"
+    visible, metadata = parse_chat_output(text)
+    assert "1. **First**" in visible
+    assert "2. **Second**" in visible
+    assert metadata is None
+
+    code = "```text\n1. keep\n1. keep\n```"
+    assert parse_chat_output(code)[0] == code
 
 
 def test_structured_chat_multi_select_limits_and_follow_up(client: TestClient, monkeypatch: pytest.MonkeyPatch):
@@ -505,3 +520,115 @@ def test_rewind_drops_message_and_later(client: TestClient, monkeypatch: pytest.
     db = SessionLocal()
     assert db.get(ChatMessage, ours) is None
     db.close()
+
+
+def test_hackathonat_sync_match_tool_and_seen_flow(client: TestClient):
+    student = client.post("/api/students", json={"display_name": "Opportunity Student"}).json()
+    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    for category, key in (("interest", "AI"), ("goal", "AI industry")):
+        response = client.post("/internal/hermes/facts", headers=internal, json={
+            "user_id": student["student_id"], "category": category, "key": key,
+            "value": "artificial intelligence", "explicit": True,
+        })
+        assert response.status_code == 200
+
+    class Connector:
+        source = "hackathonat"
+        def fetch(self):
+            return [OpportunityRecord(
+                external_id="saudi-ai-1", title="Saudi AI Challenge", organizer="Demo Organizer",
+                locations=["Riyadh"], topics=["Artificial Intelligence", "Programming"], virtual=False,
+                source_date="2099-10-01", detail_url="https://www.hackathonat.com/hackathons/saudi-ai-1",
+                registration_url="https://example.org/register", active=True, hidden=False, raw_hash="a" * 64,
+            )]
+
+    db = SessionLocal()
+    result = sync_hackathonat(db, Connector())
+    assert result["fetched"] == 1
+    db.close()
+
+    summary = client.get(f"/api/students/{student['student_id']}/opportunities/summary").json()
+    assert summary["unseen_count"] == 1
+    found = client.get(f"/internal/hermes/students/{student['student_id']}/hackathons", headers=internal).json()
+    assert found["results"][0]["title"] == "Saudi AI Challenge"
+    assert found["results"][0]["date_label"] == "Date shown by Hackathonat"
+
+    opportunity_id = found["results"][0]["id"]
+    seen = client.post(f"/api/students/{student['student_id']}/opportunities/mark-seen", json={"ids": [opportunity_id]})
+    assert seen.json() == {"updated": 1}
+    assert client.get(f"/api/students/{student['student_id']}/opportunities/summary").json()["unseen_count"] == 0
+
+
+def test_hackathonat_connector_normalizes_and_rejects_bad_content_type():
+    def valid(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://www.hackathonat.com/api/hackathons"
+        return httpx.Response(200, headers={"content-type": "application/json"}, json=[{
+            "uid": 1152, "name": "هاكاثون الذكاء الاصطناعي", "organizer": "منظم",
+            "locations": ["الرياض"], "sectors": ["الذكاء الاصطناعي"], "date": "2099-10-01",
+            "url": "/hackathons/1152", "link": "https://official.example/register",
+            "isActive": True, "isHide": False, "virtual": False,
+        }])
+    client = httpx.Client(transport=httpx.MockTransport(valid))
+    records = HackathonatConnector(client).fetch()
+    assert records[0].external_id == "1152"
+    assert records[0].detail_url == "https://www.hackathonat.com/hackathons/1152"
+    assert records[0].source_date == "2099-10-01"
+    client.close()
+
+    bad = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(200, headers={"content-type": "text/html"}, text="no")))
+    with pytest.raises(OpportunitySourceError, match="non-JSON"):
+        HackathonatConnector(bad).fetch()
+    bad.close()
+
+
+def test_failed_opportunity_sync_keeps_last_good_cache(client: TestClient):
+    class BrokenConnector:
+        source = "hackathonat"
+        def fetch(self):
+            raise RuntimeError("source unavailable")
+
+    db = SessionLocal()
+    before = db.query(Opportunity).filter(Opportunity.external_id == "saudi-ai-1").one()
+    assert before.active is True
+    with pytest.raises(RuntimeError, match="source unavailable"):
+        sync_hackathonat(db, BrokenConnector())
+    db.expire_all()
+    assert db.query(Opportunity).filter(Opportunity.external_id == "saudi-ai-1").one().active is True
+    db.close()
+
+
+def test_opportunity_proposal_metadata_is_authoritative(client: TestClient):
+    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    student = client.post("/api/students", json={"display_name": "Proposal Student"}).json()
+    db = SessionLocal()
+    opportunity = db.query(Opportunity).filter(Opportunity.external_id == "saudi-ai-1").one()
+    db.add(StudentOpportunity(student_id=student["student_id"], opportunity_id=opportunity.id, score=90, reasons_json='["Strong match"]'))
+    db.commit()
+    db.close()
+    roadmap = client.get(f"/api/students/{student['student_id']}/roadmap").json()
+    # New students have an empty roadmap, so add a stage through a generated-like snapshot first.
+    db = SessionLocal()
+    current = db.get(RoadmapVersion, roadmap["version_id"])
+    current.snapshot_json = '{"title":"Plan","stages":[{"id":"next","title":"Next","description":"","nodeIds":[]}],"nodes":[]}'
+    db.commit(); db.close()
+    payload = {
+        "user_id": student["student_id"], "base_version_id": roadmap["version_id"], "summary": "Add Saudi AI Challenge",
+        "reasoning": "It matches the student's goals.", "operations": [{
+            "type": "add_node", "node_id": "hackathon-saudi-ai", "node": {
+                "id": "hackathon-saudi-ai", "stageId": "next", "title": "Saudi AI Challenge", "icon": "trophy",
+                "tagline": "Build with a team", "description": "Prepare and participate.", "subtopics": ["Form a team"],
+                "resources": [], "duration": "1 week", "level": "Intermediate", "deps": [], "status": "not-started",
+                "nodeType": "opportunity", "opportunity": {
+                    "opportunity_id": opportunity.id, "external_id": "fake", "source": "fake",
+                    "detail_url": "https://evil.example", "registration_url": "https://evil.example",
+                    "locations": [], "virtual": False, "fetched_at": "2000-01-01T00:00:00Z"
+                }
+            }
+        }]
+    }
+    response = client.post("/internal/hermes/roadmap-proposals", headers=internal, json=payload)
+    assert response.status_code == 200
+    proposal = client.get(f"/api/roadmap-proposals/{response.json()['proposal_id']}").json()
+    metadata = proposal["operations"][0]["node"]["opportunity"]
+    assert metadata["source"] == "hackathonat"
+    assert metadata["registration_url"] == "https://example.org/register"

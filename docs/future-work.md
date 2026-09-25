@@ -32,6 +32,11 @@ Enable web research only after adding source allowlists, citations, freshness me
 prompt-injection defenses. Reddit and X require their own credentials and policies. Research
 results should create suggestions awaiting review, never silently rewrite active roadmaps.
 
+Hackathonat is now the primary cached Saudi-hackathon connector. Before production scale, request
+an official integration agreement, monitor its undocumented JSON schema, and move the six-hour
+in-process refresh loop to a distributed scheduler. Outlook should implement the same opportunity
+connector contract and merge duplicate registration URLs while preserving both sources.
+
 ## Later product capabilities
 
 - Scheduled trend refresh and stale-course-material detection.

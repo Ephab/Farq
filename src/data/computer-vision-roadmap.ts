@@ -7,6 +7,19 @@ export interface RoadmapResource {
   url: string;
 }
 
+export interface RoadmapOpportunity {
+  opportunity_id: string;
+  external_id: string;
+  source: string;
+  detail_url: string;
+  registration_url: string;
+  source_date?: string | null;
+  date_label?: string | null;
+  locations: string[];
+  virtual: boolean;
+  fetched_at: string;
+}
+
 export interface RoadmapNodeData {
   id: string;
   stageId: string;
@@ -27,6 +40,8 @@ export interface RoadmapNodeData {
   evidence?: string[];
   /** Why this node is on this student's roadmap (generated roadmaps). */
   rationale?: string;
+  nodeType?: "learning" | "project" | "resource" | "opportunity";
+  opportunity?: RoadmapOpportunity | null;
 }
 
 export interface RoadmapStage {

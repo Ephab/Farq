@@ -3,7 +3,25 @@
 import { useCallback, useEffect, useState } from "react"
 import { API_BASE, api, hermesRequestParts } from "@/lib/farq-api"
 
-export interface ChatChoiceOption { id: string; title: string; description: string }
+export interface OpportunityCard {
+  id: string
+  external_id: string
+  title: string
+  organizer: string
+  locations: string[]
+  topics: string[]
+  virtual: boolean
+  source_date: string | null
+  date_label: string | null
+  detail_url: string
+  registration_url: string
+  source: string
+  fetched_at: string
+  score: number
+  reasons: string[]
+  status: "unseen" | "seen" | "dismissed" | "added"
+}
+export interface ChatChoiceOption { id: string; title: string; description: string; opportunity_id?: string | null; opportunity?: OpportunityCard | null }
 export interface ChatChoiceGroup {
   mode: "single" | "multiple"
   prompt: string

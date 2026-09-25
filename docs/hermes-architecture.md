@@ -32,6 +32,16 @@ Hermes internals because its documented gateway contract is a safer upgrade boun
 
 Failures are stored and shown. The current roadmap is never replaced with fake output.
 
+## Current opportunities
+
+Hackathonat is fetched by FastAPI through a fixed read-only connector, not by a generic Hermes
+browser. The API caches normalized records every six hours, scores matches deterministically,
+and exposes only cached results through `farq_find_hackathons`. Hermes explains those matches and
+may submit an opportunity-node proposal, but the API replaces model-supplied dates and links with
+SQLite values before storing it. The feed's `date` is labelled "Date shown by Hackathonat" because
+the public endpoint does not define it as a registration deadline. A future Outlook connector
+will write into the same normalized opportunity boundary.
+
 ## Memory ownership
 
 Hermes owns conversational continuity and agent execution. Farq owns verified facts and
@@ -119,6 +129,8 @@ library; original files stay in memory only.
 - `farq_record_explicit_fact(...)` records a direct statement or explicit choice.
 - `farq_submit_roadmap_proposal(...)` validates and stores a pending revision.
 - `farq_get_student_profile(user_id)` reads onboarding basics, confirmed evidence and stated facts.
+- `farq_find_hackathons(user_id, query, limit)` reads current personalized Hackathonat matches;
+  it cannot navigate arbitrary URLs.
 - `farq_scan_folder(path, purpose)` / `farq_read_project_file(path)` index a student-typed local
   folder; secrets, keys and identity documents are refused in code.
 - `farq_submit_evidence(user_id, source_id, items)` stores suggested evidence for review.

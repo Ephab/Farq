@@ -2,7 +2,7 @@
 
 import { createElement, memo } from "react";
 import { motion } from "motion/react";
-import { Check } from "lucide-react";
+import { Check, Trophy } from "lucide-react";
 import type { NodeStatus, RoadmapNodeData } from "@/data/computer-vision-roadmap";
 import { NODE_H, NODE_W } from "@/lib/roadmap-layout";
 import { nodeIcon } from "@/components/roadmap/roadmap-icons";
@@ -48,6 +48,7 @@ export const RoadmapNode = memo(function RoadmapNode({
   onToggleDone,
 }: RoadmapNodeProps) {
   const isDone = status === "done";
+  const isOpportunity = node.nodeType === "opportunity";
 
   return (
     <motion.button
@@ -117,7 +118,7 @@ export const RoadmapNode = memo(function RoadmapNode({
             isDone ? "bg-background/12 text-background" : LEVEL_BADGE[node.level],
           )}
         >
-          {node.level}
+          {isOpportunity ? <span className="flex items-center gap-1"><Trophy className="size-3" />Hackathon</span> : node.level}
         </span>
         <span className={isDone ? "text-background/60" : "text-muted-foreground"}>{node.duration}</span>
         <span className={isDone ? "text-background/60" : "text-muted-foreground"}>

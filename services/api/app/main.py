@@ -18,10 +18,11 @@ from sqlalchemy.orm import Session
 from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
 from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
-from .models import AgentRun, ChatMessage, ChatThread, DataSource, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentProfile, now, uid
+from .models import AgentRun, ChatMessage, ChatThread, DataSource, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentOpportunity, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
+from .opportunities import find_hackathons, mark_seen, normalize_opportunity_operations, opportunity_summary, recompute_student, sync_hackathonat
 from .roadmaps import apply_operations
-from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, GenerateInput, HermesSettingsApply, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StudentCreate
+from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StudentCreate
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
@@ -30,6 +31,9 @@ from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, dec
 
 
 STARTED_AT = time.time()
+OPPORTUNITY_SYNC_ENABLED = os.getenv("OPPORTUNITY_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}
+OPPORTUNITY_SYNC_SECONDS = 6 * 60 * 60
+_opportunity_sync_task: asyncio.Task | None = None
 
 
 DEMO_STUDENT_ID = "demo-student"
@@ -150,7 +154,7 @@ def require_internal(x_farq_internal_token: Annotated[str | None, Header()] = No
 
 
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
     Base.metadata.create_all(engine)
     ensure_added_columns()
     db = SessionLocal()
@@ -165,6 +169,34 @@ def startup() -> None:
         db.commit()
     finally:
         db.close()
+    global _opportunity_sync_task
+    if OPPORTUNITY_SYNC_ENABLED and (_opportunity_sync_task is None or _opportunity_sync_task.done()):
+        _opportunity_sync_task = asyncio.create_task(_opportunity_sync_loop())
+
+
+async def _opportunity_sync_loop() -> None:
+    while True:
+        db = SessionLocal()
+        try:
+            await asyncio.to_thread(sync_hackathonat, db)
+        except Exception:
+            # A failed run is persisted and the previous cache remains usable.
+            pass
+        finally:
+            db.close()
+        await asyncio.sleep(OPPORTUNITY_SYNC_SECONDS)
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    global _opportunity_sync_task
+    if _opportunity_sync_task is not None:
+        _opportunity_sync_task.cancel()
+        try:
+            await _opportunity_sync_task
+        except asyncio.CancelledError:
+            pass
+        _opportunity_sync_task = None
 
 
 @app.get("/api/health")
@@ -235,6 +267,7 @@ def reset_demo(_body: ResetInput, db: Db) -> dict:
         db.execute(delete(AgentRun).where(AgentRun.thread_id.in_(thread_ids)))
         db.execute(delete(ChatMessage).where(ChatMessage.thread_id.in_(thread_ids)))
     db.execute(delete(RoadmapProposal).where(RoadmapProposal.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(StudentOpportunity).where(StudentOpportunity.student_id == DEMO_STUDENT_ID))
     db.execute(delete(StudentFact).where(StudentFact.student_id == DEMO_STUDENT_ID))
     db.execute(delete(EvidenceItem).where(EvidenceItem.student_id == DEMO_STUDENT_ID))
     db.execute(delete(DataSource).where(DataSource.student_id == DEMO_STUDENT_ID))
@@ -271,6 +304,8 @@ def create_student(body: StudentCreate, db: Db) -> dict:
         RoadmapVersion(student_id=student.id, version=0, snapshot_json=EMPTY_ROADMAP.model_dump_json(), reason="Awaiting onboarding", active=True),
         ChatThread(student_id=student.id, title="My Hermes Coach"),
     ])
+    db.flush()
+    recompute_student(db, student.id)
     db.commit()
     return {**profile_dict(student, db.get(StudentProfile, student.id)), "thread_id": first_thread(db, student.id).id}
 
@@ -305,8 +340,34 @@ def update_profile(student_id: str, body: ProfileUpdate, db: Db) -> dict:
         setattr(profile, key, value.strip() if isinstance(value, str) else value)
     if "program" in changes and "discipline" not in changes:
         profile.discipline = classify_program(profile.program)
+    db.flush()
+    recompute_student(db, student_id)
     db.commit()
     return {**profile_dict(student, profile), "thread_id": first_thread(db, student_id).id}
+
+
+@app.get("/api/students/{student_id}/opportunities/summary")
+def get_opportunity_summary(student_id: str, db: Db) -> dict:
+    require_student(db, student_id)
+    return opportunity_summary(db, student_id)
+
+
+@app.post("/api/students/{student_id}/opportunities/mark-seen")
+def mark_opportunities_seen(student_id: str, body: OpportunityIds, db: Db) -> dict:
+    require_student(db, student_id)
+    return {"updated": mark_seen(db, student_id, body.ids)}
+
+
+@app.post("/api/students/{student_id}/opportunities/{opportunity_id}/dismiss")
+def dismiss_opportunity(student_id: str, opportunity_id: str, db: Db) -> dict:
+    require_student(db, student_id)
+    item = db.scalar(select(StudentOpportunity).where(StudentOpportunity.student_id == student_id, StudentOpportunity.opportunity_id == opportunity_id))
+    if item is None:
+        raise HTTPException(404, "Opportunity recommendation not found")
+    item.status = "dismissed"
+    item.seen_at = now()
+    db.commit()
+    return {"status": "dismissed"}
 
 
 @app.get("/api/students/{student_id}/sources")
@@ -615,7 +676,11 @@ def interaction_message(thread_id: str, body: ChatInput, db: Session) -> tuple[s
         selected = [available[item_id] for item_id in selected_ids]
         titles = [item.title for item in selected]
         content = titles[0] if len(titles) == 1 else f"Selected: {', '.join(titles)}"
-        details = "\n".join(f"- {item.title}: {item.description}" for item in selected)
+        details = "\n".join(
+            f"- {item.title}: {item.description}"
+            + (f" [Farq opportunity_id={item.opportunity_id}]" if item.opportunity_id else "")
+            for item in selected
+        )
         hermes_prompt = (
             "The student explicitly selected the following option(s) from your previous question:\n"
             f"{details}\nTreat this as their answer, and record the explicit preference when appropriate."
@@ -926,10 +991,21 @@ def accept_proposal(proposal_id: str, db: Db, body: AcceptInput = Body(default_f
     db.add(version)
     proposal.status = "accepted"
     proposal.decided_at = now()
+    for node in updated.nodes:
+        if node.nodeType == "opportunity" and node.opportunity:
+            recommendation = db.scalar(select(StudentOpportunity).where(
+                StudentOpportunity.student_id == proposal.student_id,
+                StudentOpportunity.opportunity_id == node.opportunity.opportunity_id,
+            ))
+            if recommendation is not None:
+                recommendation.status = "added"
+                recommendation.seen_at = now()
     if proposal.kind == "initial":
         profile = db.get(StudentProfile, proposal.student_id)
         if profile is not None:
             profile.onboarding_status = "done"
+    db.flush()
+    recompute_student(db, proposal.student_id)
     db.commit()
     return {"status": "accepted", "version_id": version.id, "version": version.version}
 
@@ -950,6 +1026,20 @@ def internal_context(student_id: str, db: Db) -> dict:
     return student_context(student_id, db)
 
 
+@app.get("/internal/hermes/students/{student_id}/hackathons", dependencies=[Depends(require_internal)])
+def internal_hackathons(student_id: str, db: Db, query: str = "", limit: int = 5) -> dict:
+    student = require_resolved_student(db, student_id)
+    return find_hackathons(db, student.id, query, limit)
+
+
+@app.post("/internal/opportunities/sync/hackathonat", dependencies=[Depends(require_internal)])
+def internal_sync_hackathonat(db: Db) -> dict:
+    try:
+        return sync_hackathonat(db)
+    except Exception as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
 @app.get("/internal/hermes/students/{student_id}/roadmap", dependencies=[Depends(require_internal)])
 def internal_roadmap(student_id: str, db: Db) -> dict:
     return get_roadmap(student_id, db)
@@ -965,6 +1055,8 @@ def record_fact(body: FactCreate, db: Db) -> dict:
         fact.active = False
     fact = StudentFact(student_id=student.id, category=body.category, key=body.key, value_json=json.dumps(body.value), source_message_id=body.source_message_id, source_kind=body.source_kind, confidence=100)
     db.add(fact)
+    db.flush()
+    recompute_student(db, student.id)
     db.commit()
     return {"success": True, "fact_id": fact.id}
 
@@ -994,10 +1086,11 @@ def create_proposal(body: ProposalCreate, db: Db) -> dict:
     if current.id != body.base_version_id:
         raise HTTPException(409, "The proposal base version is stale")
     try:
-        apply_operations(RoadmapSnapshot.model_validate_json(current.snapshot_json), body.operations)
+        operations = normalize_opportunity_operations(db, student.id, body.operations)
+        apply_operations(RoadmapSnapshot.model_validate_json(current.snapshot_json), operations)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    item = RoadmapProposal(student_id=student.id, base_version_id=body.base_version_id, summary=body.summary, reasoning=body.reasoning, operations_json=json.dumps([operation.model_dump() for operation in body.operations]))
+    item = RoadmapProposal(student_id=student.id, base_version_id=body.base_version_id, summary=body.summary, reasoning=body.reasoning, operations_json=json.dumps([operation.model_dump() for operation in operations]))
     db.add(item)
     db.commit()
     return {"success": True, "proposal_id": item.id, "status": item.status}

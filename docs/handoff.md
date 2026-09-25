@@ -5,6 +5,15 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 
 ## What was built
 
+### Current Saudi hackathons
+- Hackathonat is the primary cached source. FastAPI refreshes its public JSON feed every six hours
+  in Docker, preserves the last good cache on failure, and ranks matches without an LLM.
+- Hermes can only read matches through `farq_find_hackathons`; generic web/browser tools remain
+  disabled. Dates and links in assistant controls and proposals are resolved from SQLite.
+- Coach shows an unseen-opportunity badge and sourced cards. Accepted opportunity proposals become
+  roadmap nodes with source date, location, registration link, and retrieval provenance.
+- The source's `date` is always labelled "Date shown by Hackathonat", never assumed to be a deadline.
+
 ### 0. Structured Hermes conversations
 - Hermes can append a validated `farq-ui` JSON block to a concise reply. The API removes the
   block and persists it in `ChatMessage.metadata_json`; malformed blocks degrade to plain text.

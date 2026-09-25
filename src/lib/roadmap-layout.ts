@@ -18,16 +18,6 @@ export interface RoadmapEdge {
   to: string;
   /** True when the dependency crosses a stage boundary. */
   crossStage: boolean;
-  /** Cross-stage vertical channel (0 = outermost). Unused for intra-stage. */
-  lane: number;
-  /** Offset from the source bottom-center X for the exit stub. */
-  exitDx: number;
-  /** Offset from the target top-center X for the entry stub. */
-  entryDx: number;
-  /** Extra downward offset for the exit jog. */
-  exitDy: number;
-  /** Extra upward offset for the entry jog. */
-  entryDy: number;
 }
 
 export interface RoadmapLayout {
@@ -120,9 +110,13 @@ export function computeRoadmapLayout(
   const height = y - STAGE_GAP + PAD_BOTTOM;
 
   // Every declared dep gets a connector. Nodes with no deps stay separate
-  // by design. Intra-stage deps draw direct beziers; cross-stage deps are
-  // routed via a right-side channel so they never cut through headers or
-  // unrelated cards (see crossStagePath).
+  // by design. Intra-stage deps draw direct beziers between cards.
+  // Cross-stage deps are NOT drawn end-to-end: each involved node gets a
+  // single short tap to the central spine (one line out of a source, one
+  // line into a target no matter how many deps it has), and the spine
+  // carries the continuity between stages. This keeps branching readable
+  // instead of bundling parallel wires down one side of the canvas.
+  // See RoadmapEdges for the tap rendering.
   const stageByNode = new Map<string, string>();
   for (const stage of stages) {
     for (const nodeId of stage.nodeIds) stageByNode.set(nodeId, stage.id);
@@ -137,17 +131,10 @@ export function computeRoadmapLayout(
           from: dep,
           to: node.id,
           crossStage: stageByNode.get(dep) !== stageByNode.get(node.id),
-          lane: 0,
-          exitDx: 0,
-          entryDx: 0,
-          exitDy: 0,
-          entryDy: 0,
         });
       }
     }
   }
-
-  assignCrossStageRouting(edges, positions, stages, compact);
 
   // Cross-stage connectors first so intra-stage wires paint on top.
   edges.sort((a, b) => Number(a.crossStage) - Number(b.crossStage));
@@ -156,135 +143,11 @@ export function computeRoadmapLayout(
 }
 
 /**
- * Spread cross-stage connectors so parallel wires never lie exactly on top
- * of each other. Fan-out from one source spreads along its bottom edge,
- * fan-in to one target spreads along its top edge, same-row exits stagger
- * vertically, and overlapping vertical runs get separate padding channels.
- */
-function assignCrossStageRouting(
-  edges: RoadmapEdge[],
-  positions: Record<string, PositionedNode>,
-  stages: RoadmapStage[],
-  compact: boolean,
-): void {
-  const cross = edges.filter((e) => e.crossStage);
-  if (cross.length === 0) return;
-
-  // Last-row sources have a 64px stage gap below them; mid-stage sources
-  // only have a 28px row gap before the next row starts.
-  const stageMaxY = new Map<string, number>();
-  for (const stage of stages) {
-    let max = -Infinity;
-    for (const id of stage.nodeIds) {
-      const p = positions[id];
-      if (p) max = Math.max(max, p.y);
-    }
-    stageMaxY.set(stage.id, max);
-  }
-  const stageByNode = new Map<string, string>();
-  for (const stage of stages) {
-    for (const nodeId of stage.nodeIds) stageByNode.set(nodeId, stage.id);
-  }
-
-  // Fan-out: spread exit stubs across the source bottom edge.
-  const byFrom = new Map<string, RoadmapEdge[]>();
-  for (const e of cross) {
-    const list = byFrom.get(e.from) ?? [];
-    list.push(e);
-    byFrom.set(e.from, list);
-  }
-  for (const list of byFrom.values()) {
-    list.sort((a, b) => a.to.localeCompare(b.to));
-    list.forEach((e, i) => {
-      const k = list.length;
-      e.exitDx = k === 1 ? 0 : (i - (k - 1) / 2) * 56;
-      e.exitDx = Math.max(-96, Math.min(96, e.exitDx));
-    });
-  }
-
-  // Fan-in: spread entry stubs across the target top edge.
-  const byTo = new Map<string, RoadmapEdge[]>();
-  for (const e of cross) {
-    const list = byTo.get(e.to) ?? [];
-    list.push(e);
-    byTo.set(e.to, list);
-  }
-  for (const list of byTo.values()) {
-    list.sort((a, b) => a.from.localeCompare(b.from));
-    list.forEach((e, i) => {
-      const k = list.length;
-      e.entryDx = k === 1 ? 0 : (i - (k - 1) / 2) * 56;
-      e.entryDx = Math.max(-96, Math.min(96, e.entryDx));
-    });
-  }
-
-  // Same-row exits share a jog level — stagger them so parallel horizontals
-  // separate instead of coinciding.
-  const byExitY = new Map<number, RoadmapEdge[]>();
-  for (const e of cross) {
-    const y1 = positions[e.from].y + NODE_H;
-    const list = byExitY.get(y1) ?? [];
-    list.push(e);
-    byExitY.set(y1, list);
-  }
-  for (const [, list] of byExitY) {
-    list.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
-    const lastRow = list.some((e) => {
-      const stageId = stageByNode.get(e.from);
-      return stageId !== undefined && positions[e.from].y >= (stageMaxY.get(stageId) ?? Infinity);
-    });
-    const cap = lastRow ? 28 : 8;
-    list.forEach((e, i) => {
-      e.exitDy = Math.min(i * 7, cap);
-    });
-  }
-
-  // Same-target-row entries share a jog level — stagger them.
-  const byEntryY = new Map<number, RoadmapEdge[]>();
-  for (const e of cross) {
-    const y2 = positions[e.to].y;
-    const list = byEntryY.get(y2) ?? [];
-    list.push(e);
-    byEntryY.set(y2, list);
-  }
-  for (const list of byEntryY.values()) {
-    list.sort((a, b) => a.from.localeCompare(b.from));
-    list.forEach((e, i) => {
-      e.entryDy = Math.min(i * 5, 8);
-    });
-  }
-
-  // Separate vertical channels for runs whose Y ranges overlap (greedy
-  // interval coloring). Compact mode only has room for one padding channel.
-  const maxLanes = compact ? 1 : 3;
-  const withSpan = cross
-    .map((e) => ({
-      e,
-      yExit: positions[e.from].y + NODE_H + 18 + e.exitDy,
-      yEntry: positions[e.to].y - 6 - e.entryDy,
-    }))
-    .sort((a, b) => a.yExit - b.yExit);
-  const laneEnd: number[] = [];
-  for (const { e, yExit, yEntry } of withSpan) {
-    let placed = -1;
-    for (let lane = 0; lane < Math.min(maxLanes, laneEnd.length + 1); lane++) {
-      if (lane >= laneEnd.length || laneEnd[lane] + 6 < yExit) {
-        placed = lane;
-        break;
-      }
-    }
-    if (placed === -1) placed = 0;
-    e.lane = placed;
-    laneEnd[placed] = Math.max(laneEnd[placed] ?? -Infinity, yEntry);
-  }
-}
-
-/**
- * Connect two cards at the edges that face one another.
+ * Straight orthogonal connector between two cards.
  *
- * A stage can contain a horizontal sequence as well as vertical progression.
- * Always using bottom → top anchors made horizontal dependencies loop beneath
- * their cards and made the SVG look detached from the UI.
+ * Horizontal neighbors join with a single straight segment between their
+ * facing sides; anything else routes down/across/down with rounded corners
+ * so every wire on the canvas is a straight line — no bezier curves.
  */
 export function edgePath(ax: number, ay: number, bx: number, by: number): string {
   const sourceCenterX = ax + NODE_W / 2;
@@ -297,75 +160,75 @@ export function edgePath(ax: number, ay: number, bx: number, by: number): string
     const movingRight = targetCenterX >= sourceCenterX;
     const x1 = movingRight ? ax + NODE_W : ax;
     const x2 = movingRight ? bx : bx + NODE_W;
-    const midX = (x1 + x2) / 2;
-    return `M ${x1} ${sourceCenterY} C ${midX} ${sourceCenterY}, ${midX} ${targetCenterY}, ${x2} ${targetCenterY}`;
+    const y = (sourceCenterY + targetCenterY) / 2;
+    return `M ${x1} ${y} L ${x2} ${y}`;
   }
 
   const movingDown = targetCenterY >= sourceCenterY;
   const y1 = movingDown ? ay + NODE_H : ay;
   const y2 = movingDown ? by : by + NODE_H;
+  if (Math.abs(targetCenterX - sourceCenterX) < 1) {
+    return `M ${sourceCenterX} ${y1} L ${targetCenterX} ${y2}`;
+  }
   const midY = (y1 + y2) / 2;
-  return `M ${sourceCenterX} ${y1} C ${sourceCenterX} ${midY}, ${targetCenterX} ${midY}, ${targetCenterX} ${y2}`;
+  return roundedOrthogonalPath(
+    [
+      [sourceCenterX, y1],
+      [sourceCenterX, midY],
+      [targetCenterX, midY],
+      [targetCenterX, y2],
+    ],
+    8,
+  );
 }
 
 /**
- * Orthogonal connector for cross-stage dependencies.
+ * Spine taps for cross-stage dependencies.
  *
- * A direct bezier from the end of one stage to the start of the next cuts
- * diagonally through the stage header card. Instead this routes: down from
- * the source, across (in the gap above the next header) to a padding
- * channel, vertically past headers/cards, then back across (in the small
- * gap below the header) into the top of the target.
- *
- * Callers spread parallel wires via lane/exitDx/entryDx/exitDy/entryDy
- * (see assignCrossStageRouting) so coincident lines separate into distinct
- * traceable paths. Corners are rounded so overlapping jogs stay readable.
+ * Instead of drawing one wire per dependency (which bundles parallel lines
+ * down one side of the canvas), each node involved in a cross-stage
+ * dependency gets exactly one short tap to the central spine: sources tap
+ * out of their bottom edge, targets tap in from above. The spine carries
+ * continuity between stages, so fan-out reads as one line splitting and
+ * fan-in as lines merging — no side channel, no overlapping bundles.
  */
-export function crossStageLaneX(canvasWidth: number, lane: number): number {
-  return canvasWidth - 10 - lane * 14;
+export const TAP_EXIT_DY = 16;
+export const TAP_ENTRY_DY = 8;
+
+export function exitTapLevel(nodeTopY: number): number {
+  return nodeTopY + NODE_H + TAP_EXIT_DY;
 }
 
-export function crossStagePath(
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-  canvasWidth: number,
-  opts?: { lane?: number; exitDx?: number; entryDx?: number; exitDy?: number; entryDy?: number },
-): string {
-  const lane = opts?.lane ?? 0;
-  const exitDx = opts?.exitDx ?? 0;
-  const entryDx = opts?.entryDx ?? 0;
-  const exitDy = opts?.exitDy ?? 0;
-  const entryDy = opts?.entryDy ?? 0;
-  const sx = ax + NODE_W / 2 + exitDx;
-  const tx = bx + NODE_W / 2 + entryDx;
-  const y1 = ay + NODE_H;
-  const y2 = by;
+export function entryTapLevel(nodeTopY: number): number {
+  return nodeTopY - TAP_ENTRY_DY;
+}
 
-  // Moving up should never happen for cross-stage deps (wiring only allows
-  // backwards deps), but fall back to a direct curve instead of looping.
-  if (y2 <= y1) return edgePath(ax, ay, bx, by);
+export function exitTapPath(nodeX: number, nodeTopY: number, spineX: number): string {
+  const sx = nodeX + NODE_W / 2;
+  const y1 = nodeTopY + NODE_H;
+  const yExit = exitTapLevel(nodeTopY);
+  return roundedOrthogonalPath(
+    [
+      [sx, y1],
+      [sx, yExit],
+      [spineX, yExit],
+    ],
+    8,
+  );
+}
 
-  const laneX = crossStageLaneX(canvasWidth, lane);
-  // Horizontal jog above the header (stage gap is 64px) and the re-entry
-  // just below it (header bottom sits ~12px above the first row).
-  let yExit = y1 + 18 + exitDy;
-  let yEntry = y2 - 6 - entryDy;
-  if (yExit >= yEntry) {
-    const mid = (y1 + y2) / 2;
-    yExit = Math.min(yExit, mid);
-    yEntry = Math.max(yEntry, mid + 1);
-  }
-  const pts: Array<[number, number]> = [
-    [sx, y1],
-    [sx, yExit],
-    [laneX, yExit],
-    [laneX, yEntry],
-    [tx, yEntry],
-    [tx, y2],
-  ];
-  return roundedOrthogonalPath(pts, 10);
+export function entryTapPath(nodeX: number, nodeTopY: number, spineX: number): string {
+  const tx = nodeX + NODE_W / 2;
+  const y2 = nodeTopY;
+  const yEntry = entryTapLevel(nodeTopY);
+  return roundedOrthogonalPath(
+    [
+      [spineX, yEntry],
+      [tx, yEntry],
+      [tx, y2],
+    ],
+    8,
+  );
 }
 
 /** Polyline with quadratic rounded corners for orthogonal routing. */

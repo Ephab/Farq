@@ -31,6 +31,7 @@ from .roadmaps import apply_operations
 from .projects import router as projects_router
 from .identity import router as identity_router
 from .teams import router as teams_router
+from .teams.seed import seed_teams
 from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
@@ -192,6 +193,7 @@ async def startup() -> None:
         if db.scalar(select(func.count()).select_from(ChatThread).where(ChatThread.student_id == DEMO_STUDENT_ID)) == 0:
             db.add(ChatThread(student_id=DEMO_STUDENT_ID, title="My Hermes Coach"))
         db.commit()
+        seed_teams(db)
     finally:
         db.close()
     global _opportunity_sync_task

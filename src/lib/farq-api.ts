@@ -213,6 +213,19 @@ export interface OpportunitySummary {
 
 export type SourceKind = "transcript_pdf" | "cv_pdf" | "linkedin_pdf" | "linkedin_zip" | "github" | "folder" | "portfolio_url" | "orcid"
 
+/** Readable names for the kinds Farq knows. Sources created without a value of
+ *  their own are stored with the kind as their label, so this is the fallback. */
+export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
+  transcript_pdf: "Transcript",
+  cv_pdf: "CV",
+  linkedin_pdf: "LinkedIn profile",
+  linkedin_zip: "LinkedIn export",
+  github: "GitHub",
+  folder: "Project folder",
+  portfolio_url: "Portfolio",
+  orcid: "ORCID",
+}
+
 export interface DataSourceItem {
   id: string
   kind: SourceKind
@@ -220,6 +233,9 @@ export interface DataSourceItem {
   config: Record<string, string>
   status: "pending" | "syncing" | "ready" | "failed" | "removed"
   error: string | null
+  /** ISO timestamp of the last successful read; null until the first sync. */
+  last_synced_at?: string | null
+  /** Evidence rows added by the sync that just ran. */
   added?: number
 }
 

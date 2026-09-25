@@ -1,22 +1,27 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { createElement, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import {
   ArrowRight,
-  ArrowUpRight,
-  Bot,
-  CheckCircle2,
+  CircleCheck,
+  CircleSlash,
   Database,
+  Inbox,
   ListChecks,
+  Presentation,
   Route,
+  Sparkles,
+  TriangleAlert,
 } from "lucide-react"
 import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap"
+import { nodeIcon } from "@/components/roadmap/roadmap-icons"
 import {
   api,
   getCurrentStudentId,
   notifyRoadmapChanged,
   ROADMAP_CHANGED_EVENT,
+  SOURCE_KIND_LABEL,
   type DataSourceItem,
   type EvidenceItem,
   type StudentProfile,
@@ -26,7 +31,7 @@ import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 
 interface RoadmapResponse {
-  version: number
+  version: number | string
   reason?: string
   snapshot: { title: string; nodes: RoadmapNodeData[]; stages: RoadmapStage[] }
 }
@@ -34,40 +39,213 @@ interface RoadmapResponse {
 interface ProposalSummary {
   id: string
   summary: string
-  reasoning: string
   kind: string
   status: string
   created_at: string
 }
 
-interface StudentFact {
-  id: string
-  category: string
-  key: string
-  value: unknown
-  confidence: number
-}
-
+/** What the API sends back so the panel can name the student without a second call. */
 interface ContextResponse {
-  id: string
   display_name: string
-  facts: StudentFact[]
 }
 
 interface TodayViewProps {
   onNavigate: (tab: string) => void
 }
 
-function statusLabel(status: NodeStatus): string {
-  if (status === "done") return "Done"
-  if (status === "in-progress") return "In progress"
-  return "Up next"
+type Tone = "neutral" | "inverse" | "accent" | "success" | "warning"
+
+const TONE_CLASS: Record<Tone, string> = {
+  neutral: "bg-muted text-muted-foreground",
+  inverse: "bg-primary-foreground/15 text-primary-foreground",
+  accent: "bg-primary/10 text-primary",
+  success: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  warning: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
 }
 
+const STATUS_TONE: Record<NodeStatus, Tone> = {
+  done: "success",
+  "in-progress": "warning",
+  "not-started": "neutral",
+}
+
+const STATUS_LABEL: Record<NodeStatus, string> = {
+  done: "Done",
+  "in-progress": "In progress",
+  "not-started": "Up next",
+}
+
+function statusOf(node: RoadmapNodeData): NodeStatus {
+  return (node.status ?? "not-started") as NodeStatus
+}
+
+/** The node's own roadmap icon, drawn the way RoadmapNode draws it. */
+function topicGlyph(icon: string, className = "size-[18px]") {
+  return createElement(nodeIcon(icon), { className, "aria-hidden": true })
+}
+
+/** The one status change a student can make from this page. */
 function nextAction(status: NodeStatus): { label: string; next: NodeStatus } {
   if (status === "in-progress") return { label: "Mark done", next: "done" }
-  if (status === "done") return { label: "Revisit", next: "in-progress" }
-  return { label: "Start", next: "in-progress" }
+  if (status === "done") return { label: "Reopen topic", next: "in-progress" }
+  return { label: "Start topic", next: "in-progress" }
+}
+
+/** Backend timestamps are UTC ISO strings; SQLite can drop the offset. */
+function parseTime(value: string | number): number | null {
+  const raw = typeof value === "number" ? value : Date.parse(/[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`)
+  return Number.isFinite(raw) ? raw : null
+}
+
+/** A source saved without a value of its own is stored with the kind as its label. */
+function sourceName(source: DataSourceItem): string {
+  const label = source.label?.trim()
+  return label && label !== source.kind ? label : SOURCE_KIND_LABEL[source.kind]
+}
+
+function timeAgo(at: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000))
+  if (seconds < 60) return "just now"
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  if (days < 7) return `${days} d ago`
+  const weeks = Math.round(days / 7)
+  if (weeks < 9) return `${weeks} w ago`
+  return new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+}
+
+function Pill({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex min-h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold",
+        TONE_CLASS[tone],
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+function Panel({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <section
+      aria-label={label}
+      className={cn("rounded-3xl border border-border bg-background p-5 shadow-sm sm:p-6", className)}
+    >
+      {children}
+    </section>
+  )
+}
+
+/** Panel heading: title, optional supporting line, optional status on the right. */
+function PanelHead({
+  title,
+  sub,
+  tone,
+  pill,
+}: {
+  title: string
+  sub?: ReactNode
+  tone?: Tone
+  pill?: string
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div className="min-w-0">
+        <h2 className="text-[17px] font-bold leading-snug tracking-tight">{title}</h2>
+        {sub ? <p className="mt-0.5 text-[13px] text-muted-foreground">{sub}</p> : null}
+      </div>
+      {pill ? <Pill tone={tone}>{pill}</Pill> : null}
+    </div>
+  )
+}
+
+/** Icon tile + copy + trailing slot. The trailing slot owns the row's only action. */
+function ListRow({
+  icon,
+  title,
+  detail,
+  trailing,
+  divider = true,
+}: {
+  icon: ReactNode
+  title: string
+  detail: ReactNode
+  trailing?: ReactNode
+  divider?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 py-2.5",
+        divider && "border-b border-border last:border-b-0",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-muted text-primary"
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{title}</span>
+        <span className="block truncate text-xs text-muted-foreground">{detail}</span>
+      </span>
+      {trailing}
+    </div>
+  )
+}
+
+/** Accent text link that reads as the row's own action. */
+function RowLink({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {children}
+    </button>
+  )
+}
+
+function ProgressTrack({ percent, label }: { percent: number; label: string }) {
+  return (
+    <div
+      className="h-[7px] overflow-hidden rounded-full bg-muted"
+      role="progressbar"
+      aria-valuenow={percent}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={label}
+    >
+      <motion.div
+        className="h-full rounded-full bg-primary"
+        initial={false}
+        animate={{ width: `${percent}%` }}
+        transition={{ duration: 0.7, ease: EASE_OUT }}
+      />
+    </div>
+  )
+}
+
+/** A row the student can act on. Its link lives in the trailing slot. */
+interface ActionRow {
+  id: string
+  icon: ReactNode
+  title: string
+  detail: string
+  tab: string
+  action: string
+}
+
+/** One timestamped thing that really happened. */
+interface ActivityItem extends ActionRow {
+  at: number
 }
 
 function emptyLibrary(): QuizLibrary {
@@ -79,6 +257,8 @@ export function TodayView({ onNavigate }: TodayViewProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [title, setTitle] = useState("")
+  const [version, setVersion] = useState<number | string | null>(null)
+  const [reason, setReason] = useState("")
   const [nodes, setNodes] = useState<RoadmapNodeData[]>([])
   const [stages, setStages] = useState<RoadmapStage[]>([])
   const [displayName, setDisplayName] = useState("")
@@ -108,7 +288,9 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         api<DataSourceItem[]>(`/api/students/${studentId}/sources`).catch(() => [] as DataSourceItem[]),
         api<ContextResponse>(`/api/students/${studentId}/context`).catch(() => null),
       ])
-      setTitle(roadmap.snapshot.title || "Roadmap")
+      setTitle(roadmap.snapshot.title)
+      setVersion(roadmap.version)
+      setReason(roadmap.reason ?? "")
       setNodes(roadmap.snapshot.nodes)
       setStages(roadmap.snapshot.stages)
       if (profile) setDisplayName(profile.display_name)
@@ -144,49 +326,56 @@ export function TodayView({ onNavigate }: TodayViewProps) {
   const doneSet = useMemo(() => {
     const done = new Set<string>()
     for (const node of nodes) {
-      if ((node.status ?? "not-started") === "done") done.add(node.id)
+      if (statusOf(node) === "done") done.add(node.id)
     }
     return done
   }, [nodes])
 
-  const currentNode = useMemo<RoadmapNodeData | null>(() => {
-    if (nodes.length === 0) return null
-    const inProgress = nodes.find((node) => (node.status ?? "not-started") === "in-progress")
-    if (inProgress) return inProgress
-    const ready = nodes.find(
-      (node) =>
-        (node.status ?? "not-started") === "not-started" &&
-        (node.deps ?? []).every((dep) => doneSet.has(dep)),
-    )
-    if (ready) return ready
-    return nodes.find((node) => (node.status ?? "not-started") !== "done") ?? nodes[0]
-  }, [nodes, doneSet])
-
-  const currentStage = useMemo<RoadmapStage | null>(() => {
-    if (!currentNode) return null
-    return stages.find((stage) => stage.nodeIds.includes(currentNode.id)) ?? stages[0] ?? null
-  }, [currentNode, stages])
-
   const summary = useMemo(() => {
     let done = 0
     for (const node of nodes) {
-      if ((node.status ?? "not-started") === "done") done += 1
+      if (statusOf(node) === "done") done += 1
     }
-    const total = nodes.length
-    return {
-      done,
-      remaining: total - done,
-      total,
-      percent: total ? Math.round((done / total) * 100) : 0,
-    }
+    return { done, total: nodes.length, remaining: nodes.length - done }
   }, [nodes])
 
-  // Up next: the focus node plus the next 2 remaining topics. Full order lives in Roadmap.
+  const complete = summary.total > 0 && summary.remaining === 0
+
+  /** The single topic this page is about: in progress, else the first unlocked one.
+   *  Null when there is nothing left to work on. */
+  const currentNode = useMemo<RoadmapNodeData | null>(() => {
+    if (nodes.length === 0) return null
+    const inProgress = nodes.find((node) => statusOf(node) === "in-progress")
+    if (inProgress) return inProgress
+    const ready = nodes.find(
+      (node) => statusOf(node) === "not-started" && (node.deps ?? []).every((dep) => doneSet.has(dep)),
+    )
+    return ready ?? nodes.find((node) => statusOf(node) !== "done") ?? null
+  }, [nodes, doneSet])
+
+  const currentStage = useMemo<RoadmapStage | null>(() => {
+    if (!currentNode) return stages[0] ?? null
+    return stages.find((stage) => stage.nodeIds.includes(currentNode.id)) ?? stages[0] ?? null
+  }, [currentNode, stages])
+
+  /** Progress inside the current stage — the roadmap page owns the whole-plan number. */
+  const stageProgress = useMemo(() => {
+    const ids = currentStage?.nodeIds ?? []
+    const members = nodes.filter((node) => ids.includes(node.id))
+    const done = members.filter((node) => statusOf(node) === "done").length
+    return {
+      done,
+      total: members.length,
+      percent: members.length ? Math.round((done / members.length) * 100) : 0,
+    }
+  }, [currentStage, nodes])
+
+  /** The focus topic plus the two topics queued behind it. */
   const upNext = useMemo(() => {
     if (!currentNode) return []
     const seen = new Set<string>([currentNode.id])
     const rest = nodes.filter((node) => {
-      if (seen.has(node.id) || (node.status ?? "not-started") === "done") return false
+      if (seen.has(node.id) || statusOf(node) === "done") return false
       seen.add(node.id)
       return true
     })
@@ -197,8 +386,8 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     () => evidence.filter((item) => item.status === "suggested").length,
     [evidence],
   )
-  const pendingCount = useMemo(
-    () => proposals.filter((item) => item.status === "pending").length,
+  const pendingProposals = useMemo(
+    () => proposals.filter((item) => item.status === "pending"),
     [proposals],
   )
   const failedSources = useMemo(
@@ -216,17 +405,129 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     [],
   )
 
-  // Single canonical progress line. Detailed counts live in Roadmap / My data.
-  const statusLine = useMemo(() => {
-    if (nodes.length === 0) return ""
-    if (summary.done === summary.total) {
-      return `All ${summary.total} topics done — ask Hermes Coach what's next.`
+  /** One honest sentence per state. No forecasts, no invented pacing. */
+  const headline = useMemo(() => {
+    const parts = [`${summary.done} of ${summary.total} topics done`]
+    const waiting: string[] = []
+    if (suggestedCount > 0) {
+      waiting.push(`${suggestedCount} new ${suggestedCount === 1 ? "record" : "records"} to review`)
     }
-    if (currentStage) {
-      return `${summary.done} of ${summary.total} done · now in ${currentStage.title}`
+    if (pendingProposals.length > 0) {
+      waiting.push(
+        `${pendingProposals.length} roadmap ${pendingProposals.length === 1 ? "draft" : "drafts"} to accept`,
+      )
     }
-    return `${summary.done} of ${summary.total} topics done`
-  }, [nodes.length, summary, currentStage])
+    if (failedSources.length > 0) {
+      parts.push(`${failedSources.length} ${failedSources.length === 1 ? "source" : "sources"} failed to sync`)
+    }
+    if (waiting.length > 0) parts.push(waiting.join(" and "))
+    return `${parts.join(" · ")}.`
+  }, [summary, suggestedCount, pendingProposals.length, failedSources.length])
+
+  /** Everything that really changed, newest first. Empty means genuinely nothing yet. */
+  const activity = useMemo<ActivityItem[]>(() => {
+    const items: ActivityItem[] = []
+    for (const proposal of proposals) {
+      const at = parseTime(proposal.created_at)
+      if (at === null) continue
+      const pending = proposal.status === "pending"
+      items.push({
+        id: `proposal-${proposal.id}`,
+        icon: pending ? <Sparkles className="size-[18px]" /> : <CircleCheck className="size-[18px]" />,
+        title: proposal.summary,
+        detail: pending
+          ? `Waiting for you · ${timeAgo(at)}`
+          : `${proposal.status === "accepted" ? "Accepted" : "Dismissed"} · ${timeAgo(at)}`,
+        at,
+        tab: "Hermes Coach",
+        action: pending ? "Review" : "View",
+      })
+    }
+    for (const source of sources) {
+      if (source.status !== "ready" || !source.last_synced_at) continue
+      const at = parseTime(source.last_synced_at)
+      if (at === null) continue
+      items.push({
+        id: `source-${source.id}`,
+        icon: <Database className="size-[18px]" />,
+        title: `${sourceName(source)} synced`,
+        detail: timeAgo(at),
+        at,
+        tab: "My data",
+        action: "Open",
+      })
+    }
+    for (const deck of practice.decks) {
+      items.push({
+        id: `deck-${deck.id}`,
+        icon: <Presentation className="size-[18px]" />,
+        title: deck.fileName,
+        detail: `${timeAgo(deck.uploadedAt)} · ${deck.units} pages read`,
+        at: deck.uploadedAt,
+        tab: "Slides",
+        action: "Open",
+      })
+    }
+    for (const quiz of practice.quizzes) {
+      items.push({
+        id: `quiz-${quiz.id}`,
+        icon: <ListChecks className="size-[18px]" />,
+        title: `Practice set from ${quiz.deckName}`,
+        detail: `${timeAgo(quiz.createdAt)} · ${quiz.questions.length} questions · ${quiz.difficulty}`,
+        at: quiz.createdAt,
+        tab: "Quizzes",
+        action: "Practise",
+      })
+    }
+    for (const extension of practice.extensions) {
+      items.push({
+        id: `extension-${extension.id}`,
+        icon: <Sparkles className="size-[18px]" />,
+        title: `Slides expanded: ${extension.topic}`,
+        detail: `${timeAgo(extension.createdAt)} · from ${extension.deckName}`,
+        at: extension.createdAt,
+        tab: "Slides",
+        action: "Open",
+      })
+    }
+    return items.sort((a, b) => b.at - a.at).slice(0, 4)
+  }, [proposals, sources, practice])
+
+  /** Only rendered when something is genuinely waiting on the student. */
+  const attention = useMemo<ActionRow[]>(() => {
+    const rows: ActionRow[] = []
+    for (const source of failedSources) {
+      rows.push({
+        id: `failed-${source.id}`,
+        icon: <TriangleAlert className="size-[18px]" />,
+        title: `${sourceName(source)} failed to sync`,
+        detail: source.error || "Farq could not read this source",
+        tab: "My data",
+        action: "Fix",
+      })
+    }
+    if (suggestedCount > 0) {
+      rows.push({
+        id: "attention-evidence",
+        icon: <Inbox className="size-[18px]" />,
+        title: `${suggestedCount} ${suggestedCount === 1 ? "record" : "records"} to review`,
+        detail: "Imported evidence only becomes yours when you confirm it",
+        tab: "My data",
+        action: "Review",
+      })
+    }
+    if (pendingProposals.length > 0) {
+      rows.push({
+        id: "attention-proposals",
+        icon: <Sparkles className="size-[18px]" />,
+        title: `${pendingProposals.length} roadmap ${pendingProposals.length === 1 ? "draft" : "drafts"} waiting`,
+        detail: "Completed and in-progress topics are never changed",
+        tab: "Hermes Coach",
+        action: "Review",
+      })
+    }
+    return rows
+  }, [failedSources, suggestedCount, pendingProposals.length])
 
   const setNodeStatus = useCallback(
     async (id: string, status: NodeStatus) => {
@@ -247,16 +548,24 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     [studentId],
   )
 
+  const retry = () => {
+    setLoading(true)
+    void load()
+  }
+
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-5" aria-label="Loading Today">
-        <div className="h-16 w-2/3 animate-pulse rounded-2xl bg-muted" />
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-          <div className="h-72 animate-pulse rounded-3xl bg-muted" />
-          <div className="grid content-start gap-4">
-            <div className="h-40 animate-pulse rounded-2xl bg-muted" />
-            <div className="h-40 animate-pulse rounded-2xl bg-muted" />
-          </div>
+      <div className="mx-auto w-full max-w-[1320px] px-4 py-8 sm:px-8 sm:py-10" aria-label="Loading Today">
+        <div className="h-4 w-32 animate-pulse rounded-full bg-muted" />
+        <div className="mt-3 h-11 w-2/3 animate-pulse rounded-2xl bg-muted" />
+        <div className="mt-4 h-5 w-1/2 animate-pulse rounded-full bg-muted" />
+        <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
+          <div className="h-[330px] animate-pulse rounded-[32px] bg-muted" />
+          <div className="h-[330px] animate-pulse rounded-3xl bg-muted" />
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
+          <div className="h-56 animate-pulse rounded-3xl bg-muted" />
+          <div className="h-56 animate-pulse rounded-3xl bg-muted" />
         </div>
       </div>
     )
@@ -264,17 +573,14 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
   if (error && nodes.length === 0) {
     return (
-      <div className="mx-auto grid w-full max-w-6xl place-items-center px-4 py-10">
+      <div className="grid min-h-[60vh] place-items-center px-4 py-10">
         <div className="text-center">
           <p className="text-sm font-semibold">Today could not load</p>
           <p className="mt-1 text-[13px] text-muted-foreground">{error}</p>
           <button
             type="button"
-            onClick={() => {
-              setLoading(true)
-              void load()
-            }}
-            className="mt-3 h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={retry}
+            className="mt-4 inline-flex min-h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Try again
           </button>
@@ -285,283 +591,292 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
   if (nodes.length === 0) {
     return (
-      <div className="mx-auto grid w-full max-w-6xl place-items-center px-4 py-10">
-        <div className="text-center">
-          <p className="text-sm font-semibold">No roadmap yet{displayName ? `, ${displayName}` : ""}</p>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Your Today view appears once your first roadmap is generated.
+      <div className="grid min-h-[60vh] place-items-center px-4 py-10">
+        <div className="max-w-[46ch] text-center">
+          <p className="text-xs font-bold uppercase tracking-wide text-primary">Today</p>
+          <h1 className="mt-2 text-[clamp(28px,4vw,44px)] font-bold leading-[1.05] tracking-tight">
+            No roadmap yet{displayName ? `, ${displayName}` : ""}.
+          </h1>
+          <p className="mt-3 text-[15px] text-muted-foreground">
+            This page fills in once a roadmap exists. Ask Hermes to build one from your records, or add
+            a source in My data first.
           </p>
-          <button
-            type="button"
-            onClick={() => onNavigate("Roadmap")}
-            className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Open Roadmap <ArrowRight aria-hidden="true" className="size-4" />
-          </button>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => onNavigate("Hermes Coach")}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Ask Hermes <ArrowRight aria-hidden="true" className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate("My data")}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Add records
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
-  const currentStatus = (currentNode?.status ?? "not-started") as NodeStatus
+  const currentStatus = currentNode ? statusOf(currentNode) : "not-started"
   const currentAction = nextAction(currentStatus)
-  const heroDetail = currentNode?.tagline || currentNode?.description || ""
-  const heroSubtopics = currentNode?.subtopics.slice(0, 3) ?? []
-  const heroExtraSubtopics = (currentNode?.subtopics.length ?? 0) - heroSubtopics.length
-  const attentionCount = suggestedCount + pendingCount + failedSources.length
-  const hasAttention = attentionCount > 0
+  const stagePill: { tone: Tone; label: string } =
+    stageProgress.total === 0
+      ? { tone: "neutral", label: "No topics" }
+      : stageProgress.done === stageProgress.total
+        ? { tone: "success", label: "Stage complete" }
+        : stageProgress.done > 0
+          ? { tone: "accent", label: "In progress" }
+          : { tone: "neutral", label: "Not started" }
 
   return (
-    <motion.div
-      initial={reduce ? false : { opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: EASE_OUT }}
-      className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-5 sm:py-4"
-    >
-      {/* Header: orientation only. One progress line; details live in Roadmap. */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            {displayName ? `Today for ${displayName}` : "Today"}
+    <div className="h-[calc(100dvh-4rem)] overflow-y-auto bg-background">
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: EASE_OUT }}
+        className="mx-auto w-full max-w-[1320px] px-4 py-8 sm:px-8 sm:py-10"
+      >
+      {/* Header: the date, the promise, and the plan in one line. */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="mb-2.5 text-xs font-bold text-primary">{todayLabel}</p>
+          <h1 className="text-[clamp(30px,4vw,52px)] font-bold leading-[1.03] tracking-tight">
+            {complete ? "Roadmap complete." : "One useful step today."}
           </h1>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{todayLabel} · {statusLine}</p>
+          <p className="mt-2.5 max-w-[62ch] text-[15px] text-muted-foreground">{headline}</p>
         </div>
         <button
           type="button"
           onClick={() => onNavigate("Roadmap")}
-          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border px-4 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-[18px] text-sm font-semibold shadow-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Route aria-hidden="true" className="size-4" /> {title || "Roadmap"}
-          <span className="text-muted-foreground tabular-nums">· {summary.percent}%</span>
+          <Route aria-hidden="true" className="size-4" />
+          View roadmap
         </button>
       </div>
 
       {error ? (
-        <p role="alert" className="mb-4 rounded-xl border border-border bg-muted px-4 py-2 text-xs text-muted-foreground">
+        <p
+          role="alert"
+          className="mt-4 rounded-xl border border-border bg-muted px-4 py-2 text-xs text-muted-foreground"
+        >
           {error}
         </p>
       ) : null}
 
-      <div className="grid items-start gap-3 lg:grid-cols-[1.6fr_1fr]">
-        {/* Primary column: the one decision — what to do next. */}
-        <div className="grid content-start gap-3">
-          <motion.section
-            aria-labelledby="today-next"
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: EASE_OUT }}
-            className="relative overflow-hidden rounded-2xl bg-primary p-4 text-primary-foreground sm:p-5"
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
-              {statusLabel(currentStatus)}
-              {currentNode?.duration ? ` · ${currentNode.duration}` : ""}
-              {currentStage ? ` · ${currentStage.title}` : ""}
-            </p>
-            <h2 id="today-next" className="mt-1.5 max-w-md text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
-              {currentNode?.title}
+      {/* The one decision, plus the queue behind it. */}
+      <div className="mt-8 grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
+        <motion.section
+          aria-label="Your next step"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, ease: EASE_OUT }}
+          className="relative flex min-h-[330px] flex-col overflow-hidden rounded-[32px] bg-primary p-6 text-primary-foreground shadow-lg sm:p-8 lg:p-10"
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-28 -right-20 size-[310px] rounded-full bg-primary-foreground/10 blur-3xl"
+          />
+          <div className="relative flex flex-1 flex-col">
+            <Pill tone="inverse">
+              {currentNode
+                ? `${STATUS_LABEL[currentStatus]}${currentNode.duration ? ` · ${currentNode.duration}` : ""}`
+                : `All ${summary.total} ${summary.total === 1 ? "topic" : "topics"} done`}
+            </Pill>
+            <h2 className="mt-10 max-w-[16ch] text-[clamp(28px,3.6vw,44px)] font-bold leading-[1.05] tracking-tight">
+              {currentNode?.title ?? "Every topic is done"}
             </h2>
-            {heroDetail ? (
-              <p className="mt-1.5 max-w-xl text-[13px] opacity-80">{heroDetail}</p>
-            ) : null}
-            {heroSubtopics.length > 0 ? (
-              <ul className="mt-2.5 space-y-1 text-[13px] opacity-90" aria-label="Key points in this step">
-                {heroSubtopics.map((subtopic) => (
-                  <li key={subtopic} className="flex items-start gap-2">
-                    <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-primary-foreground/70" />
-                    <span className="min-w-0">{subtopic}</span>
-                  </li>
-                ))}
-                {heroExtraSubtopics > 0 ? (
-                  <li className="text-[13px] opacity-70">+{heroExtraSubtopics} more in Roadmap</li>
-                ) : null}
-              </ul>
-            ) : null}
-            <div
-              className="mt-3 h-1 overflow-hidden rounded-full bg-primary-foreground/20"
-              role="progressbar"
-              aria-valuenow={summary.percent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Overall roadmap progress"
-            >
-              <div className="h-full rounded-full bg-primary-foreground" style={{ width: `${summary.percent}%` }} />
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onNavigate("Roadmap")}
-                className="inline-flex h-9 items-center gap-2 rounded-full bg-primary-foreground px-4 text-sm font-semibold text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                Continue <ArrowRight aria-hidden="true" className="size-4" />
-              </button>
-              {currentNode && currentStatus !== "done" ? (
+            <p className="mt-2.5 max-w-[52ch] text-[15px] opacity-75">
+              {currentNode
+                ? currentNode.tagline || currentNode.description
+                : "This roadmap has nothing left to do. Ask Hermes Coach what to learn next."}
+            </p>
+            <div className="mt-auto flex flex-wrap items-center gap-2.5 pt-8">
+              {currentNode ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("Roadmap")}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-full bg-background px-[18px] text-sm font-semibold text-foreground shadow-sm outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Continue topic <ArrowRight aria-hidden="true" className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingId === currentNode.id}
+                    onClick={() => void setNodeStatus(currentNode.id, currentAction.next)}
+                    className="inline-flex min-h-11 items-center rounded-full border border-primary-foreground/30 px-[18px] text-sm font-semibold outline-none hover:bg-primary-foreground/10 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                  >
+                    {savingId === currentNode.id ? "Saving…" : currentAction.label}
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
-                  disabled={savingId === currentNode.id}
-                  onClick={() => void setNodeStatus(currentNode.id, currentAction.next)}
-                  className="inline-flex h-9 items-center rounded-full border border-primary-foreground/30 px-4 text-sm font-semibold outline-none hover:bg-primary-foreground/10 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  onClick={() => onNavigate("Hermes Coach")}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-background px-[18px] text-sm font-semibold text-foreground shadow-sm outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  {savingId === currentNode.id ? "Saving…" : currentAction.label}
+                  Ask Hermes Coach <ArrowRight aria-hidden="true" className="size-4" />
                 </button>
-              ) : null}
+              )}
             </div>
-          </motion.section>
+          </div>
+        </motion.section>
 
-          {/* Up next: compact queue. Full order and actions live in Roadmap. */}
-          <motion.section
-            aria-labelledby="today-up-next"
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.05, ease: EASE_OUT }}
-            className="rounded-2xl border border-border p-3 shadow-sm"
-          >
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <h2 id="today-up-next" className="text-sm font-semibold">Up next</h2>
-              <button
-                type="button"
-                onClick={() => onNavigate("Roadmap")}
-                className="inline-flex min-h-9 items-center gap-1 text-[13px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                Full roadmap <ArrowUpRight aria-hidden="true" className="size-3.5" />
-              </button>
-            </div>
-            <ul className="divide-y divide-border">
-              {upNext.map((node, index) => {
-                const status = (node.status ?? "not-started") as NodeStatus
-                return (
-                  <li key={node.id} className="flex items-center gap-2.5 py-1.5">
-                    <span
-                      className={cn(
-                        "grid size-7 shrink-0 place-items-center rounded-lg text-xs font-bold",
-                        index === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                      )}
-                      aria-hidden="true"
-                    >
-                      {index === 0 ? "→" : index + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{node.title}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {node.duration} · {statusLabel(status)}
-                      </span>
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </motion.section>
-        </div>
-
-        {/* Secondary column: only what needs a decision, plus shortcuts. */}
-        <div className="grid content-start gap-3">
-          <motion.section
-            aria-labelledby="today-attention"
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.1, ease: EASE_OUT }}
-            className="rounded-2xl border border-border p-3 shadow-sm"
-          >
-            <h2 id="today-attention" className="text-sm font-semibold">
-              Needs attention
-              {hasAttention ? (
-                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground tabular-nums">
-                  {attentionCount}
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.05, ease: EASE_OUT }}
+        >
+          <Panel label="Up next" className="h-full">
+            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-muted-foreground">
+              <span>Up next</span>
+              {summary.remaining > 0 ? (
+                <span className="inline-flex items-center before:mr-2 before:size-[3px] before:rounded-full before:bg-muted-foreground/50 before:content-['']">
+                  {summary.remaining} {summary.remaining === 1 ? "topic" : "topics"} left
                 </span>
               ) : null}
-            </h2>
-            {!hasAttention ? (
-              <p className="mt-1.5 flex items-start gap-2 text-[13px] text-muted-foreground">
-                <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                All clear. Nothing to review — pick up where you left off.
+            </div>
+            {upNext.length === 0 ? (
+              <p className="mt-4 flex items-start gap-2.5 text-[13px] text-muted-foreground">
+                <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                Every topic in {title || "this roadmap"} is done. Ask Hermes Coach what to learn next.
               </p>
             ) : (
-              <ul className="mt-1 divide-y divide-border">
-                {failedSources.slice(0, 1).map((source) => (
-                  <li key={source.id} className="py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onNavigate("My data")}
-                      className="group flex w-full items-center justify-between gap-3 rounded-lg py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">Source failed to sync</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {source.label || source.kind} — fix in My data
-                        </span>
-                      </span>
-                      <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                    </button>
-                  </li>
-                ))}
-                {suggestedCount > 0 ? (
-                  <li className="py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onNavigate("My data")}
-                      className="group flex w-full items-center justify-between gap-3 rounded-lg py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">
-                          {suggestedCount} {suggestedCount === 1 ? "record" : "records"} to review
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          Confirm or dismiss in My data
-                        </span>
-                      </span>
-                      <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                    </button>
-                  </li>
-                ) : null}
-                {pendingCount > 0 ? (
-                  <li className="py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onNavigate("Hermes Coach")}
-                      className="group flex w-full items-center justify-between gap-3 rounded-lg py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">
-                          {pendingCount} {pendingCount === 1 ? "coach draft" : "coach drafts"} waiting
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          Nothing changes until you accept
-                        </span>
-                      </span>
-                      <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                    </button>
-                  </li>
-                ) : null}
+              <ul className="mt-3">
+                {upNext.map((node, index) => {
+                  const status = statusOf(node)
+                  return (
+                    <li key={node.id}>
+                      <ListRow
+                        icon={topicGlyph(node.icon)}
+                        title={node.title}
+                        detail={`${node.duration} · ${node.level}`}
+                        trailing={
+                          index === 0 ? (
+                            <Pill tone="warning">Now</Pill>
+                          ) : (
+                            <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>
+                          )
+                        }
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             )}
-          </motion.section>
-
-          <motion.nav
-            aria-label="Quick actions"
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.15, ease: EASE_OUT }}
-            className="grid grid-cols-2 gap-2"
-          >
-            {[
-              { label: "Ask Hermes", hint: "Coach", tab: "Hermes Coach", icon: Bot },
-              { label: "Practice", hint: `${practice.quizzes.length} quizzes`, tab: "Quizzes", icon: ListChecks },
-              { label: "My data", hint: "Sources", tab: "My data", icon: Database },
-              { label: "Roadmap", hint: `${summary.remaining} left`, tab: "Roadmap", icon: Route },
-            ].map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => onNavigate(action.tab)}
-                className="rounded-2xl border border-border p-2.5 text-left shadow-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <action.icon aria-hidden="true" className="size-4 text-muted-foreground" />
-                <span className="mt-1.5 block text-sm font-semibold">{action.label}</span>
-                <span className="block text-xs text-muted-foreground">{action.hint}</span>
-              </button>
-            ))}
-          </motion.nav>
-        </div>
+          </Panel>
+        </motion.div>
       </div>
-    </motion.div>
+
+      {/* Plan health, and what actually moved. */}
+      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.1, ease: EASE_OUT }}
+        >
+          <Panel label="Roadmap momentum" className="h-full">
+            <PanelHead
+              title="Roadmap momentum"
+              sub={title || "Your plan"}
+              tone={stagePill.tone}
+              pill={stagePill.label}
+            />
+            <div className="mt-5">
+              <ProgressTrack percent={stageProgress.percent} label={`${currentStage?.title ?? "Current stage"} progress`} />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-muted-foreground">
+              <span>{currentStage?.title ?? "Current stage"}</span>
+              <span className="inline-flex items-center before:mr-2 before:size-[3px] before:rounded-full before:bg-muted-foreground/50 before:content-['']">
+                {stageProgress.done} of {stageProgress.total} done
+              </span>
+            </div>
+            <ul className="mt-3">
+              <li>
+                <ListRow
+                  icon={currentNode ? topicGlyph(currentNode.icon) : <Route className="size-[18px]" />}
+                  title={version ? `Plan version ${version}` : "Current plan"}
+                  detail={
+                    reason ||
+                    `${stages.length} ${stages.length === 1 ? "stage" : "stages"} · ${summary.total} ${summary.total === 1 ? "topic" : "topics"}`
+                  }
+                  trailing={<RowLink onClick={() => onNavigate("Roadmap")}>Open →</RowLink>}
+                />
+              </li>
+            </ul>
+          </Panel>
+        </motion.div>
+
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.15, ease: EASE_OUT }}
+        >
+          <Panel label="What changed" className="h-full">
+            <PanelHead title="What changed" sub="Only things that really happened" />
+            {activity.length === 0 ? (
+              <p className="mt-4 flex items-start gap-2.5 text-[13px] text-muted-foreground">
+                <CircleSlash aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                Nothing yet. Sync a source, upload a deck, or ask Hermes to change your plan — it shows
+                up here.
+              </p>
+            ) : (
+              <ul className="mt-3">
+                {activity.map((item) => (
+                  <li key={item.id}>
+                    <ListRow
+                      icon={item.icon}
+                      title={item.title}
+                      detail={item.detail}
+                      trailing={<RowLink onClick={() => onNavigate(item.tab)}>{item.action} →</RowLink>}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </motion.div>
+      </div>
+
+      {/* Only when something is genuinely waiting on the student. */}
+      {attention.length > 0 ? (
+        <motion.section
+          aria-label="Needs attention"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.2, ease: EASE_OUT }}
+          className="mt-5"
+        >
+          <Panel label="Needs attention">
+            <PanelHead
+              title="Needs attention"
+              sub="Nothing changes until you decide"
+              tone="warning"
+              pill={`${attention.length}`}
+            />
+            <ul className="mt-3 grid gap-x-8 gap-y-1 md:grid-cols-2">
+              {attention.map((item) => (
+                <li key={item.id}>
+                  <ListRow
+                    divider={false}
+                    icon={item.icon}
+                    title={item.title}
+                    detail={item.detail}
+                    trailing={<RowLink onClick={() => onNavigate(item.tab)}>{item.action} →</RowLink>}
+                  />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </motion.section>
+      ) : null}
+      </motion.div>
+    </div>
   )
 }

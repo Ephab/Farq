@@ -184,6 +184,23 @@ def create_team(assignment_id: str, body: TeamCreate, db: Db, user: CurrentUser)
     return team_dict(db, team, "lead")
 
 
+@router.get("/api/assignments/{assignment_id}/classmates")
+def list_classmates(assignment_id: str, db: Db, user: CurrentUser) -> list[dict]:
+    assignment = require(db, Assignment, assignment_id, "Assignment")
+    if _enrollment(db, assignment.course_id, user.id) is None:
+        raise HTTPException(403, "You are not enrolled in this course")
+    rows = []
+    for enrollment in db.scalars(select(CourseEnrollment).where(
+        CourseEnrollment.course_id == assignment.course_id, CourseEnrollment.role == "student", CourseEnrollment.user_id != user.id,
+    )).all():
+        person = db.get(User, enrollment.user_id)
+        rows.append({
+            "user_id": enrollment.user_id, "display_name": person.display_name if person else enrollment.user_id,
+            "has_team": team_for_assignment(db, assignment.id, enrollment.user_id) is not None,
+        })
+    return sorted(rows, key=lambda row: row["display_name"].lower())
+
+
 @router.post("/api/teams/{team_id}/invites", status_code=201)
 def invite_member(team_id: str, body: InviteCreate, db: Db, user: CurrentUser) -> dict:
     team = require_team(db, team_id)

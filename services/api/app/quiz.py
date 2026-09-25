@@ -20,6 +20,7 @@ RUN_TIMEOUT_SECONDS = 180
 
 QUIZ_INSTRUCTIONS = " ".join([
     "You generate study quizzes from lecture slides.",
+    "Load the farq-quiz skill and follow it.",
     "Do not call any tools. Return ONLY a JSON object: {\"questions\": [...]}. No markdown, no prose.",
     "Each question: {\"id\":\"q1\",\"type\":\"mcq|true_false|short_answer\",\"question\":\"...\",\"options\":[...],\"answer\":\"...\",\"explanation\":\"one sentence\",\"source\":\"Slide N or Page N\"}.",
     "Rules: mcq has exactly 4 distinct options with answer matching one option verbatim.",

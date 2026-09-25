@@ -81,9 +81,15 @@ for daily quotas) so later runs skip it. Other errors are reported as-is, never 
 `POST /api/quiz/generate` sends a JSON-only quiz prompt to `POST /v1/runs` on a
 throwaway `farq:quiz:*` session (fresh ID per generation, tools forbidden by
 instructions) and polls the durable run in a worker thread, returning the raw
-model output. The browser keeps its parse/salvage pipeline and turns the text
-into questions. Quiz source text is never written to SQLite: it is not an
-explicit student statement, so it must not become a fact, message, or proposal.
+model output. The prompt loads the `farq-quiz` skill
+(`.hermes/skills/farq-quiz/SKILL.md`), which carries the question craft the
+prompt deliberately does not duplicate: deck-spread coverage with no duplicate
+stems, difficulty as the cognitive task rather than the vocabulary, distractors
+a half-remembering learner would actually pick, roughly balanced true/false,
+and explanations that teach instead of restating the answer. The browser keeps
+its parse/salvage pipeline and turns the text into questions. Quiz source text
+is never written to SQLite: it is not an explicit student statement, so it must
+not become a fact, message, or proposal.
 
 ## Slide extension
 

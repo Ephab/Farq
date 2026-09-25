@@ -18,6 +18,8 @@ import {
   AnimatedSidebarTrigger,
 } from "@/components/motion/animated-sidebar"
 import { FooterSettings } from "@/components/footer-settings"
+import { TodayView } from "@/components/dashboard/TodayView"
+import { ProjectsView } from "@/components/projects/ProjectsView"
 import { QuizView } from "@/components/quiz/QuizView"
 import { SlidesView } from "@/components/slides/SlidesView"
 import { RoadmapView } from "@/components/roadmap/RoadmapView"
@@ -181,7 +183,9 @@ export default function App() {
             </header>
 
             <main className="flex min-h-0 flex-1 flex-col bg-background">
-              {active === "Roadmap" ? (
+              {active === "Home" || active === "Dashboard" ? (
+                <TodayView onNavigate={(tab) => setActive(tab)} />
+              ) : active === "Roadmap" ? (
                 <RoadmapView />
               ) : active === "Hermes Coach" ? (
                 <HermesCoach key={coachDraft} initialDraft={coachDraft} />
@@ -191,6 +195,8 @@ export default function App() {
                 <QuizView />
               ) : active === "Slides" ? (
                 <SlidesView />
+              ) : active === "Projects" ? (
+                <ProjectsView onNavigate={(tab) => setActive(tab)} />
               ) : (
                 <div className="grid flex-1 place-items-center p-8">
                   <div className="text-center">

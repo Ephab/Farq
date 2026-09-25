@@ -138,7 +138,7 @@ def test_linkedin_zip_evidence_and_confirmation_become_facts(client: TestClient)
 def test_transcript_upload_redacts_and_extracts(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     sid = new_student(client)["student_id"]
     source = client.post(f"/api/students/{sid}/sources", json={"kind": "transcript_pdf"}).json()
-    monkeypatch.setattr("app.onboarding.extract_pdf_text", lambda data: redact("Student ID 2220001234 email a@b.com ARTI 309 Machine Learning A+ 3 " * 3))
+    monkeypatch.setattr("app.pipeline.evidence_step.extract_pdf_text", lambda data: redact("Student ID 2220001234 email a@b.com ARTI 309 Machine Learning A+ 3 " * 3))
     prompts: list[str] = []
     output = json.dumps({"items": [
         {"kind": "course", "title": "Machine Learning", "data": {"code": "ARTI 309", "grade": "A+", "credits": 3}},

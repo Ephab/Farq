@@ -1,109 +1,47 @@
 from __future__ import annotations
 
-"""Onboarding: gather evidence, build a profile brief, generate the first roadmap."""
+"""Onboarding orchestration (thin layer over the modular pipeline).
+
+Background collection lives in `app.pipeline` (one module per step);
+staged roadmap generation lives in `app.roadmap_gen`. This module keeps
+the original whole-roadmap generator and re-exports the pipeline pieces
+so existing imports (`app.onboarding.*`, `app.main`) keep working.
+"""
 
 import json
 
 from pydantic import ValidationError
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .disciplines import DISCIPLINES
 from .hermes import HermesJsonError, parse_json_output, run_json_prompt
-from .models import DataSource, EvidenceItem, Student, StudentFact, StudentProfile, now
+from .models import DataSource, now
+from .pipeline.brief_step import build_profile_brief
+from .pipeline.evidence_step import (
+    FOLDER_INSTRUCTIONS,
+    _evidence_count,
+    _hermes_args,
+    run_folder_ingest,
+    sync_remote,
+    sync_upload,
+)
 from .schemas import ROADMAP_ICONS, MAX_GENERATED_NODES, MAX_GENERATED_STAGES, RoadmapSnapshot, validate_generated
-from .sources import SourceError, store_evidence
-from .sources.extract import extract_items
-from .sources.linkedin_zip import parse_linkedin_zip
-from .sources.pdf_text import extract_pdf_text
-from .sources.web import fetch_github, fetch_orcid, fetch_page_text
+from .sources.pdf_text import extract_pdf_text  # noqa: F401  (compat alias; patch point for tests)
 
 UPLOAD_KINDS = {"transcript_pdf", "cv_pdf", "linkedin_pdf", "linkedin_zip"}
 
-FOLDER_INSTRUCTIONS = """
-You are Hermes indexing one folder on the student's own computer for Farq onboarding.
-Call farq_index_folder exactly once with the user_id, source_id, path and purpose given below.
-It scans the folder and submits the evidence itself. Do not call any other tool, do not read
-files, and never try to open .env files, keys, credentials or secrets.
-Then reply with one short sentence stating how many items were submitted for review.
-""".strip()
-
-
-def sync_upload(db: Session, source: DataSource, data: bytes, filename: str, hermes: dict) -> int:
-    ref = filename[:200] or source.kind
-    if source.kind == "linkedin_zip":
-        items = parse_linkedin_zip(data)
-    else:
-        items = extract_items(source.kind, extract_pdf_text(data), ref, **hermes)
-    return store_evidence(db, source.student_id, source.id, items)
-
-
-def sync_remote(db: Session, source: DataSource, hermes: dict) -> int:
-    config = json.loads(source.config_json)
-    if source.kind == "github":
-        items = fetch_github(config["username"])
-    elif source.kind == "orcid":
-        items = fetch_orcid(config["orcid"])
-    elif source.kind == "portfolio_url":
-        items = extract_items("portfolio_url", fetch_page_text(config["url"]), config["url"], **hermes)
-    elif source.kind == "folder":
-        return run_folder_ingest(db, source, hermes)
-    else:
-        raise SourceError("Upload a file for this source", status=422)
-    return store_evidence(db, source.student_id, source.id, items)
-
-
-def run_folder_ingest(db: Session, source: DataSource, hermes: dict) -> int:
-    """Ask Hermes (on the student's machine) to scan a folder and submit evidence."""
-    config = json.loads(source.config_json)
-    before = _evidence_count(db, source.id)
-    prompt = (
-        f"Farq user_id={source.student_id}; source_id={source.id}.\n"
-        f"Scan this folder: path={json.dumps(config['path'])} purpose={config.get('purpose') or 'projects'}"
-    )
-    try:
-        run_json_prompt("ingest", prompt, FOLDER_INSTRUCTIONS, timeout_seconds=300, **_hermes_args(hermes))
-    except HermesJsonError as exc:
-        raise SourceError(str(exc), status=exc.status) from exc
-    db.expire_all()
-    added = _evidence_count(db, source.id) - before
-    if added <= 0:
-        raise SourceError("Hermes finished but submitted no evidence for this folder", status=502)
-    return added
-
-
-def _evidence_count(db: Session, source_id: str) -> int:
-    return len(db.scalars(select(EvidenceItem.id).where(EvidenceItem.source_id == source_id)).all())
-
-
-def _hermes_args(hermes: dict) -> dict:
-    return {"provider": hermes.get("provider"), "model": hermes.get("model"), "hermes_api_key": hermes.get("key")}
-
-
-def build_profile_brief(db: Session, student_id: str) -> dict:
-    """Deterministic, compact summary of everything Farq knows and the student confirmed."""
-    student = db.get(Student, student_id)
-    profile = db.get(StudentProfile, student_id) or StudentProfile(student_id=student_id)
-    evidence = db.scalars(select(EvidenceItem).where(EvidenceItem.student_id == student_id, EvidenceItem.status == "confirmed")).all()
-    facts = db.scalars(select(StudentFact).where(StudentFact.student_id == student_id, StudentFact.active.is_(True))).all()
-    grouped: dict[str, list[dict]] = {}
-    for item in evidence:
-        data = json.loads(item.data_json)
-        data.pop("readme_excerpt", None)
-        grouped.setdefault(item.kind, []).append({"evidence_id": item.id, "title": item.title, **{k: v for k, v in data.items() if v not in ("", [], None)}})
-    return {
-        "name": student.display_name if student else "",
-        "institution": profile.institution,
-        "program": profile.program,
-        "discipline": profile.discipline,
-        "year": profile.year_label,
-        "graduation_target": profile.grad_target,
-        "confirmed_evidence": {kind: rows[:40] for kind, rows in grouped.items()},
-        "stated_facts": [
-            {"category": fact.category, "key": fact.key, "value": json.loads(fact.value_json)}
-            for fact in facts if fact.source_kind != "confirmed_evidence"
-        ],
-    }
+__all__ = [
+    "UPLOAD_KINDS",
+    "FOLDER_INSTRUCTIONS",
+    "sync_upload",
+    "sync_remote",
+    "run_folder_ingest",
+    "build_profile_brief",
+    "build_generate_prompt",
+    "generate_initial_roadmap",
+    "mark_synced",
+    "extract_pdf_text",
+]
 
 
 GENERATE_INSTRUCTIONS = " ".join([

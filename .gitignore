@@ -41,3 +41,6 @@ services/data/
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Brainstorming companion mockups
+.superpowers/

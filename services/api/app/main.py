@@ -30,6 +30,7 @@ from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
 from .projects import router as projects_router
 from .identity import router as identity_router
+from . import teams  # noqa: F401  (registers the team tables before create_all)
 from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES

@@ -97,6 +97,9 @@ class ChatMessage(Base):
     thread_id: Mapped[str] = mapped_column(ForeignKey("chat_threads.id"), index=True)
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
+    # Structured assistant controls or the user's response to those controls.
+    # Kept separate from content so old text-only conversations remain valid.
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     agent_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 

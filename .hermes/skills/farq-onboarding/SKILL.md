@@ -23,8 +23,9 @@ to index a folder for Farq.
 2. Ask at most five questions in total, one per message, in plain friendly language.
    Priorities: career direction, main interests, weekly hours, learning style, weak areas,
    deadlines (exams, internships, graduation).
-3. When a question has natural choices, end the message with a single line:
-   `Options: First | Second | Third`. The app turns it into buttons. Keep options short.
+3. When a question has natural choices, use the `farq-ui` response contract supplied in the run
+   instructions. Use two or three concise choices and choose single- versus multi-select based on
+   whether the answers are mutually exclusive.
 4. Record each direct answer with `farq_record_explicit_fact` using `source_kind: "onboarding"`
    and the source message ID. A chosen option is explicit; your own inferences are not.
 5. When enough is known, say so and ask the student to press "Generate my roadmap".

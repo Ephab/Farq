@@ -64,6 +64,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
             stage={chat.stage}
             error={chat.error}
             onSend={(text) => void chat.send(text)}
+            onInteraction={(interaction, displayText) => void chat.sendInteraction(interaction, displayText)}
             onRetry={() => { chat.refresh().catch(() => undefined) }}
             onEditResend={(messageId, text) => void chat.editAndResend(messageId, text)}
             placeholder={answered ? "Answer Hermes, or press Generate when you're ready…" : "Say hi to start…"}

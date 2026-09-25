@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Copy, LoaderCircle, PencilLine, RefreshCw, RotateCcw, Send } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
-import { splitOptions, type ChatMessage } from "@/components/hermes/use-hermes-chat"
+import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
+import { cn } from "@/lib/utils"
 
 interface ChatThreadViewProps {
   messages: ChatMessage[]
@@ -11,6 +12,7 @@ interface ChatThreadViewProps {
   stage: string
   error: string | null
   onSend: (text: string) => void
+  onInteraction: (interaction: ChatInteractionInput, displayText: string) => void
   onRetry: () => void
   /** Rewind the thread to the message, then resend the edited prompt there. */
   onEditResend: (messageId: string, text: string) => void
@@ -24,11 +26,12 @@ interface ChatThreadViewProps {
 }
 
 /** Message list + composer shared by Hermes Coach and the onboarding chat. */
-export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, onEditResend, placeholder, disabled, empty, afterMessages, draft }: ChatThreadViewProps) {
+export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, placeholder, disabled, empty, afterMessages, draft }: ChatThreadViewProps) {
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState("")
+  const [selections, setSelections] = useState<Record<string, string[]>>({})
   const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -43,6 +46,38 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, 
     if (!text.trim() || busy || disabled) return
     onSend(text)
     setInput("")
+  }
+
+  const interactionAnswer = (sourceMessageId: string) => messages.find((item) =>
+    item.role === "user" && item.metadata?.interaction?.source_message_id === sourceMessageId,
+  )
+
+  const choose = (message: ChatMessage, optionId: string, title: string) => {
+    const group = message.metadata?.choice_group
+    if (!group || busy || disabled || interactionAnswer(message.id)) return
+    if (group.mode === "single") {
+      setSelections((current) => ({ ...current, [message.id]: [optionId] }))
+      onInteraction({ kind: "choice", source_message_id: message.id, selected_option_ids: [optionId] }, title)
+      return
+    }
+    setSelections((current) => {
+      const selected = current[message.id] ?? []
+      const next = selected.includes(optionId)
+        ? selected.filter((id) => id !== optionId)
+        : selected.length < group.max_selections ? [...selected, optionId] : selected
+      return { ...current, [message.id]: next }
+    })
+  }
+
+  const submitMultiple = (message: ChatMessage) => {
+    const group = message.metadata?.choice_group
+    const selected = selections[message.id] ?? []
+    if (!group || selected.length < group.min_selections || selected.length > group.max_selections) return
+    const titles = group.options.filter((item) => selected.includes(item.id)).map((item) => item.title)
+    onInteraction(
+      { kind: "choice", source_message_id: message.id, selected_option_ids: selected },
+      `Selected: ${titles.join(", ")}`,
+    )
   }
 
   const copyText = async (id: string, text: string) => {
@@ -82,6 +117,12 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, 
           const { text, options } = message.role === "assistant" ? splitOptions(message.content) : { text: message.content, options: [] }
           const prompt = message.role === "assistant" ? promptFor(index) : null
           const copied = copiedId === message.id
+          const group = message.role === "assistant" ? message.metadata?.choice_group : null
+          const followUps = message.role === "assistant" ? (message.metadata?.follow_ups ?? []).slice(0, 3) : []
+          const answer = message.role === "assistant" ? interactionAnswer(message.id) : undefined
+          const submittedIds = answer?.metadata?.interaction?.selected_option_ids ?? []
+          const selectedIds = submittedIds.length ? submittedIds : (selections[message.id] ?? [])
+          const controlsEnabled = isLast(message) && !answer && !busy && !disabled
           return (
             <div key={message.id} className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}>
               {message.role === "user" && editingId === message.id ? (
@@ -95,6 +136,55 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, 
               ) : (
                 <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[76%] ${message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border bg-card"}`}>{message.role === "assistant" ? <MarkdownText text={text} /> : <p className="whitespace-pre-wrap">{text}</p>}</div>
               )}
+              {group ? (
+                <div className="mt-3 w-full max-w-[92%] space-y-2 sm:max-w-[76%]">
+                  <p className="px-1 text-xs font-medium text-muted-foreground">{group.prompt}</p>
+                  <div className="grid gap-2">
+                    {group.options.slice(0, 3).map((option) => {
+                      const selected = selectedIds.includes(option.id)
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          disabled={!controlsEnabled}
+                          onClick={() => choose(message, option.id, option.title)}
+                          className={cn(
+                            "group/choice flex w-full items-start gap-3 rounded-2xl border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+                            selected ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:border-foreground/30 hover:bg-muted/50",
+                          )}
+                        >
+                          <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center border", group.mode === "single" ? "rounded-full" : "rounded-md", selected ? "border-background bg-background text-foreground" : "border-muted-foreground/40")}>
+                            {selected ? <Check className="size-3.5" strokeWidth={3} /> : null}
+                          </span>
+                          <span className="min-w-0"><span className="block text-sm font-semibold">{option.title}</span><span className={cn("mt-0.5 block text-xs leading-5", selected ? "text-background/65" : "text-muted-foreground")}>{option.description}</span></span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {group.mode === "multiple" && controlsEnabled ? (
+                    <div className="flex items-center justify-between gap-3 px-1 pt-1">
+                      <span className="text-[11px] text-muted-foreground">Choose {group.min_selections === group.max_selections ? group.min_selections : `${group.min_selections}–${group.max_selections}`}</span>
+                      <button type="button" disabled={selectedIds.length < group.min_selections || selectedIds.length > group.max_selections} onClick={() => submitMultiple(message)} className="rounded-xl bg-primary px-4 py-2 text-xs font-medium text-primary-foreground disabled:opacity-40">Continue{selectedIds.length ? ` (${selectedIds.length})` : ""}</button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {options.length > 0 && !group && isLast(message) ? (
+                <div className="mt-2 flex max-w-[88%] flex-wrap gap-2">
+                  {options.map((option) => <button key={option} type="button" disabled={busy || disabled} onClick={() => submit(option)} className="rounded-full border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-primary/10 disabled:opacity-40">{option}</button>)}
+                </div>
+              ) : null}
+              {followUps.length ? (
+                <div className="mt-3 w-full max-w-[92%] sm:max-w-[76%]">
+                  <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Explore next</p>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {followUps.map((item) => {
+                      const selected = answer?.metadata?.interaction?.kind === "follow_up" && submittedIds.includes(item.id)
+                      return <button key={item.id} type="button" disabled={!controlsEnabled} onClick={() => onInteraction({ kind: "follow_up", source_message_id: message.id, selected_option_ids: [item.id] }, item.label)} className={cn("rounded-xl border px-3 py-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default", selected ? "border-foreground bg-foreground text-background" : "border-border bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground")}>{item.label}</button>
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <div className="mt-1.5 flex flex-wrap gap-1">
                 <button type="button" aria-label={message.role === "user" ? "Copy prompt" : "Copy output"} onClick={() => void copyText(message.id, text)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
                   {copied ? <Check className="size-3" /> : <Copy className="size-3" />}{copied ? "Copied" : "Copy"}
@@ -109,11 +199,6 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onRetry, 
                   </button>
                 ) : null}
               </div>
-              {options.length > 0 && isLast(message) ? (
-                <div className="mt-2 flex max-w-[88%] flex-wrap gap-2">
-                  {options.map((option) => <button key={option} type="button" disabled={busy || disabled} onClick={() => submit(option)} className="rounded-full border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-primary/10 disabled:opacity-40">{option}</button>)}
-                </div>
-              ) : null}
             </div>
           )
         })}

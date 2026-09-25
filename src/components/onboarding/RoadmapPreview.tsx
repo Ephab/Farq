@@ -104,7 +104,18 @@ export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPre
         </div>
       ) : null}
       <div className="relative flex min-h-[60svh] flex-1 flex-col">
-        <RoadmapCanvas nodes={nodes} stages={proposal.snapshot.stages} statuses={statuses} selectedId={selectedId} dimmedIds={new Set()} onSelect={setSelectedId} />
+        <RoadmapCanvas
+          nodes={nodes}
+          stages={proposal.snapshot.stages}
+          statuses={statuses}
+          selectedId={selectedId}
+          dimmedIds={new Set()}
+          onSelect={setSelectedId}
+          onToggleDone={(id) => {
+            const node = nodes.find((item) => item.id === id)
+            if (node?.status === "done") toggleDone(id, statuses[id] !== "done")
+          }}
+        />
         <NodeDetailPanel
           node={selected}
           status={selectedId ? statuses[selectedId] : "not-started"}

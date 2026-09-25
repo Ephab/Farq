@@ -11,9 +11,10 @@ TEST_DB = Path(tempfile.gettempdir()) / f"farq-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.database import SessionLocal, engine  # noqa: E402
-from app.hermes import NIM_MODEL, resolve_hermes_selection  # noqa: E402
+from app.hermes import NIM_MODEL, parse_chat_output, resolve_hermes_selection  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import AgentRun  # noqa: E402
+from app.models import AgentRun, ChatMessage  # noqa: E402
+from app.schemas import ChatMessageUi  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -50,6 +51,90 @@ def test_hermes_provider_choice_is_allowlisted_and_per_run(client: TestClient, m
 
     invalid = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Use anything", "provider": "custom"})
     assert invalid.status_code == 422
+
+
+def test_structured_chat_output_is_validated_and_hidden_from_visible_text():
+    output = "Choose the direction that fits you best.\n```farq-ui\n" + """{
+      "choice_group": {"mode":"single","prompt":"Where next?","options":[
+        {"id":"spatial","title":"Spatial AI","description":"Work with 3D scenes."},
+        {"id":"vlm","title":"Vision-language models","description":"Connect images and text."}
+      ],"min_selections":1,"max_selections":1},
+      "follow_ups":[{"id":"compare","label":"Compare both","prompt":"Compare both paths for me."}]
+    }""" + "\n```"
+    visible, metadata_json = parse_chat_output(output)
+    assert visible == "Choose the direction that fits you best."
+    assert metadata_json is not None
+    assert ChatMessageUi.model_validate_json(metadata_json).choice_group.options[0].id == "spatial"
+
+    visible, metadata_json = parse_chat_output("Readable fallback.\n```farq-ui\n{bad}\n```")
+    assert visible == "Readable fallback."
+    assert metadata_json is None
+
+
+def test_structured_chat_choices_are_validated_and_persisted(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    student = client.post("/api/students", json={"display_name": "Choice Student"}).json()
+    thread_id = student["thread_id"]
+    ui = ChatMessageUi.model_validate({
+        "choice_group": {
+            "mode": "single",
+            "prompt": "Choose a direction",
+            "options": [
+                {"id": "spatial", "title": "Spatial AI", "description": "Reason about 3D scenes."},
+                {"id": "vlm", "title": "Vision-language models", "description": "Connect images and text."},
+            ],
+        },
+        "follow_ups": [{"id": "compare", "label": "Compare both", "prompt": "Compare both paths for research and industry."}],
+    })
+    db = SessionLocal()
+    assistant = ChatMessage(thread_id=thread_id, role="assistant", content="Pick a path.", metadata_json=ui.model_dump_json())
+    db.add(assistant); db.commit(); db.refresh(assistant); source_id = assistant.id; db.close()
+
+    selected = client.post(f"/api/chat/threads/{thread_id}/messages", json={
+        "interaction": {"kind": "choice", "source_message_id": source_id, "selected_option_ids": ["spatial"]},
+    })
+    assert selected.status_code == 202
+    items = client.get(f"/api/chat/threads/{thread_id}/messages").json()
+    assert items[-1]["content"] == "Spatial AI"
+    assert items[-1]["metadata"]["interaction"]["source_message_id"] == source_id
+    assert "explicitly selected" in items[-1]["metadata"]["interaction"]["hermes_prompt"]
+
+    duplicate = client.post(f"/api/chat/threads/{thread_id}/messages", json={
+        "interaction": {"kind": "choice", "source_message_id": source_id, "selected_option_ids": ["vlm"]},
+    })
+    assert duplicate.status_code == 409
+
+
+def test_structured_chat_multi_select_limits_and_follow_up(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    student = client.post("/api/students", json={"display_name": "Multi Student"}).json()
+    thread_id = student["thread_id"]
+    multi = ChatMessageUi.model_validate({
+        "choice_group": {
+            "mode": "multiple", "prompt": "Choose two", "min_selections": 2, "max_selections": 2,
+            "options": [
+                {"id": "projects", "title": "Projects", "description": "Learn by building."},
+                {"id": "papers", "title": "Papers", "description": "Learn through research."},
+                {"id": "courses", "title": "Courses", "description": "Follow structured lessons."},
+            ],
+        },
+        "follow_ups": [],
+    })
+    db = SessionLocal(); assistant = ChatMessage(thread_id=thread_id, role="assistant", content="Choose two.", metadata_json=multi.model_dump_json()); db.add(assistant); db.commit(); db.refresh(assistant); source_id = assistant.id; db.close()
+    too_few = client.post(f"/api/chat/threads/{thread_id}/messages", json={"interaction": {"kind": "choice", "source_message_id": source_id, "selected_option_ids": ["projects"]}})
+    assert too_few.status_code == 422
+    unknown = client.post(f"/api/chat/threads/{thread_id}/messages", json={"interaction": {"kind": "choice", "source_message_id": source_id, "selected_option_ids": ["projects", "missing"]}})
+    assert unknown.status_code == 422
+    accepted = client.post(f"/api/chat/threads/{thread_id}/messages", json={"interaction": {"kind": "choice", "source_message_id": source_id, "selected_option_ids": ["projects", "papers"]}})
+    assert accepted.status_code == 202
+
+    follow_ui = ChatMessageUi.model_validate({"follow_ups": [{"id": "research", "label": "Research fit", "prompt": "Which path is closer to research?"}]})
+    db = SessionLocal(); follow = ChatMessage(thread_id=thread_id, role="assistant", content="Want to explore further?", metadata_json=follow_ui.model_dump_json()); db.add(follow); db.commit(); db.refresh(follow); follow_id = follow.id; db.close()
+    response = client.post(f"/api/chat/threads/{thread_id}/messages", json={"interaction": {"kind": "follow_up", "source_message_id": follow_id, "selected_option_ids": ["research"]}})
+    assert response.status_code == 202
+    items = client.get(f"/api/chat/threads/{thread_id}/messages").json()
+    assert items[-1]["content"] == "Research fit"
+    assert items[-1]["metadata"]["interaction"]["hermes_prompt"] == "Which path is closer to research?"
 
 
 def test_fact_proposal_accept_and_reject_flow(client: TestClient):

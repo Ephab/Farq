@@ -71,6 +71,7 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
           stage={chat.stage}
           error={chat.error}
           onSend={(text) => void chat.send(text)}
+          onInteraction={(interaction, displayText) => void chat.sendInteraction(interaction, displayText)}
           onRetry={() => { chat.refresh().catch(() => undefined); refreshSide().catch(() => undefined) }}
           onEditResend={(messageId, text) => void chat.editAndResend(messageId, text)}
           placeholder="Tell Hermes about your goals or choose a suggested path…"

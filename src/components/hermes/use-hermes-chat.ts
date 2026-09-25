@@ -3,7 +3,31 @@
 import { useCallback, useEffect, useState } from "react"
 import { API_BASE, api, hermesRequestParts } from "@/lib/farq-api"
 
-export interface ChatMessage { id: string; role: "user" | "assistant"; content: string; created_at: string }
+export interface ChatChoiceOption { id: string; title: string; description: string }
+export interface ChatChoiceGroup {
+  mode: "single" | "multiple"
+  prompt: string
+  options: ChatChoiceOption[]
+  min_selections: number
+  max_selections: number
+}
+export interface ChatFollowUp { id: string; label: string; prompt: string }
+export interface ChatInteractionMetadata {
+  kind: "choice" | "follow_up"
+  source_message_id: string
+  selected_option_ids: string[]
+}
+export interface ChatMessageMetadata {
+  choice_group?: ChatChoiceGroup | null
+  follow_ups?: ChatFollowUp[]
+  interaction?: ChatInteractionMetadata
+}
+export interface ChatMessage { id: string; role: "user" | "assistant"; content: string; metadata?: ChatMessageMetadata | null; created_at: string }
+export interface ChatInteractionInput {
+  kind: "choice" | "follow_up"
+  source_message_id: string
+  selected_option_ids: string[]
+}
 
 /** Messages, sending, and live run status for one Hermes chat thread. */
 export function useHermesChat(threadId: string | null, onRunFinished?: () => void) {
@@ -21,18 +45,20 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not reach Farq API"))
   }, [refresh])
 
-  const send = useCallback(async (text: string) => {
-    const content = text.trim()
-    if (!content || !threadId || busy) return
+  const dispatch = useCallback(async (
+    payload: { content?: string; interaction?: ChatInteractionInput },
+    optimistic: Omit<ChatMessage, "id" | "role" | "created_at">,
+  ) => {
+    if (!threadId || busy) return
     setBusy(true); setError(null)
-    setMessages((items) => [...items, { id: `optimistic-${Date.now()}`, role: "user", content, created_at: new Date().toISOString() }])
+    setMessages((items) => [...items, { ...optimistic, id: `optimistic-${Date.now()}`, role: "user", created_at: new Date().toISOString() }])
     try {
       const { body, headers } = hermesRequestParts()
       // Tab-only Farq Hermes key override goes to Farq API only — never to
       // providers directly, never persisted, never sent to a system Hermes.
       const result = await api<{ run_id: string }>(`/api/chat/threads/${threadId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ content, ...body }),
+        body: JSON.stringify({ ...payload, ...body }),
         headers,
       })
       setStage("Starting Hermes")
@@ -53,6 +79,19 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
       await refresh().catch(() => undefined)
     }
   }, [threadId, busy, refresh, onRunFinished])
+
+  const send = useCallback(async (text: string) => {
+    const content = text.trim()
+    if (!content) return
+    await dispatch({ content }, { content })
+  }, [dispatch])
+
+  const sendInteraction = useCallback(async (interaction: ChatInteractionInput, displayText: string) => {
+    await dispatch(
+      { interaction },
+      { content: displayText, metadata: { interaction } },
+    )
+  }, [dispatch])
 
   /** Edit-and-resend: rewind the thread to `messageId`, then send the edited
    * prompt so the conversation restarts there instead of stacking a copy. */
@@ -78,7 +117,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     await send(content)
   }, [threadId, busy, send])
 
-  return { messages, busy, stage, error, setError, send, refresh, editAndResend }
+  return { messages, busy, stage, error, setError, send, sendInteraction, refresh, editAndResend }
 }
 
 const OPTIONS_LINE = /^\s*Options:\s*(.+)$/im
@@ -87,6 +126,6 @@ const OPTIONS_LINE = /^\s*Options:\s*(.+)$/im
 export function splitOptions(content: string): { text: string; options: string[] } {
   const match = content.match(OPTIONS_LINE)
   if (!match) return { text: content, options: [] }
-  const options = match[1].split("|").map((option) => option.trim().replace(/^[`*]+|[`*]+$/g, "")).filter(Boolean).slice(0, 6)
+  const options = match[1].split("|").map((option) => option.trim().replace(/^[`*]+|[`*]+$/g, "")).filter(Boolean).slice(0, 3)
   return { text: content.replace(OPTIONS_LINE, "").trim(), options }
 }

@@ -29,7 +29,7 @@ export interface RoadmapLayout {
 }
 
 export const NODE_W = 272;
-export const NODE_H = 148;
+export const NODE_H = 120;
 const GAP_X = 56;
 const GAP_Y = 28;
 const STAGE_HEADER_H = 92;
@@ -119,20 +119,31 @@ export function computeRoadmapLayout(
   return { positions, edges, stageAnchors, width, height, spineX };
 }
 
-/** Cubic vertical bezier from bottom-center of `a` to top-center of `b`. */
+/**
+ * Connect two cards at the edges that face one another.
+ *
+ * A stage can contain a horizontal sequence as well as vertical progression.
+ * Always using bottom → top anchors made horizontal dependencies loop beneath
+ * their cards and made the SVG look detached from the UI.
+ */
 export function edgePath(ax: number, ay: number, bx: number, by: number): string {
-  const x1 = ax + NODE_W / 2;
-  const y1 = ay + NODE_H;
-  const x2 = bx + NODE_W / 2;
-  const y2 = by;
-  const mid = (y1 + y2) / 2;
-  return `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`;
-}
+  const sourceCenterX = ax + NODE_W / 2;
+  const sourceCenterY = ay + NODE_H / 2;
+  const targetCenterX = bx + NODE_W / 2;
+  const targetCenterY = by + NODE_H / 2;
+  const mostlyHorizontal = Math.abs(targetCenterY - sourceCenterY) < NODE_H * 0.65;
 
-/** Short branch from the central spine to a node (roadmap.sh style). */
-export function spineBranchPath(spineX: number, nx: number, ny: number): string {
-  const x2 = nx + NODE_W / 2;
-  const y2 = ny + NODE_H / 2;
-  const midX = (spineX + x2) / 2;
-  return `M ${spineX} ${y2} C ${midX} ${y2}, ${midX} ${y2}, ${x2} ${y2}`;
+  if (mostlyHorizontal) {
+    const movingRight = targetCenterX >= sourceCenterX;
+    const x1 = movingRight ? ax + NODE_W : ax;
+    const x2 = movingRight ? bx : bx + NODE_W;
+    const midX = (x1 + x2) / 2;
+    return `M ${x1} ${sourceCenterY} C ${midX} ${sourceCenterY}, ${midX} ${targetCenterY}, ${x2} ${targetCenterY}`;
+  }
+
+  const movingDown = targetCenterY >= sourceCenterY;
+  const y1 = movingDown ? ay + NODE_H : ay;
+  const y2 = movingDown ? by : by + NODE_H;
+  const midY = (y1 + y2) / 2;
+  return `M ${sourceCenterX} ${y1} C ${sourceCenterX} ${midY}, ${targetCenterX} ${midY}, ${targetCenterX} ${y2}`;
 }

@@ -12,8 +12,27 @@ children; other deployments need a manual restart).
 import os
 from pathlib import Path
 
-# services/api/app/settings_env.py -> parents[3] is the repo root.
-ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+def _resolve_env_path() -> Path:
+    """Locate the project environment file without assuming a source layout.
+
+    Native development runs from the repository checkout, while the API Docker
+    image copies this module to ``/app/app`` and intentionally does not include
+    the host's secrets file.  An explicit path remains available for other
+    deployment layouts.
+    """
+    override = os.getenv("FARQ_ENV_PATH")
+    if override:
+        return Path(override).expanduser().resolve()
+
+    module_path = Path(__file__).resolve()
+    for parent in module_path.parents:
+        if (parent / "docker-compose.yml").exists() or (parent / "package.json").exists():
+            return parent / ".env"
+
+    return Path.cwd() / ".env"
+
+
+ENV_PATH = _resolve_env_path()
 
 MANAGED_KEYS = ("HERMES_API_KEY", "HERMES_MODEL", "HERMES_PROVIDER")
 

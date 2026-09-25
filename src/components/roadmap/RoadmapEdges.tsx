@@ -4,7 +4,6 @@ import { memo } from "react";
 import type { NodeStatus } from "@/data/computer-vision-roadmap";
 import {
   edgePath,
-  spineBranchPath,
   type RoadmapLayout,
 } from "@/lib/roadmap-layout";
 
@@ -45,17 +44,6 @@ export const RoadmapEdges = memo(function RoadmapEdges({
         <circle key={a.stageId} cx={spineX} cy={a.y + 44} r={5} fill="var(--primary)" opacity={0.9} />
       ))}
 
-      {/* Spine branches to each node */}
-      {Object.values(positions).map((p) => (
-        <path
-          key={`branch-${p.id}`}
-          d={spineBranchPath(spineX, p.x, p.y)}
-          fill="none"
-          stroke="var(--border)"
-          strokeWidth={1.5}
-        />
-      ))}
-
       {/* Dependency edges */}
       {edges.map((e) => {
         const from = positions[e.from];
@@ -69,9 +57,10 @@ export const RoadmapEdges = memo(function RoadmapEdges({
             key={e.id}
             d={edgePath(from.x, from.y, to.x, to.y)}
             fill="none"
-            stroke={sourceDone ? "var(--primary)" : "var(--ring)"}
-            strokeWidth={isActive ? 2.5 : 2}
-            strokeOpacity={sourceDone || isActive ? 0.9 : 0.45}
+            stroke={sourceDone ? "var(--foreground)" : "var(--muted-foreground)"}
+            strokeWidth={isActive ? 2.75 : 2}
+            strokeOpacity={sourceDone ? 0.9 : isActive ? 0.75 : 0.32}
+            strokeLinecap="round"
           />
         );
       })}

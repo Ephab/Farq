@@ -2,8 +2,9 @@
 
 import { createElement, memo } from "react";
 import { motion } from "motion/react";
+import { Check } from "lucide-react";
 import type { NodeStatus, RoadmapNodeData } from "@/data/computer-vision-roadmap";
-import { NODE_W } from "@/lib/roadmap-layout";
+import { NODE_H, NODE_W } from "@/lib/roadmap-layout";
 import { nodeIcon } from "@/components/roadmap/roadmap-icons";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ interface RoadmapNodeProps {
   dimmed: boolean;
   index: number;
   onSelect: (id: string) => void;
+  onToggleDone: (id: string) => void;
 }
 
 export const RoadmapNode = memo(function RoadmapNode({
@@ -43,7 +45,10 @@ export const RoadmapNode = memo(function RoadmapNode({
   dimmed,
   index,
   onSelect,
+  onToggleDone,
 }: RoadmapNodeProps) {
+  const isDone = status === "done";
+
   return (
     <motion.button
       type="button"
@@ -52,27 +57,38 @@ export const RoadmapNode = memo(function RoadmapNode({
       animate={{ opacity: dimmed ? 0.35 : 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.4) }}
       onClick={() => onSelect(node.id)}
-      aria-label={`${node.title} — ${status.replace("-", " ")}`}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleDone(node.id);
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleDone(node.id);
+      }}
+      title="Click for details · Double-click or right-click to mark done"
+      aria-label={`${node.title} — ${status.replace("-", " ")}. Double-click or right-click to ${isDone ? "mark not started" : "mark done"}.`}
       aria-pressed={selected}
       className={cn(
-        "group absolute flex flex-col rounded-2xl border bg-background p-3 text-left shadow-sm outline-none transition-shadow hover:shadow-md",
+        "group absolute flex flex-col rounded-xl border p-3 text-left outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md",
         "focus-visible:ring-2 focus-visible:ring-ring",
-        selected
-          ? "border-primary ring-2 ring-ring"
-          : status === "done"
-            ? "border-emerald-500/50"
+        isDone
+          ? "border-foreground bg-foreground text-background shadow-md"
+          : selected
+            ? "border-primary bg-background ring-2 ring-ring"
             : status === "in-progress"
-              ? "border-amber-500/50"
-              : "border-border",
+              ? "border-amber-500/50 bg-background shadow-sm"
+              : "border-border bg-background shadow-sm",
       )}
-      style={{ left: x, top: y, width: NODE_W }}
+      style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
     >
       <span className="flex items-center gap-2.5">
         <span
           className={cn(
             "grid size-9 shrink-0 place-items-center rounded-xl",
-            status === "done"
-              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+            isDone
+              ? "bg-background/12 text-background"
               : "bg-muted text-foreground",
           )}
         >
@@ -82,26 +98,29 @@ export const RoadmapNode = memo(function RoadmapNode({
           <span className="block truncate text-[13px] font-semibold leading-tight">
             {node.title}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          <span className={cn("mt-0.5 block truncate text-xs", isDone ? "text-background/65" : "text-muted-foreground")}>
             {node.tagline}
           </span>
         </span>
-        <span
-          className={cn("size-2.5 shrink-0 rounded-full", STATUS_DOT[status])}
-          aria-hidden="true"
-        />
+        {isDone ? (
+          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-background text-foreground" aria-hidden="true">
+            <Check className="size-3.5" strokeWidth={3} />
+          </span>
+        ) : (
+          <span className={cn("size-2.5 shrink-0 rounded-full", STATUS_DOT[status])} aria-hidden="true" />
+        )}
       </span>
-      <span className="mt-2.5 flex items-center justify-between border-t border-border pt-2 text-[11px]">
+      <span className={cn("mt-2.5 flex items-center justify-between border-t pt-2 text-[11px]", isDone ? "border-background/15" : "border-border")}>
         <span
           className={cn(
             "rounded-full px-2 py-0.5 font-medium",
-            LEVEL_BADGE[node.level],
+            isDone ? "bg-background/12 text-background" : LEVEL_BADGE[node.level],
           )}
         >
           {node.level}
         </span>
-        <span className="text-muted-foreground">{node.duration}</span>
-        <span className="text-muted-foreground">
+        <span className={isDone ? "text-background/60" : "text-muted-foreground"}>{node.duration}</span>
+        <span className={isDone ? "text-background/60" : "text-muted-foreground"}>
           {node.subtopics.length} topics
         </span>
       </span>

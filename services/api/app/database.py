@@ -32,6 +32,9 @@ ADDED_COLUMNS = {
         "kind": "VARCHAR(16) NOT NULL DEFAULT 'ops'",
         "snapshot_json": "TEXT",
     },
+    "chat_messages": {
+        "metadata_json": "TEXT",
+    },
 }
 
 

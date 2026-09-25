@@ -72,7 +72,15 @@ export function RoadmapView() {
       {version ? <div className="border-b border-border px-6 py-1.5 text-right text-[11px] text-muted-foreground">Personal roadmap · version {version}</div> : null}
       {loadError ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">Backend unavailable: showing the bundled roadmap. {loadError}</div> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <RoadmapCanvas nodes={nodes} stages={stages} statuses={statuses} selectedId={selectedId} dimmedIds={dimmedIds} onSelect={setSelectedId} />
+        <RoadmapCanvas
+          nodes={nodes}
+          stages={stages}
+          statuses={statuses}
+          selectedId={selectedId}
+          dimmedIds={dimmedIds}
+          onSelect={setSelectedId}
+          onToggleDone={(id) => setStatus(id, statuses[id] === "done" ? "not-started" : "done")}
+        />
         <NodeDetailPanel node={selectedNode} status={selectedId ? (statuses[selectedId] ?? "not-started") : "not-started"} hasPrev={selectedIndex > 0} hasNext={selectedIndex >= 0 && selectedIndex < nodes.length - 1} onStatus={(status) => selectedId && setStatus(selectedId, status)} onClose={() => setSelectedId(null)} onNavigate={setSelectedId} onPrev={() => step(-1)} onNext={() => step(1)} />
       </div>
     </div>

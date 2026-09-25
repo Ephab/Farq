@@ -1,9 +1,20 @@
 # Handoff: onboarding, evidence, first roadmap, model fallback
 
-State as of 2026-09-24. Read this, then `AGENTS.md`, `docs/hermes-architecture.md` and
+State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.md` and
 `docs/future-work.md` before changing this area.
 
 ## What was built
+
+### 0. Structured Hermes conversations
+- Hermes can append a validated `farq-ui` JSON block to a concise reply. The API removes the
+  block and persists it in `ChatMessage.metadata_json`; malformed blocks degrade to plain text.
+- Both Coach and onboarding render 2–3 rich single- or multi-select cards plus up to three
+  gray **Explore next** actions. Single choices and follow-ups send immediately; multi-select
+  waits for Continue.
+- Interaction submissions reference their assistant message. The API rejects stale, duplicate,
+  cross-thread, unknown, or out-of-bounds selections and sends Hermes canonical choice context.
+- Historical choices remain visible and selected after reload. The old `Options: A | B | C`
+  parser remains for existing conversations.
 
 ### 1. Onboarding → personalized first roadmap
 A new student no longer gets the seeded Computer Vision roadmap. Flow (UI in `src/components/onboarding/`):
@@ -77,7 +88,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
-- Automated: 50 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
+- Automated: 64 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
   `npm run build` pass.
 - Verified live: sign-in, basics, GitHub import (37 repos), transcript/CV/LinkedIn PDF/portfolio
   extraction, scanner on real folders, Gemini Flash-Lite through the gateway.

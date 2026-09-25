@@ -21,7 +21,7 @@ from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, H
 from .models import AgentRun, ChatMessage, ChatThread, DataSource, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
 from .roadmaps import apply_operations
-from .schemas import AcceptInput, ChatInput, EvidenceDecision, EvidenceSubmit, FactCreate, GenerateInput, HermesSettingsApply, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StudentCreate
+from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, GenerateInput, HermesSettingsApply, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StudentCreate
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
@@ -574,7 +574,69 @@ def list_proposals(student_id: str, db: Db) -> list[dict]:
 @app.get("/api/chat/threads/{thread_id}/messages")
 def messages(thread_id: str, db: Db) -> list[dict]:
     items = db.scalars(select(ChatMessage).where(ChatMessage.thread_id == thread_id).order_by(ChatMessage.created_at)).all()
-    return [{"id": item.id, "role": item.role, "content": item.content, "agent_run_id": item.agent_run_id, "created_at": item.created_at.isoformat()} for item in items]
+    return [{
+        "id": item.id,
+        "role": item.role,
+        "content": item.content,
+        "metadata": json.loads(item.metadata_json) if item.metadata_json else None,
+        "agent_run_id": item.agent_run_id,
+        "created_at": item.created_at.isoformat(),
+    } for item in items]
+
+
+def interaction_message(thread_id: str, body: ChatInput, db: Session) -> tuple[str, str]:
+    """Validate a rendered control response and build canonical persisted text."""
+    interaction = body.interaction
+    assert interaction is not None
+    source = db.get(ChatMessage, interaction.source_message_id)
+    if source is None or source.thread_id != thread_id or source.role != "assistant":
+        raise HTTPException(404, "Interaction source message not found in this thread")
+    latest = db.scalar(select(ChatMessage).where(ChatMessage.thread_id == thread_id).order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()))
+    if latest is None or latest.id != source.id:
+        raise HTTPException(409, "That interaction has already been answered or is no longer current")
+    try:
+        ui = ChatMessageUi.model_validate_json(source.metadata_json or "{}")
+    except ValueError as exc:
+        raise HTTPException(422, "The source message has no valid interaction controls") from exc
+
+    selected_ids = list(dict.fromkeys(interaction.selected_option_ids))
+    if len(selected_ids) != len(interaction.selected_option_ids):
+        raise HTTPException(422, "Selected option IDs must be unique")
+
+    if interaction.kind == "choice":
+        group = ui.choice_group
+        if group is None:
+            raise HTTPException(422, "The source message has no choice group")
+        available = {item.id: item for item in group.options}
+        if any(item_id not in available for item_id in selected_ids):
+            raise HTTPException(422, "Unknown choice option")
+        if not group.min_selections <= len(selected_ids) <= group.max_selections:
+            raise HTTPException(422, f"Select between {group.min_selections} and {group.max_selections} options")
+        selected = [available[item_id] for item_id in selected_ids]
+        titles = [item.title for item in selected]
+        content = titles[0] if len(titles) == 1 else f"Selected: {', '.join(titles)}"
+        details = "\n".join(f"- {item.title}: {item.description}" for item in selected)
+        hermes_prompt = (
+            "The student explicitly selected the following option(s) from your previous question:\n"
+            f"{details}\nTreat this as their answer, and record the explicit preference when appropriate."
+        )
+    else:
+        available = {item.id: item for item in ui.follow_ups}
+        if len(selected_ids) != 1 or selected_ids[0] not in available:
+            raise HTTPException(422, "Choose exactly one valid follow-up")
+        selected = available[selected_ids[0]]
+        content = selected.label
+        hermes_prompt = selected.prompt
+
+    metadata = {
+        "interaction": {
+            "kind": interaction.kind,
+            "source_message_id": source.id,
+            "selected_option_ids": selected_ids,
+            "hermes_prompt": hermes_prompt,
+        }
+    }
+    return content, json.dumps(metadata)
 
 
 @app.post("/api/chat/threads/{thread_id}/messages", status_code=202)
@@ -592,7 +654,11 @@ def send_message(
         resolve_hermes_selection(body.provider, body.model)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    message = ChatMessage(thread_id=thread_id, role="user", content=body.content.strip())
+    if body.interaction is not None:
+        content, metadata_json = interaction_message(thread_id, body, db)
+    else:
+        content, metadata_json = body.content.strip(), None  # type: ignore[union-attr]
+    message = ChatMessage(thread_id=thread_id, role="user", content=content, metadata_json=metadata_json)
     db.add(message)
     db.flush()
     run = AgentRun(thread_id=thread_id, user_message_id=message.id)

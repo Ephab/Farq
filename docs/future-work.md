@@ -4,6 +4,10 @@ The backbone deliberately ships only chat-driven memory and roadmap revision.
 
 ## Near term
 
+- Threat model for Group Projects team chat → Hermes: teammate-written prompt injection,
+  proposal flooding (rate-limit proposals per run), and what a malicious section draft can contain.
+- Group Projects sub-projects 4-6: teammate finder (opt-in matching), peer evaluation and viva
+  prep, requirement → design → task → test traceability graph.
 - Threat model for the onboarding folder scan: path allowlisting, symlink escapes, what a
   malicious README can make Hermes submit, and whether indexing should move to a sandbox.
 - OCR for scanned transcripts and exam PDFs; Arabic-aware transcript parsing.

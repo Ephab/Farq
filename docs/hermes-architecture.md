@@ -178,3 +178,28 @@ new active version in one transaction. Rejection does not touch the roadmap.
 3. Register a narrowly described plugin tool that calls that endpoint.
 4. Update `SOUL.md`, this document, and the threat model.
 5. Never expose a database handle, shell, or generic arbitrary-URL tool as a shortcut.
+
+## Group Projects teammate
+
+A team message that starts with a slash command (`/split`, `/describe`, `/draft`, `/standup`,
+`/risks`, `/catchup`) or mentions `@Hermes` queues a `TeamAgentRun`. Runs execute one at a time
+per team (FIFO, `app/teams/hermes_team.py`) through `execute_with_fallback` on the session
+`farq:team:<team_id>`. The input names `team_id` and `acting_user_id`, and the instructions load
+the `farq-team-coach` skill. The tab's gateway key is held in memory for that run only. Replies
+are posted as Hermes team messages, and `/catchup` replies are private to the person asking.
+Failures post a private system message; there is no fake reply.
+
+Team tools (all authorized as the invoking member, instructors get no chat):
+- `farq_get_team_context(team_id, acting_user_id)`: brief, rubric, teammate cards (active
+  skill/goal/strength/interest facts and roadmap stage only), tasks, milestones, decisions,
+  document outline, open proposals, and for members the last 50 chat messages.
+- `farq_get_task`, `farq_get_doc_section`: one record in full.
+- `farq_propose_tasks` (`task_split` | `task_edit`), `farq_propose_section`,
+  `farq_propose_team_change` (`charter` | `milestones` | `section_owners`): create proposals.
+  The API validates them (balanced split within max(2, 20%) of the mean, every member gets a
+  task, to-do tasks only, unlocked sections only) and returns the reason on 422 so Hermes can
+  retry once.
+
+Risks (`app/teams/notices.py`) are computed without a model: deadline pace, tasks in Doing for
+3+ days, members inactive for 7+ days (private). They are posted as notices when a member's
+stream connects, at most 3 team notices per team per UTC day.

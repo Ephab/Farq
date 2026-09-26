@@ -1,9 +1,11 @@
 /* Group Projects. Scoped under .fq so it inherits the coach tokens from
  * src/components/hermes/coach-concept.css and every theme works. */
 
+/* A fixed viewport-height page: `flex: 1` in the app's unbounded <main> would let
+ * it grow with its content, so panels (and the chat) could never scroll inside. */
 .fq.tm-page {
   display: flex;
-  flex: 1;
+  flex: none;
   flex-direction: column;
   gap: 18px;
   min-height: 0;
@@ -59,8 +61,9 @@
 .fq .tm-row-main span { color: var(--fq-muted); font-size: 12px; }
 
 /* Studio */
-.fq .tm-studio { display: grid; flex: 1; grid-template-columns: 220px minmax(0, 1fr) 360px; gap: 14px; min-height: 0; }
-@media (max-width: 1180px) { .fq .tm-studio { grid-template-columns: 200px minmax(0, 1fr); } .fq .tm-dock { grid-column: 1 / -1; min-height: 460px; } }
+.fq .tm-studio { display: grid; flex: 1; grid-template-columns: 220px minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); gap: 14px; min-height: 0; }
+/* Narrower: the page scrolls between panels, and the chat keeps a fixed height and scrolls inside. */
+@media (max-width: 1180px) { .fq .tm-studio { flex: none; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto; } .fq .tm-dock { grid-column: 1 / -1; height: 520px; } }
 @media (max-width: 760px) { .fq .tm-studio { grid-template-columns: minmax(0, 1fr); } }
 .fq .tm-panel { min-height: 0; border: 1px solid var(--fq-line); border-radius: var(--fq-r-lg); background: var(--fq-surface); box-shadow: var(--fq-shadow-sm); backdrop-filter: blur(20px) saturate(140%); }
 .fq .tm-rail { display: flex; flex-direction: column; gap: 14px; padding: 12px; overflow: auto; }
@@ -131,7 +134,7 @@
 /* Chat */
 .fq .tm-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--fq-line); }
 .fq .tm-chat-head strong { font-size: 14px; }
-.fq .tm-chat-list { display: flex; flex: 1; flex-direction: column; gap: 4px; padding: 12px; overflow: auto; }
+.fq .tm-chat-list { display: flex; flex: 1; flex-direction: column; gap: 4px; min-height: 0; padding: 12px; overflow: auto; }
 .fq .tm-msg { position: relative; display: flex; gap: 8px; padding: 6px 8px; border-radius: var(--fq-r-sm); }
 .fq .tm-msg:hover { background: var(--fq-surface-muted); }
 .fq .tm-msg[data-hermes] { background: var(--fq-accent-soft); }

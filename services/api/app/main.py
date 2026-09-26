@@ -15,6 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from . import outlook as outlook_api
 from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
 from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
@@ -29,7 +30,7 @@ from .roadmap_gen import stitch as roadmap_stitch
 from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
 from .projects import router as projects_router
-from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
+from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, OutlookChatInput, OutlookTokenInput, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
@@ -1119,6 +1120,109 @@ def export_slides(body: SlidesExportInput) -> Response:
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="extended-{safe or "slides"}.pptx"'},
     )
+
+
+@app.get("/api/outlook/config")
+def outlook_config() -> dict:
+    """Public config probe: tells the UI whether sign-in is available. No secrets."""
+    return {"configured": outlook_api.is_configured()}
+
+
+@app.get("/api/students/{student_id}/outlook/status")
+def outlook_status(student_id: str, db: Db) -> dict:
+    """Connection status. Tokens are never serialized."""
+    require_student(db, student_id)
+    return outlook_api.status_for(db, student_id)
+
+
+@app.post("/api/students/{student_id}/outlook/device/start")
+def outlook_device_start(student_id: str, db: Db) -> dict:
+    require_student(db, student_id)
+    try:
+        return outlook_api.device_start(student_id)
+    except outlook_api.OutlookError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.post("/api/students/{student_id}/outlook/device/poll")
+def outlook_device_poll(student_id: str, db: Db) -> dict:
+    require_student(db, student_id)
+    try:
+        return outlook_api.device_poll(student_id, db)
+    except outlook_api.OutlookError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.get("/api/students/{student_id}/outlook/emails")
+def outlook_emails(student_id: str, db: Db, limit: int = 10) -> dict:
+    """Read-only snapshot of the N latest emails. Nothing is stored as evidence or facts."""
+    require_student(db, student_id)
+    try:
+        emails = outlook_api.fetch_latest_emails(db, student_id, limit)
+    except outlook_api.OutlookError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    return {"emails": emails, "count": len(emails)}
+
+
+@app.post("/api/students/{student_id}/outlook/chat")
+async def outlook_chat(
+    student_id: str,
+    body: OutlookChatInput,
+    db: Db,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Answer one question over the N latest emails on a throwaway session.
+
+    Email text is prompt data for this answer only: it is never written to
+    chat threads, facts, evidence, proposals, or Hermes memory.
+    """
+    require_student(db, student_id)
+    # A fresh session holds the DB rows this thread reads; pass ids only.
+    ids = (student_id, body.question, body.limit, body.provider, body.model, x_hermes_api_key)
+    try:
+        result = await asyncio.to_thread(_outlook_chat_job, *ids)
+    except outlook_api.OutlookError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    except outlook_api.EmailChatError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    return result
+
+
+def _outlook_chat_job(
+    student_id: str,
+    question: str,
+    limit: int,
+    provider: str | None,
+    model: str | None,
+    key: str | None,
+) -> dict:
+    db = SessionLocal()
+    try:
+        emails = outlook_api.fetch_latest_emails(db, student_id, limit)
+        result = outlook_api.run_email_chat(emails, question, provider, model, key)
+        return {**result, "email_count": len(emails)}
+    finally:
+        db.close()
+
+
+@app.post("/api/students/{student_id}/outlook/token")
+def outlook_token(student_id: str, body: OutlookTokenInput, db: Db) -> dict:
+    """Zero-registration fallback: store a pasted temporary Graph token server-side.
+
+    No Entra app needed. Lasts ~1 hour, no refresh. The token itself is
+    never returned; only the connected address is.
+    """
+    require_student(db, student_id)
+    try:
+        return outlook_api.store_pasted_token(db, student_id, body.access_token)
+    except outlook_api.OutlookError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.post("/api/students/{student_id}/outlook/disconnect")
+def outlook_disconnect(student_id: str, db: Db) -> dict:
+    require_student(db, student_id)
+    return outlook_api.disconnect(db, student_id)
 
 
 @app.get("/api/agent-runs/{run_id}")

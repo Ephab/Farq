@@ -487,6 +487,19 @@ class QuizGenerateInput(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
+class OutlookChatInput(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    # How many latest emails form the read-only snapshot for this one answer.
+    limit: int = Field(default=10, ge=1, le=25)
+    provider: HermesProvider | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class OutlookTokenInput(BaseModel):
+    # Temporary Graph Explorer access token (no Entra app needed, ~1 hour).
+    access_token: str = Field(min_length=16, max_length=8000)
+
+
 class SlidesSuggestInput(BaseModel):
     source_text: str = Field(min_length=1, max_length=20000)
     count: int = Field(default=5, ge=1, le=8)

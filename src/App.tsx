@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route } from "lucide-react"
+import { Bot, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import {
   AnimatedSidebar,
@@ -26,6 +26,7 @@ import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { HermesCoach } from "@/components/hermes/HermesCoach"
 import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
+import { EmailsView } from "@/components/emails/EmailsView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/farq-api"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -120,6 +121,16 @@ export default function App() {
                     </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
+                        icon={<Mail className="size-4" />}
+                        isActive={active === "Emails"}
+                        onSelect={() => setActive("Emails")}
+                        className="text-[15px]"
+                      >
+                        Emails
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
+                    <AnimatedSidebarMenuItem>
+                      <AnimatedSidebarMenuButton
                         icon={<Presentation className="size-4" />}
                         isActive={active === "Slides"}
                         onSelect={() => setActive("Slides")}
@@ -197,6 +208,8 @@ export default function App() {
                 <HermesCoach key={coachDraft} initialDraft={coachDraft} />
               ) : active === "My data" ? (
                 <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
+              ) : active === "Emails" ? (
+                <EmailsView />
               ) : active === "Quizzes" ? (
                 <QuizView />
               ) : active === "Slides" ? (

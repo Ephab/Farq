@@ -17,6 +17,8 @@ reasoning model. FastAPI and SQLite keep the auditable product state.
 - Hermes tools for reading context, reading the roadmap, recording facts, and proposing revisions.
 - Reviewable roadmap diffs with accept/reject controls.
 - Validation that protects completed/in-progress work and prevents invalid dependency graphs.
+- A pre-indexed, read-only Blackboard demo snapshot that Hermes can search and read through
+  bounded course-content tools. It does not contain Blackboard credentials or perform live login.
 
 ## Start with Docker
 
@@ -40,6 +42,20 @@ host terminal or Docker access.
 
 Open `http://127.0.0.1:5173`. FastAPI docs are at `http://127.0.0.1:8000/docs`
 and Hermes health is at `http://127.0.0.1:8642/health`.
+
+### Load the Blackboard demo snapshot
+
+With Docker running, import only the five approved lecture folders from the local university archive:
+
+```powershell
+.venv\Scripts\python.exe scripts\import_blackboard_demo.py --root "D:\mmahf\Downloads\University\University"
+.venv\Scripts\python.exe scripts\smoke_blackboard_tools.py
+```
+
+The importer extracts text from PDF/PPTX lectures, creates clearly marked synthetic syllabi,
+announcements and assignments, and writes the normalized snapshot into Farq's local SQLite volume.
+It never uploads source binaries and never contacts Blackboard. Re-importing replaces stale snapshot
+records. The smoke command exercises all five read-only operations used by Hermes.
 
 ## Start natively on Windows
 

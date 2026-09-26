@@ -16,6 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from . import outlook as outlook_api
+from .blackboard import router as blackboard_router
 from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
 from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
@@ -55,6 +56,7 @@ app = FastAPI(title="Farq Hermes Backbone", version="0.1.0")
 app.include_router(projects_router)
 app.include_router(identity_router)
 app.include_router(teams_router)
+app.include_router(blackboard_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")],

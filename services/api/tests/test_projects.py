@@ -94,6 +94,23 @@ def test_zip_submission_is_validated_and_available_to_worker(client: TestClient)
     assert downloaded.content.startswith(b"PK")
 
 
+def test_local_submission_accepts_windows_absolute_path(client: TestClient):
+    project = client.get("/api/students/demo-student/projects").json()[0]
+    relative = client.post(
+        f"/api/projects/{project['id']}/submissions",
+        json={"source_type": "local_directory", "source_ref": "projects/my-project", "manifest": {}},
+    )
+    assert relative.status_code == 422
+
+    windows_path = r"D:\mmahf\Coding\Hackathons\AI-glossary-hackathon"
+    submitted = client.post(
+        f"/api/projects/{project['id']}/submissions",
+        json={"source_type": "local_directory", "source_ref": windows_path, "manifest": {}},
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["source_ref"] == windows_path
+
+
 def test_skill_sequence_requires_a_final_project():
     from app.schemas import RoadmapNode, validate_stage_nodes
 

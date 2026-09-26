@@ -15,6 +15,17 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 - Next: Plan 4 (signature animations and a Playwright demo). Deferred review minors are listed in
   the plan final reports.
 
+### Read-only Blackboard demo retrieval
+- A host-side importer converts an explicit allowlist of five local PDF/PPTX lecture folders into
+  an authoritative normalized snapshot. Synthetic syllabi, announcements and assignments are
+  marked `origin="synthetic"`; binaries and Blackboard credentials are never stored.
+- Five bounded Hermes tools list courses/content, search snippets, paginate item text and list
+  updates. All calls are student-scoped and authenticated through `/internal/hermes/*`.
+- Blackboard text is treated as untrusted data. Hermes must cite course/item records and must never
+  claim the snapshot is live. Re-imports upsert current material and remove stale records.
+- Import: `.venv\Scripts\python.exe scripts\import_blackboard_demo.py --root "D:\mmahf\Downloads\University\University"`.
+  Smoke: `.venv\Scripts\python.exe scripts\smoke_blackboard_tools.py`.
+
 ### Project milestones and evaluator backbone
 - Staged generation now labels stage types and requires one final project for each new
   `skill_sequence`; legacy plans without stage types remain readable.
@@ -125,7 +136,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
-- Automated: 88 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
+- Automated: 238 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
   `npm run build` pass.
 - Verified live: sign-in, basics, GitHub import (37 repos), transcript/CV/LinkedIn PDF/portfolio
   extraction, scanner on real folders, Gemini Flash-Lite through the gateway.

@@ -82,6 +82,41 @@ class EvidenceItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class BlackboardCourse(Base):
+    __tablename__ = "blackboard_courses"
+    __table_args__ = (UniqueConstraint("student_id", "external_id", name="uq_blackboard_course_student_external"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    external_id: Mapped[str] = mapped_column(String(160), index=True)
+    code: Mapped[str] = mapped_column(String(80), default="")
+    title: Mapped[str] = mapped_column(String(240))
+    term: Mapped[str] = mapped_column(String(120), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    source_kind: Mapped[str] = mapped_column(String(32), default="blackboard_demo")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class BlackboardContentItem(Base):
+    __tablename__ = "blackboard_content_items"
+    __table_args__ = (UniqueConstraint("course_id", "external_id", name="uq_blackboard_item_course_external"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("blackboard_courses.id"), index=True)
+    external_id: Mapped[str] = mapped_column(String(200), index=True)
+    parent_external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    content_type: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    body_text: Mapped[str] = mapped_column(Text, default="")
+    filename: Mapped[str] = mapped_column(String(300), default="")
+    mime_type: Mapped[str] = mapped_column(String(120), default="text/plain")
+    source_ref: Mapped[str] = mapped_column(String(500), default="")
+    origin: Mapped[str] = mapped_column(String(32), default="local_material")
+    checksum: Mapped[str] = mapped_column(String(64), index=True)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    modified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
 class ChatThread(Base):
     __tablename__ = "chat_threads"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

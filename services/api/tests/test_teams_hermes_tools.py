@@ -85,3 +85,14 @@ def test_seeded_teammates_have_roadmap_stages(client):
     assert sara["roadmap"]["current_stage"] == "Computer vision"
     assert "Data modelling for ML apps" in sara["roadmap"]["open_nodes"]
     assert {fact["category"] for fact in sara["facts"]} >= {"skill", "goal"}
+
+
+def test_a_new_split_cannot_pile_on_top_of_existing_todo_tasks(client):
+    world = make_world()
+    team, members = world["team_id"], world["students"][:3]
+    client.post(f"/api/teams/{team}/tasks", json={"title": "Existing", "assignee_id": members[0], "estimate_points": 2}, headers=hdr(members[0]))
+    url = f"/internal/hermes/teams/{team}/proposals"
+    fair = {"tasks": [{"title": f"Part {n}", "assignee_id": m, "estimate_points": 2, "rationale": "r"} for n, m in enumerate(members)]}
+    rejected = client.post(url, json={"run_id": _run(team, members[0]), "kind": "task_split", "payload": fair, "summary": "Split"}, headers=INTERNAL)
+    assert rejected.status_code == 422
+    assert "task_reorganize" in rejected.json()["detail"]

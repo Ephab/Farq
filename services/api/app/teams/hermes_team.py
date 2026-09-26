@@ -41,9 +41,11 @@ Never invent dates, grades, files, test results or facts about a teammate.
 
 COMMAND_GUIDE = {
     "mention": "Answer the teammate who mentioned you. Propose changes only if they asked for one.",
-    "split": "Split the team's remaining work into new tasks with farq_propose_tasks kind task_split. Give every member "
-             "at least one task, keep open points balanced, and give each member one stretch task tied to their roadmap, "
-             "explaining why in its rationale.",
+    "split": "Split the team's remaining work with farq_propose_tasks. If the board already has To do tasks, re-split "
+             "them in ONE kind task_reorganize proposal: reassign or re-estimate existing To do tasks (task_changes), "
+             "delete duplicates or stale ones (task_ids), and add only what is missing (tasks). Use kind task_split only "
+             "when there are no To do tasks yet. Every member keeps at least one task, open points stay balanced, and "
+             "each member gets one stretch task tied to their roadmap, explained in its rationale.",
     "describe": "Improve the named task's description with clear acceptance criteria and propose it with farq_propose_tasks kind task_edit.",
     "draft": "Draft the named document section following the farq-team-coach conventions and propose it with "
              "farq_propose_section for the section owner to accept.",

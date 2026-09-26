@@ -285,6 +285,11 @@ def check(db: Session, team: Team, kind: str, model: BaseModel, invoked_by: str 
 def create_proposal(db: Session, team: Team, kind: str, payload: dict, *, summary: str, invoked_by: str | None, run_id: str | None = None) -> TeamProposal:
     """Store a pending proposal plus its chat card. The caller commits."""
     model = _parse(kind, payload)
+    # Checked only at creation (not re-checked at apply): a fresh split must not stack
+    # duplicates on an existing board; task_reorganize can change, delete and add in one vote.
+    if kind == "task_split" and db.scalar(select(Task.id).where(Task.team_id == team.id, Task.status == "todo").limit(1)):
+        raise ProposalError("The board already has To do tasks; re-split them with kind task_reorganize "
+                            "(task_changes, task_ids to delete, tasks to add) instead of a new task_split")
     scope, affected = check(db, team, kind, model, invoked_by)
     base_seq = db.scalar(select(func.max(TeamEvent.seq)).where(TeamEvent.team_id == team.id)) or 0
     proposal = TeamProposal(

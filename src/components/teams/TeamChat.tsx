@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { ArrowUp, CornerUpLeft, Flag, ListPlus, Pencil, Pin, Search, Sparkles, Trash2, X } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { ProposalCard } from "@/components/teams/ProposalCard"
 import { Avatar, HermesAvatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
-import { HERMES_COMMANDS, insertMention, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
+import { HERMES_COMMANDS, insertMention, isNearBottom, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
 import { timeAgo } from "@/lib/team-format"
 import { markMessageDeleted, memberName, setReaction, upsertDecision, upsertMessage, type TeamStore } from "@/lib/team-store"
 import { errorMessage, type TeamMessage } from "@/lib/teams-api"
@@ -49,10 +49,18 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
     ...HERMES_COMMANDS.map((command) => ({ cmd: command.cmd as string, hint: command.hint as string, hermes: true })),
   ].filter((option) => option.cmd.slice(1).startsWith(slash.toLowerCase()))
 
-  useEffect(() => {
+  // Follow new messages only while the reader is at the bottom (true on first load),
+  // so reading older messages is never interrupted.
+  const stickToBottom = useRef(true)
+  const onListScroll = () => {
     const list = listRef.current
-    if (list && !needle) list.scrollTop = list.scrollHeight
-  }, [messages.length, needle])
+    if (list) stickToBottom.current = isNearBottom(list.scrollTop, list.scrollHeight, list.clientHeight)
+  }
+  const lastMessage = messages[messages.length - 1]
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (list && !needle && stickToBottom.current) list.scrollTop = list.scrollHeight
+  }, [messages.length, lastMessage?.content, needle, store.hermes?.stage])
 
   const run = async (work: () => Promise<void>) => {
     setError(null)
@@ -75,6 +83,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
   const send = async () => {
     const text = draft.trim()
     if (!text || sending) return
+    stickToBottom.current = true  // your own message always brings you to the bottom
     setSending(true)
     await run(async () => {
       if (editing) {
@@ -155,7 +164,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
           <input className="tm-input" autoFocus placeholder="Search this chat" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
       ) : null}
-      <div ref={listRef} className="tm-chat-list">
+      <div ref={listRef} className="tm-chat-list" onScroll={onListScroll}>
         {visible.length === 0 ? <p className="tm-muted m-auto">{needle ? "No messages match." : "Say hello to your team."}</p> : null}
         {visible.map((message) => (
           <MessageItem

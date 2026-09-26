@@ -1,10 +1,12 @@
-import { API_BASE, api, getCurrentStudentId } from "@/lib/farq-api"
+import { API_BASE, api, getCurrentStudentId, hermesRequestParts } from "@/lib/farq-api"
 
 const ACTING_USER_STORAGE_KEY = "farq.current-user"
 export const ACTING_USER_EVENT = "farq:acting-user-changed"
 
 export type TeamRole = "lead" | "member" | "instructor"
 export type TaskStatus = "todo" | "doing" | "review" | "done"
+export type ProposalKind = "task_split" | "task_edit" | "doc_section" | "charter" | "milestones" | "section_owners"
+export type ProposalStatus = "pending" | "applied" | "rejected" | "stale" | "awaiting_lead"
 export type DocumentKind = "srs" | "sds" | "spmp" | "custom"
 
 export interface TeamUser { id: string; display_name: string; role: "student" | "instructor"; student_id: string | null }
@@ -24,7 +26,7 @@ export interface TeamCard {
   id: string; name: string; cover_seed: string; course: CourseRef
   assignment: { id: string; title: string; deadline: string | null }
   progress: number; next_task: { id: string; title: string; estimate_points: number; status: TaskStatus } | null
-  members: string[]; unread: number | null; viewer_role: TeamRole
+  members: string[]; unread: number | null; viewer_role: TeamRole; risk: string | null
 }
 export interface NeedsTeam {
   assignment_id: string; title: string; deadline: string | null; course: CourseRef
@@ -47,6 +49,16 @@ export interface TeamMessage {
   created_at: string; edited_at: string | null; deleted: boolean; reactions: Record<string, string[]>
 }
 export interface TeamDecision { id: string; team_id: string; text: string; source_message_id: string | null; pinned_by: string; created_at: string }
+export interface TeamProposal {
+  id: string; team_id: string; scope: "personal" | "team"; affected_user_id: string | null; kind: ProposalKind; summary: string
+  payload: Record<string, unknown>; status: ProposalStatus; votes: Record<string, "up" | "down">; invoked_by: string | null
+  created_at: string; expires_at: string; decided_at: string | null; decided_by: string | null
+  /** Present on proposal.stale events: why it no longer applies. */
+  reason?: string
+}
+export interface SplitTaskPayload { title: string; description?: string; assignee_id: string; estimate_points: number; rationale: string }
+export interface HermesRunInfo { id: string; team_id: string; status: "queued" | "running" | "completed" | "failed"; stage: string; command: string; invoked_by: string }
+export interface TeamRisk { key: string; kind: "deadline" | "blocked" | "quiet"; text: string; private: boolean }
 export interface DocSectionInfo {
   id: string; document_id: string; key: string; title: string; position: number; owner_user_id: string | null
   content_md: string; status: "empty" | "draft" | "accepted"; lock_user_id: string | null; lock_expires_at: string | null
@@ -55,7 +67,7 @@ export interface DocSectionInfo {
 export interface TeamDocumentInfo { id: string; team_id: string; kind: DocumentKind; title: string; created_at: string; sections: DocSectionInfo[] }
 export interface TeamState {
   team: TeamInfo; tasks: TeamTask[]; milestones: TeamMilestone[]; decisions: TeamDecision[]; documents: TeamDocumentInfo[]
-  messages: TeamMessage[] | null; last_seq: number; last_seen_seq: number | null
+  messages: TeamMessage[] | null; proposals: TeamProposal[]; last_seq: number; last_seen_seq: number | null
 }
 export interface TeamEvent { seq: number; type: string; actor_user_id: string | null; payload: Record<string, unknown>; created_at: string | null }
 export interface PresenceEntry { user_id: string; focus: string | null; typing: boolean }
@@ -66,7 +78,7 @@ export interface TaskInput {
   title: string; description?: string; assignee_id?: string | null; estimate_points?: number; due?: string | null
   depends_on?: string[]; milestone_id?: string | null; rubric_refs?: string[]; rationale?: string
 }
-export interface MessageInput { content: string; reply_to_id?: string | null; poll_options?: string[] }
+export interface MessageInput { content: string; reply_to_id?: string | null; poll_options?: string[]; provider?: string; model?: string }
 export interface MilestoneInput { title: string; due?: string | null; deliverable_key?: string | null }
 
 /** Who team features act as in this tab. Per tab (sessionStorage) so two
@@ -124,14 +136,22 @@ export function teamClient(userId: string) {
     teamApi<TeamTask>(`/api/tasks/${taskId}/move`, send("POST", { status, position: position ?? null })),
   deleteTask: (taskId: string) => teamApi<{ id: string }>(`/api/tasks/${taskId}`, send("DELETE")),
   createMilestone: (teamId: string, body: MilestoneInput) => teamApi<TeamMilestone>(`/api/teams/${teamId}/milestones`, send("POST", body)),
-  postMessage: (teamId: string, body: MessageInput) => teamApi<TeamMessage>(`/api/teams/${teamId}/messages`, send("POST", body)),
+  postMessage: (teamId: string, body: MessageInput) => {
+    // Hermes may answer this message, so send the tab's model choice and key like the Coach does.
+    const hermes = hermesRequestParts()
+    return teamApi<TeamMessage>(`/api/teams/${teamId}/messages`, { ...send("POST", { ...hermes.body, ...body }), headers: hermes.headers })
+  },
   editMessage: (messageId: string, content: string) => teamApi<TeamMessage>(`/api/messages/${messageId}`, send("PATCH", { content })),
   deleteMessage: (messageId: string) => teamApi<{ id: string }>(`/api/messages/${messageId}`, send("DELETE")),
   react: (messageId: string, emoji: string) =>
     teamApi<{ message_id: string; user_id: string; emoji: string; on: boolean }>(`/api/messages/${messageId}/reactions`, send("POST", { emoji })),
-  vote: (messageId: string, option: number) => teamApi<TeamMessage>(`/api/messages/${messageId}/poll-vote`, send("POST", { option })),
+  votePoll: (messageId: string, option: number) => teamApi<TeamMessage>(`/api/messages/${messageId}/poll-vote`, send("POST", { option })),
   pin: (teamId: string, messageId: string) => teamApi<TeamDecision>(`/api/teams/${teamId}/decisions`, send("POST", { message_id: messageId })),
   unpin: (decisionId: string) => teamApi<{ id: string }>(`/api/decisions/${decisionId}`, send("DELETE")),
+  vote: (proposalId: string, choice: "up" | "down") => teamApi<TeamProposal>(`/api/proposals/${proposalId}/vote`, send("POST", { vote: choice })),
+  acceptProposal: (proposalId: string) => teamApi<TeamProposal>(`/api/proposals/${proposalId}/accept`, send("POST")),
+  rejectProposal: (proposalId: string) => teamApi<TeamProposal>(`/api/proposals/${proposalId}/reject`, send("POST")),
+  risks: (teamId: string) => teamApi<TeamRisk[]>(`/api/teams/${teamId}/risks`),
   markSeen: (teamId: string, seq: number) => teamApi<{ last_seen_seq: number }>(`/api/teams/${teamId}/seen`, send("POST", { seq })),
   createDocument: (teamId: string, kind: DocumentKind) => teamApi<TeamDocumentInfo>(`/api/teams/${teamId}/documents`, send("POST", { kind })),
   updateSection: (sectionId: string, body: { title?: string; owner_user_id?: string | null }) =>

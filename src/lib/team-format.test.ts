@@ -49,7 +49,7 @@ describe("briefingLines", () => {
   it("summarises unread, next task, invites and teamless assignments for students", () => {
     const lines = briefingLines(home({
       teams: [{ id: "t", name: "Team Falcon", cover_seed: "x", course, assignment: { id: "a", title: "Term", deadline: null }, progress: 20,
-        next_task: { id: "k", title: "Use cases", estimate_points: 3, status: "doing" }, members: [], unread: 3, viewer_role: "lead" }],
+        next_task: { id: "k", title: "Use cases", estimate_points: 3, status: "doing" }, members: [], unread: 3, viewer_role: "lead", risk: null }],
       invites: [{ id: "i", team_id: "t2", team_name: "B", assignment_title: "ML", invited_user_id: "u", invited_by_name: "Sara", status: "pending", created_at: "" }],
       needs_team: [{ assignment_id: "a2", title: "Applied ML", deadline: null, course: { ...course, code: "CS 485" }, team_size_min: 2, team_size_max: 3, open_classmates: 4 }],
     }))
@@ -63,8 +63,18 @@ describe("briefingLines", () => {
   it("gives instructors a course-level line that mentions chat privacy", () => {
     const lines = briefingLines(home({
       user: { id: "i", display_name: "Dr", role: "instructor", student_id: null },
-      teams: [{ id: "t", name: "A", cover_seed: "x", course, assignment: { id: "a", title: "T", deadline: null }, progress: 0, next_task: null, members: [], unread: null, viewer_role: "instructor" }],
+      teams: [{ id: "t", name: "A", cover_seed: "x", course, assignment: { id: "a", title: "T", deadline: null }, progress: 0, next_task: null, members: [], unread: null, viewer_role: "instructor", risk: null }],
     }))
     expect(lines).toEqual(["1 team across 1 course. Team chats stay private to students."])
+  })
+})
+
+describe("briefingLines risks", () => {
+  it("adds one line per team at risk", () => {
+    const lines = briefingLines(home({
+      teams: [{ id: "t", name: "Team Falcon", cover_seed: "x", course, assignment: { id: "a", title: "Term", deadline: null }, progress: 20,
+        next_task: null, members: [], unread: 0, viewer_role: "lead", risk: "“Use cases” has been in Doing for 5 days." }],
+    }))
+    expect(lines).toEqual(["Team Falcon: “Use cases” has been in Doing for 5 days."])
   })
 })

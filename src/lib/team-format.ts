@@ -57,11 +57,15 @@ export function briefingLines(home: TeamsHomeData): string[] {
   if (home.user.role === "instructor") {
     if (home.teams.length === 0) return ["No teams have formed in your courses yet."]
     const courses = new Set(home.teams.map((team) => team.course.id)).size
-    return [`${plural(home.teams.length, "team")} across ${plural(courses, "course")}. Team chats stay private to students.`]
+    const summary = `${plural(home.teams.length, "team")} across ${plural(courses, "course")}. Team chats stay private to students.`
+    return [summary, ...home.teams.filter((team) => team.risk).map((team) => `${team.name}: ${team.risk}`)]
   }
   const lines: string[] = []
   for (const team of home.teams) {
     if (team.unread) lines.push(`${plural(team.unread, "new message")} in ${team.name}`)
+  }
+  for (const team of home.teams) {
+    if (team.risk) lines.push(`${team.name}: ${team.risk}`)
   }
   const next = home.teams.find((team) => team.next_task)
   if (next?.next_task) lines.push(`Next for you: ${next.next_task.title} (${next.name})`)

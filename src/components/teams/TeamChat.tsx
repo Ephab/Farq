@@ -103,7 +103,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
     update((current) => setReaction(current, message.id, me, emoji, result.on))
   })
   const vote = (message: TeamMessage, option: number) => run(async () => {
-    const updated = await teams.vote(message.id, option)
+    const updated = await teams.votePoll(message.id, option)
     update((current) => upsertMessage(current, updated))
   })
   const pin = (message: TeamMessage) => run(async () => {

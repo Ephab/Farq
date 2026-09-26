@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, Users } from "lucide-react"
+import { Bot, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import {
   AnimatedSidebar,
@@ -27,6 +27,7 @@ import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { HermesCoach } from "@/components/hermes/HermesCoach"
 import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
+import { EmailsView } from "@/components/emails/EmailsView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/farq-api"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -41,6 +42,15 @@ export default function App() {
   // Live Hermes run for this student's coach thread — polled so any section
   // can show that Hermes is still generating after navigating away.
   const activeRun = useActiveRun(profile?.thread_id ?? null)
+
+  const stopBackgroundRun = useCallback(async () => {
+    if (!activeRun) return
+    try {
+      await api(`/api/agent-runs/${activeRun.id}/cancel`, { method: "POST" })
+    } catch {
+      // The next poll picks up the terminal state; no banner from here.
+    }
+  }, [activeRun])
 
   const loadProfile = useCallback(() => {
     if (!hasChosenStudent()) { setOnboarding(true); return }
@@ -81,7 +91,20 @@ export default function App() {
                   <AnimatedSidebarMenu>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
-                        icon={<Bot className="size-4" />}
+                        icon={(
+                          <span className="relative grid place-items-center">
+                            <Bot className="size-4" />
+                            {activeRun ? (
+                              <span className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-amber-500 ring-2 ring-background" aria-hidden="true" />
+                            ) : null}
+                          </span>
+                        )}
+                        badge={activeRun ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                            <span className="size-1.5 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
+                            working
+                          </span>
+                        ) : undefined}
                         isActive={active === "Hermes Coach"}
                         onSelect={() => setActive("Hermes Coach")}
                         className="text-[15px]"
@@ -117,6 +140,16 @@ export default function App() {
                         className="text-[15px]"
                       >
                         My data
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
+                    <AnimatedSidebarMenuItem>
+                      <AnimatedSidebarMenuButton
+                        icon={<Mail className="size-4" />}
+                        isActive={active === "Emails"}
+                        onSelect={() => setActive("Emails")}
+                        className="text-[15px]"
+                      >
+                        Emails
                       </AnimatedSidebarMenuButton>
                     </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
@@ -186,16 +219,27 @@ export default function App() {
               </AnimatedSidebarTrigger>
               <div className="h-5 w-px bg-border" />
               <p className="text-sm font-medium">{active}</p>
-              {activeRun && active !== "Hermes Coach" ? (
-                <button
-                  type="button"
-                  onClick={() => setActive("Hermes Coach")}
-                  title={activeRun.stage || "Hermes is working"}
-                  className="ml-auto inline-flex max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
-                >
-                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
-                  <span className="truncate">Hermes working{activeRun.stage ? ` · ${activeRun.stage}` : ""}</span>
-                </button>
+              {activeRun ? (
+                <div className="ml-auto flex min-w-0 items-center gap-1.5" role="status" aria-live="polite" aria-label={`Hermes is generating: ${activeRun.stage || "working"}`}>
+                  <button
+                    type="button"
+                    onClick={() => setActive("Hermes Coach")}
+                    title={activeRun.stage ? `View Hermes run — ${activeRun.stage}` : "View Hermes run"}
+                    className="inline-flex min-w-0 max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
+                  >
+                    <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
+                    <span className="truncate">Hermes working{activeRun.stage ? ` · ${activeRun.stage}` : ""}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void stopBackgroundRun()}
+                    title="Stop Hermes run"
+                    aria-label="Stop Hermes run"
+                    className="grid size-7 shrink-0 place-items-center rounded-full border border-amber-500/30 text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
+                  >
+                    <Square className="size-3" aria-hidden="true" />
+                  </button>
+                </div>
               ) : null}
             </header>
 
@@ -208,6 +252,8 @@ export default function App() {
                 <HermesCoach key={coachDraft} initialDraft={coachDraft} />
               ) : active === "My data" ? (
                 <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
+              ) : active === "Emails" ? (
+                <EmailsView />
               ) : active === "Quizzes" ? (
                 <QuizView />
               ) : active === "Slides" ? (

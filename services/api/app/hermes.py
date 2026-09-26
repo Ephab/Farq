@@ -316,6 +316,11 @@ class RunFailed(RuntimeError):
     pass
 
 
+class RunCancelled(RuntimeError):
+    """The student stopped the run; must propagate without model fallback."""
+    pass
+
+
 # Per-model time before moving to the next rung, and the whole-chain budget
 # (a multiple of the caller's timeout so several rungs can be tried).
 ATTEMPT_TIMEOUT_SECONDS = 120
@@ -328,6 +333,8 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
     cancelled runs, and per-model timeouts all descend the chain. Only a
     rejected Farq gateway key (401) stops immediately, since no model can fix it.
     An nvapi run key selects the NIM-only ladder (see candidate_chain).
+    A student stop surfaces as RunCancelled from `on_state` and propagates
+    immediately without trying the next rung.
     Returns (output, model, provider).
     """
     errors: list[str] = []
@@ -503,6 +510,12 @@ def run_agent(
         }
 
         def on_state(status: str | None, run_model: str) -> None:
+            # Cooperative stop: the cancel endpoint marks this row cancelled
+            # from another session, so refresh before touching the stage. A
+            # stale `run` object would otherwise overwrite the cancellation.
+            db.refresh(run)
+            if run.status == "cancelled":
+                raise RunCancelled("Stopped by the student")
             label = {
                 None: "Hermes is reviewing your context",
                 "started": "Hermes is thinking",
@@ -515,6 +528,11 @@ def run_agent(
 
         with httpx.Client(timeout=20) as client:
             output, _model, _provider = execute_with_fallback(client, headers, payload, provider, model, 180, on_state, hermes_api_key=hermes_api_key)
+        # The student may have stopped while the gateway finished: discard the
+        # late answer instead of overwriting the cancellation.
+        db.refresh(run)
+        if run.status == "cancelled":
+            return
         visible, ui_json = parse_chat_output(output or "I finished, but did not return a message.")
         if ui_json:
             from .opportunities import enrich_chat_ui
@@ -524,7 +542,29 @@ def run_agent(
         run.stage = "Complete"
         run.finished_at = datetime.now(timezone.utc)
         db.commit()
+    except RunCancelled as exc:
+        # Preserve the student's stop; never overwrite it with a failure.
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        run.status = "cancelled"
+        run.stage = "Cancelled"
+        run.error = str(exc) or "Stopped by the student"
+        run.finished_at = datetime.now(timezone.utc)
+        db.commit()
     except Exception as exc:  # preserve the real failure; there is intentionally no fake fallback
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        if run.status == "cancelled":
+            # Lost the race with the cancel endpoint after a real failure:
+            # the stop wins, so the late error must not resurrect the run.
+            if run.finished_at is None:
+                run.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            return
         run.status = "failed"
         run.stage = "Hermes unavailable"
         run.error = str(exc)

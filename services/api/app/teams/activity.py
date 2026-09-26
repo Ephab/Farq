@@ -56,11 +56,19 @@ def _describe(event: TeamEvent, payload: dict, tasks: dict[str, dict], name) -> 
     if kind == "document.created":
         return f"created the document “{payload.get('title')}”"
     if kind == "document.updated":
-        return f"renamed a document to “{payload.get('title')}”"
-    if kind == "section.created":
-        return f"added section {payload.get('key')} {payload.get('title')}"
-    if kind == "section.deleted":
-        return f"deleted section {payload.get('key')} {payload.get('title')}"
+        change = payload.get("change") or {}
+        document = (payload.get("document") or {}).get("title", "a document")
+        action = change.get("action")
+        if action == "renamed":
+            return f"renamed a document to “{change.get('title')}”"
+        section = f"{change.get('key')} {change.get('title')}"
+        if action == "section_added":
+            return f"added section {section} to {document}"
+        if action == "section_deleted":
+            return f"deleted section {section} from {document}"
+        if action == "section_moved":
+            return f"reordered section {section} in {document}"
+        return None
     if kind == "team.updated" and "name" in payload:
         return f"set the team to “{payload.get('name')}”, {payload.get('size_limit')} members"
     if kind == "team.updated" and "charter" in payload:

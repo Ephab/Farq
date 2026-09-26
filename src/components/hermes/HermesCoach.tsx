@@ -224,6 +224,7 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
             onInteraction={(interaction, displayText) => void chat.sendInteraction(interaction, displayText)}
             onRetry={retryAll}
             onEditResend={(messageId, text) => void chat.editAndResend(messageId, text)}
+            onStop={() => void chat.stop()}
             placeholder="Ask about goals, tradeoffs, or what to do next…"
             disabled={!threadId}
             draft={draft}

@@ -1233,6 +1233,46 @@ def get_run(run_id: str, db: Db) -> dict:
     return {"id": run.id, "hermes_run_id": run.hermes_run_id, "status": run.status, "stage": run.stage, "error": run.error}
 
 
+def cancel_run_row(db: Session, run: AgentRun) -> dict:
+    """Mark a run stopped so the UI unsticks and run_agent discards late output.
+
+    The gateway run itself is left to finish server-side; run_agent's
+    cooperative check (see app.hermes.RunCancelled) discards its answer
+    instead of overwriting the cancellation.
+    """
+    if run.status not in {"completed", "failed", "cancelled"}:
+        run.status = "cancelled"
+        run.stage = "Cancelled"
+        run.error = "Stopped by the student"
+        run.finished_at = now()
+        db.commit()
+    return {"id": run.id, "status": run.status, "stage": run.stage, "error": run.error}
+
+
+@app.post("/api/agent-runs/{run_id}/cancel")
+def cancel_run(run_id: str, db: Db) -> dict:
+    """Stop a generating Hermes run. Safe to call when it already finished."""
+    run = db.get(AgentRun, run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    return cancel_run_row(db, run)
+
+
+@app.post("/api/chat/threads/{thread_id}/runs/cancel")
+def cancel_latest_run(thread_id: str, db: Db) -> dict:
+    """Stop the thread's live run without the client tracking its id.
+
+    Used by the global background indicator after the chat unmounted, and
+    when Stop is pressed during the tiny window before the new run id arrives.
+    """
+    if db.get(ChatThread, thread_id) is None:
+        raise HTTPException(404, "Thread not found")
+    run = db.scalar(select(AgentRun).where(AgentRun.thread_id == thread_id).order_by(AgentRun.created_at.desc(), AgentRun.id.desc()))
+    if run is None or run.status in {"completed", "failed", "cancelled"}:
+        return {"run": None}
+    return {"run": cancel_run_row(db, run)}
+
+
 @app.get("/api/agent-runs/{run_id}/events")
 def run_events(run_id: str) -> StreamingResponse:
     def stream():

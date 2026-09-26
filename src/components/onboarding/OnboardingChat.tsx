@@ -142,6 +142,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
             onInteraction={(interaction, displayText) => void chat.sendInteraction(interaction, displayText)}
             onRetry={() => { chat.refresh().catch(() => undefined) }}
             onEditResend={(messageId, text) => void chat.editAndResend(messageId, text)}
+            onStop={() => void chat.stop()}
             placeholder={answered ? "Answer Hermes, or press Generate when you're ready…" : "Say hi to start…"}
             afterMessages={chat.messages.length > 0 ? (
               <div className="flex justify-center pt-1">

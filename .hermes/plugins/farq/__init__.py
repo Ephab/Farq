@@ -8,6 +8,19 @@ from .tools import request
 EVIDENCE_KINDS = ["course", "project", "skill", "experience", "certificate", "publication", "activity", "education"]
 
 
+def _propose(params: dict, kind: str, payload: dict) -> str:
+    """Every team change Hermes makes is a proposal the team must accept."""
+    return request("POST", f"/internal/hermes/teams/{quote(params['team_id'])}/proposals", {
+        "acting_user_id": params["acting_user_id"], "kind": kind, "payload": payload, "summary": params.get("summary", ""),
+    })
+
+
+TEAM_IDS = {
+    "team_id": {"type": "string", "description": "team_id from the run message header"},
+    "acting_user_id": {"type": "string", "description": "acting_user_id from the run message header"},
+}
+
+
 def register(ctx):
     tools = [
         (
@@ -206,6 +219,81 @@ def register(ctx):
                 "required": ["project_id", "brief"],
             },
             lambda p, **_: request("POST", f"/internal/hermes/projects/{p['project_id']}/refinements", {"brief": p["brief"], "source": "hermes"}),
+        ),
+        (
+            "farq_get_team_context",
+            "Read a Farq course team as the member who invoked you: assignment brief and rubric, teammate cards "
+            "(stated skills, goals and roadmap stage), tasks, milestones, decisions, document outline, open proposals "
+            "and, for members, the last 50 chat messages. Call this before any claim about the team.",
+            {"type": "object", "properties": dict(TEAM_IDS), "required": ["team_id", "acting_user_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/teams/{quote(p['team_id'])}/context?acting_user_id={quote(p['acting_user_id'])}"),
+        ),
+        (
+            "farq_get_task",
+            "Read one team task in full.",
+            {"type": "object", "properties": {"task_id": {"type": "string"}, "acting_user_id": TEAM_IDS["acting_user_id"]}, "required": ["task_id", "acting_user_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/tasks/{quote(p['task_id'])}?acting_user_id={quote(p['acting_user_id'])}"),
+        ),
+        (
+            "farq_get_doc_section",
+            "Read one SRS/SDS/SPMP section in full, including its owner and status.",
+            {"type": "object", "properties": {"section_id": {"type": "string"}, "acting_user_id": TEAM_IDS["acting_user_id"]}, "required": ["section_id", "acting_user_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/sections/{quote(p['section_id'])}?acting_user_id={quote(p['acting_user_id'])}"),
+        ),
+        (
+            "farq_propose_tasks",
+            "Propose new tasks (kind task_split) or a change to one to-do task (kind task_edit). Nothing changes until the "
+            "team accepts. task_split: every member gets at least one task, open points stay balanced, every task has a "
+            "rationale. task_edit: only tasks still in To do.",
+            {
+                "type": "object",
+                "properties": {
+                    **TEAM_IDS,
+                    "kind": {"type": "string", "enum": ["task_split", "task_edit"]},
+                    "summary": {"type": "string", "description": "One line shown on the proposal card"},
+                    "tasks": {"type": "array", "items": {"type": "object", "properties": {
+                        "title": {"type": "string"}, "description": {"type": "string"}, "assignee_id": {"type": "string"},
+                        "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "milestone_id": {"type": "string"},
+                        "depends_on": {"type": "array", "items": {"type": "string"}}, "rationale": {"type": "string"},
+                    }, "required": ["title", "assignee_id", "estimate_points", "rationale"]}},
+                    "task_id": {"type": "string"},
+                    "changes": {"type": "object", "properties": {
+                        "title": {"type": "string"}, "description": {"type": "string"},
+                        "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "assignee_id": {"type": "string"},
+                    }},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["team_id", "acting_user_id", "kind", "summary"],
+            },
+            lambda p, **_: _propose(p, p["kind"], {"tasks": p.get("tasks", [])} if p["kind"] == "task_split"
+                                    else {"task_id": p.get("task_id", ""), "changes": p.get("changes", {}), "rationale": p.get("rationale", "")}),
+        ),
+        (
+            "farq_propose_section",
+            "Propose a draft for one document section; its owner accepts or rejects it. Follow the farq-team-coach "
+            "drafting conventions and number requirements FR-1, NFR-1.",
+            {
+                "type": "object",
+                "properties": {
+                    **TEAM_IDS, "section_id": {"type": "string"}, "content_md": {"type": "string"},
+                    "requirement_ids": {"type": "array", "items": {"type": "string"}}, "summary": {"type": "string"},
+                },
+                "required": ["team_id", "acting_user_id", "section_id", "content_md", "summary"],
+            },
+            lambda p, **_: _propose(p, "doc_section", {"section_id": p["section_id"], "content_md": p["content_md"], "requirement_ids": p.get("requirement_ids", [])}),
+        ),
+        (
+            "farq_propose_team_change",
+            "Propose a team-wide change that needs a majority vote: kind charter (payload {charter: {goal, roles: "
+            "{user_id: role}, working_agreement: [..], meetings}}), milestones (payload {milestones: [{title, due, "
+            "deliverable_key}]}) or section_owners (payload {owners: {section_id: user_id}}).",
+            {
+                "type": "object",
+                "properties": {**TEAM_IDS, "kind": {"type": "string", "enum": ["charter", "milestones", "section_owners"]},
+                               "payload": {"type": "object"}, "summary": {"type": "string"}},
+                "required": ["team_id", "acting_user_id", "kind", "payload", "summary"],
+            },
+            lambda p, **_: _propose(p, p["kind"], p.get("payload", {})),
         ),
     ]
     for name, description, parameters, handler in tools:

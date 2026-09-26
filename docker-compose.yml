@@ -55,6 +55,7 @@ services:
       - ./.hermes/skills/farq-quiz:/opt/data/skills/farq-quiz:ro
       - ./.hermes/skills/farq-slides:/opt/data/skills/farq-slides:ro
       - ./.hermes/skills/farq-project-coach:/opt/data/skills/farq-project-coach:ro
+      - ./.hermes/skills/farq-team-coach:/opt/data/skills/farq-team-coach:ro
       # Onboarding folder scans only see paths inside this container. To let Hermes index
       # a host folder, mount it read-only and type the container path, e.g.:
       # - C:/Users/me/Projects:/scan/projects:ro

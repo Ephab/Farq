@@ -156,6 +156,15 @@
 .fq .tm-msg:hover .tm-msg-actions, .fq .tm-msg:focus-within .tm-msg-actions { opacity: 1; pointer-events: auto; }
 .fq .tm-msg-actions button { display: grid; place-items: center; min-width: 26px; height: 26px; border-radius: 8px; background: none; color: var(--fq-muted); font-size: 13px; cursor: pointer; }
 .fq .tm-msg-actions button:hover { background: var(--fq-surface-muted); color: var(--fq-text); }
+/* Chat bubbles: teammates on the left, your own messages on the right in the accent colour. */
+.fq .tm-msg:not([data-hermes]) .tm-text { display: inline-block; max-width: 100%; padding: 6px 11px; border-radius: 14px 14px 14px 4px; background: var(--fq-surface-muted); }
+.fq .tm-msg:not([data-hermes]):hover { background: transparent; }
+.fq .tm-msg[data-mine] { flex-direction: row-reverse; }
+.fq .tm-msg[data-mine] .tm-msg-body { display: flex; flex-direction: column; align-items: flex-end; }
+.fq .tm-msg[data-mine] .tm-msg-body header { flex-direction: row-reverse; }
+.fq .tm-msg[data-mine] .tm-text { max-width: 85%; border-radius: 14px 14px 4px 14px; background: var(--fq-accent); color: #fff; }
+.fq .tm-msg[data-mine] .tm-reply { border-left: 0; border-right: 3px solid var(--fq-line-strong); text-align: end; }
+.fq .tm-msg[data-mine] .tm-msg-actions { right: auto; left: 8px; }
 .fq .tm-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .fq .tm-reaction { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--fq-line); border-radius: var(--fq-r-pill); background: var(--fq-surface-solid); font-size: 12px; cursor: pointer; }
 .fq .tm-reaction[aria-pressed="true"] { border-color: var(--fq-accent); background: var(--fq-accent-soft); }

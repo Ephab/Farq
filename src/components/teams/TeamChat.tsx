@@ -294,7 +294,7 @@ function MessageItem({ message, store, me, pinned, onReply, onEdit, onDelete, on
   const parent = message.reply_to_id ? store.messages?.find((item) => item.id === message.reply_to_id) : undefined
   const reactions = Object.entries(message.reactions)
   return (
-    <article className="tm-msg" data-hermes={hermes ? "" : undefined} data-private={message.visible_to_user_id ? "" : undefined}>
+    <article className="tm-msg" data-mine={mine ? "" : undefined} data-hermes={hermes ? "" : undefined} data-private={message.visible_to_user_id ? "" : undefined}>
       {hermes ? <HermesAvatar size={28} /> : <Avatar userId={message.author_user_id ?? ""} name={author} size={28} />}
       <div className="tm-msg-body">
         <header>

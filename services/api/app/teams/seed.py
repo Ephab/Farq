@@ -234,3 +234,43 @@ def seed_teams(db: Session) -> None:
     for member in members.values():
         member.last_seen_seq = last_seen_seq
     db.commit()
+
+
+# Short demo roadmaps so teammate cards have a stage for growth-aware splits.
+# (title, [(stage title, [(node title, status)])])
+TEAMMATE_ROADMAPS: dict[str, tuple[str, list[tuple[str, list[tuple[str, str]]]]]] = {
+    "demo-sara": ("ML engineer path", [("Foundations", [("Python for data", "done"), ("Linear algebra refresher", "done")]),
+                                        ("Computer vision", [("CNN basics", "in-progress"), ("Data modelling for ML apps", "not-started")])]),
+    "demo-ali": ("Backend engineer path", [("Web foundations", [("HTTP and REST", "done"), ("Node.js services", "done")]),
+                                             ("Data and APIs", [("Relational schema design", "in-progress"), ("API authentication", "not-started")])]),
+    "demo-noura": ("Product design path", [("Design basics", [("Figma fundamentals", "done")]),
+                                             ("Interaction design", [("Usability testing", "in-progress"), ("Accessible UI patterns", "not-started")])]),
+    "demo-omar": ("NLP research path", [("ML foundations", [("PyTorch basics", "done")]), ("Language models", [("Transformers", "in-progress")])]),
+    "demo-reem": ("Data engineering path", [("SQL", [("Advanced SQL", "done")]), ("Pipelines", [("Batch pipelines", "in-progress")])]),
+    "demo-faisal": ("QA automation path", [("Testing basics", [("Unit testing", "done")]), ("Automation", [("End-to-end tests", "in-progress")])]),
+    "demo-lama": ("Mobile developer path", [("Kotlin", [("Kotlin basics", "done")]), ("Android", [("Jetpack Compose", "in-progress")])]),
+}
+
+
+def seed_teammate_roadmaps(db: Session) -> None:
+    """Idempotent: only students with no roadmap at all get one."""
+    from ..models import RoadmapVersion
+    from ..schemas import RoadmapSnapshot
+
+    for student_id, (title, stages) in TEAMMATE_ROADMAPS.items():
+        if db.get(Student, student_id) is None:
+            continue
+        if db.scalar(select(RoadmapVersion.id).where(RoadmapVersion.student_id == student_id)) is not None:
+            continue
+        stage_rows, nodes = [], []
+        for stage_index, (stage_title, items) in enumerate(stages):
+            stage_id = f"{student_id}-s{stage_index}"
+            node_ids = []
+            for node_index, (node_title, status) in enumerate(items):
+                node_id = f"{student_id}-n{stage_index}-{node_index}"
+                node_ids.append(node_id)
+                nodes.append({"id": node_id, "stageId": stage_id, "title": node_title, "status": status})
+            stage_rows.append({"id": stage_id, "title": stage_title, "nodeIds": node_ids})
+        snapshot = RoadmapSnapshot.model_validate({"title": title, "stages": stage_rows, "nodes": nodes})
+        db.add(RoadmapVersion(student_id=student_id, version=1, snapshot_json=snapshot.model_dump_json(), reason="Demo roadmap", active=True))
+    db.commit()

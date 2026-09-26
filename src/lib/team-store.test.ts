@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyEvent, fromSnapshot, isBlocked, progressOf, rebase, tasksByStatus, upsertMessage } from "@/lib/team-store"
+import { applyEvent, fromSnapshot, isBlocked, progressOf, rebase, sectionById, tasksByStatus, upsertMessage, voteSummary } from "@/lib/team-store"
 import type { TeamEvent, TeamMessage, TeamState, TeamTask } from "@/lib/teams-api"
 
 const T0 = "2026-09-20T10:00:00+00:00"
@@ -25,9 +25,9 @@ function snapshot(patch: Partial<TeamState> = {}): TeamState {
       id: "t", name: "Team", cover_seed: "abc", lead_user_id: "u1", charter: {}, created_at: T0, viewer_role: "lead",
       assignment: { id: "a", course_id: "c", title: "Project", brief: {}, deadline: null, deliverables: [], rubric: [], team_size_min: 2, team_size_max: 4 },
       course: { id: "c", code: "SWE 363", title: "SE", term: "Fall" },
-      members: [{ user_id: "u1", display_name: "Sara Alharbi", role_label: "", is_lead: true }],
+      members: [{ user_id: "u1", display_name: "Sara Alharbi", role_label: "", is_lead: true }], size_limit: 4,
     },
-    tasks: [], milestones: [], decisions: [], documents: [], messages: [], last_seq: 10, last_seen_seq: 10, ...patch,
+    tasks: [], milestones: [], decisions: [], documents: [], messages: [], proposals: [], last_seq: 10, last_seen_seq: 10, ...patch,
   }
 }
 
@@ -102,6 +102,16 @@ describe("applyEvent", () => {
     expect(store.documents.d1.sections[0]).toMatchObject({ content_md: "Hello", version: 1 })
   })
 
+  it("replaces a document after a structural edit", () => {
+    const section = { id: "s1", document_id: "d1", key: "1", title: "Scope", position: 0, owner_user_id: null, content_md: "", status: "empty" as const, lock_user_id: null, lock_expires_at: null, version: 0, meta: {} }
+    let store = fromSnapshot(snapshot({ documents: [{ id: "d1", team_id: "t", kind: "custom", title: "Plan", created_at: T0, sections: [section] }] }))
+    const added = { ...section, id: "s2", key: "0", title: "Summary" }
+    const document = { id: "d1", team_id: "t", kind: "custom", title: "Test plan", created_at: T0, sections: [{ ...added, position: 0 }, { ...section, position: 1 }] }
+    store = applyEvent(store, event("document.updated", { document, change: { action: "section_added", key: "0", title: "Summary" } }))
+    expect(store.documents.d1.title).toBe("Test plan")
+    expect(store.documents.d1.sections.map((item) => item.id)).toEqual(["s2", "s1"])
+  })
+
   it("pins and removes decisions", () => {
     let store = fromSnapshot(snapshot())
     store = applyEvent(store, event("decision.pinned", { id: "d", team_id: "t", text: "Use FastAPI", source_message_id: "m", pinned_by: "u1", created_at: T0 }))
@@ -156,5 +166,57 @@ describe("rebase", () => {
     expect(result.tasks.old).toBeUndefined()
     expect(result.lastSeq).toBe(21)
     expect(result.presence).toEqual(presence)
+  })
+})
+
+describe("proposals and Hermes status", () => {
+  const proposal = {
+    id: "p1", team_id: "t", scope: "team" as const, affected_user_id: null, kind: "task_split" as const, summary: "Split",
+    payload: { tasks: [] }, status: "pending" as const, votes: {}, invoked_by: "u1", created_at: T0, expires_at: T0, decided_at: null, decided_by: null,
+  }
+
+  it("follows a proposal from created to applied", () => {
+    let store = fromSnapshot(snapshot())
+    store = applyEvent(store, event("proposal.created", proposal))
+    store = applyEvent(store, event("proposal.voted", { ...proposal, votes: { u1: "up" } }))
+    expect(store.proposals.p1.votes).toEqual({ u1: "up" })
+    store = applyEvent(store, event("proposal.applied", { ...proposal, status: "applied" }))
+    expect(store.proposals.p1.status).toBe("applied")
+  })
+
+  it("shows Hermes while a run is active and clears it when done", () => {
+    let store = fromSnapshot(snapshot())
+    store = applyEvent(store, event("hermes.run", { id: "r", team_id: "t", status: "running", stage: "Hermes is thinking", command: "split", invoked_by: "u1" }))
+    expect(store.hermes?.stage).toBe("Hermes is thinking")
+    store = applyEvent(store, event("hermes.run", { id: "r", team_id: "t", status: "completed", stage: "Done", command: "split", invoked_by: "u1" }))
+    expect(store.hermes).toBeNull()
+  })
+
+  it("applies charter updates", () => {
+    const store = applyEvent(fromSnapshot(snapshot()), event("team.updated", { charter: { goal: "Ship it" } }))
+    expect(store.team.charter.goal).toBe("Ship it")
+  })
+
+  it("counts votes from current members only", () => {
+    const store = fromSnapshot(snapshot({ proposals: [{ ...proposal, votes: { u1: "up", gone: "up" } }] }))
+    expect(voteSummary(store, store.proposals.p1, "u1")).toEqual({ up: 1, down: 0, members: 1, needed: 1, mine: "up" })
+  })
+
+  it("finds a section by id", () => {
+    const section = { id: "s1", document_id: "d1", key: "1.1", title: "Purpose", position: 0, owner_user_id: null, content_md: "", status: "empty" as const, lock_user_id: null, lock_expires_at: null, version: 0, meta: {} }
+    const store = fromSnapshot(snapshot({ documents: [{ id: "d1", team_id: "t", kind: "srs", title: "SRS", created_at: T0, sections: [section] }] }))
+    expect(sectionById(store, "s1")?.key).toBe("1.1")
+    expect(sectionById(store, "nope")).toBeUndefined()
+  })
+})
+
+describe("team.updated", () => {
+  it("renames and resizes without touching the charter", () => {
+    let store = fromSnapshot(snapshot())
+    store = applyEvent(store, event("team.updated", { charter: { goal: "Ship it" } }))
+    store = applyEvent(store, event("team.updated", { name: "Falcon Squad", size_limit: 3 }))
+    expect(store.team.name).toBe("Falcon Squad")
+    expect(store.team.size_limit).toBe(3)
+    expect(store.team.charter.goal).toBe("Ship it")
   })
 })

@@ -13,6 +13,7 @@ from ..models import uid
 from .common import Db, iso, loads, require, require_team
 from .events import emit
 from .models import Assignment, Course, CourseEnrollment, Task, Team, TeamEvent, TeamInvite, TeamMember
+from .notices import team_risk_line
 from .policy import authorize, is_member
 
 router = APIRouter()
@@ -21,6 +22,15 @@ STATUS_RANK = {"doing": 0, "review": 1, "todo": 2}
 
 class TeamCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
+
+
+class TeamUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    size_limit: int | None = Field(default=None, ge=1, le=50)
+
+
+def team_capacity(team: Team, assignment: Assignment) -> int:
+    return team.size_limit or assignment.team_size_max
 
 
 class InviteCreate(BaseModel):
@@ -61,7 +71,7 @@ def team_dict(db: Session, team: Team, viewer_role: str) -> dict:
         "id": team.id, "name": team.name, "cover_seed": team.cover_seed, "lead_user_id": team.lead_user_id,
         "charter": loads(team.charter_json, {}), "created_at": iso(team.created_at), "viewer_role": viewer_role,
         "assignment": assignment_dict(assignment), "course": course_dict(db.get(Course, assignment.course_id)),
-        "members": member_dicts(db, team),
+        "members": member_dicts(db, team), "size_limit": team_capacity(team, assignment),
     }
 
 
@@ -101,6 +111,7 @@ def team_card(db: Session, team: Team, user: User, role: str) -> dict:
         "assignment": {"id": assignment.id, "title": assignment.title, "deadline": iso(assignment.deadline)},
         "progress": round(100 * done / total) if total else 0, "next_task": next_task,
         "members": [member.user_id for member in _members(db, team.id)], "unread": unread, "viewer_role": role,
+        "risk": team_risk_line(db, team),
     }
 
 
@@ -214,7 +225,7 @@ def invite_member(team_id: str, body: InviteCreate, db: Db, user: CurrentUser) -
     pending = db.scalars(select(TeamInvite).where(TeamInvite.team_id == team.id, TeamInvite.status == "pending")).all()
     if any(item.invited_user_id == body.user_id for item in pending):
         raise HTTPException(409, "They already have a pending invite")
-    if len(_members(db, team.id)) + len(pending) >= assignment.team_size_max:
+    if len(_members(db, team.id)) + len(pending) >= team_capacity(team, assignment):
         raise HTTPException(409, "This team is full")
     invite = TeamInvite(team_id=team.id, invited_user_id=body.user_id, invited_by=user.id)
     db.add(invite)
@@ -240,7 +251,7 @@ def accept_invite(invite_id: str, db: Db, user: CurrentUser) -> dict:
     assignment = db.get(Assignment, team.assignment_id)
     if team_for_assignment(db, assignment.id, user.id) is not None:
         raise HTTPException(409, "You already joined a team for this assignment")
-    if len(_members(db, team.id)) >= assignment.team_size_max:
+    if len(_members(db, team.id)) >= team_capacity(team, assignment):
         raise HTTPException(409, "This team filled up")
     invite.status = "accepted"
     _join(db, team, user)
@@ -255,6 +266,29 @@ def decline_invite(invite_id: str, db: Db, user: CurrentUser) -> dict:
     emit(db, invite.team_id, "invite.declined", user.id, {"id": invite.id, "user_id": user.id})
     db.commit()
     return invite_dict(db, invite)
+
+
+@router.patch("/api/teams/{team_id}")
+def update_team(team_id: str, body: TeamUpdate, db: Db, user: CurrentUser) -> dict:
+    team = require_team(db, team_id)
+    authorize(db, user, team, "lead")
+    assignment = db.get(Assignment, team.assignment_id)
+    if not body.model_fields_set:
+        raise HTTPException(422, "Nothing to update")
+    if body.name is not None:
+        name = body.name.strip()
+        if len(name) < 2:
+            raise HTTPException(422, "Give your team a name")
+        team.name = name
+    if body.size_limit is not None:
+        members = len(_members(db, team.id))
+        low, high = max(members, assignment.team_size_min), assignment.team_size_max
+        if not low <= body.size_limit <= high:
+            raise HTTPException(422, f"Team size must be between {low} and {high}")
+        team.size_limit = body.size_limit
+    emit(db, team.id, "team.updated", user.id, {"name": team.name, "size_limit": team_capacity(team, assignment)})
+    db.commit()
+    return team_dict(db, team, "lead")
 
 
 @router.get("/api/teams/{team_id}")

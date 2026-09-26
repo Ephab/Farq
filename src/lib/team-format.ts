@@ -57,15 +57,37 @@ export function briefingLines(home: TeamsHomeData): string[] {
   if (home.user.role === "instructor") {
     if (home.teams.length === 0) return ["No teams have formed in your courses yet."]
     const courses = new Set(home.teams.map((team) => team.course.id)).size
-    return [`${plural(home.teams.length, "team")} across ${plural(courses, "course")}. Team chats stay private to students.`]
+    const summary = `${plural(home.teams.length, "team")} across ${plural(courses, "course")}. Team chats stay private to students.`
+    return [summary, ...home.teams.filter((team) => team.risk).map((team) => `${team.name}: ${team.risk}`)]
   }
   const lines: string[] = []
   for (const team of home.teams) {
     if (team.unread) lines.push(`${plural(team.unread, "new message")} in ${team.name}`)
+  }
+  for (const team of home.teams) {
+    if (team.risk) lines.push(`${team.name}: ${team.risk}`)
   }
   const next = home.teams.find((team) => team.next_task)
   if (next?.next_task) lines.push(`Next for you: ${next.next_task.title} (${next.name})`)
   if (home.invites.length) lines.push(`${plural(home.invites.length, "invite")} waiting`)
   for (const item of home.needs_team) lines.push(`${item.course.code} ${item.title} still needs a team`)
   return lines.length ? lines : ["You're all caught up."]
+}
+
+/** Suggest a free number for a section added after `after`: 1.2 → 1.3, 3 → 4 (skipping taken keys);
+ * a key that doesn't end in a number gets a ".1" child. */
+export function nextSectionKey(after: string | undefined, taken: string[]): string {
+  const used = new Set(taken)
+  if (!after) {
+    let top = 1
+    while (used.has(String(top))) top += 1
+    return String(top)
+  }
+  const match = after.match(/^(.*?)(\d+)$/)
+  let candidate = match ? `${match[1]}${Number(match[2]) + 1}` : `${after}.1`
+  while (used.has(candidate)) {
+    const again = candidate.match(/^(.*?)(\d+)$/)
+    candidate = again ? `${again[1]}${Number(again[2]) + 1}` : `${candidate}.1`
+  }
+  return candidate
 }

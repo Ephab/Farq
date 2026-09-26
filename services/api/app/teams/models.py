@@ -57,6 +57,8 @@ class Team(Base):
     cover_seed: Mapped[str] = mapped_column(String(16))
     lead_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     charter_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Lead-chosen cap, within the assignment's limits; None means the assignment maximum.
+    size_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -209,3 +211,50 @@ class TeamEvent(Base):
     visible_to_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TeamProposal(Base):
+    """A change Hermes suggested. Nothing changes until a member applies it."""
+
+    __tablename__ = "team_proposals"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    team_id: Mapped[str] = mapped_column(ForeignKey("teams.id"), index=True)
+    # personal (the affected member decides) | team (majority vote, then the lead)
+    scope: Mapped[str] = mapped_column(String(16))
+    affected_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # task_split | task_edit | doc_section | charter | milestones | section_owners
+    kind: Mapped[str] = mapped_column(String(24))
+    summary: Mapped[str] = mapped_column(String(240))
+    payload_json: Mapped[str] = mapped_column(Text)
+    base_seq: Mapped[int] = mapped_column(Integer, default=0)
+    # pending | applied | rejected | stale | awaiting_lead
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    votes_json: Mapped[str] = mapped_column(Text, default="{}")
+    invoked_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class TeamAgentRun(Base):
+    """One Hermes invocation in a team chat. Runs execute one at a time per team."""
+
+    __tablename__ = "team_agent_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    team_id: Mapped[str] = mapped_column(ForeignKey("teams.id"), index=True)
+    invoked_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    trigger_message_id: Mapped[str] = mapped_column(String(36))
+    # mention | split | catchup | describe | draft | standup | risks
+    command: Mapped[str] = mapped_column(String(24))
+    argument: Mapped[str] = mapped_column(Text, default="")
+    provider: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # queued | running | completed | failed
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    stage: Mapped[str] = mapped_column(String(80), default="Queued")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    digest_until_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

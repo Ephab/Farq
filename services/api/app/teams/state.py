@@ -7,8 +7,9 @@ from ..identity import CurrentUser, User
 from .chat import decision_dict, message_dict, reactions_for, votes_for
 from .common import Db, require_team
 from .docs import document_dict
-from .models import Decision, DocSection, Milestone, Task, TeamDocument, TeamEvent, TeamMember, TeamMessage
+from .models import Decision, DocSection, Milestone, Task, TeamDocument, TeamEvent, TeamMember, TeamMessage, TeamProposal
 from .policy import authorize, is_member
+from .proposals import expire_stalled, proposal_dict
 from .tasks import milestone_dict, task_dict
 from .teams import team_dict
 
@@ -20,6 +21,8 @@ MESSAGE_WINDOW = 200
 def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
     team = require_team(db, team_id)
     role = authorize(db, user, team, "view")
+    expire_stalled(db, team)
+    db.commit()
     # Read the cursor first: anything written after this point arrives on the stream.
     last_seq = db.scalar(select(func.max(TeamEvent.seq)).where(TeamEvent.team_id == team.id)) or 0
     tasks = db.scalars(select(Task).where(Task.team_id == team.id).order_by(Task.status, Task.position)).all()
@@ -43,10 +46,11 @@ def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
         votes = votes_for(db, [row.id for row in rows if row.kind == "poll"])
         messages = [message_dict(row, reactions.get(row.id), votes.get(row.id)) for row in rows]
         last_seen = db.scalar(select(TeamMember.last_seen_seq).where(TeamMember.team_id == team.id, TeamMember.user_id == user.id))
+    proposals = db.scalars(select(TeamProposal).where(TeamProposal.team_id == team.id).order_by(TeamProposal.created_at.desc()).limit(50)).all()
     return {
         "team": team_dict(db, team, role), "tasks": [task_dict(item) for item in tasks],
         "milestones": [milestone_dict(item) for item in milestones], "decisions": [decision_dict(item) for item in decisions],
-        "documents": documents, "messages": messages, "last_seq": last_seq, "last_seen_seq": last_seen,
+        "documents": documents, "messages": messages, "proposals": [proposal_dict(item) for item in proposals], "last_seq": last_seq, "last_seen_seq": last_seen,
     }
 
 

@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { ArrowUp, CornerUpLeft, ListPlus, Pencil, Pin, Search, Trash2, X } from "lucide-react"
+import { useLayoutEffect, useRef, useState } from "react"
+import { ArrowUp, CornerUpLeft, Flag, ListPlus, Pencil, Pin, Search, Sparkles, Trash2, X } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
+import { ProposalCard } from "@/components/teams/ProposalCard"
 import { Avatar, HermesAvatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
-import { HERMES_COMMANDS, insertMention, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
+import { HERMES_COMMANDS, insertMention, isNearBottom, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
 import { timeAgo } from "@/lib/team-format"
 import { markMessageDeleted, memberName, setReaction, upsertDecision, upsertMessage, type TeamStore } from "@/lib/team-store"
 import { errorMessage, type TeamMessage } from "@/lib/teams-api"
@@ -44,14 +45,22 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
     { id: "hermes", name: "Hermes", hermes: true },
   ].filter((option) => option.name.toLowerCase().startsWith(mention.toLowerCase()))
   const commandOptions = slash === null ? [] : [
-    { cmd: "/poll", hint: "Question | Option A | Option B", ready: true },
-    ...HERMES_COMMANDS.map((command) => ({ cmd: command.cmd as string, hint: command.hint as string, ready: false })),
+    { cmd: "/poll", hint: "Question | Option A | Option B", hermes: false },
+    ...HERMES_COMMANDS.map((command) => ({ cmd: command.cmd as string, hint: command.hint as string, hermes: true })),
   ].filter((option) => option.cmd.slice(1).startsWith(slash.toLowerCase()))
 
-  useEffect(() => {
+  // Follow new messages only while the reader is at the bottom (true on first load),
+  // so reading older messages is never interrupted.
+  const stickToBottom = useRef(true)
+  const onListScroll = () => {
     const list = listRef.current
-    if (list && !needle) list.scrollTop = list.scrollHeight
-  }, [messages.length, needle])
+    if (list) stickToBottom.current = isNearBottom(list.scrollTop, list.scrollHeight, list.clientHeight)
+  }
+  const lastMessage = messages[messages.length - 1]
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (list && !needle && stickToBottom.current) list.scrollTop = list.scrollHeight
+  }, [messages.length, lastMessage?.content, needle, store.hermes?.stage])
 
   const run = async (work: () => Promise<void>) => {
     setError(null)
@@ -74,6 +83,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
   const send = async () => {
     const text = draft.trim()
     if (!text || sending) return
+    stickToBottom.current = true  // your own message always brings you to the bottom
     setSending(true)
     await run(async () => {
       if (editing) {
@@ -82,11 +92,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
         setEditing(null)
       } else {
         const poll = parsePoll(text)
-        if (text.startsWith("/") && !poll) {
-          throw new Error(text.startsWith("/poll")
-            ? "Write a poll as /poll Question | Option A | Option B"
-            : "Hermes commands arrive in the next update. For now, mention your teammates.")
-        }
+        if (text.startsWith("/poll") && !poll) throw new Error("Write a poll as /poll Question | Option A | Option B")
         const message = await teams.postMessage(teamId, poll
           ? { content: poll.question, poll_options: poll.options }
           : { content: text, reply_to_id: replyTo?.id ?? null })
@@ -103,7 +109,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
     update((current) => setReaction(current, message.id, me, emoji, result.on))
   })
   const vote = (message: TeamMessage, option: number) => run(async () => {
-    const updated = await teams.vote(message.id, option)
+    const updated = await teams.votePoll(message.id, option)
     update((current) => upsertMessage(current, updated))
   })
   const pin = (message: TeamMessage) => run(async () => {
@@ -136,8 +142,12 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
       <header className="tm-chat-head">
         <div>
           <strong>Team chat</strong>
-          <small className="block text-[11px] text-[var(--fq-muted)]">Private to your team</small>
+          <small className="block text-[11px] text-[var(--fq-muted)]">Private to your team · @Hermes or / for commands</small>
         </div>
+        <div className="flex items-center gap-1">
+        <button type="button" className="tm-btn tm-btn-sm" title="Summarise what changed since your last catch-up" onClick={() => { setDraft("/catchup"); inputRef.current?.focus() }}>
+          <Sparkles className="size-3.5" aria-hidden="true" /> Catch me up
+        </button>
         <button
           type="button"
           className="tm-icon-btn"
@@ -147,13 +157,14 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
         >
           <Search className="size-4" />
         </button>
+        </div>
       </header>
       {searching ? (
         <div className="px-3 pt-2">
           <input className="tm-input" autoFocus placeholder="Search this chat" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
       ) : null}
-      <div ref={listRef} className="tm-chat-list">
+      <div ref={listRef} className="tm-chat-list" onScroll={onListScroll}>
         {visible.length === 0 ? <p className="tm-muted m-auto">{needle ? "No messages match." : "Say hello to your team."}</p> : null}
         {visible.map((message) => (
           <MessageItem
@@ -169,9 +180,13 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
             onReact={(item, emoji) => void react(item, emoji)}
             onVote={(item, option) => void vote(item, option)}
             onMakeTask={(item) => onMakeTask(item.content.slice(0, 200))}
+            update={update}
           />
         ))}
       </div>
+      {store.hermes ? (
+        <div className="tm-hermes-bar" role="status"><HermesAvatar size={18} /> {store.hermes.stage}…</div>
+      ) : null}
       <div className="tm-typing" aria-live="polite">
         {typers.length ? `${typers.join(", ")} ${typers.length === 1 ? "is" : "are"} typing…` : ""}
       </div>
@@ -182,7 +197,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
               <button key={option.id} type="button" onClick={() => { setDraft((current) => insertMention(current, option.name)); inputRef.current?.focus() }}>
                 {option.hermes ? <HermesAvatar size={20} /> : <Avatar userId={option.id} name={option.name} size={20} />}
                 {option.name}
-                {option.hermes ? <small>replies arrive next update</small> : null}
+                {option.hermes ? <small>AI teammate</small> : null}
               </button>
             ))}
           </div>
@@ -190,10 +205,10 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
         {commandOptions.length > 0 ? (
           <div className="tm-suggest" role="listbox" aria-label="Commands">
             {commandOptions.map((option) => (
-              <button key={option.cmd} type="button" disabled={!option.ready} onClick={() => { setDraft(`${option.cmd} `); inputRef.current?.focus() }}>
+              <button key={option.cmd} type="button" onClick={() => { setDraft(`${option.cmd} `); inputRef.current?.focus() }}>
                 <strong>{option.cmd}</strong>
                 <span className="text-[var(--fq-muted)]">{option.hint}</span>
-                {!option.ready ? <small>Hermes · next update</small> : null}
+                <small>{option.hermes ? "Hermes" : "Poll"}</small>
               </button>
             ))}
           </div>
@@ -255,17 +270,31 @@ interface MessageItemProps {
   onReact: (message: TeamMessage, emoji: string) => void
   onVote: (message: TeamMessage, option: number) => void
   onMakeTask: (message: TeamMessage) => void
+  update: StoreUpdate
 }
 
-function MessageItem({ message, store, me, pinned, onReply, onEdit, onDelete, onPin, onReact, onVote, onMakeTask }: MessageItemProps) {
-  if (message.kind === "system") return <div className="tm-system">{message.content}</div>
+function MessageItem({ message, store, me, pinned, onReply, onEdit, onDelete, onPin, onReact, onVote, onMakeTask, update }: MessageItemProps) {
+  if (message.kind === "system") return <div className="tm-system" dir="auto">{message.content}</div>
+  if (message.kind === "notice") {
+    return (
+      <div className="tm-notice" dir="auto">
+        <Flag className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        <span>{message.content}</span>
+        {message.visible_to_user_id ? <small>only you</small> : null}
+      </div>
+    )
+  }
+  if (message.kind === "proposal") {
+    const proposal = store.proposals[String(message.metadata?.proposal_id ?? "")]
+    return proposal ? <ProposalCard proposal={proposal} store={store} update={update} /> : <div className="tm-system">{message.content}</div>
+  }
   const hermes = message.author_user_id === null
   const mine = message.author_user_id === me
   const author = memberName(store, message.author_user_id)
   const parent = message.reply_to_id ? store.messages?.find((item) => item.id === message.reply_to_id) : undefined
   const reactions = Object.entries(message.reactions)
   return (
-    <article className="tm-msg" data-hermes={hermes ? "" : undefined} data-private={message.visible_to_user_id ? "" : undefined}>
+    <article className="tm-msg" data-mine={mine ? "" : undefined} data-hermes={hermes ? "" : undefined} data-private={message.visible_to_user_id ? "" : undefined}>
       {hermes ? <HermesAvatar size={28} /> : <Avatar userId={message.author_user_id ?? ""} name={author} size={28} />}
       <div className="tm-msg-body">
         <header>

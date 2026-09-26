@@ -18,7 +18,7 @@ from .policy import authorize, is_member
 from .presence import presence_frame, touch
 
 # Event types an instructor must never receive (spec §5: the chat is private).
-CHAT_PREFIXES = ("message.", "reaction.", "typing.")
+CHAT_PREFIXES = ("message.", "reaction.", "typing.", "hermes.")
 POLL_SECONDS = 0.4
 HEARTBEAT_SECONDS = 15
 PRESENCE_SECONDS = 2
@@ -50,7 +50,7 @@ def emit(
     return event
 
 
-def _visible(event: TeamEvent, user_id: str, role: str) -> bool:
+def visible_to(event: TeamEvent, user_id: str, role: str) -> bool:
     if event.visible_to_user_id and event.visible_to_user_id != user_id:
         return False
     if role == "instructor" and (event.type.startswith(CHAT_PREFIXES) or event.visible_to_user_id):
@@ -63,7 +63,7 @@ def events_after(db: Session, team_id: str, after_seq: int, user_id: str, role: 
         select(TeamEvent).where(TeamEvent.team_id == team_id, TeamEvent.seq > after_seq).order_by(TeamEvent.seq).limit(limit)
     ).all()
     cursor = rows[-1].seq if rows else after_seq
-    return [row for row in rows if _visible(row, user_id, role)], cursor
+    return [row for row in rows if visible_to(row, user_id, role)], cursor
 
 
 def event_dict(event: TeamEvent) -> dict:
@@ -92,6 +92,10 @@ def team_event_stream(
         raise HTTPException(401, "Choose who you are with the View as switcher")
     team = require_team(db, team_id)
     role = authorize(db, user, team, "view")
+    if is_member(role):
+        from .notices import post_notices  # late import: notices -> chat -> events
+        post_notices(db, team)
+        db.commit()
     start = int(last_event_id) if last_event_id and last_event_id.isdigit() else after
     user_id = user.id
 

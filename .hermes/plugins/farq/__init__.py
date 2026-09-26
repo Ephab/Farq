@@ -8,6 +8,39 @@ from .tools import request
 EVIDENCE_KINDS = ["course", "project", "skill", "experience", "certificate", "publication", "activity", "education"]
 
 
+def _run_query(params: dict) -> str:
+    """run_id is optional on the wire: the API falls back to the team's running run."""
+    run_id = params.get("run_id")
+    return f"?run_id={quote(run_id, safe='')}" if run_id else ""
+
+
+def _propose(params: dict, kind: str, payload: dict) -> str:
+    """Every team change Hermes makes is a proposal the team must accept."""
+    body = {"kind": kind, "payload": payload, "summary": params.get("summary", "")}
+    if params.get("run_id"):
+        body["run_id"] = params["run_id"]
+    return request("POST", f"/internal/hermes/teams/{quote(params['team_id'], safe='')}/proposals", body)
+
+
+def _task_payload(p: dict) -> dict:
+    """Shape farq_propose_tasks arguments into the proposal payload for each kind."""
+    kind = p["kind"]
+    if kind == "task_split":
+        return {"tasks": p.get("tasks", [])}
+    if kind == "task_delete":
+        return {"task_ids": p.get("task_ids", []), "rationale": p.get("rationale", "")}
+    if kind == "task_reorganize":
+        return {"changes": p.get("task_changes", []), "deletes": p.get("task_ids", []),
+                "adds": p.get("tasks", []), "rationale": p.get("rationale", "")}
+    return {"task_id": p.get("task_id", ""), "changes": p.get("changes", {}), "rationale": p.get("rationale", "")}
+
+
+TEAM_IDS = {
+    "team_id": {"type": "string", "description": "team_id from the run message header"},
+    "run_id": {"type": "string", "description": "run_id from the run message header"},
+}
+
+
 def register(ctx):
     tools = [
         (
@@ -206,6 +239,87 @@ def register(ctx):
                 "required": ["project_id", "brief"],
             },
             lambda p, **_: request("POST", f"/internal/hermes/projects/{p['project_id']}/refinements", {"brief": p["brief"], "source": "hermes"}),
+        ),
+        (
+            "farq_get_team_context",
+            "Read a Farq course team as the member who started this run: assignment brief and rubric, teammate cards "
+            "(stated skills, goals and roadmap stage), tasks, milestones, decisions, document outline, open proposals "
+            "and, for members, the last 50 chat messages. Call this before any claim about the team.",
+            {"type": "object", "properties": dict(TEAM_IDS), "required": ["team_id", "run_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/teams/{quote(p['team_id'], safe='')}/context{_run_query(p)}"),
+        ),
+        (
+            "farq_get_task",
+            "Read one team task in full.",
+            {"type": "object", "properties": {"task_id": {"type": "string"}, "run_id": TEAM_IDS["run_id"]}, "required": ["task_id", "run_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/tasks/{quote(p['task_id'], safe='')}{_run_query(p)}"),
+        ),
+        (
+            "farq_get_doc_section",
+            "Read one SRS/SDS/SPMP section in full, including its owner and status.",
+            {"type": "object", "properties": {"section_id": {"type": "string"}, "run_id": TEAM_IDS["run_id"]}, "required": ["section_id", "run_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/sections/{quote(p['section_id'], safe='')}{_run_query(p)}"),
+        ),
+        (
+            "farq_propose_tasks",
+            "Propose task changes; nothing changes until the team accepts. task_split: new tasks for every member "
+            "(tasks). task_edit: change one to-do task (task_id, changes). task_delete: remove to-do tasks (task_ids, "
+            "rationale). task_reorganize: re-split existing to-do work in one vote: task_changes [{task_id, title?, "
+            "estimate_points?, assignee_id?}], task_ids to delete, tasks to add, rationale. Open points must stay "
+            "balanced; tasks in Doing, Review or Done can never be changed.",
+            {
+                "type": "object",
+                "properties": {
+                    **TEAM_IDS,
+                    "kind": {"type": "string", "enum": ["task_split", "task_edit", "task_delete", "task_reorganize"]},
+                    "summary": {"type": "string", "description": "One line shown on the proposal card"},
+                    "tasks": {"type": "array", "items": {"type": "object", "properties": {
+                        "title": {"type": "string"}, "description": {"type": "string"}, "assignee_id": {"type": "string"},
+                        "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "milestone_id": {"type": "string"},
+                        "depends_on": {"type": "array", "items": {"type": "string"}}, "rationale": {"type": "string"},
+                    }, "required": ["title", "assignee_id", "estimate_points", "rationale"]}},
+                    "task_id": {"type": "string"},
+                    "changes": {"type": "object", "properties": {
+                        "title": {"type": "string"}, "description": {"type": "string"},
+                        "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "assignee_id": {"type": "string"},
+                    }},
+                    "rationale": {"type": "string"},
+                    "task_ids": {"type": "array", "items": {"type": "string"}, "description": "task_delete / task_reorganize: to-do tasks to remove"},
+                    "task_changes": {"type": "array", "items": {"type": "object", "properties": {
+                        "task_id": {"type": "string"}, "title": {"type": "string"},
+                        "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "assignee_id": {"type": "string"},
+                    }, "required": ["task_id"]}, "description": "task_reorganize: edits to existing to-do tasks"},
+                },
+                "required": ["team_id", "run_id", "kind", "summary"],
+            },
+            lambda p, **_: _propose(p, p["kind"], _task_payload(p)),
+        ),
+        (
+            "farq_propose_section",
+            "Propose a draft for one document section; its owner accepts or rejects it. Follow the farq-team-coach "
+            "drafting conventions and number requirements FR-1, NFR-1.",
+            {
+                "type": "object",
+                "properties": {
+                    **TEAM_IDS, "section_id": {"type": "string"}, "content_md": {"type": "string"},
+                    "requirement_ids": {"type": "array", "items": {"type": "string"}}, "summary": {"type": "string"},
+                },
+                "required": ["team_id", "run_id", "section_id", "content_md", "summary"],
+            },
+            lambda p, **_: _propose(p, "doc_section", {"section_id": p["section_id"], "content_md": p["content_md"], "requirement_ids": p.get("requirement_ids", [])}),
+        ),
+        (
+            "farq_propose_team_change",
+            "Propose a team-wide change that needs a majority vote: kind charter (payload {charter: {goal, roles: "
+            "{user_id: role}, working_agreement: [..], meetings}}), milestones (payload {milestones: [{title, due, "
+            "deliverable_key}]}) or section_owners (payload {owners: {section_id: user_id}}).",
+            {
+                "type": "object",
+                "properties": {**TEAM_IDS, "kind": {"type": "string", "enum": ["charter", "milestones", "section_owners"]},
+                               "payload": {"type": "object"}, "summary": {"type": "string"}},
+                "required": ["team_id", "run_id", "kind", "payload", "summary"],
+            },
+            lambda p, **_: _propose(p, p["kind"], p.get("payload", {})),
         ),
     ]
     for name, description, parameters, handler in tools:

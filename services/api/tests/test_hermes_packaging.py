@@ -60,9 +60,10 @@ def test_farq_gateway_keeps_a_repo_local_hermes_home(runner_name: str) -> None:
 def test_prompts_only_reference_provisioned_skills() -> None:
     from app.quiz import QUIZ_INSTRUCTIONS
     from app.slides import EXTEND_INSTRUCTIONS
+    from app.teams.hermes_team import TEAM_INSTRUCTIONS
 
     provisioned = skill_names()
-    for instructions in (EXTEND_INSTRUCTIONS, QUIZ_INSTRUCTIONS):
+    for instructions in (EXTEND_INSTRUCTIONS, QUIZ_INSTRUCTIONS, TEAM_INSTRUCTIONS):
         referenced = {name for name in provisioned if name in instructions}
         assert referenced, f"prompt references no provisioned skill: {instructions[:200]}"
         for name in referenced:

@@ -32,3 +32,8 @@ export function parsePoll(text: string): { question: string; options: string[] }
   if (parts.length < 3) return null
   return { question: parts[0], options: parts.slice(1, 9) }
 }
+
+/** True when a scroll box is within `threshold` px of its end (or doesn't scroll at all). */
+export function isNearBottom(scrollTop: number, scrollHeight: number, clientHeight: number, threshold = 80): boolean {
+  return scrollHeight - scrollTop - clientHeight <= threshold
+}

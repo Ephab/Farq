@@ -42,6 +42,16 @@ def loads(text: str | None, default: Any) -> Any:
         return default
 
 
+def lock_for_write(db: Session) -> None:
+    """Take SQLite's write lock before a read-check-write, so two requests can't
+    both read the same state and both act on it (e.g. two votes applying twice)."""
+    if db.get_bind().dialect.name != "sqlite":
+        return
+    raw = db.connection().connection.dbapi_connection
+    if not raw.in_transaction:
+        raw.execute("BEGIN IMMEDIATE")
+
+
 def require(db: Session, model, item_id: str, label: str):
     item = db.get(model, item_id)
     if item is None:

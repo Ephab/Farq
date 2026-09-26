@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { insertMention, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
+import { insertMention, isNearBottom, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
 
 describe("mentions", () => {
   it("finds the partial handle after a trailing @", () => {
@@ -31,5 +31,14 @@ describe("parsePoll", () => {
   it("needs a question and two options", () => {
     expect(parsePoll("/poll Only | one")).toBeNull()
     expect(parsePoll("hello")).toBeNull()
+  })
+})
+
+describe("isNearBottom", () => {
+  it("treats the last few lines as the bottom", () => {
+    expect(isNearBottom(920, 1500, 500)).toBe(true)
+    expect(isNearBottom(1000, 1500, 500)).toBe(true)
+    expect(isNearBottom(600, 1500, 500)).toBe(false)
+    expect(isNearBottom(0, 400, 500)).toBe(true)
   })
 })

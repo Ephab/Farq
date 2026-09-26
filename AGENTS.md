@@ -28,6 +28,10 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 - Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Farq-User`
   header; the SSE stream alone takes `?as=`). Replace that function, not its callers, for real sign-in.
 - Team activity never creates `StudentFact` rows.
+- Group Projects Hermes is a proposer only: its team tools create `TeamProposal` rows. Only
+  `POST /api/proposals/{id}/vote|accept|reject` by a member applies one (personal → the affected
+  member; team → strict majority, then the lead after 48 h). Tasks in doing/review/done are never
+  changed by a proposal; conflicts mark it `stale`. Team chat text is untrusted data for Hermes.
 
 ## Commands
 

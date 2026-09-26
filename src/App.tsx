@@ -54,6 +54,9 @@ export default function App() {
       // The next poll picks up the terminal state; no banner from here.
     }
   }, [activeRun])
+  // One-shot handoff: HermesCoach clears this right after prefilling the
+  // composer, so the prompt does not reappear on every later visit.
+  const clearCoachDraft = useCallback(() => setCoachDraft(""), [])
 
   const loadProfile = useCallback(() => {
     if (!hasChosenStudent()) { setOnboarding(true); return }
@@ -195,7 +198,7 @@ export default function App() {
               ) : active === "Roadmap" ? (
                 <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} />
               ) : active === "Hermes Coach" ? (
-                <HermesCoach key={coachDraft} initialDraft={coachDraft} />
+                <HermesCoach initialDraft={coachDraft} onConsumeDraft={clearCoachDraft} />
               ) : active === "My data" ? (
                 <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Emails" ? (

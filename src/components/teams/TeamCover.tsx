@@ -29,6 +29,7 @@ export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void
       {card.unread ? <span className="tm-cover-unread">{card.unread} new</span> : null}
       <span className="tm-cover-name">{card.name}</span>
       <span className="tm-cover-sub">{card.assignment.title}</span>
+      {card.risk ? <span className="tm-cover-risk" title={card.risk}>⚠ At risk</span> : null}
       <span className="tm-cover-members" aria-label={`${card.members.length} members`}>
         {card.members.slice(0, 6).map((id) => <span key={id} className="tm-cover-dot" style={{ background: avatarColor(id) }} />)}
       </span>

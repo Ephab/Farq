@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { FileText, Lock, PencilLine } from "lucide-react"
+import { FileText, Lock, PencilLine, Sparkles } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
+import { ProposalCard } from "@/components/teams/ProposalCard"
 import { Avatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
-import { memberName, upsertDocument, upsertSection, type TeamStore } from "@/lib/team-store"
+import { memberName, upsertDocument, upsertMessage, upsertSection, type TeamStore } from "@/lib/team-store"
 import { errorMessage, type DocSectionInfo, type DocumentKind } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
 
@@ -114,6 +115,13 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
 
   const missing = DOC_KINDS.filter((item) => !docs.some((existing) => existing.kind === item.kind))
   const blocked = section ? lockedByOther(section, me) : false
+  const pendingDraft = section
+    ? Object.values(store.proposals).find((item) => item.kind === "doc_section" && item.status === "pending" && item.payload.section_id === section.id)
+    : undefined
+  const draft = (target: DocSectionInfo) => run(async () => {
+    const message = await teams.postMessage(store.team.id, { content: `/draft ${doc.kind} ${target.key}` })
+    update((current) => upsertMessage(current, message))
+  })
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="tm-board-head">
@@ -179,6 +187,11 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
                   </>
                 ) : null}
                 {canEdit && !editing ? (
+                  <button type="button" className="tm-btn" disabled={busy || blocked || Boolean(pendingDraft)} onClick={() => void draft(section)}>
+                    <Sparkles className="size-4" aria-hidden="true" /> Draft this
+                  </button>
+                ) : null}
+                {canEdit && !editing ? (
                   <button type="button" className="tm-btn" disabled={busy || blocked} onClick={() => void startEdit(section)}>
                     <PencilLine className="size-4" aria-hidden="true" /> Edit
                   </button>
@@ -188,6 +201,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
             {blocked ? (
               <p className="tm-muted"><Lock className="mr-1 inline size-3.5" aria-hidden="true" />{memberName(store, section.lock_user_id)} is editing this section.</p>
             ) : null}
+            {pendingDraft ? <ProposalCard proposal={pendingDraft} store={store} update={update} /> : null}
             {editing ? (
               <textarea className="tm-textarea" style={{ minHeight: 320 }} dir="auto" autoFocus value={text} onChange={(event) => setText(event.target.value)} />
             ) : (

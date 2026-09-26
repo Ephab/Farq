@@ -194,3 +194,22 @@
 @media (prefers-reduced-motion: reduce) {
   .fq .tm-cover, .fq .tm-sheet, .fq .tm-bar i, .fq .tm-poll-option i { animation: none; transition: none; }
 }
+
+/* Hermes proposals, notices and status */
+.fq .tm-proposal { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; padding: 12px; border: 1px solid color-mix(in srgb, var(--fq-accent) 30%, transparent); border-radius: var(--fq-r-md); background: linear-gradient(135deg, var(--fq-accent-soft), rgba(138, 92, 246, 0.06)); font-size: 13px; }
+.fq .tm-proposal header { display: flex; flex-wrap: wrap; gap: 6px; }
+.fq .tm-proposal[data-status="applied"] { border-color: color-mix(in srgb, var(--fq-success) 40%, transparent); background: var(--fq-success-soft); }
+.fq .tm-proposal[data-status="rejected"], .fq .tm-proposal[data-status="stale"] { border-color: var(--fq-line); background: var(--fq-surface-muted); opacity: 0.8; }
+.fq .tm-proposal-tasks { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.fq .tm-proposal-tasks li { display: flex; align-items: flex-start; gap: 8px; }
+.fq .tm-proposal-tasks small { display: block; color: var(--fq-muted); }
+.fq .tm-proposal-doc { max-height: 200px; padding: 8px 10px; overflow: auto; border-radius: var(--fq-r-sm); background: var(--fq-surface-solid); }
+.fq .tm-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fq .tm-vote { display: flex; flex-direction: column; gap: 6px; }
+.fq .tm-vote .tm-bar { width: 100%; }
+.fq .tm-vote .tm-bar i { background: var(--fq-success); }
+.fq .tm-notice { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0; padding: 8px 10px; border-radius: var(--fq-r-sm); background: var(--fq-warning-soft); color: var(--fq-text-soft); font-size: 13px; }
+.fq .tm-notice small { margin-left: auto; color: var(--fq-muted); }
+.fq .tm-hermes-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 4px; padding: 6px 10px; border-radius: var(--fq-r-pill); background: var(--fq-accent-soft); color: var(--fq-accent); font-size: 12px; font-weight: 600; }
+.fq .tm-cover-risk { margin-top: 4px; padding: 2px 9px; border-radius: var(--fq-r-pill); background: rgba(255, 196, 0, 0.92); color: #3a2a00; font-size: 11px; font-weight: 700; }
+.fq .tm-risk { padding: 8px 10px; border-radius: var(--fq-r-sm); background: var(--fq-warning-soft); font-size: 13px; }

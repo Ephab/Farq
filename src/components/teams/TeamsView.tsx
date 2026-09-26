@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useAnimatedSidebar } from "@/components/motion/animated-sidebar"
 import { TeamWorkspace } from "@/components/teams/TeamWorkspace"
 import { TeamsHome } from "@/components/teams/TeamsHome"
 import { ViewAsSwitcher } from "@/components/teams/ViewAsSwitcher"
@@ -15,6 +16,13 @@ export function TeamsView() {
   // One client per acting user: views bound to it keep acting as that user
   // until they unmount, even if View-as changes mid-request.
   const client = useMemo(() => teamClient(actingUser), [actingUser])
+  const sidebar = useAnimatedSidebar()
+  // A team workspace needs the width, so opening one collapses the app sidebar.
+  const openTeam = (id: string) => {
+    setTeamId(id)
+    sidebar.setOpen(false)
+    sidebar.setOpenMobile(false)
+  }
 
   useEffect(() => {
     const onChange = () => {
@@ -38,7 +46,7 @@ export function TeamsView() {
       {teamId ? (
         <TeamWorkspace key={`${actingUser}:${teamId}`} teamId={teamId} onBack={() => setTeamId(null)} />
       ) : (
-        <TeamsHome key={actingUser} onOpenTeam={setTeamId} />
+        <TeamsHome key={actingUser} onOpenTeam={openTeam} />
       )}
     </div>
     </TeamClientContext.Provider>

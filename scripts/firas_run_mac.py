@@ -130,6 +130,8 @@ def stream(name: str, proc: subprocess.Popen) -> None:
 
 
 def start(name: str, cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
+    if name != "api":
+        env = {key: value for key, value in env.items() if key not in {"MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY"}}
     proc = subprocess.Popen(
         cmd, cwd=REPO, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -179,7 +181,7 @@ def main() -> int:
 
     commands = {
         "api": [py, "-m", "uvicorn", "app.main:app", "--app-dir", "services/api",
-                "--port", str(API_PORT)],
+                "--port", str(API_PORT), "--no-access-log"],
         # NOTE: `gateway run` stays in the foreground as our child, tied to
         # HERMES_HOME above. Bare `hermes gateway` would daemonize and escape
         # shutdown, so never use it here.

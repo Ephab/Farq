@@ -7,3 +7,6 @@ pytest==8.4.2
 python-pptx==1.0.2
 pypdf[crypto]==6.1.1
 python-multipart==0.0.20
+msal==1.34.0
+cryptography>=45,<51
+pywin32>=311,<312; sys_platform == 'win32'

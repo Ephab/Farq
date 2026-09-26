@@ -1,0 +1,395 @@
+{
+  "model": "laya",
+  "precision": "laya-default",
+  "threads": 2,
+  "template": "original",
+  "hypotheses": null,
+  "quantized_embeddings": false,
+  "repeat": 3,
+  "model_revision": "1a793eb568e6718f15941d08f85432581df534e3",
+  "torch": "2.8.0+cu128",
+  "parameter_count": null,
+  "load_seconds": 3.7521440000273287,
+  "rss_mib": 2294.08203125,
+  "peak_rss_mib": 3048.47265625,
+  "rows": [
+    {
+      "id": "exam-en",
+      "language": "en",
+      "expected": "coursework",
+      "category": "coursework",
+      "score": 0.361,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.7367616999545135,
+      "timings": [
+        1.6838483000174165,
+        1.7367616999545135,
+        1.7476100000203587
+      ]
+    },
+    {
+      "id": "assignment-en",
+      "language": "en",
+      "expected": "coursework",
+      "category": "coursework",
+      "score": 0.5235,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.7740352000109851,
+      "timings": [
+        1.7375247000018135,
+        1.7740352000109851,
+        1.8103304000105709
+      ]
+    },
+    {
+      "id": "fees-en",
+      "language": "en",
+      "expected": "administration",
+      "category": "administration",
+      "score": 0.4631,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.6985109999659471,
+      "timings": [
+        1.711588300007861,
+        1.690040300018154,
+        1.6985109999659471
+      ]
+    },
+    {
+      "id": "records-en",
+      "language": "en",
+      "expected": "administration",
+      "category": "administration",
+      "score": 0.4291,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.780555600009393,
+      "timings": [
+        1.779879300040193,
+        1.882032599998638,
+        1.780555600009393
+      ]
+    },
+    {
+      "id": "internship-en",
+      "language": "en",
+      "expected": "opportunity",
+      "category": "opportunity",
+      "score": 0.5533,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.7578187000472099,
+      "timings": [
+        1.7578187000472099,
+        1.723827000008896,
+        1.7714298000209965
+      ]
+    },
+    {
+      "id": "scholarship-en",
+      "language": "en",
+      "expected": "opportunity",
+      "category": "opportunity",
+      "score": 0.5069,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.7507569000008516,
+      "timings": [
+        1.7507569000008516,
+        1.744261900021229,
+        1.7629247999866493
+      ]
+    },
+    {
+      "id": "sale-en",
+      "language": "en",
+      "expected": "promotion",
+      "category": "other",
+      "score": 0.4541,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.741791700012982,
+      "timings": [
+        1.741791700012982,
+        1.7492124999989755,
+        1.721046499966178
+      ]
+    },
+    {
+      "id": "newsletter-en",
+      "language": "en",
+      "expected": "promotion",
+      "category": "opportunity",
+      "score": 0.6487,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 1.864056000020355,
+      "timings": [
+        1.864056000020355,
+        1.8307253000093624,
+        1.870160799997393
+      ]
+    },
+    {
+      "id": "personal-en",
+      "language": "en",
+      "expected": "personal",
+      "category": "other",
+      "score": 0.3196,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.7734160999534652,
+      "timings": [
+        1.839857800048776,
+        1.7734160999534652,
+        1.7471154000377283
+      ]
+    },
+    {
+      "id": "family-en",
+      "language": "en",
+      "expected": "personal",
+      "category": "other",
+      "score": 0.168,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 1.7719103999552317,
+      "timings": [
+        1.7719103999552317,
+        1.7462434000335634,
+        1.7725634999806061
+      ]
+    },
+    {
+      "id": "exam-ar",
+      "language": "ar",
+      "expected": "coursework",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.00040389999048784375,
+      "timings": [
+        0.00042779999785125256,
+        0.00040389999048784375,
+        0.0003932000254280865
+      ]
+    },
+    {
+      "id": "assignment-ar",
+      "language": "ar",
+      "expected": "coursework",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.000345699954777956,
+      "timings": [
+        0.00035170000046491623,
+        0.000341600039973855,
+        0.000345699954777956
+      ]
+    },
+    {
+      "id": "fees-ar",
+      "language": "ar",
+      "expected": "administration",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.00026870000874623656,
+      "timings": [
+        0.00026870000874623656,
+        0.00027000001864507794,
+        0.0002680000034160912
+      ]
+    },
+    {
+      "id": "records-ar",
+      "language": "ar",
+      "expected": "administration",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.00029520003590732813,
+      "timings": [
+        0.0002940999693237245,
+        0.00029520003590732813,
+        0.00030529999639838934
+      ]
+    },
+    {
+      "id": "internship-ar",
+      "language": "ar",
+      "expected": "opportunity",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.00032589997863397,
+      "timings": [
+        0.00034069997491315007,
+        0.0003252000315114856,
+        0.00032589997863397
+      ]
+    },
+    {
+      "id": "scholarship-ar",
+      "language": "ar",
+      "expected": "opportunity",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.0003254999755881727,
+      "timings": [
+        0.0003336999798193574,
+        0.0003234000178053975,
+        0.0003254999755881727
+      ]
+    },
+    {
+      "id": "sale-ar",
+      "language": "ar",
+      "expected": "promotion",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.00032980000833049417,
+      "timings": [
+        0.00032980000833049417,
+        0.0003284999984316528,
+        0.000334200041834265
+      ]
+    },
+    {
+      "id": "newsletter-ar",
+      "language": "ar",
+      "expected": "promotion",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.00037319998955354095,
+      "timings": [
+        0.00037319998955354095,
+        0.0003687000134959817,
+        0.0004010999691672623
+      ]
+    },
+    {
+      "id": "personal-ar",
+      "language": "ar",
+      "expected": "personal",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.0003169000265188515,
+      "timings": [
+        0.00032569997711107135,
+        0.0003169000265188515,
+        0.0003142000059597194
+      ]
+    },
+    {
+      "id": "family-ar",
+      "language": "ar",
+      "expected": "personal",
+      "category": null,
+      "score": null,
+      "windows": 0,
+      "review_reasons": [
+        "unsupported_language"
+      ],
+      "common_category_correct": false,
+      "median_seconds": 0.00025969999842345715,
+      "timings": [
+        0.00027409999165683985,
+        0.0002574000391177833,
+        0.00025969999842345715
+      ]
+    },
+    {
+      "id": "zoom-user",
+      "language": "en",
+      "expected": "promotion",
+      "category": "other",
+      "score": 0.6374,
+      "windows": 1,
+      "review_reasons": [
+        "uncalibrated_email_domain"
+      ],
+      "common_category_correct": true,
+      "median_seconds": 3.685156100022141,
+      "timings": [
+        3.8175505999824964,
+        3.666125899995677,
+        3.685156100022141
+      ]
+    }
+  ]
+}

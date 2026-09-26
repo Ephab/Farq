@@ -13,6 +13,9 @@ Get-Content .env -ErrorAction Stop | ForEach-Object {
   if ($_ -match '^([^#][^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process') }
 }
 # Refresh the checked-in Hermes soul, plugin and skills so edits apply on every start.
+if ($env:OUTLOOK_PROVIDER -eq "desktop") {
+  & .\.venv\Scripts\python.exe -m services.api.app.outlook.desktop
+}
 New-Item -ItemType Directory -Force -Path .hermes-runtime\plugins\farq | Out-Null
 Copy-Item services\hermes\config.yaml .hermes-runtime\config.yaml -Force
 Copy-Item services\hermes\SOUL.md .hermes-runtime\SOUL.md -Force
@@ -38,7 +41,7 @@ $services = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
 $logDir = Join-Path $repo "logs/dev-$PID"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 try {
-  $api = Start-Process -FilePath ".venv\Scripts\python.exe" -ArgumentList "-m", "uvicorn", "app.main:app", "--app-dir", "services/api", "--reload", "--port", "8000" -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput "$logDir/api.stdout.log" -RedirectStandardError "$logDir/api.stderr.log" -PassThru
+  $api = Start-Process -FilePath ".venv\Scripts\python.exe" -ArgumentList "-m", "uvicorn", "app.main:app", "--app-dir", "services/api", "--reload", "--port", "8000", "--no-access-log" -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput "$logDir/api.stdout.log" -RedirectStandardError "$logDir/api.stderr.log" -PassThru
   $services.Add($api)
   $deadline = (Get-Date).AddSeconds(30)
   $ready = $false
@@ -55,7 +58,7 @@ try {
   # make its Windows launcher load Python 3.13 extensions into Python 3.11.
   $pythonEnvironment = @{}
   try {
-    foreach ($name in "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME") {
+    foreach ($name in "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY") {
       $pythonEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
       [Environment]::SetEnvironmentVariable($name, $null, 'Process')
     }
@@ -68,7 +71,19 @@ try {
   }
   Write-Host "Service logs: $logDir"
   Write-Host "FastAPI and Hermes started in the background. Ctrl+C stops this session's services. Starting Vite at http://127.0.0.1:5173"
-  npm run dev
+  $webSecrets = @{}
+  try {
+    foreach ($name in "MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY") {
+      $webSecrets[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+      [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+    }
+    npm run dev
+  }
+  finally {
+    foreach ($name in $webSecrets.Keys) {
+      [Environment]::SetEnvironmentVariable($name, $webSecrets[$name], 'Process')
+    }
+  }
 }
 finally {
   Write-Host "Stopping Farq background services..."

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import DateTime, ForeignKey, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -42,12 +42,17 @@ def resolve_user(db: Session, user_id: str | None) -> User | None:
 
 
 def current_user(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     x_farq_user: Annotated[str | None, Header()] = None,
 ) -> User:
     """The single identity seam. Microsoft sign-in replaces only this function."""
+    from .outlook.auth import session_user
+    signed_in = session_user(request, db)
+    if signed_in is not None:
+        return signed_in
     user = resolve_user(db, x_farq_user)
-    if user is None:
+    if user is None or user.source != "demo":
         raise HTTPException(401, "Choose who you are with the View as switcher")
     return user
 

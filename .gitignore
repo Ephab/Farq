@@ -41,6 +41,10 @@ services/data/
 __pycache__/
 .pytest_cache/
 *.pyc
+.cache/
+.hf-cache/
+*.safetensors
 
 # Brainstorming companion mockups
 .superpowers/
+.local-outlook-key

@@ -30,6 +30,8 @@ from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
 from .projects import router as projects_router
 from .identity import router as identity_router
+from .outlook.router import router as outlook_router
+from .outlook.sync import sync_loop as outlook_sync_loop
 from .teams import router as teams_router
 from .teams.seed import seed_teammate_roadmaps, seed_teams
 from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
@@ -44,6 +46,7 @@ STARTED_AT = time.time()
 OPPORTUNITY_SYNC_ENABLED = os.getenv("OPPORTUNITY_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}
 OPPORTUNITY_SYNC_SECONDS = 6 * 60 * 60
 _opportunity_sync_task: asyncio.Task | None = None
+_outlook_sync_task: asyncio.Task | None = None
 
 
 DEMO_STUDENT_ID = "demo-student"
@@ -53,6 +56,7 @@ Db = Annotated[Session, Depends(get_db)]
 app = FastAPI(title="Farq Hermes Backbone", version="0.1.0")
 app.include_router(projects_router)
 app.include_router(identity_router)
+app.include_router(outlook_router)
 app.include_router(teams_router)
 app.add_middleware(
     CORSMiddleware,
@@ -198,6 +202,9 @@ async def startup() -> None:
     finally:
         db.close()
     global _opportunity_sync_task
+    global _outlook_sync_task
+    if os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true" and (_outlook_sync_task is None or _outlook_sync_task.done()):
+        _outlook_sync_task = asyncio.create_task(outlook_sync_loop())
     if OPPORTUNITY_SYNC_ENABLED and (_opportunity_sync_task is None or _opportunity_sync_task.done()):
         _opportunity_sync_task = asyncio.create_task(_opportunity_sync_loop())
 
@@ -217,6 +224,14 @@ async def _opportunity_sync_loop() -> None:
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    global _outlook_sync_task
+    if _outlook_sync_task is not None:
+        _outlook_sync_task.cancel()
+        try:
+            await _outlook_sync_task
+        except asyncio.CancelledError:
+            pass
+        _outlook_sync_task = None
     global _opportunity_sync_task
     if _opportunity_sync_task is not None:
         _opportunity_sync_task.cancel()

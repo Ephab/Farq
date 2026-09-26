@@ -319,7 +319,7 @@ def main() -> int:
 
     commands = {
         "api": [py, "-m", "uvicorn", "app.main:app", "--app-dir", "services/api",
-                "--port", str(API_PORT)],
+                "--port", str(API_PORT), "--no-access-log"],
         # NOTE: `gateway run` stays in the foreground as our child, tied to
         # HERMES_HOME above. Bare `hermes gateway` would daemonize and escape
         # shutdown, so never use it here.
@@ -337,6 +337,9 @@ def main() -> int:
 
     def spawn(name: str) -> None:
         env = build_child_env(read_dotenv_values())
+        if name != "api":
+            for var in ("MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY"):
+                env.pop(var, None)
         if name == "hermes":
             for var in HERMES_STRIPPED_VARS:
                 env.pop(var, None)

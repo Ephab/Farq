@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Command, Database, FolderKanban, Home, ListChecks, PanelLeft, Presentation, Route, Users } from "lucide-react"
+import { Bot, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Users } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import {
   AnimatedSidebar,
@@ -19,6 +19,7 @@ import {
 } from "@/components/motion/animated-sidebar"
 import { FooterSettings } from "@/components/footer-settings"
 import { TodayView } from "@/components/dashboard/TodayView"
+import { OutlookView } from "@/components/outlook/OutlookView"
 import { ProjectsView } from "@/components/projects/ProjectsView"
 import { TeamsView } from "@/components/teams/TeamsView"
 import { QuizView } from "@/components/quiz/QuizView"
@@ -79,6 +80,11 @@ export default function App() {
               <AnimatedSidebarGroup>
                 <AnimatedSidebarGroupContent>
                   <AnimatedSidebarMenu>
+                    <AnimatedSidebarMenuItem>
+                      <AnimatedSidebarMenuButton icon={<Mail className="size-4" />} isActive={active === "Outlook"} onSelect={() => setActive("Outlook")} className="text-[15px]">
+                        University mail
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
                         icon={<Bot className="size-4" />}
@@ -201,7 +207,9 @@ export default function App() {
 
             <main className="flex min-h-0 flex-1 flex-col bg-background">
               {active === "Home" ? (
-                <TodayView onNavigate={(tab) => setActive(tab)} />
+                <><OutlookView compact onOpen={() => setActive("Outlook")} /><TodayView onNavigate={(tab) => setActive(tab)} /></>
+              ) : active === "Outlook" ? (
+                <OutlookView />
               ) : active === "Roadmap" ? (
                 <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} />
               ) : active === "Hermes Coach" ? (

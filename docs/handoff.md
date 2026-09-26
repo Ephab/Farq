@@ -5,6 +5,19 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 
 ## What was built
 
+### University Outlook and local Laya (2026-09-26)
+- `app/outlook` implements browser-bound Microsoft consent, encrypted server-side
+  token caches, private mailbox sessions and resumable read-only Graph delta sync.
+- University mail provides Important, Today, Needs review, All mail and Dismissed;
+  Home and onboarding also expose the integration. Laya runs locally using the
+  pinned model installed by `setup.bat` / `setup.sh` through uv.
+- Mailbox ownership is independent of demo student profiles. Mail does not become
+  StudentFact records, team activity, or Hermes context. Coach sharing and real
+  student-account migration remain separate work.
+- See `docs/outlook-setup.md` and `docs/outlook-threat-model.md` before extending
+  access. Mocked authorization/sync tests pass; live tenant consent and token
+  renewal still require a configured Microsoft app and university account.
+
 ### Project milestones and evaluator backbone
 - Staged generation now labels stage types and requires one final project for each new
   `skill_sequence`; legacy plans without stage types remain readable.

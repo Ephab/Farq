@@ -1,0 +1,352 @@
+{
+  "model": "minilm",
+  "precision": "fp32",
+  "threads": 2,
+  "template": "concise",
+  "hypotheses": {
+    "coursework": "This email is about university coursework, assignments, exams or lectures.",
+    "administration": "This email is about university administration, student registration or tuition payments.",
+    "opportunity": "This email is about student opportunities, internships, scholarships or research placements.",
+    "promotion": "This email is about commercial advertising, product promotions or sales.",
+    "personal": "This email is about personal conversations, family or friends."
+  },
+  "repeat": 3,
+  "model_revision": "0a71e92a985b6e1ad1828cf67ce9c459639c1dca",
+  "torch": "2.8.0+cu128",
+  "parameter_count": 106995075,
+  "load_seconds": 3.2129955000127666,
+  "rss_mib": 883.0625,
+  "peak_rss_mib": 884.09765625,
+  "rows": [
+    {
+      "id": "exam-en",
+      "language": "en",
+      "expected": "coursework",
+      "category": "opportunity",
+      "score": 0.33955734968185425,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.03128739999374375,
+      "timings": [
+        0.03047809994313866,
+        0.03295940003590658,
+        0.03128739999374375
+      ]
+    },
+    {
+      "id": "assignment-en",
+      "language": "en",
+      "expected": "coursework",
+      "category": "opportunity",
+      "score": 0.34698766469955444,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.031633000005967915,
+      "timings": [
+        0.031633000005967915,
+        0.03655369998887181,
+        0.029484200000297278
+      ]
+    },
+    {
+      "id": "fees-en",
+      "language": "en",
+      "expected": "administration",
+      "category": "administration",
+      "score": 0.5363802313804626,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.03566459997091442,
+      "timings": [
+        0.0302514000213705,
+        0.03566459997091442,
+        0.043610399996396154
+      ]
+    },
+    {
+      "id": "records-en",
+      "language": "en",
+      "expected": "administration",
+      "category": "administration",
+      "score": 0.458814799785614,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.02710309997200966,
+      "timings": [
+        0.029711499984841794,
+        0.02710309997200966,
+        0.02627930004382506
+      ]
+    },
+    {
+      "id": "internship-en",
+      "language": "en",
+      "expected": "opportunity",
+      "category": "opportunity",
+      "score": 0.7128909230232239,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.03233210003236309,
+      "timings": [
+        0.03257889999076724,
+        0.03233210003236309,
+        0.03197730000829324
+      ]
+    },
+    {
+      "id": "scholarship-en",
+      "language": "en",
+      "expected": "opportunity",
+      "category": "opportunity",
+      "score": 0.5360512733459473,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.02992080000694841,
+      "timings": [
+        0.02992080000694841,
+        0.02979779994348064,
+        0.033919300010893494
+      ]
+    },
+    {
+      "id": "sale-en",
+      "language": "en",
+      "expected": "promotion",
+      "category": "promotion",
+      "score": 0.45912185311317444,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.034585900022648275,
+      "timings": [
+        0.03344109997851774,
+        0.034585900022648275,
+        0.03628569998545572
+      ]
+    },
+    {
+      "id": "newsletter-en",
+      "language": "en",
+      "expected": "promotion",
+      "category": "opportunity",
+      "score": 0.3464629054069519,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.031672999961301684,
+      "timings": [
+        0.031672999961301684,
+        0.03278830001363531,
+        0.030658299976494163
+      ]
+    },
+    {
+      "id": "personal-en",
+      "language": "en",
+      "expected": "personal",
+      "category": "personal",
+      "score": 0.334855854511261,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.033763299987185746,
+      "timings": [
+        0.03884629998356104,
+        0.02998029999434948,
+        0.033763299987185746
+      ]
+    },
+    {
+      "id": "family-en",
+      "language": "en",
+      "expected": "personal",
+      "category": "personal",
+      "score": 0.432447224855423,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.029020700021646917,
+      "timings": [
+        0.0330254000145942,
+        0.029020700021646917,
+        0.028279999969527125
+      ]
+    },
+    {
+      "id": "exam-ar",
+      "language": "ar",
+      "expected": "coursework",
+      "category": "coursework",
+      "score": 0.47744688391685486,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.03906839998671785,
+      "timings": [
+        0.0372930999728851,
+        0.03906839998671785,
+        0.04121679998934269
+      ]
+    },
+    {
+      "id": "assignment-ar",
+      "language": "ar",
+      "expected": "coursework",
+      "category": "coursework",
+      "score": 0.28197622299194336,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.03268750000279397,
+      "timings": [
+        0.0334720000391826,
+        0.03268750000279397,
+        0.032108699961099774
+      ]
+    },
+    {
+      "id": "fees-ar",
+      "language": "ar",
+      "expected": "administration",
+      "category": "administration",
+      "score": 0.42578867077827454,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.028764799993950874,
+      "timings": [
+        0.028764799993950874,
+        0.02799349999986589,
+        0.02939519996289164
+      ]
+    },
+    {
+      "id": "records-ar",
+      "language": "ar",
+      "expected": "administration",
+      "category": "administration",
+      "score": 0.49518224596977234,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.029194000002462417,
+      "timings": [
+        0.031077199964784086,
+        0.029194000002462417,
+        0.02854299999307841
+      ]
+    },
+    {
+      "id": "internship-ar",
+      "language": "ar",
+      "expected": "opportunity",
+      "category": "opportunity",
+      "score": 0.3651443123817444,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.04109259997494519,
+      "timings": [
+        0.04109259997494519,
+        0.04989490000298247,
+        0.04061119997641072
+      ]
+    },
+    {
+      "id": "scholarship-ar",
+      "language": "ar",
+      "expected": "opportunity",
+      "category": "administration",
+      "score": 0.3576532006263733,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.037827500025741756,
+      "timings": [
+        0.03988009999739006,
+        0.037827500025741756,
+        0.03728470002533868
+      ]
+    },
+    {
+      "id": "sale-ar",
+      "language": "ar",
+      "expected": "promotion",
+      "category": "opportunity",
+      "score": 0.32729679346084595,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.03502070001559332,
+      "timings": [
+        0.03848320001270622,
+        0.034785999974701554,
+        0.03502070001559332
+      ]
+    },
+    {
+      "id": "newsletter-ar",
+      "language": "ar",
+      "expected": "promotion",
+      "category": "opportunity",
+      "score": 0.38135358691215515,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.035137000028043985,
+      "timings": [
+        0.035137000028043985,
+        0.03480409999610856,
+        0.0400925999856554
+      ]
+    },
+    {
+      "id": "personal-ar",
+      "language": "ar",
+      "expected": "personal",
+      "category": "opportunity",
+      "score": 0.35855942964553833,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.039392400009091944,
+      "timings": [
+        0.039265999977942556,
+        0.0425245999940671,
+        0.039392400009091944
+      ]
+    },
+    {
+      "id": "family-ar",
+      "language": "ar",
+      "expected": "personal",
+      "category": "personal",
+      "score": 0.35319992899894714,
+      "windows": 1,
+      "common_category_correct": true,
+      "median_seconds": 0.030162799987010658,
+      "timings": [
+        0.03278080001473427,
+        0.030162799987010658,
+        0.030073200003243983
+      ]
+    },
+    {
+      "id": "zoom-user",
+      "language": "en",
+      "expected": "promotion",
+      "category": "opportunity",
+      "score": 0.2641274929046631,
+      "windows": 1,
+      "common_category_correct": false,
+      "median_seconds": 0.10823529999470338,
+      "timings": [
+        0.10823529999470338,
+        0.10071069997502491,
+        0.12285450001945719
+      ]
+    },
+    {
+      "id": "long-en",
+      "language": "en",
+      "expected": "coursework",
+      "category": "personal",
+      "score": 0.2121942788362503,
+      "windows": 27,
+      "common_category_correct": false,
+      "median_seconds": 7.922845499997493,
+      "timings": [
+        8.122578000009526,
+        7.922845499997493,
+        7.859936500026379
+      ]
+    }
+  ]
+}

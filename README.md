@@ -4,6 +4,13 @@ Farq is a student learning platform with an adaptive roadmap, quizzes, and a per
 Hermes Agent coach. Hermes runs locally as an agent service; Gemini supplies its current
 reasoning model. FastAPI and SQLite keep the auditable product state.
 
+For the fully local Laya email classifier, run `setup.bat` on Windows or
+`bash setup.sh` on macOS/Linux. These bootstrap uv, Python, locked Python dependencies
+and the model cache. See [local classifier setup and usage](docs/local-email-classifier.md).
+For Microsoft consent, mailbox sync and the University mail interface, follow
+[Outlook setup](docs/outlook-setup.md). Native Windows can read classic Outlook via
+COM without Entra registration; the Graph alternative requires an Entra app.
+
 ## What works
 
 - Onboarding for new students in any field: sign in, basics, optional sources (transcript, CV,

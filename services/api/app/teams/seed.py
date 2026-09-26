@@ -1,5 +1,5 @@
 """Idempotent demo world for Group Projects: two courses, eight students, one
-instructor and Team Falcon halfway through SWE 363 (spec §11)."""
+instructor and Group 1 (id team-falcon) halfway through SWE 363 (spec §11)."""
 from __future__ import annotations
 
 import json
@@ -79,7 +79,7 @@ FALCON_CHARTER = {
 
 # (days ago, author or None for Hermes, text)
 FALCON_CHAT: list[tuple[float, str | None, str]] = [
-    (9.0, "demo-student", "Hi all! Team Falcon is official 🎉 Lost-and-found app?"),
+    (9.0, "demo-student", "Hi all! Group 1 is official 🎉 Lost-and-found app?"),
     (8.9, "demo-sara", "Yes! I lost my calculator twice this term 😅"),
     (8.8, "demo-ali", "I'm in. I can take the backend."),
     (8.7, "demo-noura", "I'll do the UI and wireframes."),
@@ -169,7 +169,7 @@ def seed_teams(db: Session) -> None:
             ))
     db.flush()
 
-    team = Team(id="team-falcon", assignment_id="asg-swe363-term", name="Team Falcon", cover_seed="f41c0n5eed01", lead_user_id="demo-student", charter_json=json.dumps(FALCON_CHARTER), created_at=ago(9.2))
+    team = Team(id="team-falcon", assignment_id="asg-swe363-term", name="Group 1", cover_seed="f41c0n5eed01", lead_user_id="demo-student", charter_json=json.dumps(FALCON_CHARTER), created_at=ago(9.2))
     db.add(team)
     db.flush()
     members = {user_id: TeamMember(team_id=team.id, assignment_id=team.assignment_id, user_id=user_id, role_label=FALCON_CHARTER["roles"][user_id], joined_at=ago(9.2 - index * 0.05)) for index, user_id in enumerate(FALCON)}

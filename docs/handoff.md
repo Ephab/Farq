@@ -8,7 +8,7 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 ### Group Projects (course teams with Hermes as a teammate)
 - Spec: `docs/superpowers/specs/2026-09-25-group-projects-design.md`; plans 1-3 in
   `docs/superpowers/plans/`. Backend in `services/api/app/teams/`, UI in `src/components/teams/`.
-- Demo: sidebar **Group Projects** → Team Falcon (SWE 363). "Viewing as" switches the acting user
+- Demo: sidebar **Group Projects** → Group 1 (SWE 363). "Viewing as" switches the acting user
   per tab (students, or Dr. Layla Haddad as instructor, who sees no chat).
 - Hermes: `@Hermes` and `/split`, `/describe`, `/draft srs 3.2`, `/standup`, `/risks`, `/catchup`.
   Every change is a proposal card (vote, accept or lead decision).

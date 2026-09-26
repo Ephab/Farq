@@ -24,6 +24,7 @@ import {
   setCurrentStudentId,
   type HermesProvider,
 } from "@/lib/farq-api"
+import { getActingUserId } from "@/lib/teams-api"
 import { useTheme } from "@/lib/theme-context"
 import { THEMES } from "@/lib/themes"
 import { cn } from "@/lib/utils"
@@ -112,7 +113,11 @@ export function FooterSettings() {
     setResettingTeam(true)
     setResetError(null)
     try {
-      await api("/api/demo/reset-team", { method: "POST", body: JSON.stringify({ confirm: "RESET" }) })
+      await api("/api/demo/reset-team", {
+        method: "POST",
+        body: JSON.stringify({ confirm: "RESET" }),
+        headers: { "X-Farq-User": getActingUserId() },
+      })
       window.location.reload()
     } catch (reason) {
       setResettingTeam(false)

@@ -9,13 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from ..identity import CurrentUser
 from ..models import now
 from .common import Db
 from .models import (
     Decision, DocSection, MessageReaction, Milestone, PollVote, Task, Team, TeamAgentRun, TeamDocument, TeamEvent,
     TeamInvite, TeamMember, TeamMessage, TeamProposal,
 )
-from .seed import DEMO_TEAM_ID, seed_teams
+from .seed import DEMO_TEAM_ID, DEMO_TEAM_LEAD, seed_teams
 
 router = APIRouter()
 
@@ -45,6 +46,10 @@ def reset_demo_team(db: Session) -> None:
 
 
 @router.post("/api/demo/reset-team")
-def reset_team(_body: TeamResetInput, db: Db) -> dict:
+def reset_team(_body: TeamResetInput, db: Db, user: CurrentUser) -> dict:
+    # Destructive for the whole team, so only its lead may do it (the seeded lead if it was deleted).
+    team = db.get(Team, DEMO_TEAM_ID)
+    if user.id != (team.lead_user_id if team else DEMO_TEAM_LEAD):
+        raise HTTPException(403, "Only the Group 1 lead can reset the demo team")
     reset_demo_team(db)
     return {"team_id": DEMO_TEAM_ID}

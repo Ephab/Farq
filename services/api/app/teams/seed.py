@@ -72,6 +72,7 @@ ML_BRIEF = {
 }
 
 DEMO_TEAM_ID = "team-falcon"  # Group 1; the id predates the rename and existing databases use it
+DEMO_TEAM_LEAD = "demo-student"
 
 FALCON_CHARTER = {
     "goal": "A lost-and-found web app for our campus, live by the final demo.",
@@ -190,7 +191,7 @@ def seed_teams(db: Session) -> None:
             ))
     db.flush()
 
-    team = Team(id=DEMO_TEAM_ID, assignment_id="asg-swe363-term", name="Group 1", cover_seed="f41c0n5eed01", lead_user_id="demo-student", charter_json=json.dumps(FALCON_CHARTER), created_at=ago(9.2))
+    team = Team(id=DEMO_TEAM_ID, assignment_id="asg-swe363-term", name="Group 1", cover_seed="f41c0n5eed01", lead_user_id=DEMO_TEAM_LEAD, charter_json=json.dumps(FALCON_CHARTER), created_at=ago(9.2))
     db.add(team)
     db.flush()
     members = {user_id: TeamMember(team_id=team.id, assignment_id=team.assignment_id, user_id=user_id, role_label=FALCON_CHARTER["roles"][user_id], joined_at=ago(9.2 - index * 0.05)) for index, user_id in enumerate(FALCON)}

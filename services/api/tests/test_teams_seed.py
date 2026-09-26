@@ -64,17 +64,19 @@ def test_reset_team_rebuilds_group_1_from_the_seed(client):
     state = client.get("/api/teams/team-falcon/state", headers=hdr("demo-student")).json()
     client.post("/api/teams/team-falcon/messages", json={"content": "scratch"}, headers=hdr("demo-student"))
     client.patch("/api/teams/team-falcon", json={"name": "Renamed"}, headers=hdr("demo-student"))
-    assert client.post("/api/demo/reset-team", json={"confirm": "nope"}).status_code == 422
+    assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}).status_code == 401
+    assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}, headers=hdr("demo-sara")).status_code == 403
+    assert client.post("/api/demo/reset-team", json={"confirm": "nope"}, headers=hdr("demo-student")).status_code == 422
     db = SessionLocal()
     try:
         db.add(TeamAgentRun(team_id="team-falcon", invoked_by_user_id="demo-student", trigger_message_id="m", command="mention", status="running"))
         db.commit()
-        assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}).status_code == 409
+        assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}, headers=hdr("demo-student")).status_code == 409
         db.execute(update(TeamAgentRun).where(TeamAgentRun.team_id == "team-falcon").values(status="completed"))
         db.commit()
     finally:
         db.close()
-    assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}).status_code == 200
+    assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}, headers=hdr("demo-student")).status_code == 200
     after = client.get("/api/teams/team-falcon/state", headers=hdr("demo-student")).json()
     assert after["team"]["name"] == "Group 1"
     assert len(after["messages"]) == len(state["messages"]) == 22

@@ -184,13 +184,14 @@ new active version in one transaction. Rejection does not touch the roadmap.
 A team message that starts with a slash command (`/split`, `/describe`, `/draft`, `/standup`,
 `/risks`, `/catchup`) or mentions `@Hermes` queues a `TeamAgentRun`. Runs execute one at a time
 per team (FIFO, `app/teams/hermes_team.py`) through `execute_with_fallback` on the session
-`farq:team:<team_id>`. The input names `team_id` and `acting_user_id`, and the instructions load
+`farq:team:<team_id>`. The input names `team_id` and `run_id`, and the instructions load
 the `farq-team-coach` skill. The tab's gateway key is held in memory for that run only. Replies
 are posted as Hermes team messages, and `/catchup` replies are private to the person asking.
 Failures post a private system message; there is no fake reply.
 
-Team tools (all authorized as the invoking member, instructors get no chat):
-- `farq_get_team_context(team_id, acting_user_id)`: brief, rubric, teammate cards (active
+Team tools take `run_id`, and the API acts as that run's invoker (the run must be `running` and
+belong to the team), never as a user id the model names. Instructors get no chat:
+- `farq_get_team_context(team_id, run_id)`: brief, rubric, teammate cards (active
   skill/goal/strength/interest facts and roadmap stage only), tasks, milestones, decisions,
   document outline, open proposals, and for members the last 50 chat messages.
 - `farq_get_task`, `farq_get_doc_section`: one record in full.

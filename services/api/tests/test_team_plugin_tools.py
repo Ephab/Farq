@@ -32,23 +32,23 @@ def test_team_tools_are_registered_with_required_ids(monkeypatch):
     tools, _ = _registered(monkeypatch)
     assert TEAM_TOOLS <= set(tools)
     for name in TEAM_TOOLS:
-        assert {"team_id", "acting_user_id"} & set(tools[name][0]["parameters"]["required"])
+        assert "run_id" in tools[name][0]["parameters"]["required"]
 
 
 def test_team_tools_route_to_the_internal_endpoints(monkeypatch):
     tools, calls = _registered(monkeypatch)
-    tools["farq_get_team_context"][1]({"team_id": "t 1", "acting_user_id": "u"})
-    tools["farq_get_task"][1]({"task_id": "k", "acting_user_id": "u"})
-    tools["farq_get_doc_section"][1]({"section_id": "s", "acting_user_id": "u"})
+    tools["farq_get_team_context"][1]({"team_id": "t 1", "run_id": "r"})
+    tools["farq_get_task"][1]({"task_id": "k", "run_id": "r"})
+    tools["farq_get_doc_section"][1]({"section_id": "s", "run_id": "r"})
     split = [{"title": "A", "assignee_id": "u", "estimate_points": 2, "rationale": "r"}]
-    tools["farq_propose_tasks"][1]({"team_id": "t", "acting_user_id": "u", "kind": "task_split", "tasks": split, "summary": "Split"})
-    tools["farq_propose_tasks"][1]({"team_id": "t", "acting_user_id": "u", "kind": "task_edit", "task_id": "k", "changes": {"title": "B"}, "rationale": "r", "summary": "Edit"})
-    tools["farq_propose_section"][1]({"team_id": "t", "acting_user_id": "u", "section_id": "s", "content_md": "FR-1", "summary": "Draft"})
-    tools["farq_propose_team_change"][1]({"team_id": "t", "acting_user_id": "u", "kind": "charter", "payload": {"charter": {"goal": "g"}}, "summary": "Charter"})
-    assert calls[0] == ("GET", "/internal/hermes/teams/t%201/context?acting_user_id=u", None)
-    assert calls[1] == ("GET", "/internal/hermes/tasks/k?acting_user_id=u", None)
-    assert calls[2] == ("GET", "/internal/hermes/sections/s?acting_user_id=u", None)
-    assert calls[3] == ("POST", "/internal/hermes/teams/t/proposals", {"acting_user_id": "u", "kind": "task_split", "payload": {"tasks": split}, "summary": "Split"})
+    tools["farq_propose_tasks"][1]({"team_id": "t", "run_id": "r", "kind": "task_split", "tasks": split, "summary": "Split"})
+    tools["farq_propose_tasks"][1]({"team_id": "t", "run_id": "r", "kind": "task_edit", "task_id": "k", "changes": {"title": "B"}, "rationale": "r", "summary": "Edit"})
+    tools["farq_propose_section"][1]({"team_id": "t", "run_id": "r", "section_id": "s", "content_md": "FR-1", "summary": "Draft"})
+    tools["farq_propose_team_change"][1]({"team_id": "t", "run_id": "r", "kind": "charter", "payload": {"charter": {"goal": "g"}}, "summary": "Charter"})
+    assert calls[0] == ("GET", "/internal/hermes/teams/t%201/context?run_id=r", None)
+    assert calls[1] == ("GET", "/internal/hermes/tasks/k?run_id=r", None)
+    assert calls[2] == ("GET", "/internal/hermes/sections/s?run_id=r", None)
+    assert calls[3] == ("POST", "/internal/hermes/teams/t/proposals", {"run_id": "r", "kind": "task_split", "payload": {"tasks": split}, "summary": "Split"})
     assert calls[4][2]["payload"] == {"task_id": "k", "changes": {"title": "B"}, "rationale": "r"}
-    assert calls[5][2] == {"acting_user_id": "u", "kind": "doc_section", "payload": {"section_id": "s", "content_md": "FR-1", "requirement_ids": []}, "summary": "Draft"}
+    assert calls[5][2] == {"run_id": "r", "kind": "doc_section", "payload": {"section_id": "s", "content_md": "FR-1", "requirement_ids": []}, "summary": "Draft"}
     assert calls[6][2]["payload"] == {"charter": {"goal": "g"}}

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..identity import CurrentUser, User
 from ..models import now
 from .chat import post_message
-from .common import Db, aware, iso, loads, require, require_team, utc
+from .common import Db, aware, iso, loads, lock_for_write, require, require_team, utc
 from .docs import lock_active, section_dict
 from .events import emit
 from .models import DocSection, Milestone, Task, Team, TeamDocument, TeamEvent, TeamMember, TeamProposal
@@ -53,6 +53,10 @@ class TaskChanges(BaseModel):
     def changes_something(self) -> "TaskChanges":
         if not self.model_fields_set:
             raise ValueError("A task edit must change something")
+        # Only the assignee may be cleared; a null title/description/points would corrupt the task.
+        for field in ("title", "description", "estimate_points"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
         return self
 
 
@@ -201,7 +205,9 @@ def create_proposal(db: Session, team: Team, kind: str, payload: dict, *, summar
     base_seq = db.scalar(select(func.max(TeamEvent.seq)).where(TeamEvent.team_id == team.id)) or 0
     proposal = TeamProposal(
         team_id=team.id, scope=scope, affected_user_id=affected, kind=kind,
-        summary=(summary.strip() or kind.replace("_", " "))[:240], payload_json=model.model_dump_json(),
+        # task_edit keeps only the fields Hermes set, so applying never writes the unset ones as null.
+        summary=(summary.strip() or kind.replace("_", " "))[:240],
+        payload_json=model.model_dump_json(exclude_unset=kind == "task_edit"),
         base_seq=base_seq, invoked_by=invoked_by, run_id=run_id, expires_at=now() + EXPIRY,
     )
     db.add(proposal)
@@ -218,11 +224,22 @@ def _close(db: Session, team: Team, proposal: TeamProposal, status: str, actor: 
     emit(db, team.id, f"proposal.{status}", actor, {**proposal_dict(proposal), **(extra or {})})
 
 
+def _section_changed_since(db: Session, team: Team, section_id: str, base_seq: int) -> bool:
+    updates = db.scalars(select(TeamEvent.payload_json).where(
+        TeamEvent.team_id == team.id, TeamEvent.seq > base_seq, TeamEvent.type == "section.updated",
+    )).all()
+    return any(loads(payload, {}).get("id") == section_id for payload in updates)
+
+
 def apply_proposal(db: Session, team: Team, proposal: TeamProposal, actor: str) -> None:
     """Re-check against the current team, then write it in this transaction (or mark it stale)."""
     model = PAYLOADS[proposal.kind].model_validate_json(proposal.payload_json)
     try:
-        check(db, team, proposal.kind, model, proposal.invoked_by)
+        scope, affected = check(db, team, proposal.kind, model, proposal.invoked_by)
+        if (scope, affected) != (proposal.scope, proposal.affected_user_id):
+            raise ProposalError("The task or section changed hands since this was proposed")
+        if proposal.kind == "doc_section" and _section_changed_since(db, team, model.section_id, proposal.base_seq):
+            raise ProposalError("A teammate changed this section after the draft was written")
     except ProposalError as error:
         _close(db, team, proposal, "stale", actor, {"reason": str(error)})
         return
@@ -286,6 +303,7 @@ def expire_stalled(db: Session, team: Team) -> None:
 
 
 def _load(db: Session, proposal_id: str, user: User) -> tuple[TeamProposal, Team]:
+    lock_for_write(db)
     proposal = require(db, TeamProposal, proposal_id, "Proposal")
     team = require_team(db, proposal.team_id)
     authorize(db, user, team, "write")

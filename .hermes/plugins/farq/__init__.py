@@ -10,14 +10,14 @@ EVIDENCE_KINDS = ["course", "project", "skill", "experience", "certificate", "pu
 
 def _propose(params: dict, kind: str, payload: dict) -> str:
     """Every team change Hermes makes is a proposal the team must accept."""
-    return request("POST", f"/internal/hermes/teams/{quote(params['team_id'])}/proposals", {
-        "acting_user_id": params["acting_user_id"], "kind": kind, "payload": payload, "summary": params.get("summary", ""),
+    return request("POST", f"/internal/hermes/teams/{quote(params['team_id'], safe='')}/proposals", {
+        "run_id": params["run_id"], "kind": kind, "payload": payload, "summary": params.get("summary", ""),
     })
 
 
 TEAM_IDS = {
     "team_id": {"type": "string", "description": "team_id from the run message header"},
-    "acting_user_id": {"type": "string", "description": "acting_user_id from the run message header"},
+    "run_id": {"type": "string", "description": "run_id from the run message header"},
 }
 
 
@@ -222,23 +222,23 @@ def register(ctx):
         ),
         (
             "farq_get_team_context",
-            "Read a Farq course team as the member who invoked you: assignment brief and rubric, teammate cards "
+            "Read a Farq course team as the member who started this run: assignment brief and rubric, teammate cards "
             "(stated skills, goals and roadmap stage), tasks, milestones, decisions, document outline, open proposals "
             "and, for members, the last 50 chat messages. Call this before any claim about the team.",
-            {"type": "object", "properties": dict(TEAM_IDS), "required": ["team_id", "acting_user_id"]},
-            lambda p, **_: request("GET", f"/internal/hermes/teams/{quote(p['team_id'])}/context?acting_user_id={quote(p['acting_user_id'])}"),
+            {"type": "object", "properties": dict(TEAM_IDS), "required": ["team_id", "run_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/teams/{quote(p['team_id'], safe='')}/context?run_id={quote(p['run_id'], safe='')}"),
         ),
         (
             "farq_get_task",
             "Read one team task in full.",
-            {"type": "object", "properties": {"task_id": {"type": "string"}, "acting_user_id": TEAM_IDS["acting_user_id"]}, "required": ["task_id", "acting_user_id"]},
-            lambda p, **_: request("GET", f"/internal/hermes/tasks/{quote(p['task_id'])}?acting_user_id={quote(p['acting_user_id'])}"),
+            {"type": "object", "properties": {"task_id": {"type": "string"}, "run_id": TEAM_IDS["run_id"]}, "required": ["task_id", "run_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/tasks/{quote(p['task_id'], safe='')}?run_id={quote(p['run_id'], safe='')}"),
         ),
         (
             "farq_get_doc_section",
             "Read one SRS/SDS/SPMP section in full, including its owner and status.",
-            {"type": "object", "properties": {"section_id": {"type": "string"}, "acting_user_id": TEAM_IDS["acting_user_id"]}, "required": ["section_id", "acting_user_id"]},
-            lambda p, **_: request("GET", f"/internal/hermes/sections/{quote(p['section_id'])}?acting_user_id={quote(p['acting_user_id'])}"),
+            {"type": "object", "properties": {"section_id": {"type": "string"}, "run_id": TEAM_IDS["run_id"]}, "required": ["section_id", "run_id"]},
+            lambda p, **_: request("GET", f"/internal/hermes/sections/{quote(p['section_id'], safe='')}?run_id={quote(p['run_id'], safe='')}"),
         ),
         (
             "farq_propose_tasks",
@@ -263,7 +263,7 @@ def register(ctx):
                     }},
                     "rationale": {"type": "string"},
                 },
-                "required": ["team_id", "acting_user_id", "kind", "summary"],
+                "required": ["team_id", "run_id", "kind", "summary"],
             },
             lambda p, **_: _propose(p, p["kind"], {"tasks": p.get("tasks", [])} if p["kind"] == "task_split"
                                     else {"task_id": p.get("task_id", ""), "changes": p.get("changes", {}), "rationale": p.get("rationale", "")}),
@@ -278,7 +278,7 @@ def register(ctx):
                     **TEAM_IDS, "section_id": {"type": "string"}, "content_md": {"type": "string"},
                     "requirement_ids": {"type": "array", "items": {"type": "string"}}, "summary": {"type": "string"},
                 },
-                "required": ["team_id", "acting_user_id", "section_id", "content_md", "summary"],
+                "required": ["team_id", "run_id", "section_id", "content_md", "summary"],
             },
             lambda p, **_: _propose(p, "doc_section", {"section_id": p["section_id"], "content_md": p["content_md"], "requirement_ids": p.get("requirement_ids", [])}),
         ),
@@ -291,7 +291,7 @@ def register(ctx):
                 "type": "object",
                 "properties": {**TEAM_IDS, "kind": {"type": "string", "enum": ["charter", "milestones", "section_owners"]},
                                "payload": {"type": "object"}, "summary": {"type": "string"}},
-                "required": ["team_id", "acting_user_id", "kind", "payload", "summary"],
+                "required": ["team_id", "run_id", "kind", "payload", "summary"],
             },
             lambda p, **_: _propose(p, p["kind"], p.get("payload", {})),
         ),

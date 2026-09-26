@@ -1,7 +1,8 @@
 "use client"
 
 import { useRef, useState, type CSSProperties } from "react"
-import { ArrowLeft, CalendarRange, FileText, Gavel, LayoutGrid, ScrollText, type LucideIcon } from "lucide-react"
+import { ArrowLeft, CalendarRange, FileText, Gavel, History, LayoutGrid, ScrollText, type LucideIcon } from "lucide-react"
+import { ActivityLog } from "@/components/teams/ActivityLog"
 import { CharterView } from "@/components/teams/CharterView"
 import { DecisionLog } from "@/components/teams/DecisionLog"
 import { DocStudio } from "@/components/teams/DocStudio"
@@ -18,13 +19,14 @@ import { coverFor } from "@/lib/team-cover"
 import { clampDockWidth, readDockWidth, saveDockWidth } from "@/lib/team-layout"
 import { errorMessage } from "@/lib/teams-api"
 
-type View = "board" | "timeline" | "docs" | "decisions" | "charter"
+type View = "board" | "timeline" | "docs" | "decisions" | "activity" | "charter"
 
 const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
   { id: "board", label: "Board", icon: LayoutGrid },
   { id: "timeline", label: "Timeline", icon: CalendarRange },
   { id: "docs", label: "Docs", icon: FileText },
   { id: "decisions", label: "Decisions", icon: Gavel },
+  { id: "activity", label: "Activity", icon: History },
   { id: "charter", label: "Charter & brief", icon: ScrollText },
 ]
 
@@ -102,6 +104,8 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
           <DocStudio store={store} canEdit={member} update={update} onFocus={setFocus} />
         ) : view === "decisions" ? (
           <DecisionLog store={store} canEdit={member} update={update} onError={fail} />
+        ) : view === "activity" ? (
+          <ActivityLog store={store} />
         ) : (
           <CharterView store={store} />
         )}

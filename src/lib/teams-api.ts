@@ -58,6 +58,7 @@ export interface TeamProposal {
 }
 export interface SplitTaskPayload { title: string; description?: string; assignee_id: string; estimate_points: number; rationale: string }
 export interface HermesRunInfo { id: string; team_id: string; status: "queued" | "running" | "completed" | "failed"; stage: string; command: string; invoked_by: string }
+export interface ActivityEntry { seq: number; at: string | null; actor_user_id: string | null; actor: string; kind: string; text: string }
 export interface TeamRisk { key: string; kind: "deadline" | "blocked" | "quiet"; text: string; private: boolean }
 export interface DocSectionInfo {
   id: string; document_id: string; key: string; title: string; position: number; owner_user_id: string | null
@@ -154,6 +155,8 @@ export function teamClient(userId: string) {
   risks: (teamId: string) => teamApi<TeamRisk[]>(`/api/teams/${teamId}/risks`),
   markSeen: (teamId: string, seq: number) => teamApi<{ last_seen_seq: number }>(`/api/teams/${teamId}/seen`, send("POST", { seq })),
   createDocument: (teamId: string, kind: DocumentKind) => teamApi<TeamDocumentInfo>(`/api/teams/${teamId}/documents`, send("POST", { kind })),
+  activity: (teamId: string, before?: number) =>
+    teamApi<{ entries: ActivityEntry[]; next_before: number | null }>(`/api/teams/${teamId}/activity${before ? `?before=${before}` : ""}`),
   updateTeam: (teamId: string, body: { name?: string; size_limit?: number }) => teamApi<TeamInfo>(`/api/teams/${teamId}`, send("PATCH", body)),
   updateSection: (sectionId: string, body: { title?: string; owner_user_id?: string | null }) =>
     teamApi<DocSectionInfo>(`/api/sections/${sectionId}`, send("PATCH", body)),

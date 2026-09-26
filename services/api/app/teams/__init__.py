@@ -11,6 +11,7 @@ from .state import router as state_router
 from .proposals import router as proposals_router
 from .hermes_tools import router as hermes_tools_router
 from .notices import router as notices_router
+from .activity import router as activity_router
 
 router = APIRouter()
 router.include_router(events_router)
@@ -23,3 +24,4 @@ router.include_router(state_router)
 router.include_router(proposals_router)
 router.include_router(hermes_tools_router)
 router.include_router(notices_router)
+router.include_router(activity_router)

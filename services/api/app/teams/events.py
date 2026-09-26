@@ -92,6 +92,10 @@ def team_event_stream(
         raise HTTPException(401, "Choose who you are with the View as switcher")
     team = require_team(db, team_id)
     role = authorize(db, user, team, "view")
+    if is_member(role):
+        from .notices import post_notices  # late import: notices -> chat -> events
+        post_notices(db, team)
+        db.commit()
     start = int(last_event_id) if last_event_id and last_event_id.isdigit() else after
     user_id = user.id
 

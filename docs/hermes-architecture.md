@@ -42,6 +42,20 @@ SQLite values before storing it. The feed's `date` is labelled "Date shown by Ha
 the public endpoint does not define it as a registration deadline. A future Outlook connector
 will write into the same normalized opportunity boundary.
 
+## Blackboard demo snapshot
+
+For the hackathon, Farq treats Blackboard as already indexed. A host-side importer reads only an
+explicit allowlist of local course folders, extracts text from PDF/PPTX lectures, adds visibly
+synthetic demo records, and sends one authenticated normalized snapshot to FastAPI. FastAPI and
+SQLite remain the source of truth; Hermes has no Blackboard cookie, password, browser, filesystem
+path, binary file, or arbitrary SQL access.
+
+The snapshot is authoritative: repeating the import upserts current records and removes stale ones.
+Every record carries course identity, origin (`local_material` or `synthetic`), source reference,
+timestamps and a checksum. Search returns short snippets; full reads are capped and paginated.
+Retrieved material is untrusted content, not instructions to the agent. The UI and agent must call
+this a **pre-indexed demo snapshot**, never a live Blackboard sync.
+
 ## Roadmap projects and evaluation
 
 Skill-sequence stages end in a visible `nodeType="project"` milestone. The roadmap snapshot keeps
@@ -156,6 +170,12 @@ library; original files stay in memory only.
 - `farq_scan_folder(path, purpose)` / `farq_read_project_file(path)` index a student-typed local
   folder; secrets, keys and identity documents are refused in code.
 - `farq_submit_evidence(user_id, source_id, items)` stores suggested evidence for review.
+- `farq_blackboard_list_courses(user_id)` lists the student's indexed courses.
+- `farq_blackboard_list_content(user_id, course_id, content_type, limit)` lists metadata only.
+- `farq_blackboard_search(user_id, query, course_id, limit)` searches extracted text and returns
+  bounded snippets with citations.
+- `farq_blackboard_read_item(user_id, item_id, cursor)` reads one bounded text chunk.
+- `farq_blackboard_list_updates(user_id, since, limit)` lists snapshot changes by timestamp.
 
 The plugin calls only `/internal/hermes/*` endpoints with `FARQ_INTERNAL_TOKEN`. It never opens
 SQLite. Hermes cannot accept proposals; the student-facing endpoint performs that transaction.

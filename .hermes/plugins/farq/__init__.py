@@ -174,6 +174,74 @@ def register(ctx):
             lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/hackathons?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
         ),
         (
+            "farq_blackboard_list_courses",
+            "List the student's courses in Farq's read-only, pre-indexed Blackboard demo snapshot.",
+            {
+                "type": "object",
+                "properties": {"user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header"}},
+                "required": ["user_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/courses"),
+        ),
+        (
+            "farq_blackboard_list_content",
+            "List compact Blackboard content metadata for one course. Use read_item to retrieve text.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "course_id": {"type": "string"},
+                    "content_type": {"type": "string", "enum": ["announcement", "syllabus", "lecture", "document", "assignment"]},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 30},
+                },
+                "required": ["user_id", "course_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/courses/{p['course_id']}/content?content_type={quote(p.get('content_type', ''))}&limit={p.get('limit', 30)}"),
+        ),
+        (
+            "farq_blackboard_search",
+            "Search titles and extracted text across the student's pre-indexed Blackboard content. Returns short snippets, not full documents.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "query": {"type": "string", "minLength": 2},
+                    "course_id": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8},
+                },
+                "required": ["user_id", "query"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/search?query={quote(p['query'])}&course_id={quote(p.get('course_id', ''))}&limit={p.get('limit', 8)}"),
+        ),
+        (
+            "farq_blackboard_read_item",
+            "Read one bounded text chunk from a Blackboard content item. Continue with next_cursor when more text is needed.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "item_id": {"type": "string"},
+                    "cursor": {"type": "integer", "minimum": 0, "default": 0},
+                },
+                "required": ["user_id", "item_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/items/{p['item_id']}?cursor={p.get('cursor', 0)}"),
+        ),
+        (
+            "farq_blackboard_list_updates",
+            "List recently added or modified Blackboard snapshot items, including demo deadlines and announcements.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "since": {"type": "string", "description": "Optional ISO-8601 timestamp"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 15},
+                },
+                "required": ["user_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/updates?since={quote(p.get('since') or '1970-01-01T00:00:00Z')}&limit={p.get('limit', 15)}"),
+        ),
+        (
             "farq_submit_roadmap_proposal",
             "Submit a validated future-only roadmap revision for student review. This never activates the revision.",
             {

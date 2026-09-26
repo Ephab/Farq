@@ -5,22 +5,24 @@
  * is hardcoded mock content. */
 
 .fq {
-  --fq-bg: #f3f5fa;
-  --fq-bg-elevated: #f8f9fc;
-  --fq-surface: rgba(255, 255, 255, 0.78);
-  --fq-surface-solid: #fdfdff;
-  --fq-surface-muted: #eef1f7;
-  --fq-surface-strong: #e5eaf4;
-  --fq-text: #151a26;
-  --fq-text-soft: #394256;
-  --fq-muted: #5f697c;
-  --fq-faint: #667085;
-  --fq-line: rgba(21, 26, 38, 0.1);
-  --fq-line-strong: rgba(21, 26, 38, 0.16);
-  --fq-accent: #315fdf;
-  --fq-accent-hover: #244fc8;
-  --fq-accent-soft: rgba(49, 95, 223, 0.1);
-  --fq-accent-glass: rgba(49, 95, 223, 0.16);
+  /* Colours come from the active app theme (src/index.css), so Coach and Group Projects match it. */
+  --fq-bg: color-mix(in srgb, var(--muted) 55%, var(--background));
+  --fq-bg-elevated: color-mix(in srgb, var(--muted) 30%, var(--background));
+  --fq-surface-solid: var(--background);
+  --fq-surface: color-mix(in srgb, var(--fq-surface-solid) 80%, transparent);
+  --fq-surface-muted: var(--muted);
+  --fq-surface-strong: color-mix(in srgb, var(--muted) 88%, var(--foreground));
+  --fq-text: var(--foreground);
+  --fq-text-soft: color-mix(in srgb, var(--foreground) 80%, var(--background));
+  --fq-muted: var(--muted-foreground);
+  --fq-faint: var(--muted-foreground);
+  --fq-line: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --fq-line-strong: color-mix(in srgb, var(--foreground) 17%, transparent);
+  --fq-accent: var(--primary);
+  --fq-on-accent: var(--primary-foreground);
+  --fq-accent-hover: color-mix(in srgb, var(--primary) 86%, var(--foreground));
+  --fq-accent-soft: color-mix(in srgb, var(--primary) 11%, transparent);
+  --fq-accent-glass: color-mix(in srgb, var(--primary) 17%, transparent);
   --fq-success: #13795a;
   --fq-success-soft: rgba(19, 121, 90, 0.1);
   --fq-warning: #805000;
@@ -29,7 +31,7 @@
   --fq-danger-soft: rgba(191, 63, 83, 0.1);
   --fq-shadow-sm: 0 8px 24px rgba(38, 52, 84, 0.08);
   --fq-shadow-lg: 0 28px 80px rgba(34, 48, 82, 0.16);
-  --fq-shadow-accent: 0 12px 30px rgba(49, 95, 223, 0.22);
+  --fq-shadow-accent: 0 12px 30px color-mix(in srgb, var(--primary) 22%, transparent);
   --fq-r-xs: 8px;
   --fq-r-sm: 12px;
   --fq-r-md: 16px;
@@ -51,22 +53,23 @@ html[data-theme="tokyo-night"] .fq,
 html[data-theme="nord"] .fq,
 html[data-theme="dracula"] .fq {
   color-scheme: dark;
-  --fq-bg: #0b0e15;
-  --fq-bg-elevated: #10141e;
-  --fq-surface: rgba(24, 29, 41, 0.8);
-  --fq-surface-solid: #171c28;
-  --fq-surface-muted: #1c2230;
-  --fq-surface-strong: #252d3e;
-  --fq-text: #f3f5fa;
-  --fq-text-soft: #c6cddd;
-  --fq-muted: #aab4c8;
-  --fq-faint: #a6b0c4;
-  --fq-line: rgba(255, 255, 255, 0.1);
-  --fq-line-strong: rgba(255, 255, 255, 0.17);
-  --fq-accent: #7898ff;
-  --fq-accent-hover: #91abff;
-  --fq-accent-soft: rgba(120, 152, 255, 0.13);
-  --fq-accent-glass: rgba(120, 152, 255, 0.2);
+  --fq-bg: var(--background);
+  --fq-bg-elevated: color-mix(in srgb, var(--background) 94%, var(--foreground));
+  --fq-surface-solid: color-mix(in srgb, var(--background) 93%, var(--foreground));
+  --fq-surface: color-mix(in srgb, var(--fq-surface-solid) 85%, transparent);
+  --fq-surface-muted: color-mix(in srgb, var(--muted) 80%, var(--background));
+  --fq-surface-strong: var(--muted);
+  --fq-text: var(--foreground);
+  --fq-text-soft: color-mix(in srgb, var(--foreground) 82%, var(--background));
+  --fq-muted: var(--muted-foreground);
+  --fq-faint: var(--muted-foreground);
+  --fq-line: color-mix(in srgb, var(--foreground) 11%, transparent);
+  --fq-line-strong: color-mix(in srgb, var(--foreground) 18%, transparent);
+  --fq-accent: var(--primary);
+  --fq-on-accent: var(--primary-foreground);
+  --fq-accent-hover: color-mix(in srgb, var(--primary) 86%, var(--foreground));
+  --fq-accent-soft: color-mix(in srgb, var(--primary) 14%, transparent);
+  --fq-accent-glass: color-mix(in srgb, var(--primary) 20%, transparent);
   --fq-success: #5ed3aa;
   --fq-success-soft: rgba(94, 211, 170, 0.12);
   --fq-warning: #f1b75b;
@@ -75,7 +78,7 @@ html[data-theme="dracula"] .fq {
   --fq-danger-soft: rgba(255, 132, 151, 0.12);
   --fq-shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.24);
   --fq-shadow-lg: 0 32px 90px rgba(0, 0, 0, 0.45);
-  --fq-shadow-accent: 0 14px 36px rgba(70, 102, 204, 0.24);
+  --fq-shadow-accent: 0 14px 36px color-mix(in srgb, var(--primary) 24%, transparent);
 }
 
 .fq button,
@@ -107,7 +110,7 @@ html[data-theme="dracula"] .fq {
   height: calc(100dvh - 3.5rem);
   background:
     radial-gradient(circle at 78% -10%, var(--fq-accent-soft), transparent 32rem),
-    radial-gradient(circle at 2% 18%, rgba(120, 152, 255, 0.06), transparent 28rem),
+    radial-gradient(circle at 2% 18%, color-mix(in srgb, var(--fq-accent) 6%, transparent), transparent 28rem),
     var(--fq-bg);
   padding: clamp(14px, 2.4vw, 34px);
 }
@@ -427,7 +430,7 @@ html[data-theme="dracula"] .fq {
 .fq .choice[aria-pressed="true"] .choice-mark {
   border-color: var(--fq-accent);
   background: var(--fq-accent);
-  color: #fff;
+  color: var(--fq-on-accent);
 }
 
 .fq .choice-copy {
@@ -627,7 +630,7 @@ html[data-theme="dracula"] .fq {
   place-items: center;
   border-radius: 15px;
   background: var(--fq-accent);
-  color: #fff;
+  color: var(--fq-on-accent);
   cursor: pointer;
   transition: transform 170ms var(--fq-ease-out), background 170ms ease, opacity 170ms ease;
 }
@@ -731,18 +734,18 @@ html[data-theme="dracula"] .fq {
   border-radius: var(--fq-r-pill);
   padding: 0 18px;
   background: var(--fq-accent);
-  color: #fff;
+  color: var(--fq-on-accent);
   font-size: 14px;
   font-weight: 680;
   letter-spacing: -0.01em;
   cursor: pointer;
-  box-shadow: 0 8px 22px rgba(49, 95, 223, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--fq-accent) 20%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transition: transform 170ms var(--fq-ease-out), background 170ms ease, box-shadow 170ms ease, opacity 170ms ease;
 }
 
 .fq .button:hover:not(:disabled) {
   background: var(--fq-accent-hover);
-  box-shadow: 0 12px 28px rgba(49, 95, 223, 0.27), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--fq-accent) 27%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transform: translateY(-1px);
 }
 
@@ -958,7 +961,7 @@ html[data-theme="dracula"] .fq {
 
 .fq .edit-actions .edit-save {
   background: var(--fq-accent);
-  color: #fff;
+  color: var(--fq-on-accent);
 }
 
 .fq .edit-actions .edit-save:hover {

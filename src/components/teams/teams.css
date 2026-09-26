@@ -24,7 +24,7 @@
 .fq .tm-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--fq-r-pill); background: var(--fq-surface-muted); color: var(--fq-text); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 0.15s; }
 .fq .tm-btn:hover:not(:disabled) { background: var(--fq-surface-strong); }
 .fq .tm-btn:disabled { cursor: not-allowed; opacity: 0.5; }
-.fq .tm-btn-primary { background: var(--fq-accent); color: #fff; box-shadow: var(--fq-shadow-accent); }
+.fq .tm-btn-primary { background: var(--fq-accent); color: var(--fq-on-accent); box-shadow: var(--fq-shadow-accent); }
 .fq .tm-btn-primary:hover:not(:disabled) { background: var(--fq-accent-hover); }
 .fq .tm-btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
 .fq .tm-icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: transparent; color: var(--fq-muted); cursor: pointer; }
@@ -162,7 +162,7 @@
 .fq .tm-msg[data-mine] { flex-direction: row-reverse; }
 .fq .tm-msg[data-mine] .tm-msg-body { display: flex; flex-direction: column; align-items: flex-end; }
 .fq .tm-msg[data-mine] .tm-msg-body header { flex-direction: row-reverse; }
-.fq .tm-msg[data-mine] .tm-text { max-width: 85%; border-radius: 14px 14px 4px 14px; background: var(--fq-accent); color: #fff; }
+.fq .tm-msg[data-mine] .tm-text { max-width: 85%; border-radius: 14px 14px 4px 14px; background: var(--fq-accent); color: var(--fq-on-accent); }
 .fq .tm-msg[data-mine] .tm-reply { border-left: 0; border-right: 3px solid var(--fq-line-strong); text-align: end; }
 .fq .tm-msg[data-mine] .tm-msg-actions { right: auto; left: 8px; }
 .fq .tm-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -274,3 +274,35 @@
   .fq .tm-outline { max-height: 200px; }
   .fq .tm-export-menu { right: auto; left: 0; }
 }
+
+/* Chat groups: follow-ups from the same person sit tight under the first, corners joined. */
+.fq .tm-avatar-spacer { flex: none; width: 28px; }
+.fq .tm-msg[data-continued] { margin-top: -4px; padding-top: 1px; }
+.fq .tm-msg[data-followed] { padding-bottom: 1px; }
+.fq .tm-msg[data-continued]:not([data-mine]):not([data-hermes]) .tm-text { border-top-left-radius: 4px; }
+.fq .tm-msg[data-mine][data-continued] .tm-text { border-top-right-radius: 4px; }
+.fq .tm-msg[data-mine][data-followed] .tm-text { border-bottom-right-radius: 4px; }
+.fq .tm-msg[data-mine] { padding-left: 36px; }
+.fq .tm-msg[data-mine] .tm-msg-body header { gap: 4px; font-size: 11px; }
+.fq .tm-msg[data-hermes][data-continued] { border-top-left-radius: 4px; border-top-right-radius: 4px; }
+.fq .tm-msg[data-hermes][data-followed] { border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }
+/* Mentions and commands inside a message. */
+.fq .tm-mention { padding: 0 3px; border-radius: 5px; background: var(--fq-accent-soft); color: var(--fq-accent); font-weight: 650; }
+.fq .tm-command { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.92em; font-weight: 700; color: var(--fq-accent); }
+.fq .tm-msg[data-mine] .tm-mention { background: color-mix(in srgb, var(--fq-on-accent) 20%, transparent); color: inherit; }
+.fq .tm-msg[data-mine] .tm-command { color: inherit; }
+/* Polls are a card for everyone, sender included, never squeezed into a bubble. */
+.fq .tm-poll { width: min(100%, 320px); margin-top: 2px; padding: 10px; border: 1px solid var(--fq-line-strong); border-radius: 14px; background: var(--fq-surface-solid); text-align: start; }
+.fq .tm-poll-question { display: flex; align-items: center; gap: 6px; font-size: 14px; overflow-wrap: anywhere; }
+.fq .tm-poll-question svg { flex: none; color: var(--fq-accent); }
+.fq .tm-poll-option { align-items: center; gap: 8px; }
+.fq .tm-poll-option > span:first-of-type { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fq .tm-poll-option[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--fq-accent); }
+/* Pins link both ways: the mark opens Decisions, a decision shows its message. */
+.fq .tm-pin-mark { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--fq-warning-soft); color: var(--fq-warning); cursor: pointer; }
+.fq .tm-decision-link { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0; background: none; text-align: start; cursor: pointer; }
+.fq .tm-decision-link:hover p { text-decoration: underline; text-underline-offset: 3px; }
+.fq .tm-decision-link small { color: var(--fq-muted); }
+.fq .tm-msg[data-flash] { animation: tm-flash 2.2s ease-out; }
+@keyframes tm-flash { 0%, 35% { background: var(--fq-accent-glass); box-shadow: 0 0 0 2px var(--fq-accent-glass); } 100% { background: transparent; box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .fq .tm-msg[data-flash] { animation: none; background: var(--fq-accent-soft); } }

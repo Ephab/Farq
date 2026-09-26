@@ -15,7 +15,7 @@ export function coverFor(seed: string): Cover {
   const base = h % 360
   const second = (base + 40 + ((h >>> 9) % 70)) % 360
   const third = (base + 160 + ((h >>> 17) % 80)) % 360
-  const accents: [string, string, string] = [`hsl(${base} 68% 48%)`, `hsl(${second} 78% 62%)`, `hsl(${third} 72% 56%)`]
+  const accents: [string, string, string] = [`hsl(${base} 34% 46%)`, `hsl(${second} 38% 62%)`, `hsl(${third} 36% 56%)`]
   const x1 = 8 + ((h >>> 3) % 30)
   const y1 = 10 + ((h >>> 7) % 40)
   const x2 = 62 + ((h >>> 11) % 30)
@@ -28,7 +28,7 @@ export function coverFor(seed: string): Cover {
 }
 
 export function avatarColor(userId: string): string {
-  return `hsl(${hash(userId || "?") % 360} 55% 45%)`
+  return `hsl(${hash(userId || "?") % 360} 32% 47%)`
 }
 
 export function initials(name: string): string {

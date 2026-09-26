@@ -13,6 +13,7 @@ from .hermes_tools import router as hermes_tools_router
 from .notices import router as notices_router
 from .activity import router as activity_router
 from .export import router as export_router
+from .demo import router as demo_router
 
 router = APIRouter()
 router.include_router(events_router)
@@ -27,3 +28,4 @@ router.include_router(hermes_tools_router)
 router.include_router(notices_router)
 router.include_router(activity_router)
 router.include_router(export_router)
+router.include_router(demo_router)

@@ -1,12 +1,12 @@
 "use client"
 
-import { useLayoutEffect, useRef, useState } from "react"
-import { ArrowUp, CornerUpLeft, Flag, ListPlus, Pencil, Pin, Search, Sparkles, Trash2, X } from "lucide-react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { ArrowUp, BarChart3, CornerUpLeft, Flag, ListPlus, Pencil, Pin, Search, Sparkles, Trash2, X } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { ProposalCard } from "@/components/teams/ProposalCard"
 import { Avatar, HermesAvatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
-import { HERMES_COMMANDS, insertMention, isNearBottom, mentionQuery, parsePoll, slashQuery } from "@/lib/team-chat"
+import { HERMES_COMMANDS, continuesGroup, insertMention, isNearBottom, mentionQuery, parsePoll, richSegments, slashQuery } from "@/lib/team-chat"
 import { timeAgo } from "@/lib/team-format"
 import { markMessageDeleted, memberName, setReaction, upsertDecision, upsertMessage, type TeamStore } from "@/lib/team-store"
 import { errorMessage, type TeamMessage } from "@/lib/teams-api"
@@ -14,9 +14,16 @@ import { useTeamClient } from "@/components/teams/team-client-context"
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"]
 
-interface TeamChatProps { store: TeamStore; update: StoreUpdate; onMakeTask: (title: string) => void }
+interface TeamChatProps {
+  store: TeamStore
+  update: StoreUpdate
+  onMakeTask: (title: string) => void
+  /** Scroll to and flash this message; a new nonce repeats the jump for the same message. */
+  jumpTo?: { id: string; nonce: number } | null
+  onOpenDecisions: () => void
+}
 
-export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
+export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }: TeamChatProps) {
   const teams = useTeamClient()
   const me = teams.userId
   const teamId = store.team.id
@@ -32,6 +39,7 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastTyping = useRef(0)
 
+  const [flash, setFlash] = useState<string | null>(null)
   const needle = query.trim().toLowerCase()
   const visible = needle ? messages.filter((message) => !message.deleted && message.content.toLowerCase().includes(needle)) : messages
   const pinned = new Set(Object.values(store.decisions).map((decision) => decision.source_message_id))
@@ -62,6 +70,26 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
     if (list && !needle && stickToBottom.current) list.scrollTop = list.scrollHeight
   }, [messages.length, lastMessage?.content, needle, store.hermes?.stage])
 
+  // Jump from a pinned decision to its message: stop following the bottom, centre it, flash it.
+  useEffect(() => {
+    if (!jumpTo) return
+    let frame = window.requestAnimationFrame(() => {
+      // Clear any search first so the message is in the list, then find it on the next frame.
+      setQuery("")
+      setSearching(false)
+      frame = window.requestAnimationFrame(() => {
+        const target = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(jumpTo.id)}"]`)
+        if (!target) return
+        stickToBottom.current = false
+        target.scrollIntoView({ block: "center", behavior: "smooth" })
+        setFlash(jumpTo.id)
+      })
+    })
+    const timer = window.setTimeout(() => setFlash(null), 2400)
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [jumpTo])
+
+  const handles = ["Hermes", ...store.team.members.map((member) => member.display_name.split(" ")[0])]
   const run = async (work: () => Promise<void>) => {
     setError(null)
     try {
@@ -166,10 +194,15 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
       ) : null}
       <div ref={listRef} className="tm-chat-list" onScroll={onListScroll}>
         {visible.length === 0 ? <p className="tm-muted m-auto">{needle ? "No messages match." : "Say hello to your team."}</p> : null}
-        {visible.map((message) => (
+        {visible.map((message, index) => (
           <MessageItem
             key={message.id}
             message={message}
+            continued={!needle && continuesGroup(visible[index - 1], message)}
+            followed={!needle && continuesGroup(message, visible[index + 1])}
+            flash={flash === message.id}
+            handles={handles}
+            onOpenDecisions={onOpenDecisions}
             store={store}
             me={me}
             pinned={pinned.has(message.id)}
@@ -260,6 +293,11 @@ export function TeamChat({ store, update, onMakeTask }: TeamChatProps) {
 
 interface MessageItemProps {
   message: TeamMessage
+  continued: boolean
+  followed: boolean
+  flash: boolean
+  handles: string[]
+  onOpenDecisions: () => void
   store: TeamStore
   me: string
   pinned: boolean
@@ -273,7 +311,7 @@ interface MessageItemProps {
   update: StoreUpdate
 }
 
-function MessageItem({ message, store, me, pinned, onReply, onEdit, onDelete, onPin, onReact, onVote, onMakeTask, update }: MessageItemProps) {
+function MessageItem({ message, continued, followed, flash, handles, onOpenDecisions, store, me, pinned, onReply, onEdit, onDelete, onPin, onReact, onVote, onMakeTask, update }: MessageItemProps) {
   if (message.kind === "system") return <div className="tm-system" dir="auto">{message.content}</div>
   if (message.kind === "notice") {
     return (
@@ -293,17 +331,37 @@ function MessageItem({ message, store, me, pinned, onReply, onEdit, onDelete, on
   const author = memberName(store, message.author_user_id)
   const parent = message.reply_to_id ? store.messages?.find((item) => item.id === message.reply_to_id) : undefined
   const reactions = Object.entries(message.reactions)
+  const flag = (on: boolean) => (on ? "" : undefined)
+  const pinMark = pinned ? (
+    <button type="button" className="tm-pin-mark" title="Pinned as a decision. Open Decisions" aria-label="Pinned as a decision. Open Decisions" onClick={onOpenDecisions}>
+      <Pin className="size-3" aria-hidden="true" />
+    </button>
+  ) : null
+  // Your own messages need no name or picture; follow-ups in a group show neither.
+  const showHeader = mine ? Boolean(message.edited_at || message.visible_to_user_id || pinned) : !continued
   return (
-    <article className="tm-msg" data-mine={mine ? "" : undefined} data-hermes={hermes ? "" : undefined} data-private={message.visible_to_user_id ? "" : undefined}>
-      {hermes ? <HermesAvatar size={28} /> : <Avatar userId={message.author_user_id ?? ""} name={author} size={28} />}
+    <article
+      className="tm-msg"
+      data-message-id={message.id}
+      data-mine={flag(mine)}
+      data-hermes={flag(hermes)}
+      data-private={flag(Boolean(message.visible_to_user_id))}
+      data-continued={flag(continued)}
+      data-followed={flag(followed)}
+      data-flash={flag(flash)}
+      title={mine ? new Date(message.created_at).toLocaleString() : undefined}
+    >
+      {mine ? null : continued ? <span className="tm-avatar-spacer" aria-hidden="true" /> : hermes ? <HermesAvatar size={28} /> : <Avatar userId={message.author_user_id ?? ""} name={author} size={28} />}
       <div className="tm-msg-body">
-        <header>
-          <strong>{author}</strong>
-          <time dateTime={message.created_at}>{timeAgo(message.created_at)}</time>
-          {message.edited_at ? <span>· edited</span> : null}
-          {message.visible_to_user_id ? <span>· only you</span> : null}
-          {pinned ? <span>· <Pin className="inline size-3" aria-label="Pinned as a decision" /></span> : null}
-        </header>
+        {showHeader ? (
+          <header>
+            {mine ? null : <strong>{author}</strong>}
+            {mine ? null : <time dateTime={message.created_at}>{timeAgo(message.created_at)}</time>}
+            {message.edited_at ? <span>edited</span> : null}
+            {message.visible_to_user_id ? <span>only you</span> : null}
+            {pinMark}
+          </header>
+        ) : null}
         {parent ? (
           <blockquote className="tm-reply" dir="auto">
             {memberName(store, parent.author_user_id)}: {parent.deleted ? "deleted message" : parent.content.slice(0, 140)}
@@ -311,12 +369,17 @@ function MessageItem({ message, store, me, pinned, onReply, onEdit, onDelete, on
         ) : null}
         {message.deleted ? (
           <p className="tm-deleted">Message deleted</p>
+        ) : message.kind === "poll" ? (
+          <PollView message={message} me={me} store={store} onVote={(option) => onVote(message, option)} />
         ) : hermes ? (
           <div dir="auto"><MarkdownText text={message.content} /></div>
         ) : (
-          <p className="tm-text" dir="auto">{message.content}</p>
+          <p className="tm-text" dir="auto">
+            {richSegments(message.content, handles).map((segment, index) =>
+              segment.kind === "text" ? segment.text : <span key={index} className={segment.kind === "mention" ? "tm-mention" : "tm-command"}>{segment.text}</span>,
+            )}
+          </p>
         )}
-        {message.kind === "poll" && !message.deleted ? <PollView message={message} me={me} onVote={(option) => onVote(message, option)} /> : null}
         {reactions.length > 0 ? (
           <div className="tm-reactions">
             {reactions.map(([emoji, users]) => (
@@ -356,25 +419,28 @@ function MessageItem({ message, store, me, pinned, onReply, onEdit, onDelete, on
   )
 }
 
-function PollView({ message, me, onVote }: { message: TeamMessage; me: string; onVote: (option: number) => void }) {
+function PollView({ message, me, store, onVote }: { message: TeamMessage; me: string; store: TeamStore; onVote: (option: number) => void }) {
   const metadata = (message.metadata ?? {}) as { options?: string[]; votes?: Record<string, number> }
   const options = metadata.options ?? []
   const votes = Object.values(metadata.votes ?? {})
   const mine = metadata.votes?.[me]
+  const voters = (index: number) =>
+    Object.entries(metadata.votes ?? {}).filter(([, vote]) => vote === index).map(([userId]) => memberName(store, userId)).join(", ")
   return (
-    <div className="tm-poll">
+    <div className="tm-poll" role="group" aria-label={`Poll: ${message.content}`}>
+      <strong className="tm-poll-question" dir="auto"><BarChart3 className="size-3.5" aria-hidden="true" /> {message.content}</strong>
       {options.map((option, index) => {
         const count = votes.filter((vote) => vote === index).length
         const pct = votes.length ? Math.round((100 * count) / votes.length) : 0
         return (
-          <button key={option} type="button" className="tm-poll-option" aria-pressed={mine === index} onClick={() => onVote(index)}>
+          <button key={option} type="button" className="tm-poll-option" aria-pressed={mine === index} title={voters(index) || "No votes yet"} onClick={() => onVote(index)}>
             <i style={{ width: `${pct}%` }} />
             <span dir="auto">{option}</span>
             <span>{count}</span>
           </button>
         )
       })}
-      <small className="tm-muted">{votes.length} {votes.length === 1 ? "vote" : "votes"}</small>
+      <small className="tm-muted">{votes.length} {votes.length === 1 ? "vote" : "votes"}{mine === undefined ? " · tap to vote" : " · tap another to change"}</small>
     </div>
   )
 }

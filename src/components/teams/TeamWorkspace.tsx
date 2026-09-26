@@ -33,6 +33,7 @@ const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
 export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () => void }) {
   const { store, error, live, reload, update } = useTeamStream(teamId)
   const [view, setView] = useState<View>("board")
+  const [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
   const [focus, setFocus] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [sheet, setSheet] = useState<TaskSheetState | null>(null)
@@ -103,7 +104,7 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
         ) : view === "docs" ? (
           <DocStudio store={store} canEdit={member} update={update} onFocus={setFocus} />
         ) : view === "decisions" ? (
-          <DecisionLog store={store} canEdit={member} update={update} onError={fail} />
+          <DecisionLog store={store} canEdit={member} update={update} onError={fail} onJump={member ? (id) => setJump({ id, nonce: Date.now() }) : undefined} />
         ) : view === "activity" ? (
           <ActivityLog store={store} />
         ) : (
@@ -113,7 +114,13 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
       <div className="tm-dock-slot">
         <DockResizer width={dockWidth} onResize={resizeDock} />
         {member ? (
-          <TeamChat store={store} update={update} onMakeTask={(title) => setSheet({ mode: "create", title })} />
+          <TeamChat
+            store={store}
+            update={update}
+            onMakeTask={(title) => setSheet({ mode: "create", title })}
+            jumpTo={jump}
+            onOpenDecisions={() => setView("decisions")}
+          />
         ) : (
           <InstructorPanel store={store} />
         )}

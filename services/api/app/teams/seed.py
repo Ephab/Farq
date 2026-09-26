@@ -14,7 +14,8 @@ from .chat import decision_dict, message_dict
 from .docs import OUTLINES, document_dict, section_dict
 from .events import emit
 from .models import (
-    Assignment, Course, CourseEnrollment, Decision, DocSection, Milestone, Task, Team, TeamDocument, TeamMember, TeamMessage,
+    Assignment, Course, CourseEnrollment, Decision, DocSection, MessageReaction, Milestone, PollVote, Task, Team, TeamDocument,
+    TeamMember, TeamMessage,
 )
 from .tasks import milestone_dict, task_dict
 
@@ -70,6 +71,8 @@ ML_BRIEF = {
     ],
 }
 
+DEMO_TEAM_ID = "team-falcon"  # Group 1; the id predates the rename and existing databases use it
+
 FALCON_CHARTER = {
     "goal": "A lost-and-found web app for our campus, live by the final demo.",
     "roles": {"demo-student": "Lead · requirements", "demo-sara": "Research · data", "demo-ali": "Backend", "demo-noura": "UI/UX"},
@@ -77,27 +80,45 @@ FALCON_CHARTER = {
     "meetings": "Tuesdays 8pm",
 }
 
-# (days ago, author or None for Hermes, text)
-FALCON_CHAT: list[tuple[float, str | None, str]] = [
-    (9.0, "demo-student", "Hi all! Group 1 is official 🎉 Lost-and-found app?"),
-    (8.9, "demo-sara", "Yes! I lost my calculator twice this term 😅"),
-    (8.8, "demo-ali", "I'm in. I can take the backend."),
-    (8.7, "demo-noura", "I'll do the UI and wireframes."),
-    (8.5, "demo-student", "Stack proposal: React + FastAPI, deployed on Render. Objections?"),
-    (8.4, "demo-ali", "Works for me 👍"),
-    (8.3, "demo-noura", "Same."),
-    (7.0, "demo-sara", "I interviewed 3 students at the library. Notes are in SRS §1.2."),
-    (6.8, None, "Nice work, Sara. Across your interviews the most common pain point is not knowing where to hand in found items. That's a strong core requirement for §3.2."),
-    (5.0, "demo-ali", "Started the use cases for reporting and claiming an item."),
-    (4.2, "demo-noura", "Wireframes for the report screen are halfway done."),
-    (3.1, "demo-student", "When can everyone meet this week?"),
-    (3.0, "demo-sara", "Tuesday after 8pm works for me"),
-    (2.9, "demo-ali", "Tuesday 8pm 👍"),
-    (1.2, "demo-noura", "هل نحتاج صفحة للمشرفين في النسخة الأولى؟"),
-    (1.1, "demo-sara", "Good question. Let's decide after the use cases are done."),
+# A chat that shows off the features: grouped messages, replies, @mentions, a Hermes slash
+# command, polls with votes, reactions and a pinned decision. Keys: days ago, by (None for
+# Hermes), text; optional reply (index), poll (options), votes, react, decision, seen.
+MINUTE = 1 / 1440
+FALCON_CHAT: list[dict] = [
+    {"days": 9.0, "by": "demo-student", "text": "Hi all! Group 1 is official 🎉", "react": {"🎉": ["demo-sara", "demo-ali", "demo-noura"]}},
+    {"days": 9.0 - MINUTE, "by": "demo-student", "text": "Lost-and-found app for campus? Someone loses something every week."},
+    {"days": 8.9, "by": "demo-sara", "text": "Yes! I lost my calculator twice this term 😅", "reply": 1, "react": {"😂": ["demo-ali"]}},
+    {"days": 8.8, "by": "demo-ali", "text": "I'm in. I can take the backend."},
+    {"days": 8.8 - MINUTE, "by": "demo-ali", "text": "FastAPI if nobody minds, I used it last term."},
+    {"days": 8.7, "by": "demo-noura", "text": "I'll do the UI and wireframes 🎨"},
+    {"days": 8.6, "by": "demo-student", "text": "Where should we deploy the demo?", "poll": ["Render", "Railway", "University server"],
+     "votes": {"demo-student": 0, "demo-sara": 0, "demo-ali": 0, "demo-noura": 1}},
+    {"days": 8.5, "by": "demo-student", "text": "Stack: React + FastAPI, deployed on Render (3 of 4 votes). Pinning this as our decision.",
+     "decision": True, "react": {"👍": ["demo-sara", "demo-ali", "demo-noura"]}},
+    {"days": 7.0, "by": "demo-sara", "text": "I interviewed 3 students at the library. Notes are in SRS §1.2."},
+    {"days": 7.0 - MINUTE, "by": "demo-sara", "text": "@Hermes can you pull the common pain points out of my notes?"},
+    {"days": 6.8, "by": None, "reply": 9, "text": "Nice work, Sara. Across your interviews the most common pain point is not knowing where to hand in found items. That's a strong core requirement for §3.2."},
+    {"days": 5.0, "by": "demo-ali", "text": "Started the use cases for reporting and claiming an item."},
+    {"days": 5.0 - MINUTE, "by": "demo-ali", "text": "@Noura can you check the claim flow matches your wireframes?"},
+    {"days": 4.2, "by": "demo-noura", "reply": 12, "text": "Yes! The report screen is halfway done, I'll share it tonight.", "react": {"👍": ["demo-ali"]}},
+    {"days": 3.2, "by": "demo-student", "text": "/standup"},
+    {"days": 3.2 - MINUTE, "by": None, "reply": 14, "text": (
+        "**Stand-up, week 2**\n\n"
+        "- **Sara**: finished the library interviews. Next: the data model (ERD).\n"
+        "- **Ali**: use cases for reporting and claiming are in progress.\n"
+        "- **Noura**: report screen wireframes are halfway.\n"
+        "- **Demo**: non-functional requirements are waiting on Ali's use cases.\n\n"
+        "Question for everyone: when can you meet to review the SRS draft?")},
+    {"days": 3.1, "by": "demo-student", "text": "When can everyone meet this week?"},
+    {"days": 3.0, "by": "demo-sara", "text": "Tuesday after 8pm works for me"},
+    {"days": 2.9, "by": "demo-ali", "text": "Tuesday 8pm 👍", "seen": True},
+    {"days": 1.2, "by": "demo-noura", "text": "هل نحتاج صفحة للمشرفين في النسخة الأولى؟"},
+    {"days": 1.1, "by": "demo-sara", "reply": 19, "text": "Good question. Let's decide after the use cases are done."},
+    {"days": 0.9, "by": "demo-noura", "text": "Admin page in the first version?", "poll": ["Yes, basic moderation", "No, after the demo"],
+     "votes": {"demo-sara": 1, "demo-noura": 0}},
 ]
-DECISION_INDEX = 4
-LAST_SEEN_INDEX = 12  # demo-student has read up to here, so the last 3 are unread
+DECISION_INDEX = next(index for index, item in enumerate(FALCON_CHAT) if item.get("decision"))
+LAST_SEEN_INDEX = next(index for index, item in enumerate(FALCON_CHAT) if item.get("seen"))  # demo-student has read up to here
 
 # (id, title, status, assignee, points, milestone, depends_on, created days ago, moved days ago or None)
 FALCON_TASKS = [
@@ -138,7 +159,7 @@ def _enroll(db: Session, course_id: str, user_id: str, role: str) -> None:
 
 
 def seed_teams(db: Session) -> None:
-    if db.get(Team, "team-falcon") is not None:
+    if db.get(Team, DEMO_TEAM_ID) is not None:
         return
     base = datetime.now(UTC)
 
@@ -169,7 +190,7 @@ def seed_teams(db: Session) -> None:
             ))
     db.flush()
 
-    team = Team(id="team-falcon", assignment_id="asg-swe363-term", name="Group 1", cover_seed="f41c0n5eed01", lead_user_id="demo-student", charter_json=json.dumps(FALCON_CHARTER), created_at=ago(9.2))
+    team = Team(id=DEMO_TEAM_ID, assignment_id="asg-swe363-term", name="Group 1", cover_seed="f41c0n5eed01", lead_user_id="demo-student", charter_json=json.dumps(FALCON_CHARTER), created_at=ago(9.2))
     db.add(team)
     db.flush()
     members = {user_id: TeamMember(team_id=team.id, assignment_id=team.assignment_id, user_id=user_id, role_label=FALCON_CHARTER["roles"][user_id], joined_at=ago(9.2 - index * 0.05)) for index, user_id in enumerate(FALCON)}
@@ -195,17 +216,27 @@ def seed_teams(db: Session) -> None:
             task.updated_at = ago(moved)
             timeline.append((ago(moved), "task.moved", assignee, {"id": task_id, "status": status, "position": task.position, "from": "todo"}))
 
-    message_ids = []
-    for days, author, text in FALCON_CHAT:
-        message = TeamMessage(team_id=team.id, author_user_id=author, kind="text", content=text, created_at=ago(days))
+    message_ids: list[str] = []
+    for item in FALCON_CHAT:
+        poll = item.get("poll")
+        reply = item.get("reply")
+        message = TeamMessage(
+            team_id=team.id, author_user_id=item["by"], kind="poll" if poll else "text", content=item["text"],
+            metadata_json=json.dumps({"options": poll}, ensure_ascii=False) if poll else None,
+            reply_to_id=message_ids[reply] if reply is not None else None, created_at=ago(item["days"]),
+        )
         db.add(message)
         db.flush()
         message_ids.append(message.id)
-        timeline.append((ago(days), "message.created", author, message_dict(message)))
-    decision = Decision(team_id=team.id, text=FALCON_CHAT[DECISION_INDEX][2], source_message_id=message_ids[DECISION_INDEX], pinned_by="demo-ali", created_at=ago(8.35))
+        votes = item.get("votes", {})
+        db.add_all(PollVote(message_id=message.id, user_id=user_id, option=option) for user_id, option in votes.items())
+        reactions = item.get("react", {})
+        db.add_all(MessageReaction(message_id=message.id, user_id=user_id, emoji=emoji) for emoji, users in reactions.items() for user_id in users)
+        timeline.append((ago(item["days"]), "message.created", item["by"], message_dict(message, reactions=reactions, votes=votes)))
+    decision = Decision(team_id=team.id, text=FALCON_CHAT[DECISION_INDEX]["text"], source_message_id=message_ids[DECISION_INDEX], pinned_by="demo-ali", created_at=ago(8.45))
     db.add(decision)
     db.flush()
-    timeline.append((ago(8.35), "decision.pinned", "demo-ali", decision_dict(decision)))
+    timeline.append((ago(8.45), "decision.pinned", "demo-ali", decision_dict(decision)))
 
     title, outline = OUTLINES["srs"]
     document = TeamDocument(id="doc-falcon-srs", team_id=team.id, kind="srs", title=title, created_at=ago(7.5))
@@ -225,7 +256,7 @@ def seed_teams(db: Session) -> None:
             timeline.append((ago(7.0), "section.updated", SECTION_OWNERS[section.key], section_dict(section)))
 
     timeline.sort(key=lambda item: item[0])
-    last_seen_at = ago(FALCON_CHAT[LAST_SEEN_INDEX][0])
+    last_seen_at = ago(FALCON_CHAT[LAST_SEEN_INDEX]["days"])
     last_seen_seq = 0
     for at, type_, actor, payload in timeline:
         event = emit(db, team.id, type_, actor, payload, created_at=at)

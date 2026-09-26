@@ -60,3 +60,15 @@ def test_team_tools_tolerate_a_missing_run_id(monkeypatch):
     tools["farq_propose_section"][1]({"team_id": "t", "section_id": "s", "content_md": "FR-1", "summary": "Draft"})
     assert calls[0] == ("GET", "/internal/hermes/teams/t/context", None)
     assert calls[1][2] == {"kind": "doc_section", "payload": {"section_id": "s", "content_md": "FR-1", "requirement_ids": []}, "summary": "Draft"}
+
+
+def test_propose_tasks_shapes_delete_and_reorganize_payloads(monkeypatch):
+    tools, calls = _registered(monkeypatch)
+    propose = tools["farq_propose_tasks"][1]
+    propose({"team_id": "t", "kind": "task_delete", "task_ids": ["a"], "rationale": "dup", "summary": "Remove"})
+    add = [{"title": "N", "assignee_id": "u", "estimate_points": 2, "rationale": "r"}]
+    propose({"team_id": "t", "kind": "task_reorganize", "task_changes": [{"task_id": "b", "assignee_id": "v"}], "task_ids": ["c"], "tasks": add, "rationale": "rebalance", "summary": "Re-split"})
+    assert calls[0][2]["payload"] == {"task_ids": ["a"], "rationale": "dup"}
+    assert calls[1][2]["payload"] == {"changes": [{"task_id": "b", "assignee_id": "v"}], "deletes": ["c"], "adds": add, "rationale": "rebalance"}
+    enum = tools["farq_propose_tasks"][0]["parameters"]["properties"]["kind"]["enum"]
+    assert {"task_delete", "task_reorganize"} <= set(enum)

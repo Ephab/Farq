@@ -22,6 +22,19 @@ def _propose(params: dict, kind: str, payload: dict) -> str:
     return request("POST", f"/internal/hermes/teams/{quote(params['team_id'], safe='')}/proposals", body)
 
 
+def _task_payload(p: dict) -> dict:
+    """Shape farq_propose_tasks arguments into the proposal payload for each kind."""
+    kind = p["kind"]
+    if kind == "task_split":
+        return {"tasks": p.get("tasks", [])}
+    if kind == "task_delete":
+        return {"task_ids": p.get("task_ids", []), "rationale": p.get("rationale", "")}
+    if kind == "task_reorganize":
+        return {"changes": p.get("task_changes", []), "deletes": p.get("task_ids", []),
+                "adds": p.get("tasks", []), "rationale": p.get("rationale", "")}
+    return {"task_id": p.get("task_id", ""), "changes": p.get("changes", {}), "rationale": p.get("rationale", "")}
+
+
 TEAM_IDS = {
     "team_id": {"type": "string", "description": "team_id from the run message header"},
     "run_id": {"type": "string", "description": "run_id from the run message header"},
@@ -249,14 +262,16 @@ def register(ctx):
         ),
         (
             "farq_propose_tasks",
-            "Propose new tasks (kind task_split) or a change to one to-do task (kind task_edit). Nothing changes until the "
-            "team accepts. task_split: every member gets at least one task, open points stay balanced, every task has a "
-            "rationale. task_edit: only tasks still in To do.",
+            "Propose task changes; nothing changes until the team accepts. task_split: new tasks for every member "
+            "(tasks). task_edit: change one to-do task (task_id, changes). task_delete: remove to-do tasks (task_ids, "
+            "rationale). task_reorganize: re-split existing to-do work in one vote: task_changes [{task_id, title?, "
+            "estimate_points?, assignee_id?}], task_ids to delete, tasks to add, rationale. Open points must stay "
+            "balanced; tasks in Doing, Review or Done can never be changed.",
             {
                 "type": "object",
                 "properties": {
                     **TEAM_IDS,
-                    "kind": {"type": "string", "enum": ["task_split", "task_edit"]},
+                    "kind": {"type": "string", "enum": ["task_split", "task_edit", "task_delete", "task_reorganize"]},
                     "summary": {"type": "string", "description": "One line shown on the proposal card"},
                     "tasks": {"type": "array", "items": {"type": "object", "properties": {
                         "title": {"type": "string"}, "description": {"type": "string"}, "assignee_id": {"type": "string"},
@@ -269,11 +284,15 @@ def register(ctx):
                         "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "assignee_id": {"type": "string"},
                     }},
                     "rationale": {"type": "string"},
+                    "task_ids": {"type": "array", "items": {"type": "string"}, "description": "task_delete / task_reorganize: to-do tasks to remove"},
+                    "task_changes": {"type": "array", "items": {"type": "object", "properties": {
+                        "task_id": {"type": "string"}, "title": {"type": "string"},
+                        "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "assignee_id": {"type": "string"},
+                    }, "required": ["task_id"]}, "description": "task_reorganize: edits to existing to-do tasks"},
                 },
                 "required": ["team_id", "run_id", "kind", "summary"],
             },
-            lambda p, **_: _propose(p, p["kind"], {"tasks": p.get("tasks", [])} if p["kind"] == "task_split"
-                                    else {"task_id": p.get("task_id", ""), "changes": p.get("changes", {}), "rationale": p.get("rationale", "")}),
+            lambda p, **_: _propose(p, p["kind"], _task_payload(p)),
         ),
         (
             "farq_propose_section",

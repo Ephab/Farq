@@ -5,7 +5,7 @@ export const ACTING_USER_EVENT = "farq:acting-user-changed"
 
 export type TeamRole = "lead" | "member" | "instructor"
 export type TaskStatus = "todo" | "doing" | "review" | "done"
-export type ProposalKind = "task_split" | "task_edit" | "doc_section" | "charter" | "milestones" | "section_owners"
+export type ProposalKind = "task_split" | "task_edit" | "task_delete" | "task_reorganize" | "doc_section" | "charter" | "milestones" | "section_owners"
 export type ProposalStatus = "pending" | "applied" | "rejected" | "stale" | "awaiting_lead"
 export type DocumentKind = "srs" | "sds" | "spmp" | "custom"
 

@@ -28,6 +28,13 @@ Use this skill for every run whose input starts with `Farq team_id=`.
 - Estimate with points 1-8 (1 = an hour or two, 8 = most of a week).
 - Link tasks to a milestone when the deliverable is obvious (SRS work → the SRS milestone).
 
+## Re-splitting and cleaning up
+- If the board already has to-do tasks, `/split` means **re-split**: prefer one `task_reorganize`
+  proposal (reassign or re-estimate to-do tasks, delete duplicates or out-of-scope ones, add what
+  is missing) over piling new tasks on top.
+- Use `task_delete` only for to-do tasks that are duplicated, obsolete or out of scope, and say why
+  in the rationale. Never try to change or delete tasks in Doing, Review or Done.
+
 ## Drafting documents (`/draft`)
 - Read the section with `farq_get_doc_section` and the rest of the outline from the context.
 - SRS (IEEE 29148): number requirements `FR-n` (functional) and `NFR-n` (non-functional).

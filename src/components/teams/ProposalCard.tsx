@@ -105,6 +105,44 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
         </ul>
       )
     }
+    case "task_delete": {
+      const ids = (payload.task_ids ?? []) as string[]
+      return (
+        <ul className="tm-proposal-tasks">
+          {ids.map((id) => <li key={id} className="tm-change-remove" dir="auto">{store.tasks[id]?.title ?? "A task that no longer exists"}</li>)}
+          {payload.rationale ? <li><small dir="auto">{String(payload.rationale)}</small></li> : null}
+        </ul>
+      )
+    }
+    case "task_reorganize": {
+      const changes = (payload.changes ?? []) as { task_id: string; title?: string; estimate_points?: number; assignee_id?: string | null }[]
+      const deletes = (payload.deletes ?? []) as string[]
+      const adds = (payload.adds ?? []) as SplitTaskPayload[]
+      return (
+        <ul className="tm-proposal-tasks">
+          {changes.map((change) => {
+            const task = store.tasks[change.task_id]
+            const parts = [
+              "assignee_id" in change ? `${memberName(store, task?.assignee_id ?? null)} \u2192 ${memberName(store, change.assignee_id ?? null)}` : null,
+              change.estimate_points !== undefined ? `${task?.estimate_points ?? "?"} \u2192 ${change.estimate_points} pt` : null,
+              change.title !== undefined ? `renamed to \u201c${change.title}\u201d` : null,
+            ].filter(Boolean)
+            return <li key={change.task_id} className="tm-change-move" dir="auto"><span>{task?.title ?? "A task"}</span> <small>{parts.join(" · ")}</small></li>
+          })}
+          {deletes.map((id) => <li key={id} className="tm-change-remove" dir="auto">{store.tasks[id]?.title ?? "A task"}</li>)}
+          {adds.map((task, index) => (
+            <li key={`add-${index}`} className="tm-change-add">
+              <Avatar userId={task.assignee_id} name={memberName(store, task.assignee_id)} size={22} />
+              <div className="min-w-0">
+                <span dir="auto">{task.title}</span> <span className="tm-chip">{task.estimate_points} pt</span>
+                <small dir="auto">{task.rationale}</small>
+              </div>
+            </li>
+          ))}
+          {payload.rationale ? <li><small dir="auto">{String(payload.rationale)}</small></li> : null}
+        </ul>
+      )
+    }
     case "task_edit": {
       const task = store.tasks[String(payload.task_id)]
       const changes = (payload.changes ?? {}) as Record<string, unknown>

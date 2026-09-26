@@ -237,3 +237,8 @@
 .fq .tm-activity p { margin: 0; color: var(--fq-text-soft); }
 .fq .tm-activity strong { color: var(--fq-text); }
 .fq .tm-activity time { color: var(--fq-faint); font-size: 12px; white-space: nowrap; }
+/* Reorganize / delete proposals: removals struck through, additions marked +, moves shown inline. */
+.fq .tm-change-remove { color: var(--fq-muted); text-decoration: line-through; }
+.fq .tm-change-remove::before { content: "\2212  "; text-decoration: none; color: var(--fq-danger); }
+.fq .tm-change-add > div::before { content: "+ "; color: var(--fq-success); font-weight: 700; }
+.fq .tm-change-move small { display: inline; margin-left: 4px; }

@@ -218,22 +218,27 @@ def move_task(task_id: str, body: TaskMove, db: Db, user: CurrentUser) -> dict:
     return task_dict(task)
 
 
+def remove_task(db: Session, team_id: str, task: Task, actor: str | None) -> None:
+    """Delete a task, detach it from dependents and re-check its milestone. The caller commits."""
+    detached = []
+    for other in _team_tasks(db, team_id):
+        dependencies = loads(other.depends_on_json, [])
+        if task.id in dependencies:
+            other.depends_on_json = json.dumps([item for item in dependencies if item != task.id])
+            detached.append(other.id)
+    task_id, milestone_id = task.id, task.milestone_id
+    db.delete(task)
+    db.flush()
+    emit(db, team_id, "task.deleted", actor, {"id": task_id, "detached_from": detached})
+    _sync_milestone(db, team_id, milestone_id, actor)
+
+
 @router.delete("/api/tasks/{task_id}")
 def delete_task(task_id: str, db: Db, user: CurrentUser) -> dict:
     task = require(db, Task, task_id, "Task")
     team = require_team(db, task.team_id)
     authorize(db, user, team, "write")
-    detached = []
-    for other in _team_tasks(db, team.id):
-        dependencies = loads(other.depends_on_json, [])
-        if task.id in dependencies:
-            other.depends_on_json = json.dumps([item for item in dependencies if item != task.id])
-            detached.append(other.id)
-    milestone_id = task.milestone_id
-    db.delete(task)
-    db.flush()
-    emit(db, team.id, "task.deleted", user.id, {"id": task_id, "detached_from": detached})
-    _sync_milestone(db, team.id, milestone_id, user.id)
+    remove_task(db, team.id, task, user.id)
     db.commit()
     return {"id": task_id, "deleted": True}
 

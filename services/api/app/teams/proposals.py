@@ -17,7 +17,7 @@ from .docs import lock_active, section_dict
 from .events import emit
 from .models import DocSection, Milestone, Task, Team, TeamDocument, TeamEvent, TeamMember, TeamProposal
 from .policy import authorize
-from .tasks import _next_position, _sync_milestone, milestone_dict, task_dict
+from .tasks import _next_position, _sync_milestone, milestone_dict, remove_task, task_dict
 
 router = APIRouter()
 EXPIRY = timedelta(hours=48)
@@ -66,6 +66,46 @@ class TaskEditPayload(BaseModel):
     rationale: str = Field(default="", max_length=600)
 
 
+class TaskDeletePayload(BaseModel):
+    task_ids: list[str] = Field(min_length=1, max_length=20)
+    rationale: str = Field(min_length=1, max_length=600)
+
+
+class ReorgChange(BaseModel):
+    task_id: str
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    estimate_points: int | None = Field(default=None, ge=1, le=8)
+    assignee_id: str | None = None
+
+    @model_validator(mode="after")
+    def changes_something(self) -> "ReorgChange":
+        fields = self.model_fields_set - {"task_id"}
+        if not fields:
+            raise ValueError("A reorganization change must change something")
+        for field in ("title", "estimate_points"):
+            if field in fields and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+
+class TaskReorganizePayload(BaseModel):
+    """Re-split existing to-do work in one vote: change, delete and add tasks together."""
+
+    changes: list[ReorgChange] = Field(default_factory=list, max_length=30)
+    deletes: list[str] = Field(default_factory=list, max_length=20)
+    adds: list[SplitTask] = Field(default_factory=list, max_length=20)
+    rationale: str = Field(min_length=1, max_length=600)
+
+    @model_validator(mode="after")
+    def does_something(self) -> "TaskReorganizePayload":
+        if not (self.changes or self.deletes or self.adds):
+            raise ValueError("A reorganization must change, delete or add at least one task")
+        changed = [change.task_id for change in self.changes]
+        if len(set(changed)) != len(changed) or set(changed) & set(self.deletes):
+            raise ValueError("Each task may appear once, either changed or deleted")
+        return self
+
+
 class DocSectionPayload(BaseModel):
     section_id: str
     content_md: str = Field(min_length=1, max_length=20000)
@@ -98,7 +138,8 @@ class SectionOwnersPayload(BaseModel):
 
 
 PAYLOADS: dict[str, type[BaseModel]] = {
-    "task_split": TaskSplitPayload, "task_edit": TaskEditPayload, "doc_section": DocSectionPayload,
+    "task_split": TaskSplitPayload, "task_edit": TaskEditPayload, "task_delete": TaskDeletePayload,
+    "task_reorganize": TaskReorganizePayload, "doc_section": DocSectionPayload,
     "charter": CharterPayload, "milestones": MilestonesPayload, "section_owners": SectionOwnersPayload,
 }
 
@@ -140,33 +181,76 @@ def _team_section(db: Session, team: Team, section_id: str) -> DocSection:
     return section
 
 
+def _todo_task(db: Session, team: Team, task_id: str) -> Task:
+    task = db.get(Task, task_id)
+    if task is None or task.team_id != team.id:
+        raise ProposalError(f"Task {task_id} is not in this team")
+    if task.status != "todo":
+        raise ProposalError(f"Task {task.title!r} is {task.status}; only to-do tasks can be changed by a proposal")
+    return task
+
+
+def _check_new_tasks(db: Session, team: Team, items: list[SplitTask], members: list[str], known: set[str]) -> None:
+    for item in items:
+        if item.assignee_id not in members:
+            raise ProposalError(f"{item.assignee_id} is not a member of this team")
+        if item.milestone_id is not None:
+            milestone = db.get(Milestone, item.milestone_id)
+            if milestone is None or milestone.team_id != team.id:
+                raise ProposalError(f"Unknown milestone {item.milestone_id}")
+        if set(item.depends_on) - known:
+            raise ProposalError("depends_on must list existing task ids in this team")
+
+
+def _check_balance(load: dict[str, int], label: str) -> None:
+    mean = sum(load.values()) / len(load)
+    tolerance = max(BALANCE_FLOOR, BALANCE_SHARE * mean)
+    if any(abs(points - mean) > tolerance for points in load.values()):
+        raise ProposalError(f"{label}: open points per member would be {load}; keep each within {tolerance:.1f} of {mean:.1f}")
+
+
 def check(db: Session, team: Team, kind: str, model: BaseModel, invoked_by: str | None) -> tuple[str, str | None]:
     """Validate against the team as it is now. Returns (scope, affected_user_id)."""
     members = members_of(db, team.id)
     if kind == "task_split":
         tasks = db.scalars(select(Task).where(Task.team_id == team.id)).all()
-        known = {task.id for task in tasks}
+        _check_new_tasks(db, team, model.tasks, members, {task.id for task in tasks})
         load = {member: 0 for member in members}
         for task in tasks:
             if task.status != "done" and task.assignee_id in load:
                 load[task.assignee_id] += task.estimate_points
         for item in model.tasks:
-            if item.assignee_id not in load:
-                raise ProposalError(f"{item.assignee_id} is not a member of this team")
-            if item.milestone_id is not None:
-                milestone = db.get(Milestone, item.milestone_id)
-                if milestone is None or milestone.team_id != team.id:
-                    raise ProposalError(f"Unknown milestone {item.milestone_id}")
-            if set(item.depends_on) - known:
-                raise ProposalError("depends_on must list existing task ids in this team")
             load[item.assignee_id] += item.estimate_points
         missing = [member for member in members if not any(item.assignee_id == member for item in model.tasks)]
         if missing:
             raise ProposalError(f"Every member needs at least one task; none for: {', '.join(missing)}")
-        mean = sum(load.values()) / len(load)
-        tolerance = max(BALANCE_FLOOR, BALANCE_SHARE * mean)
-        if any(abs(points - mean) > tolerance for points in load.values()):
-            raise ProposalError(f"Unbalanced split: open points per member would be {load}; keep each within {tolerance:.1f} of {mean:.1f}")
+        _check_balance(load, "Unbalanced split")
+        return "team", None
+    if kind == "task_delete":
+        for task_id in model.task_ids:
+            _todo_task(db, team, task_id)
+        return "team", None
+    if kind == "task_reorganize":
+        tasks = db.scalars(select(Task).where(Task.team_id == team.id)).all()
+        changes = {change.task_id: change for change in model.changes}
+        for task_id in [*changes, *model.deletes]:
+            _todo_task(db, team, task_id)
+        for change in model.changes:
+            if change.assignee_id is not None and change.assignee_id not in members:
+                raise ProposalError(f"{change.assignee_id} is not a member of this team")
+        _check_new_tasks(db, team, model.adds, members, {task.id for task in tasks} - set(model.deletes))
+        load = {member: 0 for member in members}
+        for task in tasks:
+            if task.status == "done" or task.id in model.deletes:
+                continue
+            change = changes.get(task.id)
+            assignee = change.assignee_id if change and "assignee_id" in change.model_fields_set else task.assignee_id
+            points = change.estimate_points if change and change.estimate_points is not None else task.estimate_points
+            if assignee in load:
+                load[assignee] += points
+        for item in model.adds:
+            load[item.assignee_id] += item.estimate_points
+        _check_balance(load, "Unbalanced reorganization")
         return "team", None
     if kind == "task_edit":
         task = db.get(Task, model.task_id)
@@ -207,7 +291,7 @@ def create_proposal(db: Session, team: Team, kind: str, payload: dict, *, summar
         team_id=team.id, scope=scope, affected_user_id=affected, kind=kind,
         # task_edit keeps only the fields Hermes set, so applying never writes the unset ones as null.
         summary=(summary.strip() or kind.replace("_", " "))[:240],
-        payload_json=model.model_dump_json(exclude_unset=kind == "task_edit"),
+        payload_json=model.model_dump_json(exclude_unset=kind in ("task_edit", "task_reorganize")),
         base_seq=base_seq, invoked_by=invoked_by, run_id=run_id, expires_at=now() + EXPIRY,
     )
     db.add(proposal)
@@ -231,6 +315,23 @@ def _section_changed_since(db: Session, team: Team, section_id: str, base_seq: i
     return any(loads(payload, {}).get("id") == section_id for payload in updates)
 
 
+def _create_tasks(db: Session, team: Team, items: list[SplitTask], actor: str) -> None:
+    touched: set[str] = set()
+    for item in items:
+        task = Task(
+            team_id=team.id, title=item.title.strip(), description=item.description, assignee_id=item.assignee_id,
+            estimate_points=item.estimate_points, milestone_id=item.milestone_id, depends_on_json=json.dumps(item.depends_on),
+            rationale=item.rationale, created_by="hermes", position=_next_position(db, team.id, "todo"),
+        )
+        db.add(task)
+        db.flush()
+        emit(db, team.id, "task.created", actor, task_dict(task))
+        if item.milestone_id:
+            touched.add(item.milestone_id)
+    for milestone_id in touched:
+        _sync_milestone(db, team.id, milestone_id, actor)
+
+
 def apply_proposal(db: Session, team: Team, proposal: TeamProposal, actor: str) -> None:
     """Re-check against the current team, then write it in this transaction (or mark it stale)."""
     model = PAYLOADS[proposal.kind].model_validate_json(proposal.payload_json)
@@ -244,20 +345,23 @@ def apply_proposal(db: Session, team: Team, proposal: TeamProposal, actor: str) 
         _close(db, team, proposal, "stale", actor, {"reason": str(error)})
         return
     if proposal.kind == "task_split":
-        touched: set[str] = set()
-        for item in model.tasks:
-            task = Task(
-                team_id=team.id, title=item.title.strip(), description=item.description, assignee_id=item.assignee_id,
-                estimate_points=item.estimate_points, milestone_id=item.milestone_id, depends_on_json=json.dumps(item.depends_on),
-                rationale=item.rationale, created_by="hermes", position=_next_position(db, team.id, "todo"),
-            )
-            db.add(task)
+        _create_tasks(db, team, model.tasks, actor)
+    elif proposal.kind == "task_delete":
+        for task_id in model.task_ids:
+            remove_task(db, team.id, db.get(Task, task_id), actor)
+    elif proposal.kind == "task_reorganize":
+        for change in model.changes:
+            task = db.get(Task, change.task_id)
+            previous_milestone = task.milestone_id
+            for field in change.model_fields_set - {"task_id"}:
+                setattr(task, field, getattr(change, field))
+            task.updated_at = now()
             db.flush()
-            emit(db, team.id, "task.created", actor, task_dict(task))
-            if item.milestone_id:
-                touched.add(item.milestone_id)
-        for milestone_id in touched:
-            _sync_milestone(db, team.id, milestone_id, actor)
+            emit(db, team.id, "task.updated", actor, task_dict(task))
+            _sync_milestone(db, team.id, previous_milestone, actor)
+        for task_id in model.deletes:
+            remove_task(db, team.id, db.get(Task, task_id), actor)
+        _create_tasks(db, team, model.adds, actor)
     elif proposal.kind == "task_edit":
         task = db.get(Task, model.task_id)
         for field in model.changes.model_fields_set:

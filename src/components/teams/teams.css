@@ -242,3 +242,35 @@
 .fq .tm-change-remove::before { content: "\2212  "; text-decoration: none; color: var(--fq-danger); }
 .fq .tm-change-add > div::before { content: "+ "; color: var(--fq-success); font-weight: 700; }
 .fq .tm-change-move small { display: inline; margin-left: 4px; }
+
+/* Document tools: title rename, section toolbar, export menu. */
+.fq .tm-doc-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fq .tm-doc-title h2 { margin: 0; font-size: 20px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fq .tm-doc-title .tm-input { max-width: 420px; }
+.fq .tm-section-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border: 1px dashed var(--fq-line-strong); border-radius: var(--fq-r-sm); font-size: 13px; color: var(--fq-muted); }
+.fq .tm-section-tools[data-idle] { padding: 0; border: 0; }
+.fq .tm-section-tools .tm-input { width: auto; flex: 1 1 180px; padding: 5px 8px; }
+.fq .tm-section-tools .tm-key-input { flex: 0 0 72px; font-variant-numeric: tabular-nums; }
+.fq .tm-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; background: transparent; }
+.fq .tm-btn-danger { background: var(--fq-danger); border-color: var(--fq-danger); color: #fff; }
+.fq .tm-export { position: relative; }
+.fq .tm-export-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; gap: 6px; width: 260px; padding: 10px; border: 1px solid var(--fq-line); border-radius: var(--fq-r-md); background: var(--fq-surface-solid); box-shadow: 0 12px 32px rgb(0 0 0 / 0.14); animation: tm-pop 140ms ease-out; }
+.fq .tm-export-menu .tm-muted { margin: 2px 2px 4px; font-size: 12px; line-height: 1.4; }
+.fq .tm-seg { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: var(--fq-r-pill); background: var(--fq-surface-muted); }
+.fq .tm-seg button { padding: 5px 8px; border-radius: var(--fq-r-pill); font-size: 12px; font-weight: 600; color: var(--fq-muted); cursor: pointer; }
+.fq .tm-seg button[aria-checked="true"] { background: var(--fq-surface-solid); color: var(--fq-text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.fq .tm-export-option { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--fq-r-sm); text-align: left; cursor: pointer; }
+.fq .tm-export-option:hover { background: var(--fq-surface-muted); }
+.fq .tm-export-option svg { grid-row: span 2; color: var(--fq-accent); }
+.fq .tm-export-option span { font-weight: 600; font-size: 14px; }
+.fq .tm-export-option small { color: var(--fq-muted); font-size: 12px; }
+@keyframes tm-pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .fq .tm-export-menu { animation: none; } }
+/* The docs pane shares the row with a resizable chat, so size by the pane, not the window. */
+.fq .tm-docstudio { container-type: inline-size; }
+@container (max-width: 820px) { .fq .tm-docs { grid-template-columns: 200px minmax(0, 1fr); } }
+@container (max-width: 600px) {
+  .fq .tm-docs { grid-template-columns: minmax(0, 1fr); }
+  .fq .tm-outline { max-height: 200px; }
+  .fq .tm-export-menu { right: auto; left: 0; }
+}

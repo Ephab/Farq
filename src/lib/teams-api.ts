@@ -8,6 +8,8 @@ export type TaskStatus = "todo" | "doing" | "review" | "done"
 export type ProposalKind = "task_split" | "task_edit" | "task_delete" | "task_reorganize" | "doc_section" | "charter" | "milestones" | "section_owners"
 export type ProposalStatus = "pending" | "applied" | "rejected" | "stale" | "awaiting_lead"
 export type DocumentKind = "srs" | "sds" | "spmp" | "custom"
+export type ExportFormat = "md" | "docx" | "html"
+export type ExportStyle = "ieee" | "modern"
 
 export interface TeamUser { id: string; display_name: string; role: "student" | "instructor"; student_id: string | null }
 export interface CourseRef { id: string; code: string; title: string; term: string }
@@ -154,11 +156,24 @@ export function teamClient(userId: string) {
   rejectProposal: (proposalId: string) => teamApi<TeamProposal>(`/api/proposals/${proposalId}/reject`, send("POST")),
   risks: (teamId: string) => teamApi<TeamRisk[]>(`/api/teams/${teamId}/risks`),
   markSeen: (teamId: string, seq: number) => teamApi<{ last_seen_seq: number }>(`/api/teams/${teamId}/seen`, send("POST", { seq })),
-  createDocument: (teamId: string, kind: DocumentKind) => teamApi<TeamDocumentInfo>(`/api/teams/${teamId}/documents`, send("POST", { kind })),
+  createDocument: (teamId: string, kind: DocumentKind, custom?: { title: string; sections: { key: string; title: string }[] }) =>
+    teamApi<TeamDocumentInfo>(`/api/teams/${teamId}/documents`, send("POST", { kind, ...custom })),
+  renameDocument: (documentId: string, title: string) => teamApi<TeamDocumentInfo>(`/api/documents/${documentId}`, send("PATCH", { title })),
+  addSection: (documentId: string, body: { key: string; title: string; after_section_id?: string | null }) =>
+    teamApi<DocSectionInfo>(`/api/documents/${documentId}/sections`, send("POST", body)),
+  moveSection: (sectionId: string, direction: "up" | "down") =>
+    teamApi<TeamDocumentInfo>(`/api/sections/${sectionId}/move`, send("POST", { direction })),
+  deleteSection: (sectionId: string) => teamApi<TeamDocumentInfo>(`/api/sections/${sectionId}`, send("DELETE")),
+  /** The file itself (not JSON), so this bypasses `api` and returns the response body as a Blob. */
+  exportDocument: async (documentId: string, format: ExportFormat, style: ExportStyle): Promise<Blob> => {
+    const response = await fetch(`${API_BASE}/api/documents/${documentId}/export?format=${format}&style=${style}`, { headers: { "X-Farq-User": userId } })
+    if (!response.ok) throw new Error(`Export failed (${response.status})`)
+    return response.blob()
+  },
   activity: (teamId: string, before?: number) =>
     teamApi<{ entries: ActivityEntry[]; next_before: number | null }>(`/api/teams/${teamId}/activity${before ? `?before=${before}` : ""}`),
   updateTeam: (teamId: string, body: { name?: string; size_limit?: number }) => teamApi<TeamInfo>(`/api/teams/${teamId}`, send("PATCH", body)),
-  updateSection: (sectionId: string, body: { title?: string; owner_user_id?: string | null }) =>
+  updateSection: (sectionId: string, body: { key?: string; title?: string; owner_user_id?: string | null }) =>
     teamApi<DocSectionInfo>(`/api/sections/${sectionId}`, send("PATCH", body)),
   lockSection: (sectionId: string) => teamApi<DocSectionInfo>(`/api/sections/${sectionId}/lock`, send("POST")),
   unlockSection: (sectionId: string) => teamApi<DocSectionInfo>(`/api/sections/${sectionId}/unlock`, send("POST")),

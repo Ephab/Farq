@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { FileText, Lock, PencilLine, Sparkles } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
+import { DocTitle, ExportMenu, SectionTools } from "@/components/teams/DocTools"
 import { ProposalCard } from "@/components/teams/ProposalCard"
 import { Avatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
@@ -62,8 +63,12 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
       setBusy(false)
     }
   }
-  const create = (kind: DocumentKind) => run(async () => {
-    const created = await teams.createDocument(store.team.id, kind)
+  const [customTitle, setCustomTitle] = useState<string | null>(null)
+  const create = (kind: DocumentKind, title?: string) => run(async () => {
+    const created = await teams.createDocument(
+      store.team.id, kind, kind === "custom" ? { title: title ?? "Document", sections: [{ key: "1", title: "Introduction" }] } : undefined,
+    )
+    setCustomTitle(null)
     update((current) => upsertDocument(current, created))
     setDocId(created.id)
     setSectionId(null)
@@ -90,6 +95,14 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
   }
 
   const expected = new Set(store.team.assignment.deliverables)
+  const customForm = customTitle === null ? null : (
+    <form className="tm-section-tools" onSubmit={(event) => { event.preventDefault(); void create("custom", customTitle.trim()) }}>
+      <span>New custom document</span>
+      <input className="tm-input" dir="auto" aria-label="Document title" placeholder="e.g. Test plan" value={customTitle} maxLength={160} autoFocus onChange={(event) => setCustomTitle(event.target.value)} />
+      <button type="button" className="tm-btn tm-btn-sm" onClick={() => setCustomTitle(null)}>Cancel</button>
+      <button type="submit" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy || !customTitle.trim()}>Create</button>
+    </form>
+  )
   if (!doc) {
     return (
       <div className="flex flex-col gap-4">
@@ -108,7 +121,11 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
               <FileText className="size-4" aria-hidden="true" /> {item.full}
             </button>
           ))}
+          <button type="button" className="tm-btn" disabled={!canEdit || busy} onClick={() => setCustomTitle("")}>
+            <FileText className="size-4" aria-hidden="true" /> Custom document…
+          </button>
         </div>
+        {customForm}
       </div>
     )
   }
@@ -123,7 +140,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
     update((current) => upsertMessage(current, message))
   })
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="tm-docstudio flex min-h-0 flex-1 flex-col gap-3">
       <div className="tm-board-head">
         <div className="tm-doc-tabs">
           {docs.map((item) => (
@@ -132,20 +149,30 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
             </button>
           ))}
         </div>
-        {canEdit && missing.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+        <ExportMenu doc={doc} teamName={store.team.name} run={run} />
+        {canEdit ? (
           <select
             className="tm-select"
             style={{ width: "auto" }}
             aria-label="New document"
             value=""
             disabled={busy}
-            onChange={(event) => { if (event.target.value) void create(event.target.value as DocumentKind) }}
+            onChange={(event) => {
+              const kind = event.target.value as DocumentKind | ""
+              if (kind === "custom") setCustomTitle("")
+              else if (kind) void create(kind)
+            }}
           >
             <option value="">+ New document</option>
             {missing.map((item) => <option key={item.kind} value={item.kind}>{item.full}</option>)}
+            <option value="custom">Custom document…</option>
           </select>
         ) : null}
+        </div>
       </div>
+      {customForm}
+      <DocTitle key={doc.id} doc={doc} canEdit={canEdit} run={run} update={update} />
       {error ? <p className="tm-banner">{error}</p> : null}
       <div className="tm-docs">
         <nav className="tm-outline" aria-label={`${doc.title} outline`}>
@@ -198,6 +225,9 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
                 ) : null}
               </div>
             </div>
+            {canEdit && !editing ? (
+              <SectionTools key={section.id} doc={doc} section={section} busy={busy || blocked} run={run} update={update} onSelect={setSectionId} />
+            ) : null}
             {blocked ? (
               <p className="tm-muted"><Lock className="mr-1 inline size-3.5" aria-hidden="true" />{memberName(store, section.lock_user_id)} is editing this section.</p>
             ) : null}

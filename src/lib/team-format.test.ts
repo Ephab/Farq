@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { briefingLines, dueLabel, fromDateInput, plural, timeAgo, toDateInput } from "@/lib/team-format"
+import { briefingLines, dueLabel, fromDateInput, nextSectionKey, plural, timeAgo, toDateInput } from "@/lib/team-format"
 import type { TeamsHomeData } from "@/lib/teams-api"
 
 const NOW = new Date("2026-09-26T12:00:00Z")
@@ -76,5 +76,17 @@ describe("briefingLines risks", () => {
         next_task: null, members: [], unread: 0, viewer_role: "lead", risk: "“Use cases” has been in Doing for 5 days." }],
     }))
     expect(lines).toEqual(["Team Falcon: “Use cases” has been in Doing for 5 days."])
+  })
+})
+
+describe("nextSectionKey", () => {
+  it("increments the last number and skips keys that are taken", () => {
+    expect(nextSectionKey("1.2", ["1", "1.1", "1.2"])).toBe("1.3")
+    expect(nextSectionKey("1.1", ["1.1", "1.2", "1.3"])).toBe("1.4")
+    expect(nextSectionKey("3", ["1", "2", "3"])).toBe("4")
+  })
+  it("starts a child for keys without a trailing number and picks a top key with nothing selected", () => {
+    expect(nextSectionKey("A", ["A"])).toBe("A.1")
+    expect(nextSectionKey(undefined, ["1", "2"])).toBe("3")
   })
 })

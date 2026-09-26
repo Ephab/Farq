@@ -102,6 +102,16 @@ describe("applyEvent", () => {
     expect(store.documents.d1.sections[0]).toMatchObject({ content_md: "Hello", version: 1 })
   })
 
+  it("replaces a document after a structural edit", () => {
+    const section = { id: "s1", document_id: "d1", key: "1", title: "Scope", position: 0, owner_user_id: null, content_md: "", status: "empty" as const, lock_user_id: null, lock_expires_at: null, version: 0, meta: {} }
+    let store = fromSnapshot(snapshot({ documents: [{ id: "d1", team_id: "t", kind: "custom", title: "Plan", created_at: T0, sections: [section] }] }))
+    const added = { ...section, id: "s2", key: "0", title: "Summary" }
+    const document = { id: "d1", team_id: "t", kind: "custom", title: "Test plan", created_at: T0, sections: [{ ...added, position: 0 }, { ...section, position: 1 }] }
+    store = applyEvent(store, event("document.updated", { document, change: { action: "section_added", key: "0", title: "Summary" } }))
+    expect(store.documents.d1.title).toBe("Test plan")
+    expect(store.documents.d1.sections.map((item) => item.id)).toEqual(["s2", "s1"])
+  })
+
   it("pins and removes decisions", () => {
     let store = fromSnapshot(snapshot())
     store = applyEvent(store, event("decision.pinned", { id: "d", team_id: "t", text: "Use FastAPI", source_message_id: "m", pinned_by: "u1", created_at: T0 }))

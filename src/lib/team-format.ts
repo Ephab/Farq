@@ -73,3 +73,21 @@ export function briefingLines(home: TeamsHomeData): string[] {
   for (const item of home.needs_team) lines.push(`${item.course.code} ${item.title} still needs a team`)
   return lines.length ? lines : ["You're all caught up."]
 }
+
+/** Suggest a free number for a section added after `after`: 1.2 → 1.3, 3 → 4 (skipping taken keys);
+ * a key that doesn't end in a number gets a ".1" child. */
+export function nextSectionKey(after: string | undefined, taken: string[]): string {
+  const used = new Set(taken)
+  if (!after) {
+    let top = 1
+    while (used.has(String(top))) top += 1
+    return String(top)
+  }
+  const match = after.match(/^(.*?)(\d+)$/)
+  let candidate = match ? `${match[1]}${Number(match[2]) + 1}` : `${after}.1`
+  while (used.has(candidate)) {
+    const again = candidate.match(/^(.*?)(\d+)$/)
+    candidate = again ? `${again[1]}${Number(again[2]) + 1}` : `${candidate}.1`
+  }
+  return candidate
+}

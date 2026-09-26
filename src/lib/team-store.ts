@@ -8,7 +8,7 @@ export const TEAM_EVENT_TYPES = [
   "milestone.created", "milestone.updated", "milestone.completed",
   "decision.pinned", "decision.removed",
   "message.created", "message.edited", "message.deleted", "reaction.toggled",
-  "document.created", "section.updated", "section.locked", "section.unlocked",
+  "document.created", "document.updated", "section.updated", "section.locked", "section.unlocked",
   "member.joined", "invite.created", "invite.declined", "invite.cancelled",
   "proposal.created", "proposal.voted", "proposal.applied", "proposal.rejected", "proposal.stale", "proposal.awaiting_lead",
   "hermes.run", "team.updated",
@@ -203,6 +203,9 @@ function reduce(store: TeamStore, event: TeamEvent): TeamStore {
       return setReaction(store, String(payload.message_id), String(payload.user_id), String(payload.emoji), Boolean(payload.on))
     case "document.created":
       return upsertDocument(store, payload as unknown as TeamDocumentInfo)
+    case "document.updated":
+      // Structural edits (rename, add/move/delete section) carry the whole document.
+      return upsertDocument(store, payload.document as unknown as TeamDocumentInfo)
     case "section.updated":
       return upsertSection(store, payload as unknown as DocSectionInfo)
     case "section.locked":

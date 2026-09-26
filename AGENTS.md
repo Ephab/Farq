@@ -21,6 +21,13 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   A full threat model for it is still owed (see `docs/future-work.md`).
 - Uploaded files are never stored; only redacted, extracted evidence is.
 - Keep Gemini and Hermes keys server-side.
+- Group Projects: every team write emits a `team_events` row in the same transaction; the SSE
+  stream, catch-up and replay read only that log. Course instructors see every team except its
+  chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and
+  `teams/events.py`, never only in the UI or prompt.
+- Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Farq-User`
+  header; the SSE stream alone takes `?as=`). Replace that function, not its callers, for real sign-in.
+- Team activity never creates `StudentFact` rows.
 
 ## Commands
 

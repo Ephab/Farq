@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState, type CSSProperties } from "react"
 import { ArrowLeft, CalendarRange, FileText, Gavel, LayoutGrid, ScrollText, type LucideIcon } from "lucide-react"
 import { CharterView } from "@/components/teams/CharterView"
 import { DecisionLog } from "@/components/teams/DecisionLog"
@@ -11,9 +11,10 @@ import { TaskBoard } from "@/components/teams/TaskBoard"
 import { TaskSheet, type TaskSheetState } from "@/components/teams/TaskSheet"
 import { TaskTimeline } from "@/components/teams/TaskTimeline"
 import { TeamChat } from "@/components/teams/TeamChat"
-import { Banner } from "@/components/teams/ui"
+import { Banner, DockResizer } from "@/components/teams/ui"
 import { useMarkSeen, usePresence, useTeamStream } from "@/components/teams/use-team-stream"
 import { coverFor } from "@/lib/team-cover"
+import { clampDockWidth, readDockWidth, saveDockWidth } from "@/lib/team-layout"
 import { errorMessage } from "@/lib/teams-api"
 
 type View = "board" | "timeline" | "docs" | "decisions" | "charter"
@@ -32,6 +33,13 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   const [focus, setFocus] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [sheet, setSheet] = useState<TaskSheetState | null>(null)
+  const studioRef = useRef<HTMLDivElement>(null)
+  const [dockWidth, setDockWidth] = useState(readDockWidth)
+  const resizeDock = (requested: number) => {
+    const next = clampDockWidth(requested, studioRef.current?.clientWidth ?? window.innerWidth)
+    setDockWidth(next)
+    saveDockWidth(next)
+  }
   const role = store?.team.viewer_role
   const member = role === "lead" || role === "member"
   usePresence(teamId, member, focus)
@@ -55,7 +63,7 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   const cover = coverFor(store.team.cover_seed)
 
   return (
-    <div className="tm-studio">
+    <div ref={studioRef} className="tm-studio" style={{ "--tm-dock-width": `${dockWidth}px` } as CSSProperties}>
       <aside className="tm-panel tm-rail" aria-label="Team navigation">
         <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /> All teams</button>
         <div className="tm-rail-cover" style={{ backgroundImage: cover.image, backgroundColor: cover.color }}>
@@ -96,11 +104,14 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
           <CharterView store={store} />
         )}
       </main>
-      {member ? (
-        <TeamChat store={store} update={update} onMakeTask={(title) => setSheet({ mode: "create", title })} />
-      ) : (
-        <InstructorPanel store={store} />
-      )}
+      <div className="tm-dock-slot">
+        <DockResizer width={dockWidth} onResize={resizeDock} />
+        {member ? (
+          <TeamChat store={store} update={update} onMakeTask={(title) => setSheet({ mode: "create", title })} />
+        ) : (
+          <InstructorPanel store={store} />
+        )}
+      </div>
       {sheet ? (
         <TaskSheet state={sheet} store={store} canEdit={member} update={update} onError={fail} onClose={() => { setSheet(null); setFocus(null) }} />
       ) : null}

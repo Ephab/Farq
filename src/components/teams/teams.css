@@ -61,9 +61,9 @@
 .fq .tm-row-main span { color: var(--fq-muted); font-size: 12px; }
 
 /* Studio */
-.fq .tm-studio { display: grid; flex: 1; grid-template-columns: 220px minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); gap: 14px; min-height: 0; }
+.fq .tm-studio { display: grid; flex: 1; grid-template-columns: 220px minmax(360px, 1fr) minmax(300px, var(--tm-dock-width, 360px)); grid-template-rows: minmax(0, 1fr); gap: 14px; min-height: 0; }
 /* Narrower: the page scrolls between panels, and the chat keeps a fixed height and scrolls inside. */
-@media (max-width: 1180px) { .fq .tm-studio { flex: none; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto; } .fq .tm-dock { grid-column: 1 / -1; height: 520px; } }
+@media (max-width: 1180px) { .fq .tm-studio { flex: none; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto; } .fq .tm-dock-slot { grid-column: 1 / -1; } .fq .tm-dock { height: 520px; } .fq .tm-dock-resizer { display: none; } }
 @media (max-width: 760px) { .fq .tm-studio { grid-template-columns: minmax(0, 1fr); } }
 .fq .tm-panel { min-height: 0; border: 1px solid var(--fq-line); border-radius: var(--fq-r-lg); background: var(--fq-surface); box-shadow: var(--fq-shadow-sm); backdrop-filter: blur(20px) saturate(140%); }
 .fq .tm-rail { display: flex; flex-direction: column; gap: 14px; padding: 12px; overflow: auto; }
@@ -83,7 +83,12 @@
 .fq .tm-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--fq-warning); }
 .fq .tm-live[data-live] i { background: var(--fq-success); }
 .fq .tm-center { display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: auto; }
-.fq .tm-dock { display: flex; flex-direction: column; overflow: hidden; }
+.fq .tm-dock { display: flex; flex: 1; flex-direction: column; min-width: 0; overflow: hidden; }
+.fq .tm-dock-slot { position: relative; display: flex; min-width: 0; min-height: 0; }
+/* A 12px grab zone straddling the chat's left edge; the visible line appears on hover/focus/drag. */
+.fq .tm-dock-resizer { position: absolute; top: 0; bottom: 0; left: -13px; z-index: 3; width: 12px; cursor: col-resize; touch-action: none; }
+.fq .tm-dock-resizer::after { content: ""; position: absolute; top: 20%; bottom: 20%; left: 5px; width: 2px; border-radius: 2px; background: transparent; transition: background 0.15s; }
+.fq .tm-dock-resizer:hover::after, .fq .tm-dock-resizer:focus-visible::after, .fq .tm-dock-resizer:active::after { background: var(--fq-accent); }
 
 /* Avatars and chips */
 .fq .tm-avatar { position: relative; display: inline-grid; place-items: center; flex: none; border-radius: 50%; color: #fff; font-weight: 700; line-height: 1; }

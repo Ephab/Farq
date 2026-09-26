@@ -11,6 +11,7 @@ import { TaskBoard } from "@/components/teams/TaskBoard"
 import { TaskSheet, type TaskSheetState } from "@/components/teams/TaskSheet"
 import { TaskTimeline } from "@/components/teams/TaskTimeline"
 import { TeamChat } from "@/components/teams/TeamChat"
+import { TeamSettings } from "@/components/teams/TeamSettings"
 import { Banner, DockResizer } from "@/components/teams/ui"
 import { useMarkSeen, usePresence, useTeamStream } from "@/components/teams/use-team-stream"
 import { coverFor } from "@/lib/team-cover"
@@ -70,6 +71,7 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
           <span>{store.team.course.code} · {store.team.assignment.title}</span>
           <strong>{store.team.name}</strong>
         </div>
+        <TeamSettings store={store} update={update} onError={fail} />
         <nav className="tm-views" aria-label="Team views">
           {VIEWS.map((item) => {
             const Icon = item.icon

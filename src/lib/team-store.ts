@@ -222,8 +222,14 @@ function reduce(store: TeamStore, event: TeamEvent): TeamStore {
       const run = payload as unknown as HermesRunInfo
       return { ...store, hermes: run.status === "completed" || run.status === "failed" ? null : run }
     }
-    case "team.updated":
-      return { ...store, team: { ...store.team, charter: (payload.charter ?? {}) as TeamInfo["charter"] } }
+    case "team.updated": {
+      // Each update carries only what changed (charter, or name and size).
+      const team = { ...store.team }
+      if (payload.charter !== undefined) team.charter = payload.charter as TeamInfo["charter"]
+      if (typeof payload.name === "string") team.name = payload.name
+      if (typeof payload.size_limit === "number") team.size_limit = payload.size_limit
+      return { ...store, team }
+    }
     default:
       return store
   }

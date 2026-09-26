@@ -25,7 +25,7 @@ function snapshot(patch: Partial<TeamState> = {}): TeamState {
       id: "t", name: "Team", cover_seed: "abc", lead_user_id: "u1", charter: {}, created_at: T0, viewer_role: "lead",
       assignment: { id: "a", course_id: "c", title: "Project", brief: {}, deadline: null, deliverables: [], rubric: [], team_size_min: 2, team_size_max: 4 },
       course: { id: "c", code: "SWE 363", title: "SE", term: "Fall" },
-      members: [{ user_id: "u1", display_name: "Sara Alharbi", role_label: "", is_lead: true }],
+      members: [{ user_id: "u1", display_name: "Sara Alharbi", role_label: "", is_lead: true }], size_limit: 4,
     },
     tasks: [], milestones: [], decisions: [], documents: [], messages: [], proposals: [], last_seq: 10, last_seen_seq: 10, ...patch,
   }
@@ -197,5 +197,16 @@ describe("proposals and Hermes status", () => {
     const store = fromSnapshot(snapshot({ documents: [{ id: "d1", team_id: "t", kind: "srs", title: "SRS", created_at: T0, sections: [section] }] }))
     expect(sectionById(store, "s1")?.key).toBe("1.1")
     expect(sectionById(store, "nope")).toBeUndefined()
+  })
+})
+
+describe("team.updated", () => {
+  it("renames and resizes without touching the charter", () => {
+    let store = fromSnapshot(snapshot())
+    store = applyEvent(store, event("team.updated", { charter: { goal: "Ship it" } }))
+    store = applyEvent(store, event("team.updated", { name: "Falcon Squad", size_limit: 3 }))
+    expect(store.team.name).toBe("Falcon Squad")
+    expect(store.team.size_limit).toBe(3)
+    expect(store.team.charter.goal).toBe("Ship it")
   })
 })

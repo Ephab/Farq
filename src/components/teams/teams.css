@@ -230,3 +230,4 @@
 .fq .tm-hermes-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 4px; padding: 6px 10px; border-radius: var(--fq-r-pill); background: var(--fq-accent-soft); color: var(--fq-accent); font-size: 12px; font-weight: 600; }
 .fq .tm-cover-risk { margin-top: 4px; padding: 2px 9px; border-radius: var(--fq-r-pill); background: rgba(255, 196, 0, 0.92); color: #3a2a00; font-size: 11px; font-weight: 700; }
 .fq .tm-risk { padding: 8px 10px; border-radius: var(--fq-r-sm); background: var(--fq-warning-soft); font-size: 13px; }
+.fq .tm-team-edit { display: flex; flex-direction: column; gap: 10px; padding: 10px; border: 1px solid var(--fq-line); border-radius: var(--fq-r-md); background: var(--fq-surface-solid); }

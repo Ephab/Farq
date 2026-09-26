@@ -20,7 +20,7 @@ export interface TeamCharter { goal?: string; roles?: Record<string, string>; wo
 export interface TeamMemberInfo { user_id: string; display_name: string; role_label: string; is_lead: boolean }
 export interface TeamInfo {
   id: string; name: string; cover_seed: string; lead_user_id: string; charter: TeamCharter; created_at: string
-  viewer_role: TeamRole; assignment: AssignmentInfo; course: CourseRef; members: TeamMemberInfo[]
+  viewer_role: TeamRole; assignment: AssignmentInfo; course: CourseRef; members: TeamMemberInfo[]; size_limit: number
 }
 export interface TeamCard {
   id: string; name: string; cover_seed: string; course: CourseRef
@@ -154,6 +154,7 @@ export function teamClient(userId: string) {
   risks: (teamId: string) => teamApi<TeamRisk[]>(`/api/teams/${teamId}/risks`),
   markSeen: (teamId: string, seq: number) => teamApi<{ last_seen_seq: number }>(`/api/teams/${teamId}/seen`, send("POST", { seq })),
   createDocument: (teamId: string, kind: DocumentKind) => teamApi<TeamDocumentInfo>(`/api/teams/${teamId}/documents`, send("POST", { kind })),
+  updateTeam: (teamId: string, body: { name?: string; size_limit?: number }) => teamApi<TeamInfo>(`/api/teams/${teamId}`, send("PATCH", body)),
   updateSection: (sectionId: string, body: { title?: string; owner_user_id?: string | null }) =>
     teamApi<DocSectionInfo>(`/api/sections/${sectionId}`, send("PATCH", body)),
   lockSection: (sectionId: string) => teamApi<DocSectionInfo>(`/api/sections/${sectionId}/lock`, send("POST")),

@@ -35,6 +35,9 @@ ADDED_COLUMNS = {
     "chat_messages": {
         "metadata_json": "TEXT",
     },
+    "teams": {
+        "size_limit": "INTEGER",
+    },
 }
 
 

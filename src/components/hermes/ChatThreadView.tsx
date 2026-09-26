@@ -54,10 +54,15 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const reduce = useReducedMotion()
+  // Stick to the bottom while new content arrives, but let go the moment the
+  // student scrolls up to read history.
+  const stickRef = useRef(true)
 
   useEffect(() => {
     const container = messagesRef.current
-    container?.scrollTo({ top: container.scrollHeight, behavior: reduce ? "auto" : "smooth" })
+    if (container && stickRef.current) {
+      container.scrollTo({ top: container.scrollHeight, behavior: reduce ? "auto" : "smooth" })
+    }
   }, [messages, stage, reduce])
   useEffect(() => { if (draft) setInput(draft) }, [draft])
 
@@ -149,7 +154,16 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
 
   return (
     <div className="fq fq-thread">
-      <div ref={messagesRef} className="chat-messages" role="log" aria-label="Conversation with Hermes">
+      <div
+        ref={messagesRef}
+        className="chat-messages"
+        role="log"
+        aria-label="Conversation with Hermes"
+        onScroll={(event) => {
+          const el = event.currentTarget
+          stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96
+        }}
+      >
         {messages.length === 0 ? (
           <motion.div
             initial={reduce ? false : { opacity: 0, y: 14 }}

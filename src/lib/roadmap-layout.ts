@@ -28,7 +28,10 @@ export interface RoadmapLayout {
   height: number;
   /** Vertical spine x in canvas coordinates. */
   spineX: number;
+  orientation: RoadmapOrientation;
 }
+
+export type RoadmapOrientation = "vertical" | "horizontal";
 
 export const NODE_W = 272;
 export const NODE_H = 120;
@@ -109,14 +112,56 @@ export function computeRoadmapLayout(
 
   const height = y - STAGE_GAP + PAD_BOTTOM;
 
-  // Every declared dep gets a connector. Nodes with no deps stay separate
-  // by design. Intra-stage deps draw direct beziers between cards.
-  // Cross-stage deps are NOT drawn end-to-end: each involved node gets a
-  // single short tap to the central spine (one line out of a source, one
-  // line into a target no matter how many deps it has), and the spine
-  // carries the continuity between stages. This keeps branching readable
-  // instead of bundling parallel wires down one side of the canvas.
-  // See RoadmapEdges for the tap rendering.
+  return { positions, edges: buildEdges(nodes, positions, stages), stageAnchors, width, height, spineX, orientation: "vertical" };
+}
+
+/**
+ * Horizontal view: stages run left→right as columns, nodes stack top→bottom
+ * inside each column. Dependencies draw as direct orthogonal wires (no
+ * spine), which reads cleanly when every dep flows left→right.
+ */
+export const HORIZ_COL_W = NODE_W + 64;
+const HORIZ_COL_GAP = 96;
+export const HORIZ_COL_STEP = HORIZ_COL_W + HORIZ_COL_GAP;
+
+export function computeHorizontalRoadmapLayout(
+  nodes: RoadmapNodeData[],
+  stages: RoadmapStage[],
+): RoadmapLayout {
+  const memberIds = stages.map((stage) => stage.nodeIds.filter((id) => nodes.some((n) => n.id === id)));
+  const maxRows = Math.max(1, ...memberIds.map((ids) => ids.length));
+  const width = PAD_X + stages.length * HORIZ_COL_W + Math.max(0, stages.length - 1) * HORIZ_COL_GAP + PAD_X;
+  const height = PAD_TOP + STAGE_HEADER_H + maxRows * NODE_H + Math.max(0, maxRows - 1) * GAP_Y + PAD_BOTTOM;
+
+  const positions: Record<string, PositionedNode> = {};
+  const stageAnchors: StageAnchor[] = [];
+  const areaTop = PAD_TOP + STAGE_HEADER_H;
+  const areaBottom = height - PAD_BOTTOM;
+  stages.forEach((stage, si) => {
+    const colX = PAD_X + si * (HORIZ_COL_W + HORIZ_COL_GAP);
+    stageAnchors.push({ stageId: stage.id, x: colX + HORIZ_COL_W / 2, y: PAD_TOP });
+    const ids = memberIds[si];
+    // Center the stack vertically so short columns don't leave a ragged bottom.
+    const stackH = ids.length * NODE_H + Math.max(0, ids.length - 1) * GAP_Y;
+    const y0 = areaTop + Math.max(0, (areaBottom - areaTop - stackH) / 2);
+    ids.forEach((id, i) => {
+      positions[id] = {
+        id,
+        x: colX + (HORIZ_COL_W - NODE_W) / 2,
+        y: y0 + i * (NODE_H + GAP_Y),
+      };
+    });
+  });
+
+  return { positions, edges: buildEdges(nodes, positions, stages), stageAnchors, width, height, spineX: 0, orientation: "horizontal" };
+}
+
+/** Every declared dep gets a connector edge between positioned nodes. */
+function buildEdges(
+  nodes: RoadmapNodeData[],
+  positions: Record<string, PositionedNode>,
+  stages: RoadmapStage[],
+): RoadmapEdge[] {
   const stageByNode = new Map<string, string>();
   for (const stage of stages) {
     for (const nodeId of stage.nodeIds) stageByNode.set(nodeId, stage.id);
@@ -139,7 +184,7 @@ export function computeRoadmapLayout(
   // Cross-stage connectors first so intra-stage wires paint on top.
   edges.sort((a, b) => Number(a.crossStage) - Number(b.crossStage));
 
-  return { positions, edges, stageAnchors, width, height, spineX };
+  return edges;
 }
 
 /**
@@ -229,6 +274,92 @@ export function entryTapPath(nodeX: number, nodeTopY: number, spineX: number): s
     ],
     8,
   );
+}
+
+/**
+ * Cross-column connector for the horizontal view. Leaves the source through
+ * its side edge, drops in the empty inter-column gap to a shared bus lane in
+ * the bottom margin, runs across, then rises in the target's gap and enters
+ * through its side edge — so wires never cross node cards.
+ */
+export function crossColumnPath(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  laneY: number,
+): string {
+  const stub = HORIZ_COL_GAP / 2 - 8;
+  const cy1 = ay + NODE_H / 2;
+  const cy2 = by + NODE_H / 2;
+  const movingRight = bx >= ax;
+  const x1 = movingRight ? ax + NODE_W : ax;
+  const x2 = movingRight ? bx : bx + NODE_W;
+  const gx1 = movingRight ? x1 + stub : x1 - stub;
+  const gx2 = movingRight ? x2 - stub : x2 + stub;
+  // Neighbouring columns: one short jog through their shared gap — no trip
+  // to the bus lane. Only multi-column skips ride the bottom bus.
+  if (Math.abs(Math.abs(ax - bx) - HORIZ_COL_STEP) < 1) {
+    const mid = (x1 + x2) / 2;
+    return roundedOrthogonalPath(
+      [
+        [x1, cy1],
+        [mid, cy1],
+        [mid, cy2],
+        [x2, cy2],
+      ],
+      8,
+    );
+  }
+  return roundedOrthogonalPath(
+    [
+      [x1, cy1],
+      [gx1, cy1],
+      [gx1, laneY],
+      [gx2, laneY],
+      [gx2, cy2],
+      [x2, cy2],
+    ],
+    8,
+  );
+}
+
+/**
+ * Cross-row connector for the vertical view. Leaves the source through its
+ * bottom edge, jogs into the nearest empty column gap (or the side margin in
+ * compact mode), runs vertically past the intermediate rows, then jogs back
+ * and enters through the target's top edge — so wires never cross cards.
+ */
+export function crossRowPath(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  channelX: number,
+): string {
+  const stub = 10;
+  const cx1 = ax + NODE_W / 2;
+  const cx2 = bx + NODE_W / 2;
+  const y1 = ay + NODE_H;
+  const y2 = by;
+  return roundedOrthogonalPath(
+    [
+      [cx1, y1],
+      [cx1, y1 + stub],
+      [channelX, y1 + stub],
+      [channelX, y2 - stub],
+      [cx2, y2 - stub],
+      [cx2, y2],
+    ],
+    8,
+  );
+}
+
+/** Empty vertical channel nearest to a node: a column gap, or the margin. */
+export function verticalWireChannel(ax: number, layoutWidth: number): number {
+  if (layoutWidth < 760) return PAD_X / 2;
+  const col = Math.max(0, Math.min(2, Math.round((ax - PAD_X) / (NODE_W + GAP_X))));
+  return col < 2 ? PAD_X + col * (NODE_W + GAP_X) + NODE_W + GAP_X / 2 : PAD_X + (col - 1) * (NODE_W + GAP_X) + NODE_W + GAP_X / 2;
 }
 
 /** Polyline with quadratic rounded corners for orthogonal routing. */

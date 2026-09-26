@@ -52,3 +52,11 @@ def test_team_tools_route_to_the_internal_endpoints(monkeypatch):
     assert calls[4][2]["payload"] == {"task_id": "k", "changes": {"title": "B"}, "rationale": "r"}
     assert calls[5][2] == {"run_id": "r", "kind": "doc_section", "payload": {"section_id": "s", "content_md": "FR-1", "requirement_ids": []}, "summary": "Draft"}
     assert calls[6][2]["payload"] == {"charter": {"goal": "g"}}
+
+
+def test_team_tools_tolerate_a_missing_run_id(monkeypatch):
+    tools, calls = _registered(monkeypatch)
+    tools["farq_get_team_context"][1]({"team_id": "t"})
+    tools["farq_propose_section"][1]({"team_id": "t", "section_id": "s", "content_md": "FR-1", "summary": "Draft"})
+    assert calls[0] == ("GET", "/internal/hermes/teams/t/context", None)
+    assert calls[1][2] == {"kind": "doc_section", "payload": {"section_id": "s", "content_md": "FR-1", "requirement_ids": []}, "summary": "Draft"}

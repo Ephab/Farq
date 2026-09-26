@@ -164,3 +164,18 @@ def test_draft_goes_stale_when_the_section_was_saved_meanwhile(client):
     assert client.post(f"/api/proposals/{proposal_id}/accept", headers=hdr(s1)).json()["status"] == "stale"
     sections = client.get(f"/api/teams/{team}/state", headers=hdr(s0)).json()["documents"][0]["sections"]
     assert next(item for item in sections if item["key"] == "3.2")["content_md"] == "Manual text"
+
+
+def test_internal_tools_fall_back_to_the_teams_running_run(client):
+    """Models sometimes omit run_id; the team's single running run still decides who Hermes acts as."""
+    world = make_world()
+    team, s0, s1 = world["team_id"], world["students"][0], world["students"][1]
+    assert client.get(f"/internal/hermes/teams/{team}/context", headers=INTERNAL).status_code == 403
+    _running_run(team, s1)
+    context = client.get(f"/internal/hermes/teams/{team}/context", params={"acting_user_id": s0}, headers=INTERNAL)
+    assert context.status_code == 200, context.text
+    assert context.json()["acting_user"]["id"] == s1
+    fair = {"tasks": [{"title": f"Part {n}", "assignee_id": m, "estimate_points": 2, "rationale": "r"} for n, m in enumerate(world["students"][:3])]}
+    created = client.post(f"/internal/hermes/teams/{team}/proposals", json={"kind": "task_split", "payload": fair, "summary": "Split"}, headers=INTERNAL)
+    assert created.status_code == 201, created.text
+    assert created.json()["proposal"]["invoked_by"] == s1

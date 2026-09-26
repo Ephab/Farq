@@ -8,11 +8,18 @@ from .tools import request
 EVIDENCE_KINDS = ["course", "project", "skill", "experience", "certificate", "publication", "activity", "education"]
 
 
+def _run_query(params: dict) -> str:
+    """run_id is optional on the wire: the API falls back to the team's running run."""
+    run_id = params.get("run_id")
+    return f"?run_id={quote(run_id, safe='')}" if run_id else ""
+
+
 def _propose(params: dict, kind: str, payload: dict) -> str:
     """Every team change Hermes makes is a proposal the team must accept."""
-    return request("POST", f"/internal/hermes/teams/{quote(params['team_id'], safe='')}/proposals", {
-        "run_id": params["run_id"], "kind": kind, "payload": payload, "summary": params.get("summary", ""),
-    })
+    body = {"kind": kind, "payload": payload, "summary": params.get("summary", "")}
+    if params.get("run_id"):
+        body["run_id"] = params["run_id"]
+    return request("POST", f"/internal/hermes/teams/{quote(params['team_id'], safe='')}/proposals", body)
 
 
 TEAM_IDS = {
@@ -226,19 +233,19 @@ def register(ctx):
             "(stated skills, goals and roadmap stage), tasks, milestones, decisions, document outline, open proposals "
             "and, for members, the last 50 chat messages. Call this before any claim about the team.",
             {"type": "object", "properties": dict(TEAM_IDS), "required": ["team_id", "run_id"]},
-            lambda p, **_: request("GET", f"/internal/hermes/teams/{quote(p['team_id'], safe='')}/context?run_id={quote(p['run_id'], safe='')}"),
+            lambda p, **_: request("GET", f"/internal/hermes/teams/{quote(p['team_id'], safe='')}/context{_run_query(p)}"),
         ),
         (
             "farq_get_task",
             "Read one team task in full.",
             {"type": "object", "properties": {"task_id": {"type": "string"}, "run_id": TEAM_IDS["run_id"]}, "required": ["task_id", "run_id"]},
-            lambda p, **_: request("GET", f"/internal/hermes/tasks/{quote(p['task_id'], safe='')}?run_id={quote(p['run_id'], safe='')}"),
+            lambda p, **_: request("GET", f"/internal/hermes/tasks/{quote(p['task_id'], safe='')}{_run_query(p)}"),
         ),
         (
             "farq_get_doc_section",
             "Read one SRS/SDS/SPMP section in full, including its owner and status.",
             {"type": "object", "properties": {"section_id": {"type": "string"}, "run_id": TEAM_IDS["run_id"]}, "required": ["section_id", "run_id"]},
-            lambda p, **_: request("GET", f"/internal/hermes/sections/{quote(p['section_id'], safe='')}?run_id={quote(p['run_id'], safe='')}"),
+            lambda p, **_: request("GET", f"/internal/hermes/sections/{quote(p['section_id'], safe='')}{_run_query(p)}"),
         ),
         (
             "farq_propose_tasks",

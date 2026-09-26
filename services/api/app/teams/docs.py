@@ -84,27 +84,37 @@ def _section_and_team(db: Session, section_id: str) -> tuple[DocSection, Team]:
     return section, require_team(db, document.team_id)
 
 
+def new_document(db: Session, team_id: str, kind: str, actor: str | None, *, title: str | None = None,
+                 specs: list[tuple[str, str]] | None = None) -> TeamDocument:
+    """Create a document with its outline and emit `document.created`. The caller commits."""
+    if specs is None:
+        if kind not in OUTLINES:
+            raise ValueError("A custom document needs at least one section")
+        specs = OUTLINES[kind][1]
+    if len({key for key, _ in specs}) != len(specs):
+        raise ValueError("Section keys must be unique")
+    default_title = OUTLINES[kind][0] if kind in OUTLINES else "Document"
+    document = TeamDocument(team_id=team_id, kind=kind, title=(title or "").strip() or default_title)
+    db.add(document)
+    db.flush()
+    sections = [DocSection(document_id=document.id, key=key, title=section_title, position=index) for index, (key, section_title) in enumerate(specs)]
+    db.add_all(sections)
+    db.flush()
+    emit(db, team_id, "document.created", actor, document_dict(document, sections))
+    return document
+
+
 @router.post("/api/teams/{team_id}/documents", status_code=201)
 def create_document(team_id: str, body: DocumentCreate, db: Db, user: CurrentUser) -> dict:
     team = require_team(db, team_id)
     authorize(db, user, team, "write")
-    if body.sections:
-        specs = [(item.key.strip(), item.title.strip()) for item in body.sections]
-    elif body.kind in OUTLINES:
-        specs = OUTLINES[body.kind][1]
-    else:
-        raise HTTPException(422, "A custom document needs at least one section")
-    if len({key for key, _ in specs}) != len(specs):
-        raise HTTPException(422, "Section keys must be unique")
-    default_title = OUTLINES[body.kind][0] if body.kind in OUTLINES else "Document"
-    document = TeamDocument(team_id=team.id, kind=body.kind, title=(body.title or "").strip() or default_title)
-    db.add(document)
-    db.flush()
-    sections = [DocSection(document_id=document.id, key=key, title=title, position=index) for index, (key, title) in enumerate(specs)]
-    db.add_all(sections)
-    db.flush()
+    specs = [(item.key.strip(), item.title.strip()) for item in body.sections] if body.sections else None
+    try:
+        document = new_document(db, team.id, body.kind, user.id, title=body.title, specs=specs)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    sections = db.scalars(select(DocSection).where(DocSection.document_id == document.id).order_by(DocSection.position)).all()
     payload = document_dict(document, sections)
-    emit(db, team.id, "document.created", user.id, payload)
     db.commit()
     return payload
 

@@ -18,7 +18,7 @@ from .policy import authorize, is_member
 from .presence import presence_frame, touch
 
 # Event types an instructor must never receive (spec §5: the chat is private).
-CHAT_PREFIXES = ("message.", "reaction.", "typing.")
+CHAT_PREFIXES = ("message.", "reaction.", "typing.", "hermes.")
 POLL_SECONDS = 0.4
 HEARTBEAT_SECONDS = 15
 PRESENCE_SECONDS = 2

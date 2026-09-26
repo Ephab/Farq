@@ -3,14 +3,17 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..hermes import resolve_hermes_selection
 from ..identity import CurrentUser
 from ..models import now
+from ..schemas import HermesProvider
 from .common import Db, iso, loads, require, require_team
 from .events import emit
 from .models import Decision, MessageReaction, TeamMember, TeamMessage
@@ -24,6 +27,8 @@ class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
     reply_to_id: str | None = None
     poll_options: list[str] | None = Field(default=None, max_length=8)
+    provider: HermesProvider | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class MessageEdit(BaseModel):
@@ -118,7 +123,12 @@ def _emit_edited(db: Session, message: TeamMessage, actor: str) -> dict:
 
 
 @router.post("/api/teams/{team_id}/messages", status_code=201)
-def create_message(team_id: str, body: MessageCreate, db: Db, user: CurrentUser) -> dict:
+def create_message(
+    team_id: str, body: MessageCreate, background: BackgroundTasks, db: Db, user: CurrentUser,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    from .hermes_team import drain, parse_invocation, queue_invocation  # late import: hermes_team imports this module
+
     team = require_team(db, team_id)
     authorize(db, user, team, "write")
     content = body.content.strip()
@@ -132,8 +142,18 @@ def create_message(team_id: str, body: MessageCreate, db: Db, user: CurrentUser)
         if len(options) < 2:
             raise HTTPException(422, "A poll needs at least two options")
         kind, metadata = "poll", {"options": options}
+    invocation = parse_invocation(content) if kind == "text" else None
+    if invocation is not None:
+        try:
+            resolve_hermes_selection(body.provider, body.model)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
     message = post_message(db, team.id, user.id, content, kind=kind, metadata=metadata, reply_to_id=body.reply_to_id)
+    if invocation is not None:
+        queue_invocation(db, team, user, message, *invocation, provider=body.provider, model=body.model, hermes_api_key=x_hermes_api_key)
     db.commit()
+    if invocation is not None:
+        background.add_task(drain, team.id)
     return message_dict(message)
 
 

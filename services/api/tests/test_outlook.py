@@ -112,7 +112,7 @@ def test_today_uses_local_midnight_and_excludes_next_day(world):
 def test_token_refresh_persists_only_encrypted_cache(world, monkeypatch):
     _, _, _ = world
     cache = auth.msal.SerializableTokenCache()
-    connection = SimpleNamespace(token_cache=auth.seal(cache.serialize()))
+    connection = SimpleNamespace(tenant="graph-test", token_cache=auth.seal(cache.serialize()))
     def fake_client(token_cache):
         def refresh(scopes, account):
             assert scopes == ["User.Read", "Mail.Read"]

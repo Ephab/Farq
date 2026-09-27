@@ -101,6 +101,17 @@ def ensure_runtime() -> None:
             sync(skill.path, os.path.join(RUNTIME, "skills", skill.name))
 
 
+def email_env(env: dict[str, str]) -> dict[str, str]:
+    env = dict(env)
+    runtime = os.path.join(REPO, ".hermes-email-runtime")
+    os.makedirs(runtime, exist_ok=True)
+    shutil.copy2(os.path.join(REPO, "services", "hermes", "email-config.yaml"), os.path.join(runtime, "config.yaml"))
+    env.update(HERMES_HOME=runtime, HERMES_ENABLE_PROJECT_PLUGINS="0", API_SERVER_PORT="8643")
+    for key in ("FARQ_INTERNAL_TOKEN", "FARQ_API_INTERNAL_URL", "MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY", "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME"):
+        env.pop(key, None)
+    return env
+
+
 def build_child_env(values: dict[str, str]) -> dict[str, str]:
     """Fresh child env from .env values so Apply-in-Settings restarts pick up new keys."""
     env = dict(os.environ)
@@ -132,8 +143,10 @@ def stream(name: str, proc: subprocess.Popen) -> None:
 def start(name: str, cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
     if name != "api":
         env = {key: value for key, value in env.items() if key not in {"MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY"}}
+    if name == "email":
+        env = email_env(env)
     proc = subprocess.Popen(
-        cmd, cwd=REPO, env=env,
+        cmd, cwd=env["HERMES_HOME"] if name == "email" else REPO, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
     threading.Thread(target=stream, args=(name, proc), daemon=True).start()
@@ -156,6 +169,7 @@ def main() -> int:
     for name, url in (
         ("api", f"http://127.0.0.1:{API_PORT}/api/health"),
         ("hermes", f"http://127.0.0.1:{HERMES_PORT}/health"),
+        ("email", "http://127.0.0.1:8643/health"),
         ("web", f"http://127.0.0.1:{WEB_PORT}/"),
     ):
         try:
@@ -186,12 +200,13 @@ def main() -> int:
         # HERMES_HOME above. Bare `hermes gateway` would daemonize and escape
         # shutdown, so never use it here.
         "hermes": ["hermes", "gateway", "run"],
+        "email": ["hermes", "gateway", "run"],
         "web": ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", str(WEB_PORT)],
     }
     # Only Farq's own children are ever restarted here. The daily-use base
     # Hermes profile is never touched: different HERMES_HOME, no stop/restart
     # commands against it.
-    RESTARTABLE = ("api", "hermes")
+    RESTARTABLE = ("api", "hermes", "email")
     children: dict[str, subprocess.Popen] = {}
     pending_restart: set[str] = set()
     lock = threading.Lock()

@@ -50,7 +50,7 @@ def emit(
     return event
 
 
-def _visible(event: TeamEvent, user_id: str, role: str) -> bool:
+def visible_to(event: TeamEvent, user_id: str, role: str) -> bool:
     if event.visible_to_user_id and event.visible_to_user_id != user_id:
         return False
     if role == "instructor" and (event.type.startswith(CHAT_PREFIXES) or event.visible_to_user_id):
@@ -63,7 +63,7 @@ def events_after(db: Session, team_id: str, after_seq: int, user_id: str, role: 
         select(TeamEvent).where(TeamEvent.team_id == team_id, TeamEvent.seq > after_seq).order_by(TeamEvent.seq).limit(limit)
     ).all()
     cursor = rows[-1].seq if rows else after_seq
-    return [row for row in rows if _visible(row, user_id, role)], cursor
+    return [row for row in rows if visible_to(row, user_id, role)], cursor
 
 
 def event_dict(event: TeamEvent) -> dict:

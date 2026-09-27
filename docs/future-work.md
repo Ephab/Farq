@@ -4,6 +4,10 @@ The backbone deliberately ships only chat-driven memory and roadmap revision.
 
 ## Near term
 
+- Threat model for Group Projects team chat → Hermes: teammate-written prompt injection,
+  proposal flooding (rate-limit proposals per run), and what a malicious section draft can contain.
+- Group Projects sub-projects 4-6: teammate finder (opt-in matching), peer evaluation and viva
+  prep, requirement → design → task → test traceability graph.
 - Threat model for the onboarding folder scan: path allowlisting, symlink escapes, what a
   malicious README can make Hermes submit, and whether indexing should move to a sandbox.
 - OCR for scanned transcripts and exam PDFs; Arabic-aware transcript parsing.
@@ -21,10 +25,17 @@ The backbone deliberately ships only chat-driven memory and roadmap revision.
 
 ## University data
 
-Create read-only Blackboard and Outlook connectors behind a normalized university snapshot.
-OAuth tokens must remain server-side. Imported announcements, syllabi, courses, deadlines,
-grades, and slides require source metadata and refresh timestamps. Hermes receives normalized
-records through tools rather than unrestricted account access.
+The hackathon build now has a read-only, pre-indexed Blackboard demo snapshot populated from an
+explicit allowlist of local lecture folders plus synthetic demo announcements, syllabi and
+assignments. Hermes can list courses, list content, search, read bounded chunks and inspect updates.
+It cannot log in to Blackboard or browse arbitrary LMS pages.
+
+Replace the demo importer with an institution-approved Blackboard Learn REST integration using
+Three-Legged OAuth (3LO). OAuth tokens must remain server-side, scopes must be read-only and
+least-privilege, and refresh should use incremental timestamps plus idempotent upserts. Add an
+Outlook connector behind the same normalized university snapshot. Imported announcements,
+syllabi, courses, deadlines, grades and slides must preserve provenance and refresh timestamps;
+Hermes should continue receiving only normalized records through bounded tools.
 
 ## Current information
 

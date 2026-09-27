@@ -120,6 +120,17 @@ def ensure_runtime() -> None:
             sync(skill.path, os.path.join(RUNTIME, "skills", skill.name))
 
 
+def email_env(env: dict[str, str]) -> dict[str, str]:
+    env = dict(env)
+    runtime = os.path.join(REPO, ".hermes-email-runtime")
+    os.makedirs(runtime, exist_ok=True)
+    shutil.copy2(os.path.join(REPO, "services", "hermes", "email-config.yaml"), os.path.join(runtime, "config.yaml"))
+    env.update(HERMES_HOME=runtime, HERMES_ENABLE_PROJECT_PLUGINS="0", API_SERVER_PORT="8643")
+    for key in ("FARQ_INTERNAL_TOKEN", "FARQ_API_INTERNAL_URL", "MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY", "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME"):
+        env.pop(key, None)
+    return env
+
+
 def build_child_env(values: dict[str, str]) -> dict[str, str]:
     """Fresh child env from .env values so Apply-in-Settings restarts pick up new keys."""
     env = dict(os.environ)
@@ -220,7 +231,7 @@ class Service:
 
     def __init__(self, name: str, cmd: list[str], env: dict[str, str]) -> None:
         self.proc = subprocess.Popen(
-            cmd, cwd=REPO, env=env,
+            cmd, cwd=env["HERMES_HOME"] if name == "email" else REPO, env=env,
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             encoding="utf-8", errors="replace",
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
@@ -297,7 +308,7 @@ def main() -> int:
     sys.stdout.reconfigure(errors="replace")
     enable_console_colors()
 
-    for name, port in (("api", API_PORT), ("hermes", HERMES_PORT), ("web", WEB_PORT)):
+    for name, port in (("api", API_PORT), ("hermes", HERMES_PORT), ("email", 8643), ("web", WEB_PORT)):
         if port_in_use(port):
             log(f"ERROR: {name} port {port} is already in use — stop it first, then re-run.")
             return 1
@@ -324,13 +335,14 @@ def main() -> int:
         # HERMES_HOME above. Bare `hermes gateway` would daemonize and escape
         # shutdown, so never use it here.
         "hermes": [hermes, "gateway", "run"],
+        "email": [hermes, "gateway", "run"],
         # npm resolves to npm.cmd; Popen needs its full path to run it.
         "web": [npm, "run", "dev", "--", "--host", "127.0.0.1", "--port", str(WEB_PORT)],
     }
     # Only Farq's own children are ever restarted here. The daily-use base
     # Hermes profile is never touched: different HERMES_HOME, no stop/restart
     # commands against it.
-    RESTARTABLE = ("api", "hermes")
+    RESTARTABLE = ("api", "hermes", "email")
     children: dict[str, Service] = {}
     pending_restart: set[str] = set()
     lock = threading.Lock()
@@ -340,7 +352,9 @@ def main() -> int:
         if name != "api":
             for var in ("MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY"):
                 env.pop(var, None)
-        if name == "hermes":
+        if name == "email":
+            env = email_env(env)
+        if name in {"hermes", "email"}:
             for var in HERMES_STRIPPED_VARS:
                 env.pop(var, None)
         children[name] = Service(name, commands[name], env)

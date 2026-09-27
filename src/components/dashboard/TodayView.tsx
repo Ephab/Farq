@@ -1,3 +1,4 @@
+import { OutlookView } from "@/components/outlook/OutlookView"
 "use client"
 
 import { createElement, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
@@ -573,7 +574,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
   if (error && nodes.length === 0) {
     return (
-      <div className="grid min-h-[60vh] place-items-center px-4 py-10">
+      <div className="mx-auto grid w-full max-w-[1320px] items-start gap-5 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
         <div className="text-center">
           <p className="text-sm font-semibold">Today could not load</p>
           <p className="mt-1 text-[13px] text-muted-foreground">{error}</p>
@@ -591,8 +592,8 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
   if (nodes.length === 0) {
     return (
-      <div className="grid min-h-[60vh] place-items-center px-4 py-10">
-        <div className="max-w-[46ch] text-center">
+      <div className="mx-auto grid w-full max-w-[1320px] items-start gap-5 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
+        <div className="mx-auto max-w-[46ch] py-8 text-center">
           <p className="text-xs font-bold uppercase tracking-wide text-primary">Today</p>
           <h1 className="mt-2 text-[clamp(28px,4vw,44px)] font-bold leading-[1.05] tracking-tight">
             No roadmap yet{displayName ? `, ${displayName}` : ""}.
@@ -618,6 +619,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
             </button>
           </div>
         </div>
+        <OutlookView compact onOpen={() => onNavigate("Emails")} />
       </div>
     )
   }
@@ -733,7 +735,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, delay: 0.05, ease: EASE_OUT }}
         >
-          <Panel label="Up next" className="h-full">
+          <Panel label="Up next">
             <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-muted-foreground">
               <span>Up next</span>
               {summary.remaining > 0 ? (
@@ -771,6 +773,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
               </ul>
             )}
           </Panel>
+          <div className="mt-5"><OutlookView compact onOpen={() => onNavigate("Emails")} /></div>
         </motion.div>
       </div>
 

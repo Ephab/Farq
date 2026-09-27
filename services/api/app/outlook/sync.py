@@ -263,7 +263,7 @@ def tick() -> None:
     with SessionLocal() as db:
         db.execute(delete(MailItem).where(MailItem.expires < stamp))
         row = db.scalar(select(MailConnection).where(
-            MailConnection.tenant == desktop.TENANT if desktop.enabled() else MailConnection.tenant != desktop.TENANT,
+            or_(MailConnection.tenant == desktop.TENANT, MailConnection.tenant.startswith("public:")) if desktop.enabled() else MailConnection.tenant != desktop.TENANT,
             MailConnection.connected.is_(True), MailConnection.status != "reconnect",
             MailConnection.next_sync <= stamp, MailConnection.lease_until < stamp,
             or_(MailConnection.auto_sync.is_(True), MailConnection.status.in_(["queued", "running"])),

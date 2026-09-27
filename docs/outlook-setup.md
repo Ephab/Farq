@@ -1,7 +1,7 @@
 # University Outlook setup
 
 The integration keeps Laya local. It adds Microsoft sign-in, a private primary-mailbox
-cache, resumable per-folder delta sync, and University mail views: Important, Today,
+cache, resumable per-folder delta sync, and Emails views: Important, Today,
 Needs review, All mail and Dismissed. Home includes a Today panel; onboarding and My
 data also offer connection controls. No email is sent, marked read, moved or deleted
 in Microsoft. No calendar or attachment content is read.
@@ -22,7 +22,7 @@ and unattended Windows services cannot use this COM connection.
 4. Start `scripts/dev.ps1` and open `http://localhost:5173`. Copy the local pairing
    code printed in the terminal. Alternatively print it with
    `.venv\Scripts\python.exe -m services.api.app.outlook.desktop` from the repo root.
-5. Select **University mail → Connect Outlook**, enter that code, review the
+5. Select **Emails → Connect Outlook**, enter that code, review the
    mailbox access description, and select **Allow and connect**.
 
 Keep the API/Vite bound to loopback and run them as the signed-in Windows user.
@@ -92,7 +92,7 @@ environment yourself, or use `--env-file .env`; uvicorn does not automatically l
 the file. Keep Uvicorn access logging disabled (`--no-access-log`) or configure your
 proxy/log sink to omit callback query strings, which contain authorization codes.
 
-Open **University mail**, then **Connect Outlook**. Microsoft handles credentials
+Open **Emails**, then **Connect Outlook**. Microsoft handles credentials
 and consent. A blocked popup falls back to a full-page sign-in; use Return to Farq
 after the callback. Cancellation, expired state and rejected consent require starting
 sign-in again. Tokens never pass to JavaScript.
@@ -100,9 +100,8 @@ sign-in again. Tokens never pass to JavaScript.
 The Microsoft session owns the mailbox independently of Farq's existing demo
 profile. Connecting does not claim or migrate an unauthenticated demo student.
 The shared `current_user()` identity function recognizes the secure session and
-rejects attempts to impersonate Microsoft users with a demo header. While signed
-in, team routes see this Microsoft identity; it has no demo team memberships.
-Disconnect returns to the existing demo behavior. Full student-profile account
+rejects attempts to impersonate Microsoft users with a demo header. The mailbox session applies only to `/api/outlook/*`; team routes keep their existing
+demo identity. Connecting mail therefore does not change the active team member. Full student-profile account
 migration is a separate authentication task.
 
 Sync starts automatically, scans primary-mailbox folders and their children, then
@@ -151,8 +150,9 @@ guarantee that prose contains no personal information. Protect the local databas
 Disconnect stops jobs, deletes cached mail, dates, folders, sessions and encrypted
 tokens. It does not delete anything in Outlook or revoke Microsoft-side consent;
 that can be removed separately in the Microsoft account's application permissions.
-No mailbox data is sent to Hermes, its cloud models, shared opportunities, or team
-events. A bounded, explicit coach-sharing flow requires separate implementation.
+Sync and Laya classification send no mailbox data to cloud models. The optional
+selected-email Q&A described below requires explicit consent and uses a separate
+Hermes gateway. Email never becomes a StudentFact or team event.
 
 ## Verification
 
@@ -163,3 +163,47 @@ tenant consent, live token refresh and a complete mailbox round trip. No develop
 credential is bundled with this repository.
 
 See [threat model](outlook-threat-model.md) and [classifier details](local-email-classifier.md).
+
+## Integrated personal Outlook / public-client sign-in
+
+Main's personal-mail connection now feeds the same private cache, cleaner, Laya
+classifier and Emails workspace as desktop Outlook. Choose **Emails → Other
+Outlook connection options**. For this option, set `FARQ_TOKEN_ENCRYPTION_KEY`
+(a Fernet key, generated with `.venv/Scripts/python -c "from cryptography.fernet
+import Fernet; print(Fernet.generate_key().decode())"` on one line).
+
+- Device code: set `OUTLOOK_CLIENT_ID` to a public-client app ID and
+  `OUTLOOK_TENANT=consumers` for personal Outlook, or an approved university tenant
+  ID. Enable public-client flows in that app. Consent requires **User.Read** and
+  **Mail.Read**. No client secret or redirect URI is needed for this option.
+- Temporary token: paste an already-approved Graph access token with those scopes.
+  It is encrypted on the API server, cannot refresh, and requires reconnecting
+  after expiry. It cannot bypass an organization's consent restrictions.
+- On macOS/Linux, use `OUTLOOK_PROVIDER=graph`; personal options do not require the
+  confidential-client `MICROSOFT_*` settings. Desktop COM remains Windows-only.
+
+Old main-branch `/api/students/{id}/outlook/*` endpoints were removed because a demo
+student ID is not mailbox authentication. Existing prototype connections must be
+reconnected. Legacy `outlook_accounts` rows are not imported or exposed; a previous
+prototype database/backup may still contain its old plaintext tokens. New tokens
+are stored only in encrypted `outlook_connections.token_cache`.
+
+## Selected-email Q&A and Home
+
+Home shows today's mail in its right-hand column beneath Up next; on narrow screens
+it stacks vertically. The Emails sidebar entry opens the full shared inbox.
+Select emails (or open one), expand **Ask about…**, enter a question, accept sending
+that selection to the configured AI providers (including fallback providers), and
+ask. The API checks ownership, expiry and consent. It rejects selections over 25
+messages or 24,000 context characters instead of silently truncating them. This
+limit does not affect the full email reader or local classification.
+
+Q&A runs on a separate Hermes process/home with no enabled tools, Farq plugin,
+skills or long-term memory. Windows `scripts/dev.ps1`, `scripts/run_windows.py`,
+macOS `scripts/firas_run_mac.py`, and Docker Compose start it automatically. Native
+port: **8643**; API override: `HERMES_EMAIL_URL`. Never point that variable at the
+Coach gateway or mount Coach state into the email runtime. The checked-in config
+is `services/hermes/email-config.yaml`. Restart the runner after updating.
+The email runtime (`.hermes-email-runtime` / Docker `hermes-email-data`) and model
+providers may retain request transcripts; disconnect deletes Farq's mail cache,
+not already submitted requests. No answer is automatically saved as facts or plans.

@@ -5,18 +5,41 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 
 ## What was built
 
-### University Outlook and local Laya (2026-09-26)
+### Integrated Outlook and local Laya (2026-09-27)
 - `app/outlook` implements browser-bound Microsoft consent, encrypted server-side
   token caches, private mailbox sessions and resumable read-only Graph delta sync.
-- University mail provides Important, Today, Needs review, All mail and Dismissed;
-  Home and onboarding also expose the integration. Laya runs locally using the
+  Desktop COM, main's public-client device flow and temporary tokens share this cache.
+  Old student-ID mailbox endpoints were removed; prototype users must reconnect.
+- The unified Emails view provides Important, Today, Needs review, Follow-ups, All mail and Dismissed;
+  Home places mail in the right column; onboarding also exposes the integration. Laya runs locally using the
   pinned model installed by `setup.bat` / `setup.sh` through uv.
 - Mailbox ownership is independent of demo student profiles. Mail does not become
-  StudentFact records, team activity, or Hermes context. Coach sharing and real
+  StudentFact records or team activity. Explicit selected-email Q&A uses a separate
+  tool-free Hermes gateway; automatic sync remains local. Coach sharing and real
   student-account migration remain separate work.
 - See `docs/outlook-setup.md` and `docs/outlook-threat-model.md` before extending
   access. Mocked authorization/sync tests pass; live tenant consent and token
   renewal still require a configured Microsoft app and university account.
+### Group Projects (course teams with Hermes as a teammate)
+- Spec: `docs/superpowers/specs/2026-09-25-group-projects-design.md`; plans 1-3 in
+  `docs/superpowers/plans/`. Backend in `services/api/app/teams/`, UI in `src/components/teams/`.
+- Demo: sidebar **Group Projects** → Group 1 (SWE 363). "Viewing as" switches the acting user
+  per tab (students, or Dr. Layla Haddad as instructor, who sees no chat).
+- Hermes: `@Hermes` and `/split`, `/describe`, `/draft srs 3.2`, `/standup`, `/risks`, `/catchup`.
+  Every change is a proposal card (vote, accept or lead decision).
+- Next: Plan 4 (signature animations and a Playwright demo). Deferred review minors are listed in
+  the plan final reports.
+
+### Read-only Blackboard demo retrieval
+- A host-side importer converts an explicit allowlist of five local PDF/PPTX lecture folders into
+  an authoritative normalized snapshot. Synthetic syllabi, announcements and assignments are
+  marked `origin="synthetic"`; binaries and Blackboard credentials are never stored.
+- Five bounded Hermes tools list courses/content, search snippets, paginate item text and list
+  updates. All calls are student-scoped and authenticated through `/internal/hermes/*`.
+- Blackboard text is treated as untrusted data. Hermes must cite course/item records and must never
+  claim the snapshot is live. Re-imports upsert current material and remove stale records.
+- Import: `.venv\Scripts\python.exe scripts\import_blackboard_demo.py --root "D:\mmahf\Downloads\University\University"`.
+  Smoke: `.venv\Scripts\python.exe scripts\smoke_blackboard_tools.py`.
 
 ### Project milestones and evaluator backbone
 - Staged generation now labels stage types and requires one final project for each new
@@ -128,7 +151,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
-- Automated: 88 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
+- Automated: 238 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
   `npm run build` pass.
 - Verified live: sign-in, basics, GitHub import (37 repos), transcript/CV/LinkedIn PDF/portfolio
   extraction, scanner on real folders, Gemini Flash-Lite through the gateway.

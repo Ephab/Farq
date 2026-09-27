@@ -38,16 +38,16 @@ def connection_for(user: User, db: Session) -> MailConnection:
 @router.get("/status")
 def status(request: Request, response: Response, db: Db):
     response.headers["Cache-Control"] = "no-store"
-    try:
-        desktop.require_local(request) if desktop.enabled() else auth.settings()
-    except HTTPException as error:
-        return {"configured": False, "connected": False, "provider": "desktop" if desktop.enabled() else "graph", "error": error.detail}
     user = auth.session_user(request, db)
     connection = db.scalar(select(MailConnection).where(MailConnection.user_id == user.id)) if user else None
     if not connection or not connection.connected:
+        try:
+            desktop.require_local(request) if desktop.enabled() else auth.settings()
+        except HTTPException as error:
+            return {"configured": False, "connected": False, "provider": "desktop" if desktop.enabled() else "graph", "error": error.detail}
         return {"configured": True, "connected": False, "provider": "desktop" if desktop.enabled() else "graph"}
     return {"configured": True, "connected": True, "account": connection.label,
-            "provider": "desktop" if connection.tenant == desktop.TENANT else "graph",
+            "provider": "desktop" if connection.tenant == desktop.TENANT else "personal" if connection.tenant.startswith("public:") else "graph",
             "worker_enabled": os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true",
             "auto_sync": connection.auto_sync, "status": connection.status,
             "last_sync": connection.last_sync, "processed": connection.processed, "error": connection.error}
@@ -225,7 +225,10 @@ def disconnect(request: Request, response: Response, user: CurrentUser, db: Db):
     # Browser-bound pending sign-ins must not reconnect after disconnect.
     flow_cookie = request.cookies.get(auth.FLOW_COOKIE, "")
     db.execute(delete(OAuthAttempt).where(OAuthAttempt.browser_hash == auth.digest(flow_cookie)))
+    from .personal import PUBLIC_COOKIE
+    db.execute(delete(OAuthAttempt).where(OAuthAttempt.state_hash == auth.digest(request.cookies.get(PUBLIC_COOKIE, ""))))
     db.commit()
+    response.delete_cookie(PUBLIC_COOKIE, path="/api/outlook")
     response.delete_cookie(auth.COOKIE, path="/")
     response.delete_cookie(auth.FLOW_COOKIE, path="/api/outlook")
     return {"connected": False}
@@ -324,3 +327,38 @@ def decide(item_id: str, body: ItemDecision, request: Request, user: CurrentUser
     apply_decision(item, body)
     db.commit()
     return item_dict(item)
+
+
+class EmailQuestion(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=25)
+    question: str = Field(min_length=1, max_length=2000)
+    accepted: bool
+    provider: str | None = None
+    model: str | None = None
+
+
+@router.post("/chat")
+def email_chat(body: EmailQuestion, request: Request, response: Response, user: CurrentUser, db: Db):
+    from .chat import run_email_chat, EmailChatError
+    auth.require_origin(request)
+    connection = connection_for(user, db)
+    if not body.accepted:
+        raise HTTPException(403, "Accept sending these messages to the configured AI provider first")
+    ids = list(dict.fromkeys(body.ids))
+    items = db.scalars(select(MailItem).where(MailItem.id.in_(ids), MailItem.connection_id == connection.id,
+                                            MailItem.removed.is_(False), MailItem.expires > time.time())).all()
+    if len(items) != len(ids):
+        raise HTTPException(404, "One or more selected emails are unavailable")
+    by_id = {item.id: item for item in items}
+    emails = [{"subject": by_id[key].subject, "sender": {"name": by_id[key].sender, "address": ""},
+               "received": by_id[key].received, "body": by_id[key].excerpt, "preview": ""} for key in ids]
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = run_email_chat(emails, body.question, body.provider, body.model, request.headers.get("x-hermes-api-key"))
+    except EmailChatError as error:
+        raise HTTPException(error.status, str(error)) from None
+    return {**result, "email_count": len(items)}
+
+
+# Register main's alternate sign-in against the same private session/cache routes.
+from . import personal  # noqa: E402,F401

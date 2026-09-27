@@ -4,13 +4,14 @@ import { Fragment, useEffect, useState } from "react"
 import { Avatar } from "@/components/teams/ui"
 import { timeAgo } from "@/lib/team-format"
 import type { TeamStore } from "@/lib/team-store"
-import { errorMessage, type ContributionRow } from "@/lib/teams-api"
+import { errorMessage, type ContributionRow, type TeamRisk } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
 
 export function InstructorPanel({ store }: { store: TeamStore }) {
   const teams = useTeamClient()
   const [rows, setRows] = useState<ContributionRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [risks, setRisks] = useState<TeamRisk[]>([])
   const teamId = store.team.id
   const seq = store.lastSeq
 
@@ -19,6 +20,7 @@ export function InstructorPanel({ store }: { store: TeamStore }) {
     teams.contribution(teamId)
       .then((result) => { if (!cancelled) setRows(result.members) })
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)) })
+    teams.risks(teamId).then((result) => { if (!cancelled) setRisks(result) }).catch(() => undefined)
     return () => { cancelled = true }
   }, [teams, teamId, seq])
 
@@ -54,6 +56,12 @@ export function InstructorPanel({ store }: { store: TeamStore }) {
               ))}
             </div>
           ) : null}
+        </section>
+        <section>
+          <h2 className="tm-h2">Risks</h2>
+          {risks.length === 0 ? <p className="tm-muted">No risks right now.</p> : (
+            <div className="tm-list">{risks.map((risk) => <div key={risk.key} className="tm-risk" dir="auto">{risk.text}</div>)}</div>
+          )}
         </section>
         <section>
           <h2 className="tm-h2">Milestones</h2>

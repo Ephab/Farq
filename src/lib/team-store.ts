@@ -1,5 +1,5 @@
 import type {
-  DocSectionInfo, PresenceEntry, TaskStatus, TeamDecision, TeamDocumentInfo, TeamEvent, TeamInfo, TeamMessage, TeamMilestone, TeamState, TeamTask,
+  DocSectionInfo, HermesRunInfo, PresenceEntry, TaskStatus, TeamDecision, TeamDocumentInfo, TeamEvent, TeamInfo, TeamMessage, TeamMilestone, TeamProposal, TeamState, TeamTask,
 } from "@/lib/teams-api"
 
 /** Every event type the stream can send; EventSource needs a listener per named event. */
@@ -8,8 +8,10 @@ export const TEAM_EVENT_TYPES = [
   "milestone.created", "milestone.updated", "milestone.completed",
   "decision.pinned", "decision.removed",
   "message.created", "message.edited", "message.deleted", "reaction.toggled",
-  "document.created", "section.updated", "section.locked", "section.unlocked",
+  "document.created", "document.updated", "section.updated", "section.locked", "section.unlocked",
   "member.joined", "invite.created", "invite.declined", "invite.cancelled",
+  "proposal.created", "proposal.voted", "proposal.applied", "proposal.rejected", "proposal.stale", "proposal.awaiting_lead",
+  "hermes.run", "team.updated",
 ] as const
 
 export const TASK_COLUMNS: { status: TaskStatus; label: string }[] = [
@@ -30,6 +32,9 @@ export interface TeamStore {
   lastSeq: number
   lastSeenSeq: number | null
   presence: PresenceEntry[]
+  proposals: Record<string, TeamProposal>
+  /** The team's active Hermes run, or null when Hermes is idle. */
+  hermes: HermesRunInfo | null
 }
 
 function byId<T extends { id: string }>(items: T[]): Record<string, T> {
@@ -57,6 +62,8 @@ export function fromSnapshot(state: TeamState): TeamStore {
     lastSeq: state.last_seq,
     lastSeenSeq: state.last_seen_seq,
     presence: [],
+    proposals: byId(state.proposals ?? []),
+    hermes: null,
   }
 }
 
@@ -149,6 +156,25 @@ function addMember(store: TeamStore, userId: string, displayName: string): TeamS
   return { ...store, team: { ...store.team, members } }
 }
 
+export function upsertProposal(store: TeamStore, proposal: TeamProposal): TeamStore {
+  return { ...store, proposals: { ...store.proposals, [proposal.id]: proposal } }
+}
+
+export function sectionById(store: TeamStore, sectionId: string): DocSectionInfo | undefined {
+  for (const document of Object.values(store.documents)) {
+    const section = document.sections.find((item) => item.id === sectionId)
+    if (section) return section
+  }
+  return undefined
+}
+
+export function voteSummary(store: TeamStore, proposal: TeamProposal, me: string) {
+  const ids = store.team.members.map((member) => member.user_id)
+  const up = ids.filter((id) => proposal.votes[id] === "up").length
+  const down = ids.filter((id) => proposal.votes[id] === "down").length
+  return { up, down, members: ids.length, needed: Math.floor(ids.length / 2) + 1, mine: proposal.votes[me] ?? null }
+}
+
 function reduce(store: TeamStore, event: TeamEvent): TeamStore {
   const payload = event.payload
   const id = String(payload.id ?? "")
@@ -177,6 +203,9 @@ function reduce(store: TeamStore, event: TeamEvent): TeamStore {
       return setReaction(store, String(payload.message_id), String(payload.user_id), String(payload.emoji), Boolean(payload.on))
     case "document.created":
       return upsertDocument(store, payload as unknown as TeamDocumentInfo)
+    case "document.updated":
+      // Structural edits (rename, add/move/delete section) carry the whole document.
+      return upsertDocument(store, payload.document as unknown as TeamDocumentInfo)
     case "section.updated":
       return upsertSection(store, payload as unknown as DocSectionInfo)
     case "section.locked":
@@ -185,6 +214,25 @@ function reduce(store: TeamStore, event: TeamEvent): TeamStore {
       return patchSection(store, id, { lock_user_id: null, lock_expires_at: null })
     case "member.joined":
       return addMember(store, String(payload.user_id), String(payload.display_name))
+    case "proposal.created":
+    case "proposal.voted":
+    case "proposal.applied":
+    case "proposal.rejected":
+    case "proposal.stale":
+    case "proposal.awaiting_lead":
+      return upsertProposal(store, payload as unknown as TeamProposal)
+    case "hermes.run": {
+      const run = payload as unknown as HermesRunInfo
+      return { ...store, hermes: run.status === "completed" || run.status === "failed" ? null : run }
+    }
+    case "team.updated": {
+      // Each update carries only what changed (charter, or name and size).
+      const team = { ...store.team }
+      if (payload.charter !== undefined) team.charter = payload.charter as TeamInfo["charter"]
+      if (typeof payload.name === "string") team.name = payload.name
+      if (typeof payload.size_limit === "number") team.size_limit = payload.size_limit
+      return { ...store, team }
+    }
     default:
       return store
   }

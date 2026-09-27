@@ -61,12 +61,21 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def encryption_key() -> bytes:
+    key = os.getenv("FARQ_TOKEN_ENCRYPTION_KEY", "").strip().encode()
+    try:
+        Fernet(key)
+    except (ValueError, TypeError):
+        raise HTTPException(503, "Set FARQ_TOKEN_ENCRYPTION_KEY before connecting Graph mail. See docs/outlook-setup.md.") from None
+    return key
+
+
 def seal(value: str) -> str:
-    return Fernet(settings().key.encode()).encrypt(value.encode()).decode()
+    return Fernet(encryption_key()).encrypt(value.encode()).decode()
 
 
 def unseal(value: str) -> str:
-    return Fernet(settings().key.encode()).decrypt(value.encode()).decode()
+    return Fernet(encryption_key()).decrypt(value.encode()).decode()
 
 
 def client(cache: msal.SerializableTokenCache | None = None):
@@ -94,7 +103,8 @@ def session_user(request: Request, db: Session):
 
 def require_origin(request: Request) -> None:
     from . import desktop
-    expected = desktop.origin() if desktop.enabled() else settings().origin.rstrip("/")
+    from .personal import origin
+    expected = desktop.origin() if desktop.enabled() else origin()
     if desktop.enabled():
         desktop.require_local(request)
     if request.headers.get("origin") != expected:
@@ -102,6 +112,9 @@ def require_origin(request: Request) -> None:
 
 
 def token_for(connection) -> tuple[str, str]:
+    if connection.tenant.startswith("public:"):
+        from .personal import token_for_public
+        return token_for_public(connection)
     cache = msal.SerializableTokenCache()
     cache.deserialize(unseal(connection.token_cache))
     app = client(cache)

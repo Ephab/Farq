@@ -1,7 +1,7 @@
 "use client"
 
-import { Bot, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Users } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { Bot, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
   AnimatedSidebar,
   AnimatedSidebarContent,
@@ -19,7 +19,6 @@ import {
 } from "@/components/motion/animated-sidebar"
 import { FooterSettings } from "@/components/footer-settings"
 import { TodayView } from "@/components/dashboard/TodayView"
-import { OutlookView } from "@/components/outlook/OutlookView"
 import { ProjectsView } from "@/components/projects/ProjectsView"
 import { TeamsView } from "@/components/teams/TeamsView"
 import { QuizView } from "@/components/quiz/QuizView"
@@ -28,8 +27,11 @@ import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { HermesCoach } from "@/components/hermes/HermesCoach"
 import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
+import { EmailsView } from "@/components/emails/EmailsView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/farq-api"
+import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
+import { cn } from "@/lib/utils"
 import { ThemeProvider } from "@/lib/theme-context"
 
 export default function App() {
@@ -42,6 +44,19 @@ export default function App() {
   // Live Hermes run for this student's coach thread — polled so any section
   // can show that Hermes is still generating after navigating away.
   const activeRun = useActiveRun(profile?.thread_id ?? null)
+  const teamUnread = useTeamUnread(active)
+
+  const stopBackgroundRun = useCallback(async () => {
+    if (!activeRun) return
+    try {
+      await api(`/api/agent-runs/${activeRun.id}/cancel`, { method: "POST" })
+    } catch {
+      // The next poll picks up the terminal state; no banner from here.
+    }
+  }, [activeRun])
+  // One-shot handoff: HermesCoach clears this right after prefilling the
+  // composer, so the prompt does not reappear on every later visit.
+  const clearCoachDraft = useCallback(() => setCoachDraft(""), [])
 
   const loadProfile = useCallback(() => {
     if (!hasChosenStudent()) { setOnboarding(true); return }
@@ -76,98 +91,59 @@ export default function App() {
               </div>
             </AnimatedSidebarHeader>
 
-            <AnimatedSidebarContent>
-              <AnimatedSidebarGroup>
-                <AnimatedSidebarGroupContent>
-                  <AnimatedSidebarMenu>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton icon={<Mail className="size-4" />} isActive={active === "Outlook"} onSelect={() => setActive("Outlook")} className="text-[15px]">
-                        University mail
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<Bot className="size-4" />}
-                        isActive={active === "Hermes Coach"}
-                        onSelect={() => setActive("Hermes Coach")}
-                        className="text-[15px]"
-                      >
-                        Hermes Coach
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<Home className="size-4" />}
-                        isActive={active === "Home"}
-                        onSelect={() => setActive("Home")}
-                        className="text-[15px]"
-                      >
-                        Home
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<Route className="size-4" />}
-                        isActive={active === "Roadmap"}
-                        onSelect={() => setActive("Roadmap")}
-                        className="text-[15px]"
-                      >
-                        Roadmap
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<Database className="size-4" />}
-                        isActive={active === "My data"}
-                        onSelect={() => setActive("My data")}
-                        className="text-[15px]"
-                      >
-                        My data
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<Presentation className="size-4" />}
-                        isActive={active === "Slides"}
-                        onSelect={() => setActive("Slides")}
-                        className="text-[15px]"
-                      >
-                        Slides
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<FolderKanban className="size-4" />}
-                        isActive={active === "Projects"}
-                        onSelect={() => setActive("Projects")}
-                        className="text-[15px]"
-                      >
-                        Projects
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<Users className="size-4" />}
-                        isActive={active === "Group Projects"}
-                        onSelect={() => setActive("Group Projects")}
-                        className="text-[15px]"
-                      >
-                        Group Projects
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                    <AnimatedSidebarMenuItem>
-                      <AnimatedSidebarMenuButton
-                        icon={<ListChecks className="size-4" />}
-                        isActive={active === "Quizzes"}
-                        onSelect={() => setActive("Quizzes")}
-                        className="text-[15px]"
-                      >
-                        Quizzes
-                      </AnimatedSidebarMenuButton>
-                    </AnimatedSidebarMenuItem>
-                  </AnimatedSidebarMenu>
-                </AnimatedSidebarGroupContent>
-              </AnimatedSidebarGroup>
+            <AnimatedSidebarContent className="gap-0">
+              <NavSection>
+                <NavItem label="Home" icon={<Home className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem
+                  label="Hermes Coach"
+                  active={active}
+                  onSelect={setActive}
+                  icon={(
+                    <span className="relative grid place-items-center">
+                      <Bot className="size-4" />
+                      {activeRun ? (
+                        <span className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-amber-500 ring-2 ring-background" aria-hidden="true" />
+                      ) : null}
+                    </span>
+                  )}
+                  badge={activeRun ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                      <span className="size-1.5 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
+                      working
+                    </span>
+                  ) : undefined}
+                />
+              </NavSection>
+              <NavSection label="Learn">
+                <NavItem label="Roadmap" icon={<Route className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="Projects" icon={<FolderKanban className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="Quizzes" icon={<ListChecks className="size-4" />} active={active} onSelect={setActive} />
+              </NavSection>
+              <NavSection label="Collaborate">
+                <NavItem
+                  label="Group Projects"
+                  active={active}
+                  onSelect={setActive}
+                  icon={(
+                    <span className="relative grid place-items-center">
+                      <Users className="size-4" />
+                      {teamUnread > 0 ? <span className="absolute -right-1 -top-1 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true" /> : null}
+                    </span>
+                  )}
+                  badge={teamUnread > 0 ? (
+                    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary-foreground" aria-label={`${teamUnread} unread team messages`}>
+                      {teamUnread > 99 ? "99+" : teamUnread}
+                    </span>
+                  ) : undefined}
+                />
+                <NavItem label="Emails" icon={<Mail className="size-4" />} active={active} onSelect={setActive} />
+              </NavSection>
+              <NavSection label="Create">
+                <NavItem label="Slides" icon={<Presentation className="size-4" />} active={active} onSelect={setActive} />
+              </NavSection>
+              <NavSection label="Account" className="mt-auto">
+                <NavItem label="My data" icon={<Database className="size-4" />} active={active} onSelect={setActive} />
+              </NavSection>
             </AnimatedSidebarContent>
 
             <AnimatedSidebarFooter>
@@ -175,7 +151,7 @@ export default function App() {
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-foreground">
                   {(profile?.display_name ?? "S").slice(0, 1).toUpperCase()}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[15px] group-data-[state=collapsed]/sidebar:hidden">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium group-data-[state=collapsed]/sidebar:hidden">
                   {profile?.display_name ?? "User"}
                 </span>
                 <FooterSettings />
@@ -192,30 +168,41 @@ export default function App() {
               </AnimatedSidebarTrigger>
               <div className="h-5 w-px bg-border" />
               <p className="text-sm font-medium">{active}</p>
-              {activeRun && active !== "Hermes Coach" ? (
-                <button
-                  type="button"
-                  onClick={() => setActive("Hermes Coach")}
-                  title={activeRun.stage || "Hermes is working"}
-                  className="ml-auto inline-flex max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
-                >
-                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
-                  <span className="truncate">Hermes working{activeRun.stage ? ` · ${activeRun.stage}` : ""}</span>
-                </button>
+              {activeRun ? (
+                <div className="ml-auto flex min-w-0 items-center gap-1.5" role="status" aria-live="polite" aria-label={`Hermes is generating: ${activeRun.stage || "working"}`}>
+                  <button
+                    type="button"
+                    onClick={() => setActive("Hermes Coach")}
+                    title={activeRun.stage ? `View Hermes run — ${activeRun.stage}` : "View Hermes run"}
+                    className="inline-flex min-w-0 max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
+                  >
+                    <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
+                    <span className="truncate">Hermes working{activeRun.stage ? ` · ${activeRun.stage}` : ""}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void stopBackgroundRun()}
+                    title="Stop Hermes run"
+                    aria-label="Stop Hermes run"
+                    className="grid size-7 shrink-0 place-items-center rounded-full border border-amber-500/30 text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
+                  >
+                    <Square className="size-3" aria-hidden="true" />
+                  </button>
+                </div>
               ) : null}
             </header>
 
             <main className="flex min-h-0 flex-1 flex-col bg-background">
               {active === "Home" ? (
-                <><OutlookView compact onOpen={() => setActive("Outlook")} /><TodayView onNavigate={(tab) => setActive(tab)} /></>
-              ) : active === "Outlook" ? (
-                <OutlookView />
+                <TodayView onNavigate={(tab) => setActive(tab)} />
               ) : active === "Roadmap" ? (
                 <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} />
               ) : active === "Hermes Coach" ? (
-                <HermesCoach key={coachDraft} initialDraft={coachDraft} />
+                <HermesCoach initialDraft={coachDraft} onConsumeDraft={clearCoachDraft} />
               ) : active === "My data" ? (
                 <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
+              ) : active === "Emails" ? (
+                <EmailsView />
               ) : active === "Quizzes" ? (
                 <QuizView />
               ) : active === "Slides" ? (
@@ -247,4 +234,53 @@ export default function App() {
       </div>
     </ThemeProvider>
   )
+}
+
+
+/** A titled block of links; collapsed to icons, the title becomes a thin divider. */
+function NavSection({ label, className, children }: { label?: string; className?: string; children: ReactNode }) {
+  return (
+    <AnimatedSidebarGroup className={cn("py-1", className)}>
+      {label ? (
+        <div className="flex h-6 items-center px-2.5" aria-hidden="true">
+          <span className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground group-data-[state=collapsed]/sidebar:hidden">
+            {label}
+          </span>
+          <span className="mx-1 hidden h-px flex-1 bg-border group-data-[state=collapsed]/sidebar:block" />
+        </div>
+      ) : null}
+      <AnimatedSidebarGroupContent>
+        <AnimatedSidebarMenu aria-label={label}>{children}</AnimatedSidebarMenu>
+      </AnimatedSidebarGroupContent>
+    </AnimatedSidebarGroup>
+  )
+}
+
+interface NavItemProps { label: string; icon: ReactNode; active: string; onSelect: (label: string) => void; badge?: ReactNode }
+
+function NavItem({ label, icon, active, onSelect, badge }: NavItemProps) {
+  return (
+    <AnimatedSidebarMenuItem>
+      <AnimatedSidebarMenuButton icon={icon} badge={badge} isActive={active === label} onSelect={() => onSelect(label)}>
+        {label}
+      </AnimatedSidebarMenuButton>
+    </AnimatedSidebarMenuItem>
+  )
+}
+
+/** Unread team chat messages for whoever is acting in Group Projects, refreshed each minute and on navigation. */
+function useTeamUnread(active: string): number {
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    let stopped = false
+    const load = () => {
+      api<TeamsHomeData>("/api/me/teams-home", { headers: { "X-Farq-User": getActingUserId() } })
+        .then((home) => { if (!stopped) setUnread(home.teams.reduce((sum, team) => sum + (team.unread ?? 0), 0)) })
+        .catch(() => undefined)
+    }
+    load()
+    const timer = window.setInterval(load, 60_000)
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [active])
+  return unread
 }

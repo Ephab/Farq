@@ -1,12 +1,12 @@
 import json
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from team_world import client, hdr  # noqa: F401
 
 from app.database import SessionLocal
 from app.schemas import ProjectBrief
-from app.teams.models import Assignment, Team, TeamMessage
+from app.teams.models import Assignment, Team, TeamAgentRun, TeamMessage
 from app.teams.seed import seed_teams
 
 
@@ -20,7 +20,13 @@ def test_seed_creates_the_falcon_demo(client):
     state = client.get("/api/teams/team-falcon/state", headers=hdr("demo-student")).json()
     assert len(state["tasks"]) == 6
     assert {task["status"] for task in state["tasks"]} == {"todo", "doing", "done"}
-    assert len(state["messages"]) == 16
+    messages = state["messages"]
+    assert len(messages) == 22
+    polls = [message for message in messages if message["kind"] == "poll"]
+    assert len(polls) == 2 and polls[0]["metadata"]["votes"] == {"demo-student": 0, "demo-sara": 0, "demo-ali": 0, "demo-noura": 1}
+    assert sum(message["reply_to_id"] is not None for message in messages) == 5
+    assert any(message["reactions"] for message in messages)
+    assert any(message["content"] == "/standup" for message in messages)
     assert state["documents"][0]["kind"] == "srs"
     assert sum(section["status"] == "accepted" for section in state["documents"][0]["sections"]) == 2
     assert len(state["decisions"]) == 1
@@ -52,3 +58,27 @@ def test_seed_brief_is_a_valid_project_brief(client):
 def test_demo_users_include_the_instructor_switch_target(client):
     ids = {user["id"] for user in client.get("/api/demo/users").json()}
     assert {"demo-student", "demo-sara", "demo-instructor"} <= ids
+
+
+def test_reset_team_rebuilds_group_1_from_the_seed(client):
+    state = client.get("/api/teams/team-falcon/state", headers=hdr("demo-student")).json()
+    client.post("/api/teams/team-falcon/messages", json={"content": "scratch"}, headers=hdr("demo-student"))
+    client.patch("/api/teams/team-falcon", json={"name": "Renamed"}, headers=hdr("demo-student"))
+    assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}).status_code == 401
+    assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}, headers=hdr("demo-sara")).status_code == 403
+    assert client.post("/api/demo/reset-team", json={"confirm": "nope"}, headers=hdr("demo-student")).status_code == 422
+    db = SessionLocal()
+    try:
+        db.add(TeamAgentRun(team_id="team-falcon", invoked_by_user_id="demo-student", trigger_message_id="m", command="mention", status="running"))
+        db.commit()
+        assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}, headers=hdr("demo-student")).status_code == 409
+        db.execute(update(TeamAgentRun).where(TeamAgentRun.team_id == "team-falcon").values(status="completed"))
+        db.commit()
+    finally:
+        db.close()
+    assert client.post("/api/demo/reset-team", json={"confirm": "RESET"}, headers=hdr("demo-student")).status_code == 200
+    after = client.get("/api/teams/team-falcon/state", headers=hdr("demo-student")).json()
+    assert after["team"]["name"] == "Group 1"
+    assert len(after["messages"]) == len(state["messages"]) == 22
+    assert "scratch" not in [message["content"] for message in after["messages"]]
+    assert len(after["decisions"]) == 1

@@ -3,7 +3,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repo
 if (-not (Test-Path .venv)) { throw "Run scripts/setup.ps1 first." }
 
-foreach ($port in 8000, 8642) {
+foreach ($port in 8000, 8642, 8643) {
   if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
     throw "Port $port is already in use. Stop the previous Farq session before restarting so services load the current .env."
   }
@@ -62,7 +62,27 @@ try {
       $pythonEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
       [Environment]::SetEnvironmentVariable($name, $null, 'Process')
     }
-    $services.Add((Start-Process -FilePath "hermes" -ArgumentList "gateway" -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput "$logDir/hermes.stdout.log" -RedirectStandardError "$logDir/hermes.stderr.log" -PassThru))
+    $services.Add((Start-Process -FilePath "hermes" -ArgumentList "gateway", "run" -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput "$logDir/hermes.stdout.log" -RedirectStandardError "$logDir/hermes.stderr.log" -PassThru))
+    $emailEnvironment = @{}
+    try {
+      foreach ($name in "HERMES_HOME", "HERMES_ENABLE_PROJECT_PLUGINS", "API_SERVER_PORT", "FARQ_INTERNAL_TOKEN", "FARQ_API_INTERNAL_URL") {
+        $emailEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+      }
+      $emailHome = Join-Path $repo ".hermes-email-runtime"
+      New-Item -ItemType Directory -Force -Path $emailHome | Out-Null
+      Copy-Item services/hermes/email-config.yaml "$emailHome/config.yaml" -Force
+      $env:HERMES_HOME = $emailHome
+      $env:HERMES_ENABLE_PROJECT_PLUGINS = "0"
+      $env:API_SERVER_PORT = "8643"
+      $env:FARQ_INTERNAL_TOKEN = $null
+      $env:FARQ_API_INTERNAL_URL = $null
+      $services.Add((Start-Process -FilePath "hermes" -ArgumentList "gateway", "run" -WorkingDirectory $emailHome -WindowStyle Hidden -RedirectStandardOutput "$logDir/email.stdout.log" -RedirectStandardError "$logDir/email.stderr.log" -PassThru))
+    }
+    finally {
+      foreach ($name in $emailEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $emailEnvironment[$name], 'Process')
+      }
+    }
   }
   finally {
     foreach ($name in $pythonEnvironment.Keys) {

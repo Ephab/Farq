@@ -28,11 +28,8 @@ export function TeamsHome({ onOpenTeam }: { onOpenTeam: (teamId: string) => void
   if (!home) return <div className="tm-empty">Loading your teams…</div>
   const instructor = home.user.role === "instructor"
   return (
-    <div className="tm-home">
-      <div className="tm-briefing">
-        <Sparkles className="size-4 shrink-0 text-[var(--fq-accent)]" aria-hidden="true" />
-        <ul>{briefingLines(home).map((line) => <li key={line}>{line}</li>)}</ul>
-      </div>
+    <div className="tm-home tm-home-split">
+      <div className="tm-home-main">
       {home.invites.length > 0 ? (
         <section>
           <h2 className="tm-h2">Invites</h2>
@@ -55,6 +52,14 @@ export function TeamsHome({ onOpenTeam }: { onOpenTeam: (teamId: string) => void
           {home.needs_team.map((item) => <NeedsTeamRow key={item.assignment_id} item={item} onCreated={onOpenTeam} />)}
         </section>
       ) : null}
+      </div>
+      <aside className="tm-briefing-side" aria-label="Hermes insights">
+        <h2 className="tm-h2">Hermes insights</h2>
+        <div className="tm-briefing">
+          <Sparkles className="size-4 shrink-0 text-[var(--fq-accent)]" aria-hidden="true" />
+          <ul>{briefingLines(home).map((line) => <li key={line}>{line}</li>)}</ul>
+        </div>
+      </aside>
     </div>
   )
 }

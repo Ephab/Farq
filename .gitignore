@@ -38,6 +38,7 @@ services/data/
 *.db-shm
 *.db-wal
 .hermes-runtime/
+.hermes-email-runtime/
 __pycache__/
 .pytest_cache/
 *.pyc

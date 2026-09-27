@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { ArrowLeft, CalendarRange, FileText, Gavel, LayoutGrid, ScrollText, type LucideIcon } from "lucide-react"
+import { useRef, useState, type CSSProperties } from "react"
+import { ArrowLeft, CalendarRange, FileText, Gavel, History, LayoutGrid, ScrollText, type LucideIcon } from "lucide-react"
+import { ActivityLog } from "@/components/teams/ActivityLog"
 import { CharterView } from "@/components/teams/CharterView"
 import { DecisionLog } from "@/components/teams/DecisionLog"
 import { DocStudio } from "@/components/teams/DocStudio"
@@ -11,27 +12,38 @@ import { TaskBoard } from "@/components/teams/TaskBoard"
 import { TaskSheet, type TaskSheetState } from "@/components/teams/TaskSheet"
 import { TaskTimeline } from "@/components/teams/TaskTimeline"
 import { TeamChat } from "@/components/teams/TeamChat"
-import { Banner } from "@/components/teams/ui"
+import { TeamSettings } from "@/components/teams/TeamSettings"
+import { Banner, DockResizer } from "@/components/teams/ui"
 import { useMarkSeen, usePresence, useTeamStream } from "@/components/teams/use-team-stream"
 import { coverFor } from "@/lib/team-cover"
+import { clampDockWidth, readDockWidth, saveDockWidth } from "@/lib/team-layout"
 import { errorMessage } from "@/lib/teams-api"
 
-type View = "board" | "timeline" | "docs" | "decisions" | "charter"
+type View = "board" | "timeline" | "docs" | "decisions" | "activity" | "charter"
 
 const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
   { id: "board", label: "Board", icon: LayoutGrid },
   { id: "timeline", label: "Timeline", icon: CalendarRange },
   { id: "docs", label: "Docs", icon: FileText },
   { id: "decisions", label: "Decisions", icon: Gavel },
+  { id: "activity", label: "Activity", icon: History },
   { id: "charter", label: "Charter & brief", icon: ScrollText },
 ]
 
 export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () => void }) {
   const { store, error, live, reload, update } = useTeamStream(teamId)
   const [view, setView] = useState<View>("board")
+  const [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
   const [focus, setFocus] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [sheet, setSheet] = useState<TaskSheetState | null>(null)
+  const studioRef = useRef<HTMLDivElement>(null)
+  const [dockWidth, setDockWidth] = useState(readDockWidth)
+  const resizeDock = (requested: number) => {
+    const next = clampDockWidth(requested, studioRef.current?.clientWidth ?? window.innerWidth)
+    setDockWidth(next)
+    saveDockWidth(next)
+  }
   const role = store?.team.viewer_role
   const member = role === "lead" || role === "member"
   usePresence(teamId, member, focus)
@@ -55,13 +67,14 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   const cover = coverFor(store.team.cover_seed)
 
   return (
-    <div className="tm-studio">
+    <div ref={studioRef} className="tm-studio" style={{ "--tm-dock-width": `${dockWidth}px` } as CSSProperties}>
       <aside className="tm-panel tm-rail" aria-label="Team navigation">
         <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /> All teams</button>
         <div className="tm-rail-cover" style={{ backgroundImage: cover.image, backgroundColor: cover.color }}>
           <span>{store.team.course.code} · {store.team.assignment.title}</span>
           <strong>{store.team.name}</strong>
         </div>
+        <TeamSettings store={store} update={update} onError={fail} />
         <nav className="tm-views" aria-label="Team views">
           {VIEWS.map((item) => {
             const Icon = item.icon
@@ -91,16 +104,27 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
         ) : view === "docs" ? (
           <DocStudio store={store} canEdit={member} update={update} onFocus={setFocus} />
         ) : view === "decisions" ? (
-          <DecisionLog store={store} canEdit={member} update={update} onError={fail} />
+          <DecisionLog store={store} canEdit={member} update={update} onError={fail} onJump={member ? (id) => setJump({ id, nonce: Date.now() }) : undefined} />
+        ) : view === "activity" ? (
+          <ActivityLog store={store} />
         ) : (
           <CharterView store={store} />
         )}
       </main>
-      {member ? (
-        <TeamChat store={store} update={update} onMakeTask={(title) => setSheet({ mode: "create", title })} />
-      ) : (
-        <InstructorPanel store={store} />
-      )}
+      <div className="tm-dock-slot">
+        <DockResizer width={dockWidth} onResize={resizeDock} />
+        {member ? (
+          <TeamChat
+            store={store}
+            update={update}
+            onMakeTask={(title) => setSheet({ mode: "create", title })}
+            jumpTo={jump}
+            onOpenDecisions={() => setView("decisions")}
+          />
+        ) : (
+          <InstructorPanel store={store} />
+        )}
+      </div>
       {sheet ? (
         <TaskSheet state={sheet} store={store} canEdit={member} update={update} onError={fail} onClose={() => { setSheet(null); setFocus(null) }} />
       ) : null}

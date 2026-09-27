@@ -16,7 +16,7 @@ export function MemberList({ store, canInvite, onError }: MemberListProps) {
   const [invited, setInvited] = useState<string[]>([])
   const team = store.team
   const online = new Map(store.presence.map((entry) => [entry.user_id, entry]))
-  const full = team.members.length >= team.assignment.team_size_max
+  const full = team.members.length >= team.size_limit
   const candidates = (classmates ?? []).filter((person) => !team.members.some((member) => member.user_id === person.user_id))
 
   const open = async () => {
@@ -39,7 +39,7 @@ export function MemberList({ store, canInvite, onError }: MemberListProps) {
 
   return (
     <section className="tm-members">
-      <h2 className="tm-h2" style={{ marginBottom: 0 }}>Team · {team.members.length}/{team.assignment.team_size_max}</h2>
+      <h2 className="tm-h2" style={{ marginBottom: 0 }}>Team · {team.members.length}/{team.size_limit}</h2>
       {team.members.map((member) => {
         const entry = online.get(member.user_id)
         return (

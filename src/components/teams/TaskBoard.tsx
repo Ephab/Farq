@@ -7,7 +7,7 @@ import { Avatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { EASE_OUT } from "@/lib/ease"
 import { dueLabel } from "@/lib/team-format"
-import { TASK_COLUMNS, isBlocked, memberName, moveTaskLocal, tasksByStatus, type TeamStore } from "@/lib/team-store"
+import { TASK_COLUMNS, isBlocked, memberName, moveTaskLocal, tasksByStatus, upsertMessage, type TeamStore } from "@/lib/team-store"
 import type { TaskStatus, TeamTask } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
 
@@ -25,7 +25,20 @@ export function TaskBoard({ store, canEdit, update, onError, onOpenTask, onNewTa
   const columns = tasksByStatus(store)
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<TaskStatus | null>(null)
+  const [asking, setAsking] = useState(false)
   const reduceMotion = useReducedMotion()
+
+  const askToSplit = async () => {
+    setAsking(true)
+    try {
+      const message = await teams.postMessage(store.team.id, { content: "/split" })
+      update((current) => upsertMessage(current, message))
+    } catch (reason) {
+      onError(reason)
+    } finally {
+      setAsking(false)
+    }
+  }
 
   const drop = (status: TaskStatus) => {
     const task = dragging ? store.tasks[dragging] : undefined
@@ -42,9 +55,14 @@ export function TaskBoard({ store, canEdit, update, onError, onOpenTask, onNewTa
       <div className="tm-board-head">
         <h2 className="tm-h2" style={{ marginBottom: 0 }}>Board</h2>
         {canEdit ? (
-          <button type="button" className="tm-btn tm-btn-primary" onClick={onNewTask}>
-            <Plus className="size-4" aria-hidden="true" /> New task
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="tm-btn" disabled={asking} onClick={() => void askToSplit()}>
+              <Sparkles className="size-4" aria-hidden="true" /> Split the work
+            </button>
+            <button type="button" className="tm-btn tm-btn-primary" onClick={onNewTask}>
+              <Plus className="size-4" aria-hidden="true" /> New task
+            </button>
+          </div>
         ) : null}
       </div>
       <div className="tm-columns">

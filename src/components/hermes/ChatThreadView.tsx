@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, MapPin, PencilLine, RefreshCw, RotateCcw, Sparkles } from "lucide-react"
+import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, MapPin, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
 import { EASE_OUT } from "@/lib/ease"
@@ -23,6 +23,8 @@ interface ChatThreadViewProps {
   onRetry: () => void
   /** Rewind the thread to the message, then resend the edited prompt there. */
   onEditResend: (messageId: string, text: string) => void
+  /** Stop the live run. Required whenever busy can be true. */
+  onStop: () => void
   placeholder: string
   disabled?: boolean
   empty?: ReactNode
@@ -43,7 +45,7 @@ function formatTime(iso: string): string {
 }
 
 /** Message list + composer in the coach concept language (chat-shell interior). */
-export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [] }: ChatThreadViewProps) {
+export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [] }: ChatThreadViewProps) {
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -52,10 +54,15 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const reduce = useReducedMotion()
+  // Stick to the bottom while new content arrives, but let go the moment the
+  // student scrolls up to read history.
+  const stickRef = useRef(true)
 
   useEffect(() => {
     const container = messagesRef.current
-    container?.scrollTo({ top: container.scrollHeight, behavior: reduce ? "auto" : "smooth" })
+    if (container && stickRef.current) {
+      container.scrollTo({ top: container.scrollHeight, behavior: reduce ? "auto" : "smooth" })
+    }
   }, [messages, stage, reduce])
   useEffect(() => { if (draft) setInput(draft) }, [draft])
 
@@ -147,7 +154,16 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
 
   return (
     <div className="fq fq-thread">
-      <div ref={messagesRef} className="chat-messages" role="log" aria-label="Conversation with Hermes">
+      <div
+        ref={messagesRef}
+        className="chat-messages"
+        role="log"
+        aria-label="Conversation with Hermes"
+        onScroll={(event) => {
+          const el = event.currentTarget
+          stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96
+        }}
+      >
         {messages.length === 0 ? (
           <motion.div
             initial={reduce ? false : { opacity: 0, y: 14 }}
@@ -322,9 +338,14 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
               aria-live="polite"
             >
               <div className="message assistant">
-                <p className="message-meta">Hermes</p>
+                <p className="message-meta">Hermes · generating</p>
                 <div className="typing-dots" aria-hidden="true"><span /><span /><span /></div>
                 <p className="typing-stage">{stage || "Hermes is working"}</p>
+                <div className="button-row" style={{ marginTop: 12 }}>
+                  <button type="button" onClick={onStop} className="button secondary small" aria-label="Stop generating">
+                    <Square size={13} />Stop
+                  </button>
+                </div>
               </div>
             </motion.div>
           ) : null}
@@ -376,22 +397,40 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
             ref={textareaRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(input) } }}
-            placeholder={placeholder}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(input) }
+              if (event.key === "Escape" && busy) { event.preventDefault(); onStop() }
+            }}
+            placeholder={busy ? "Hermes is generating — press Stop or Esc to interrupt…" : placeholder}
             rows={1}
             aria-label="Message Hermes"
           />
-          <motion.button
-            type="button"
-            aria-label="Send message"
-            disabled={!input.trim() || busy || disabled}
-            onClick={() => submit(input)}
-            whileHover={reduce ? undefined : { y: -1, rotate: -2 }}
-            whileTap={reduce ? undefined : { scale: 0.94 }}
-            className="send-button"
-          >
-            <ArrowUp size={19} strokeWidth={2.5} />
-          </motion.button>
+          {busy ? (
+            <motion.button
+              type="button"
+              aria-label="Stop generating"
+              title="Stop generating"
+              onClick={onStop}
+              whileHover={reduce ? undefined : { y: -1 }}
+              whileTap={reduce ? undefined : { scale: 0.94 }}
+              className="send-button"
+              style={{ background: "var(--fq-danger, #bf3f53)" }}
+            >
+              <Square size={18} strokeWidth={2.5} />
+            </motion.button>
+          ) : (
+            <motion.button
+              type="button"
+              aria-label="Send message"
+              disabled={!input.trim() || busy || disabled}
+              onClick={() => submit(input)}
+              whileHover={reduce ? undefined : { y: -1, rotate: -2 }}
+              whileTap={reduce ? undefined : { scale: 0.94 }}
+              className="send-button"
+            >
+              <ArrowUp size={19} strokeWidth={2.5} />
+            </motion.button>
+          )}
         </div>
       </div>
     </div>

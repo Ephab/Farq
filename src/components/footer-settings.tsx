@@ -1,6 +1,6 @@
 "use client"
 
-import { Eye, EyeOff, KeyRound, LoaderCircle, RotateCcw, Settings, UserPlus } from "lucide-react"
+import { Eye, EyeOff, KeyRound, LoaderCircle, RotateCcw, Settings, UserPlus, Users } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useAnimatedSidebar } from "@/components/motion/animated-sidebar"
 import {
@@ -24,6 +24,7 @@ import {
   setCurrentStudentId,
   type HermesProvider,
 } from "@/lib/farq-api"
+import { getActingUserId } from "@/lib/teams-api"
 import { useTheme } from "@/lib/theme-context"
 import { THEMES } from "@/lib/themes"
 import { cn } from "@/lib/utils"
@@ -37,6 +38,7 @@ export function FooterSettings() {
   const [hermesApiKey, setHermesApiKey] = useState("")
   const [showKey, setShowKey] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [resettingTeam, setResettingTeam] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
   const [applyState, setApplyState] = useState<"idle" | "saving" | "waiting" | "live" | "saved" | "error">("idle")
   const [applyError, setApplyError] = useState<string | null>(null)
@@ -103,6 +105,23 @@ export function FooterSettings() {
       setApplyError("Saved, but the backend did not come back — check the runner terminal.")
     } else {
       setApplyState("saved")
+    }
+  }
+
+  const resetDemoTeam = async () => {
+    if (resettingTeam || !window.confirm("Rebuild the Group 1 demo team from scratch? Its chat, tasks, documents and activity return to the demo starting point.")) return
+    setResettingTeam(true)
+    setResetError(null)
+    try {
+      await api("/api/demo/reset-team", {
+        method: "POST",
+        body: JSON.stringify({ confirm: "RESET" }),
+        headers: { "X-Farq-User": getActingUserId() },
+      })
+      window.location.reload()
+    } catch (reason) {
+      setResettingTeam(false)
+      setResetError(reason instanceof Error ? reason.message : "Could not reset the demo team")
     }
   }
 
@@ -317,6 +336,15 @@ export function FooterSettings() {
           >
             {resetting ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <RotateCcw className="size-3.5" aria-hidden="true" />}
             {resetting ? "Restoring…" : "Restore fresh Farq"}
+          </button>
+          <button
+            type="button"
+            disabled={resettingTeam}
+            onClick={() => void resetDemoTeam()}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            {resettingTeam ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <Users className="size-3.5" aria-hidden="true" />}
+            {resettingTeam ? "Resetting…" : "Reset demo team (Group 1)"}
           </button>
           {resetError ? <p role="alert" className="mt-2 px-1 text-[11px] leading-4 text-destructive">{resetError}</p> : null}
         </div>

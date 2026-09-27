@@ -68,7 +68,7 @@ Run from the repo root, using `.venv/Scripts/python` on Windows:
 ```sh
 python scripts/benchmark_email_models.py --model minilm --precision fp32 --template concise --threads 2 --repeat 3 --output docs/benchmarks/minilm-fp32-concise-cpu.json
 python scripts/benchmark_email_models.py --model minilm --precision int8 --linear-only --template concise --threads 2 --repeat 3 --output docs/benchmarks/minilm-int8-linear-concise-cpu.json
-python scripts/benchmark_email_models.py --model laya --threads 2 --repeat 3 --output docs/benchmarks/laya-cpu.json
+python scripts/benchmark_email_models.py --model laya --skip-long --threads 2 --repeat 3 --output docs/benchmarks/laya-cpu.json
 ```
 
 For the first two runs, omit `--template concise`; omit `--linear-only` for
@@ -76,3 +76,13 @@ embedding quantization. Raw per-message outputs are stored beside this report.
 The benchmark script contains all fixture text and hypotheses.
 
 Model documentation: <https://huggingface.co/MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli>.
+
+## Laya comparison
+
+The completed CPU run (`laya-cpu.json`) classified 10 of 11 English fixtures into
+the expected common category, including the Zoom promotion, and abstained on all
+10 Arabic fixtures. Typical English latency was about 1.75 seconds per message;
+the Zoom fixture took 3.69 seconds. Steady RSS was about 2,294 MiB (peak 3,048 MiB).
+The long-message Laya run was stopped after several minutes, so no completed
+long-message latency is reported. These synthetic results do not establish real
+mailbox accuracy. MiniLM was faster but less accurate here; Laya remains default.

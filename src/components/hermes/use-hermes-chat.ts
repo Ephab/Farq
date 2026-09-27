@@ -68,11 +68,18 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
   const [busy, setBusy] = useState(false)
   const [stage, setStage] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [runId, setRunId] = useState<string | null>(null)
   const streamRef = useRef<EventSource | null>(null)
   // In-flight guard as a ref: `busy` state can still read stale inside a
   // second invoke from the same tick (double click/Enter), which would send
   // twice and stack duplicate turns. The ref makes double-dispatch impossible.
   const busyRef = useRef(false)
+  // Current run id for Stop, plus a flag for Stop pressed in the tiny window
+  // between send and the new run id arriving from the server.
+  const runIdRef = useRef<string | null>(null)
+  const stopRequestedRef = useRef(false)
+  const threadIdRef = useRef(threadId)
+  threadIdRef.current = threadId
   const onRunFinishedRef = useRef(onRunFinished)
   onRunFinishedRef.current = onRunFinished
 
@@ -88,25 +95,38 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     setMessages(await api<ChatMessage[]>(`/api/chat/threads/${threadId}/messages`))
   }, [threadId])
 
+  const finishRun = useCallback((terminalError: string | null, terminalStatus: string) => {
+    closeStream()
+    busyRef.current = false
+    runIdRef.current = null
+    setRunId(null)
+    setBusy(false)
+    setStage("")
+    // A student stop is intentional, never an error banner.
+    if (terminalStatus === "cancelled") setError(null)
+    else if (terminalError) setError(terminalError)
+  }, [closeStream])
+
   /** Attach to a run's progress stream; survives as long as this hook is mounted. */
-  const watchRun = useCallback((runId: string) => {
+  const watchRun = useCallback((runIdToWatch: string) => {
     closeStream()
     busyRef.current = true
+    runIdRef.current = runIdToWatch
+    setRunId(runIdToWatch)
     setBusy(true)
-    const source = new EventSource(`${API_BASE}/api/agent-runs/${runId}/events`)
+    const source = new EventSource(`${API_BASE}/api/agent-runs/${runIdToWatch}/events`)
     streamRef.current = source
     source.addEventListener("status", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { status: string; stage: string; error?: string }
       setStage(payload.stage)
       if (TERMINAL_RUN_STATUSES.has(payload.status)) {
-        closeStream(); busyRef.current = false; setBusy(false); setStage("")
-        if (payload.error) setError(payload.error)
+        finishRun(payload.error ?? null, payload.status)
         refresh().catch(() => undefined)
         onRunFinishedRef.current?.()
       }
     })
-    source.onerror = () => { closeStream(); busyRef.current = false; setBusy(false); setError("Lost the Hermes progress stream. Your message is saved; refresh to check it.") }
-  }, [closeStream, refresh])
+    source.onerror = () => { closeStream(); busyRef.current = false; runIdRef.current = null; setRunId(null); setBusy(false); setError("Lost the Hermes progress stream. Your message is saved; refresh to check it.") }
+  }, [closeStream, refresh, finishRun])
 
   // Load history, then resume watching a run that is still generating —
   // e.g. the student sent a message, switched sections, and came back.
@@ -132,6 +152,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
   ) => {
     if (!threadId || busyRef.current) return
     busyRef.current = true
+    stopRequestedRef.current = false
     setBusy(true); setError(null)
     setMessages((items) => [...items, { ...optimistic, id: `optimistic-${Date.now()}`, role: "user", created_at: new Date().toISOString() }])
     try {
@@ -143,10 +164,30 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
         body: JSON.stringify({ ...payload, ...body }),
         headers,
       })
+      // Stop was pressed while the send was in flight: cancel the run that
+      // just started instead of watching it.
+      if (stopRequestedRef.current) {
+        stopRequestedRef.current = false
+        try {
+          await api(`/api/agent-runs/${result.run_id}/cancel`, { method: "POST" })
+        } catch {
+          // The run may already be terminal; fall through to refresh.
+        }
+        busyRef.current = false
+        runIdRef.current = null
+        setRunId(null)
+        setBusy(false)
+        setStage("")
+        await refresh().catch(() => undefined)
+        onRunFinishedRef.current?.()
+        return
+      }
       setStage("Starting Hermes")
       watchRun(result.run_id)
     } catch (reason) {
       busyRef.current = false
+      runIdRef.current = null
+      setRunId(null)
       setBusy(false); setError(reason instanceof Error ? reason.message : "Could not start Hermes")
       await refresh().catch(() => undefined)
     }
@@ -206,11 +247,42 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     await send(content)
   }, [threadId, send])
 
-  return { messages, busy, stage, error, setError, send, sendInteraction, refresh, editAndResend }
+  /** Stop the live run. The UI unsticks immediately; the server marks the
+   * run cancelled and the background worker discards its late answer. */
+  const stop = useCallback(async () => {
+    if (!busyRef.current && !runIdRef.current) return
+    stopRequestedRef.current = true
+    const runToStop = runIdRef.current
+    const threadToStop = threadIdRef.current
+    // Unstick the UI first so a slow cancel never leaves a dead spinner.
+    closeStream()
+    busyRef.current = false
+    runIdRef.current = null
+    setRunId(null)
+    setBusy(false)
+    setStage("")
+    setError(null)
+    try {
+      if (runToStop) {
+        await api(`/api/agent-runs/${runToStop}/cancel`, { method: "POST" })
+      } else if (threadToStop) {
+        await api(`/api/chat/threads/${threadToStop}/runs/cancel`, { method: "POST" })
+      }
+    } catch {
+      // The stream is already closed and busy cleared; a failed cancel just
+      // means the run already finished — refresh picks up the truth.
+    } finally {
+      stopRequestedRef.current = false
+      await refresh().catch(() => undefined)
+      onRunFinishedRef.current?.()
+    }
+  }, [closeStream, refresh])
+
+  return { messages, busy, stage, error, setError, send, sendInteraction, refresh, editAndResend, stop, runId }
 }
 
 /** Live run for a thread, polled so any section can show Hermes is generating. */
-export function useActiveRun(threadId: string | null, pollMs = 5000): ActiveRun | null {
+export function useActiveRun(threadId: string | null, pollMs = 2000): ActiveRun | null {
   const [run, setRun] = useState<ActiveRun | null>(null)
   useEffect(() => {
     if (!threadId) { setRun(null); return }

@@ -4,7 +4,7 @@ export interface OutlookStatus {
   configured: boolean; connected: boolean; account?: string; auto_sync?: boolean
   status?: string; last_sync?: number; processed?: number; error?: string
   worker_enabled?: boolean
-  provider?: "graph" | "desktop"
+  provider?: "graph" | "desktop" | "personal"
 }
 export interface MailItem {
   id: string; subject: string; sender: string; excerpt: string; received: string; web_url: string

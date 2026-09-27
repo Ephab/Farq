@@ -550,6 +550,39 @@ def test_latest_run_for_thread(client: TestClient, monkeypatch: pytest.MonkeyPat
     assert latest["stage"] == "Hermes is thinking"
 
 
+def test_cancel_run_stops_generating(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from app.database import SessionLocal
+    from app.models import AgentRun, ChatMessage
+
+    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    student_id = client.post("/api/students", json={"display_name": "Cancel Run Student"}).json()["student_id"]
+    thread_id = client.get(f"/api/students/{student_id}/profile").json()["thread_id"]
+
+    run_id = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Hello Hermes"}).json()["run_id"]
+    cancelled = client.post(f"/api/agent-runs/{run_id}/cancel").json()
+    assert cancelled["status"] == "cancelled"
+    assert client.get(f"/api/chat/threads/{thread_id}/runs/latest").json()["run"]["status"] == "cancelled"
+    # Idempotent: cancelling a terminal run keeps it cancelled.
+    assert client.post(f"/api/agent-runs/{run_id}/cancel").json()["status"] == "cancelled"
+    assert client.post(f"/api/chat/threads/{thread_id}/runs/cancel").json() == {"run": None}
+    assert client.post("/api/agent-runs/nope/cancel").status_code == 404
+    assert client.post("/api/chat/threads/nope/runs/cancel").status_code == 404
+
+    # Thread-level cancel stops a live run without tracking its id.
+    second_id = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Again"}).json()["run_id"]
+    thread_cancel = client.post(f"/api/chat/threads/{thread_id}/runs/cancel").json()
+    assert thread_cancel["run"]["id"] == second_id
+    assert thread_cancel["run"]["status"] == "cancelled"
+
+    # A worker that finishes after the stop must not resurrect the run or
+    # write a late assistant answer.
+    db = SessionLocal()
+    run = db.get(AgentRun, second_id)
+    assert run is not None and run.status == "cancelled"
+    assert db.query(ChatMessage).filter(ChatMessage.thread_id == thread_id, ChatMessage.role == "assistant").count() == 0
+    db.close()
+
+
 def test_edit_and_resend_rewinds_instead_of_stacking(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     from datetime import timedelta
 

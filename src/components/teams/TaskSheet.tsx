@@ -5,7 +5,7 @@ import { Sparkles, Trash2 } from "lucide-react"
 import { Sheet } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { fromDateInput, toDateInput } from "@/lib/team-format"
-import { TASK_COLUMNS, removeTask, upsertTask, type TeamStore } from "@/lib/team-store"
+import { TASK_COLUMNS, removeTask, upsertMessage, upsertTask, type TeamStore } from "@/lib/team-store"
 import type { TaskStatus, TeamTask } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
 
@@ -68,12 +68,33 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
     }
   }
 
+  const breakDown = async () => {
+    if (!existing) return
+    setSaving(true)
+    try {
+      const message = await teams.postMessage(store.team.id, { content: `@Hermes break down "${existing.title}" into smaller tasks for our team` })
+      update((current) => upsertMessage(current, message))
+      onClose()
+    } catch (reason) {
+      onError(reason)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const footer = canEdit ? (
     <>
       {existing ? (
-        <button type="button" className="tm-btn" disabled={saving} onClick={() => void remove()}>
-          <Trash2 className="size-4" aria-hidden="true" /> Delete
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className="tm-btn" disabled={saving} onClick={() => void remove()}>
+            <Trash2 className="size-4" aria-hidden="true" /> Delete
+          </button>
+          {existing.status === "todo" ? (
+            <button type="button" className="tm-btn" disabled={saving} onClick={() => void breakDown()}>
+              <Sparkles className="size-4" aria-hidden="true" /> Break down
+            </button>
+          ) : null}
+        </div>
       ) : <span />}
       <button type="button" className="tm-btn tm-btn-primary" disabled={saving || !title.trim()} onClick={() => void save()}>
         {existing ? "Save" : "Create task"}

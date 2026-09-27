@@ -48,7 +48,7 @@ def current_user(
 ) -> User:
     """The single identity seam. Microsoft sign-in replaces only this function."""
     from .outlook.auth import session_user
-    signed_in = session_user(request, db)
+    signed_in = session_user(request, db) if request.url.path.startswith("/api/outlook/") else None
     if signed_in is not None:
         return signed_in
     user = resolve_user(db, x_farq_user)

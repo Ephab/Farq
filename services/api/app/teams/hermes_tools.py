@@ -13,7 +13,7 @@ from ..models import RoadmapVersion, StudentFact, StudentProfile
 from .common import Db, loads, require, require_team
 from .chat import decision_dict
 from .docs import section_dict
-from .models import Decision, DocSection, Milestone, Task, Team, TeamDocument, TeamMember, TeamMessage, TeamProposal
+from .models import Decision, DocSection, TeamAgentRun, Milestone, Task, Team, TeamDocument, TeamMember, TeamMessage, TeamProposal
 from .policy import authorize, is_member
 from .proposals import ProposalError, create_proposal, expire_stalled, proposal_dict
 from .tasks import milestone_dict, task_dict
@@ -34,15 +34,25 @@ INTERNAL = [Depends(require_internal)]
 
 
 class ProposalInput(BaseModel):
-    acting_user_id: str
+    run_id: str | None = None
     kind: str
     payload: dict
     summary: str = Field(default="", max_length=240)
-    run_id: str | None = None
 
 
-def _acting(db: Session, acting_user_id: str) -> User:
-    user = resolve_user(db, acting_user_id)
+def _run_actor(db: Session, run_id: str | None, team_id: str) -> User:
+    """Hermes acts as the member who started this run, never as a user id the
+    model names: chat text could otherwise steer it into another member's view.
+    Models sometimes omit run_id; runs are one at a time per team, so the
+    team's running run is then unambiguous."""
+    if run_id:
+        run = db.get(TeamAgentRun, run_id)
+    else:
+        run = db.scalar(select(TeamAgentRun).where(TeamAgentRun.team_id == team_id, TeamAgentRun.status == "running")
+                        .order_by(TeamAgentRun.created_at.desc()))
+    if run is None or run.status != "running" or run.team_id != team_id:
+        raise HTTPException(403, "This Hermes run is not active for this team")
+    user = resolve_user(db, run.invoked_by_user_id)
     if user is None:
         raise HTTPException(404, "Unknown acting user")
     return user
@@ -123,34 +133,34 @@ def team_context(db: Session, team: Team, user: User) -> dict:
 
 
 @router.get("/internal/hermes/teams/{team_id}/context", dependencies=INTERNAL)
-def internal_team_context(team_id: str, acting_user_id: str, db: Db) -> dict:
-    user = _acting(db, acting_user_id)
+def internal_team_context(team_id: str, db: Db, run_id: str | None = None) -> dict:
+    user = _run_actor(db, run_id, team_id)
     context = team_context(db, require_team(db, team_id), user)
     db.commit()
     return context
 
 
 @router.get("/internal/hermes/tasks/{task_id}", dependencies=INTERNAL)
-def internal_task(task_id: str, acting_user_id: str, db: Db) -> dict:
-    user = _acting(db, acting_user_id)
+def internal_task(task_id: str, db: Db, run_id: str | None = None) -> dict:
     task = require(db, Task, task_id, "Task")
+    user = _run_actor(db, run_id, task.team_id)
     authorize(db, user, require_team(db, task.team_id), "view")
     return task_dict(task)
 
 
 @router.get("/internal/hermes/sections/{section_id}", dependencies=INTERNAL)
-def internal_section(section_id: str, acting_user_id: str, db: Db) -> dict:
-    user = _acting(db, acting_user_id)
+def internal_section(section_id: str, db: Db, run_id: str | None = None) -> dict:
     section = require(db, DocSection, section_id, "Section")
     document = db.get(TeamDocument, section.document_id)
+    user = _run_actor(db, run_id, document.team_id)
     authorize(db, user, require_team(db, document.team_id), "view")
     return {**section_dict(section), "document_kind": document.kind, "document_title": document.title}
 
 
 @router.post("/internal/hermes/teams/{team_id}/proposals", dependencies=INTERNAL, status_code=201)
 def internal_propose(team_id: str, body: ProposalInput, db: Db) -> dict:
-    user = _acting(db, body.acting_user_id)
     team = require_team(db, team_id)
+    user = _run_actor(db, body.run_id, team.id)
     authorize(db, user, team, "write")
     try:
         proposal = create_proposal(db, team, body.kind, body.payload, summary=body.summary, invoked_by=user.id, run_id=body.run_id)

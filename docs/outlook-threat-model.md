@@ -96,3 +96,28 @@ process at most 20 IDs per page. Durable worker leases and disconnect generation
 checks apply equally to both providers. Desktop access has no Entra token cache.
 The existing controls and limitations below describe the Graph provider unless
 explicitly shared; desktop ownership comes from pairing, not Microsoft OAuth.
+
+## Integrated public-client sign-in and optional Q&A
+
+Public device flows use a random HttpOnly browser cookie, hashed lookup keys,
+encrypted device codes with expiry, server-side polling intervals and one-time
+consumption. Graph `/me` supplies the private mailbox identity; browser student IDs
+never authorize mail. Temporary access tokens use the same encrypted cache and
+fail closed after expiry. Public-client refresh tokens rotate inside the existing
+sync lease/generation boundary. Old demo-student token rows are not adopted.
+Mailbox sessions are resolved by `current_user()` only for `/api/outlook/*`, so
+team/Coach demo identity remains unchanged and cannot claim a private mailbox.
+
+Only an explicit `/api/outlook/chat` request sends selected, owned, unexpired mail
+to AI. Context above the fixed bound is rejected, not silently cut. The browser
+shows provider disclosure and requires consent. All mail is labeled untrusted.
+A fresh Q&A session is insufficient isolation on its own: the separate email
+Hermes runtime has an empty API toolset, disabled memory, no Farq plugin or skills,
+no Farq internal token, and no Coach state mounted. Supplied runners provision that
+runtime; deployments must preserve these boundaries. No generic tools are enabled.
+Q&A answers are displayed as text and do not become StudentFacts or proposals.
+
+The email gateway can retain session transcripts and the chosen/fallback cloud
+providers can retain requests under their policies. They are outside the 30-day
+SQLite mail cache and are not erased by Farq disconnect. Protect or remove the
+separate runtime's history according to the deployment's retention policy.

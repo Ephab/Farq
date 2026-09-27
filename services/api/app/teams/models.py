@@ -57,6 +57,8 @@ class Team(Base):
     cover_seed: Mapped[str] = mapped_column(String(16))
     lead_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     charter_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Lead-chosen cap, within the assignment's limits; None means the assignment maximum.
+    size_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

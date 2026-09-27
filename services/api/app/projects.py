@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ntpath
 import os
 import secrets
 import time
@@ -177,7 +178,7 @@ def create_submission(project_id: str, body: ProjectSubmissionCreate, db: Db) ->
         parsed = urlparse(body.source_ref)
         if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"} or parsed.username or parsed.password:
             raise HTTPException(422, "Use a public HTTPS GitHub repository URL")
-    if body.source_type == "local_directory" and not os.path.isabs(body.source_ref):
+    if body.source_type == "local_directory" and not (os.path.isabs(body.source_ref) or ntpath.isabs(body.source_ref)):
         raise HTTPException(422, "Local project paths must be absolute")
     digest = body.snapshot_hash or hashlib.sha256(f"{body.source_type}:{body.source_ref}".encode()).hexdigest()
     item = ProjectSubmission(project_id=project.id, source_type=body.source_type, source_ref=body.source_ref, snapshot_hash=digest, manifest_json=json.dumps(body.manifest))

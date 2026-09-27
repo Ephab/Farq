@@ -7,9 +7,11 @@ reasoning model. FastAPI and SQLite keep the auditable product state.
 For the fully local Laya email classifier, run `setup.bat` on Windows or
 `bash setup.sh` on macOS/Linux. These bootstrap uv, Python, locked Python dependencies
 and the model cache. See [local classifier setup and usage](docs/local-email-classifier.md).
-For Microsoft consent, mailbox sync and the University mail interface, follow
+For Microsoft consent, mailbox sync and the unified Emails interface, follow
 [Outlook setup](docs/outlook-setup.md). Native Windows can read classic Outlook via
-COM without Entra registration; the Graph alternative requires an Entra app.
+COM without Entra registration. Public-client/device sign-in and temporary Graph
+tokens feed the same inbox. Optional selected-email Q&A uses an isolated Hermes
+gateway; Home shows today’s mail in the right-hand column.
 
 ## What works
 
@@ -24,6 +26,8 @@ COM without Entra registration; the Graph alternative requires an Entra app.
 - Hermes tools for reading context, reading the roadmap, recording facts, and proposing revisions.
 - Reviewable roadmap diffs with accept/reject controls.
 - Validation that protects completed/in-progress work and prevents invalid dependency graphs.
+- A pre-indexed, read-only Blackboard demo snapshot that Hermes can search and read through
+  bounded course-content tools. It does not contain Blackboard credentials or perform live login.
 
 ## Start with Docker
 
@@ -47,6 +51,20 @@ host terminal or Docker access.
 
 Open `http://127.0.0.1:5173`. FastAPI docs are at `http://127.0.0.1:8000/docs`
 and Hermes health is at `http://127.0.0.1:8642/health`.
+
+### Load the Blackboard demo snapshot
+
+With Docker running, import only the five approved lecture folders from the local university archive:
+
+```powershell
+.venv\Scripts\python.exe scripts\import_blackboard_demo.py --root "D:\mmahf\Downloads\University\University"
+.venv\Scripts\python.exe scripts\smoke_blackboard_tools.py
+```
+
+The importer extracts text from PDF/PPTX lectures, creates clearly marked synthetic syllabi,
+announcements and assignments, and writes the normalized snapshot into Farq's local SQLite volume.
+It never uploads source binaries and never contacts Blackboard. Re-importing replaces stale snapshot
+records. The smoke command exercises all five read-only operations used by Hermes.
 
 ## Start natively on Windows
 

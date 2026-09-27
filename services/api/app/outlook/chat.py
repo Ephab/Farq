@@ -58,7 +58,7 @@ def run_email_chat(
     gateway_key = effective_hermes_key(hermes_api_key)
     if len(gateway_key) < 16:
         raise EmailChatError(
-            "Farq Hermes key is missing or too short; press Apply in Settings "
+            "Waypoint Hermes key is missing or too short; press Apply in Settings "
             "or set HERMES_API_KEY in the server .env",
             status=401,
         )
@@ -69,7 +69,7 @@ def run_email_chat(
         raise EmailChatError(str(error), status=422) from None
     session_id = "email-" + uuid.uuid4().hex
     headers = {"Authorization": f"Bearer {gateway_key}", "Idempotency-Key": session_id,
-               "X-Hermes-Session-Key": f"farq:email:{session_id}"}
+               "X-Hermes-Session-Key": f"waypoint:email:{session_id}"}
     try:
         with httpx.Client(timeout=20, follow_redirects=False) as client:
             output, used_model, used_provider = execute_with_fallback(

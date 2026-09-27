@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-coop-sources-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-coop-sources-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.coop import _upsert_candidate, seed_coop_catalog, sync_coop_source  # noqa: E402

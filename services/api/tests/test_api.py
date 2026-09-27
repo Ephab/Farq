@@ -8,7 +8,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.database import SessionLocal, engine  # noqa: E402
@@ -58,7 +58,7 @@ def test_hermes_provider_choice_is_allowlisted_and_per_run(client: TestClient, m
 
 
 def test_structured_chat_output_is_validated_and_hidden_from_visible_text():
-    output = "Choose the direction that fits you best.\n```farq-ui\n" + """{
+    output = "Choose the direction that fits you best.\n```waypoint-ui\n" + """{
       "choice_group": {"mode":"single","prompt":"Where next?","options":[
         {"id":"spatial","title":"Spatial AI","description":"Work with 3D scenes."},
         {"id":"vlm","title":"Vision-language models","description":"Connect images and text."}
@@ -70,7 +70,7 @@ def test_structured_chat_output_is_validated_and_hidden_from_visible_text():
     assert metadata_json is not None
     assert ChatMessageUi.model_validate_json(metadata_json).choice_group.options[0].id == "spatial"
 
-    visible, metadata_json = parse_chat_output("Readable fallback.\n```farq-ui\n{bad}\n```")
+    visible, metadata_json = parse_chat_output("Readable fallback.\n```waypoint-ui\n{bad}\n```")
     assert visible == "Readable fallback."
     assert metadata_json is None
 
@@ -153,7 +153,7 @@ def test_structured_chat_multi_select_limits_and_follow_up(client: TestClient, m
 
 
 def test_fact_proposal_accept_and_reject_flow(client: TestClient):
-    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     demo = client.get("/api/demo").json()
     assert demo["student_id"] == "demo-student"
 
@@ -195,7 +195,7 @@ def test_fact_proposal_accept_and_reject_flow(client: TestClient):
 
 
 def test_completed_node_cannot_be_rewritten(client: TestClient):
-    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     client.put("/api/students/demo-student/roadmap/nodes/python-numpy", json={"status": "done"})
     roadmap = client.get("/api/students/demo-student/roadmap").json()
     response = client.post("/internal/hermes/roadmap-proposals", headers=internal, json={
@@ -259,8 +259,8 @@ def test_gateway_401_error_mentions_apply():
         raise_for_gateway_status(response)
 
 
-def test_reset_restores_fresh_farq(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+def test_reset_restores_fresh_waypoint(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     demo = client.get("/api/demo").json()
     roadmap = client.get("/api/students/demo-student/roadmap").json()
 
@@ -453,7 +453,7 @@ def test_nvapi_key_never_becomes_gateway_bearer(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_internal_endpoints_resolve_display_name(client: TestClient):
-    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     # The agent sometimes passes the display name instead of the UUID.
     profile = client.get("/internal/hermes/students/Demo Student/profile", headers=internal)
     assert profile.status_code == 200
@@ -632,7 +632,7 @@ def test_edit_and_resend_rewinds_instead_of_stacking(client: TestClient, monkeyp
 
 def test_hackathonat_sync_match_tool_and_seen_flow(client: TestClient):
     student = client.post("/api/students", json={"display_name": "Opportunity Student"}).json()
-    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     for category, key in (("interest", "AI"), ("goal", "AI industry")):
         response = client.post("/internal/hermes/facts", headers=internal, json={
             "user_id": student["student_id"], "category": category, "key": key,
@@ -706,7 +706,7 @@ def test_failed_opportunity_sync_keeps_last_good_cache(client: TestClient):
 
 
 def test_opportunity_proposal_metadata_is_authoritative(client: TestClient):
-    internal = {"X-Farq-Internal-Token": "farq-internal-dev"}
+    internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     student = client.post("/api/students", json={"display_name": "Proposal Student"}).json()
     db = SessionLocal()
     opportunity = db.query(Opportunity).filter(Opportunity.external_id == "saudi-ai-1").one()

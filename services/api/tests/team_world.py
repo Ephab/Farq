@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-teams-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-teams-{uuid.uuid4()}.db"
 # Same as the other test modules: never let an inherited DATABASE_URL point tests at real data.
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
@@ -27,7 +27,7 @@ def client():
 
 
 def hdr(user_id: str) -> dict:
-    return {"X-Farq-User": user_id}
+    return {"X-Waypoint-User": user_id}
 
 
 import json  # noqa: E402

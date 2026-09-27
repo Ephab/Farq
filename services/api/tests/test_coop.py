@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-coop-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-coop-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.coop import sync_official_coop_sources  # noqa: E402
@@ -63,12 +63,12 @@ def test_save_dismiss_and_student_isolation(client: TestClient):
 def test_internal_hermes_tools_require_token_and_return_provenance(client: TestClient):
     path = "/internal/hermes/students/demo-student/coop/companies?query=govtech&limit=3"
     assert client.get(path).status_code == 401
-    response = client.get(path, headers={"X-Farq-Internal-Token": "farq-internal-dev"})
+    response = client.get(path, headers={"X-Waypoint-Internal-Token": "waypoint-internal-dev"})
     assert response.status_code == 200
     assert response.json()["results"][0]["id"] in {"tahakom", "elm", "sdaia-jrcai"}
     target = client.get(
         "/internal/hermes/students/demo-student/coop/company/tahakom",
-        headers={"X-Farq-Internal-Token": "farq-internal-dev"},
+        headers={"X-Waypoint-Internal-Token": "waypoint-internal-dev"},
     )
     assert target.status_code == 200
     assert target.json()["source_url"].startswith("https://")

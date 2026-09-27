@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { API_BASE, api, hermesRequestParts } from "@/lib/farq-api"
+import { API_BASE, api, hermesRequestParts } from "@/lib/waypoint-api"
 
 export interface OpportunityCard {
   id: string
@@ -134,7 +134,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     if (!threadId) return
     let cancelled = false
     refresh().catch((reason: unknown) => {
-      if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not reach Farq API")
+      if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not reach Waypoint API")
     })
     api<{ run: ActiveRun | null }>(`/api/chat/threads/${threadId}/runs/latest`)
       .then(({ run }) => {
@@ -157,7 +157,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     setMessages((items) => [...items, { ...optimistic, id: `optimistic-${Date.now()}`, role: "user", created_at: new Date().toISOString() }])
     try {
       const { body, headers } = hermesRequestParts()
-      // Tab-only Farq Hermes key override goes to Farq API only — never to
+      // Tab-only Waypoint Hermes key override goes to Waypoint API only — never to
       // providers directly, never persisted, never sent to a system Hermes.
       const result = await api<{ run_id: string }>(`/api/chat/threads/${threadId}/messages`, {
         method: "POST",

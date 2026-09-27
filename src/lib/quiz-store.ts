@@ -44,7 +44,7 @@ export interface QuizLibrary {
   extensions: SavedExtension[];
 }
 
-const STORAGE_KEY = "smartlearn-quiz-library-v1";
+const STORAGE_KEY = "waypoint-quiz-library-v1";
 
 export const EMPTY_LIBRARY: QuizLibrary = { decks: [], quizzes: [], extensions: [] };
 

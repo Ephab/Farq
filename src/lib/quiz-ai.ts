@@ -1,9 +1,9 @@
-import { API_BASE, HERMES_API_KEY_HEADER, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_NIM_MODELS, getHermesApiKey } from "./farq-api";
+import { API_BASE, HERMES_API_KEY_HEADER, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_NIM_MODELS, getHermesApiKey } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
-// quiz-ai.ts — THE swappable AI backbone for SmartLearn quizzes.
+// quiz-ai.ts — THE swappable AI backbone for Waypoint quizzes.
 //
-// Hermes backend: the browser POSTs slide text to the Farq API, which runs
+// Hermes backend: the browser POSTs slide text to the Waypoint API, which runs
 // the quiz prompt on the local Hermes gateway (server-side keys only).
 // UI code must only import the types + `generateQuiz` + `getMockQuiz`
 // from this file.
@@ -277,7 +277,7 @@ function startRunTicker(options: QuizGenerationOptions): () => void {
 }
 
 /**
- * Generate quiz questions through the Farq backend (Hermes gateway).
+ * Generate quiz questions through the Waypoint backend (Hermes gateway).
  * No provider key needed in the browser: auth is the server gateway key,
  * optionally overridden per-tab from Settings (same as the coach).
  * The model is the server's Hermes model unless `options.model` carries a
@@ -327,7 +327,7 @@ export async function generateQuiz(
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     const detail = e instanceof Error ? e.message : "network error";
     throw new QuizAIError(
-      `Couldn't reach the Farq backend (${detail}). Is the stack running (run.bat or run.sh)?`,
+      `Couldn't reach the Waypoint backend (${detail}). Is the stack running (run.bat or run.sh)?`,
     );
   }
   if (!res.ok) {

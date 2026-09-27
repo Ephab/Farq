@@ -34,7 +34,7 @@ export interface RoadmapNodeData {
   level: RoadmapLevel;
   /** Ids of prerequisite nodes — rendered as connector edges. */
   deps: string[];
-  /** Persisted separately from learning content; supplied by the Farq API. */
+  /** Persisted separately from learning content; supplied by the Waypoint API. */
   status?: NodeStatus;
   /** Evidence item ids that justify this node (generated roadmaps). */
   evidence?: string[];

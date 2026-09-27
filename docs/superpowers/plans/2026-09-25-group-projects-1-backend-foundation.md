@@ -4,7 +4,7 @@
 
 **Goal:** Build the FastAPI/SQLite foundation for course group projects: demo identity, courses and assignments, teams and invites, the event log with the SSE stream, tasks and milestones, team chat, documents with section locks, presence, the workspace state snapshot, and the Team Falcon demo seed.
 
-**Architecture:** A new `services/api/app/teams/` package holds one module per responsibility (policy, events, teams, chat, tasks, docs, presence, state, seed). They share a small `common.py`. Every team write calls `emit()` to add a `team_events` row in the same transaction (transactional outbox). One SSE endpoint polls that table and filters it by the viewer's role, so instructors never receive chat. Identity is a single dependency, `current_user()`, in `app/identity.py` that reads the `X-Farq-User` header. It is the only piece that Microsoft sign-in will replace.
+**Architecture:** A new `services/api/app/teams/` package holds one module per responsibility (policy, events, teams, chat, tasks, docs, presence, state, seed). They share a small `common.py`. Every team write calls `emit()` to add a `team_events` row in the same transaction (transactional outbox). One SSE endpoint polls that table and filters it by the viewer's role, so instructors never receive chat. Identity is a single dependency, `current_user()`, in `app/identity.py` that reads the `X-Waypoint-User` header. It is the only piece that Microsoft sign-in will replace.
 
 **Tech Stack:** Python 3, FastAPI, SQLAlchemy 2 (typed `Mapped`), SQLite, Pydantic v2, pytest + `fastapi.testclient`.
 
@@ -15,7 +15,7 @@
 The spec is split into four plans. Each produces working, testable software:
 
 1. **This plan:** the backend foundation (spec §3–§7, §11, §12 and the non-Hermes parts of §13).
-2. **Plan 2, proposals and Hermes as a teammate** (spec §8–§9): `team_proposals`, voting, lazy expiry, `team_agent_runs`, the `/internal/hermes/teams/*` endpoints, the six plugin tools, the `farq-team-coach` skill, slash commands, document drafting with the `section.drafting` replay, notices, and catch-up. Seeded students also get small roadmaps so teammate cards have stages.
+2. **Plan 2, proposals and Hermes as a teammate** (spec §8–§9): `team_proposals`, voting, lazy expiry, `team_agent_runs`, the `/internal/hermes/teams/*` endpoints, the six plugin tools, the `waypoint-team-coach` skill, slash commands, document drafting with the `section.drafting` replay, notices, and catch-up. Seeded students also get small roadmaps so teammate cards have stages.
 3. **Plan 3, frontend core** (spec §10 except the signature moments): the View-as switcher, `useTeamStream`, TeamsHome with living covers and the briefing strip, the Studio workspace, the board, the chat, DocStudio and the instructor panel.
 4. **Plan 4, signature moments and demo** (spec §10 moments 1–7, the Playwright demo script, and the doc updates in §14).
 
@@ -27,7 +27,7 @@ Plans 2–4 are written after this plan lands, so they can build on the real cod
 - Hermes only proposes. Nothing in this plan lets Hermes write. Team activity **must not** create `StudentFact` rows. The seed's own facts use `source_kind="onboarding"`, because they stand in for onboarding answers.
 - Instructors of a course may view every team except its chat. Chat means messages, reactions, typing, and any event or message with `visible_to_user_id` set.
 - Every successful team write emits its event(s) in the same transaction, and a rejected write emits none. Personal or ephemeral state (seen pointer, lock heartbeat, presence, typing) emits no event.
-- Identity comes only from `current_user()` (header `X-Farq-User`). The SSE stream alone uses the `?as=<user_id>` query parameter, because `EventSource` cannot send headers.
+- Identity comes only from `current_user()` (header `X-Waypoint-User`). The SSE stream alone uses the `?as=<user_id>` query parameter, because `EventSource` cannot send headers.
 - Students' `User.id` equals their `Student.id`.
 - Section lock length is 90 s. Poll interval is 0.4 s. Presence TTL is 30 s and typing TTL is 5 s.
 - Datetimes read back from SQLite are naive. Always compare through `aware()`.
@@ -97,7 +97,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-teams-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-teams-{uuid.uuid4()}.db"
 # Same as the other test modules: never let an inherited DATABASE_URL point tests at real data.
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
@@ -113,7 +113,7 @@ def client():
 
 
 def hdr(user_id: str) -> dict:
-    return {"X-Farq-User": user_id}
+    return {"X-Waypoint-User": user_id}
 ```
 
 `services/api/tests/test_teams_identity.py`:
@@ -175,8 +175,8 @@ from .models import Student, now
 
 
 class User(Base):
-    """Someone who can act in Farq. Students reuse their student id as their
-    user id, so existing `farq.current-student` ids work as `X-Farq-User`."""
+    """Someone who can act in Waypoint. Students reuse their student id as their
+    user id, so existing `waypoint.current-student` ids work as `X-Waypoint-User`."""
 
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -206,10 +206,10 @@ def resolve_user(db: Session, user_id: str | None) -> User | None:
 
 def current_user(
     db: Annotated[Session, Depends(get_db)],
-    x_farq_user: Annotated[str | None, Header()] = None,
+    x_waypoint_user: Annotated[str | None, Header()] = None,
 ) -> User:
     """The single identity seam. Microsoft sign-in replaces only this function."""
-    user = resolve_user(db, x_farq_user)
+    user = resolve_user(db, x_waypoint_user)
     if user is None:
         raise HTTPException(401, "Choose who you are with the View as switcher")
     return user
@@ -257,7 +257,7 @@ Expected: 3 passed. Then run `.venv/Scripts/python -m pytest services/api/tests 
 
 ```bash
 git add services/api/app/identity.py services/api/app/main.py services/api/tests/team_world.py services/api/tests/test_teams_identity.py
-git commit -m "feat(teams): add demo identity seam with users table and X-Farq-User
+git commit -m "feat(teams): add demo identity seam with users table and X-Waypoint-User
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -626,7 +626,7 @@ Db = Annotated[Session, Depends(get_db)]
 
 
 def aware(value: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes; everything Farq stores is UTC."""
+    """SQLite returns naive datetimes; everything Waypoint stores is UTC."""
     if value is None:
         return None
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
@@ -3113,7 +3113,7 @@ Add these bullets to the end of the `## Invariants` list:
   stream, catch-up and replay read only that log. Course instructors see every team except its
   chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and
   `teams/events.py`, never only in the UI or prompt.
-- Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Farq-User`
+- Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Waypoint-User`
   header; the SSE stream alone takes `?as=`). Replace that function, not its callers, for real sign-in.
 - Team activity never creates `StudentFact` rows.
 ```

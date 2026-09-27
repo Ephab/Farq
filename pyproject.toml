@@ -1,7 +1,7 @@
 [project]
-name = "farq"
+name = "waypoint"
 version = "0.1.0"
-description = "Farq API and local email classification"
+description = "Waypoint API and local email classification"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi==0.116.1",

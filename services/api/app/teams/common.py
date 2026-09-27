@@ -14,7 +14,7 @@ Db = Annotated[Session, Depends(get_db)]
 
 
 def aware(value: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes; everything Farq stores is UTC."""
+    """SQLite returns naive datetimes; everything Waypoint stores is UTC."""
     if value is None:
         return None
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)

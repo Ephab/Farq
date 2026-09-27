@@ -60,10 +60,10 @@ def test_mention_runs_hermes_on_the_team_session_and_posts_its_reply(client, her
     hermes.replies = ["Ali should take the login API."]
     _send(client, team, s0, "@Hermes who should take login?")
     call = hermes.calls[-1]
-    assert call["headers"]["X-Hermes-Session-Key"] == f"farq:team:{team}"
+    assert call["headers"]["X-Hermes-Session-Key"] == f"waypoint:team:{team}"
     assert f"team_id={team}" in call["payload"]["input"]
     assert f"acting_user_id={s0}" in call["payload"]["input"]
-    assert "farq-team-coach" in call["payload"]["instructions"]
+    assert "waypoint-team-coach" in call["payload"]["instructions"]
     last = _messages(client, team, s0)[-1]
     assert (last["author_user_id"], last["content"], last["visible_to_user_id"]) == (None, "Ali should take the login API.", None)
     statuses = [event["payload"]["status"] for event in events_for(team) if event["type"] == "hermes.run"]

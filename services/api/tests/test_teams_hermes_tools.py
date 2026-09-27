@@ -4,7 +4,7 @@ from app.database import SessionLocal
 from app.models import StudentFact
 from app.teams.models import TeamAgentRun
 
-INTERNAL = {"X-Farq-Internal-Token": "farq-internal-dev"}
+INTERNAL = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
 
 
 def _run(team_id, user_id):

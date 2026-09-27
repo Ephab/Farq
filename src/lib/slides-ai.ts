@@ -1,9 +1,9 @@
-import { API_BASE, HERMES_API_KEY_HEADER, getHermesApiKey } from "./farq-api";
+import { API_BASE, HERMES_API_KEY_HEADER, getHermesApiKey } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // slides-ai.ts — AI backbone for slide extension (mirrors quiz-ai.ts).
 //
-// Browser POSTs slide text to the Farq API, which runs JSON-only prompts
+// Browser POSTs slide text to the Waypoint API, which runs JSON-only prompts
 // on the local Hermes gateway (server-side keys only). Nothing is written
 // to SQLite: slide text is not an explicit student statement.
 // ─────────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ export interface ExtendedSlide {
   title: string;
   bullets: string[];
   speakerNotes?: string;
-  /** Visual structure from the farq-slides skill; unknown values render as bullets. */
+  /** Visual structure from the waypoint-slides skill; unknown values render as bullets. */
   layout?: SlideLayout;
   kicker?: string;
   columns?: SlideColumn[];
@@ -283,7 +283,7 @@ async function postSlides(
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     const detail = e instanceof Error ? e.message : "network error";
-    throw new SlidesAIError(`Couldn't reach the Farq backend (${detail}). Is the stack running?`);
+    throw new SlidesAIError(`Couldn't reach the Waypoint backend (${detail}). Is the stack running?`);
   }
   if (!res.ok) {
     let detail = "";
@@ -415,7 +415,7 @@ export async function exportExtensionPptx(args: {
     });
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;
-    throw new SlidesAIError("Couldn't reach the Farq backend for export.");
+    throw new SlidesAIError("Couldn't reach the Waypoint backend for export.");
   }
   if (!res.ok) {
     let detail = "";

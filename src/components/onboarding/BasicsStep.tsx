@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { api, type Discipline, type StudentProfile } from "@/lib/farq-api"
+import { api, type Discipline, type StudentProfile } from "@/lib/waypoint-api"
 
 interface BasicsStepProps {
   profile: StudentProfile

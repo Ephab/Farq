@@ -1,7 +1,7 @@
-import { API_BASE, api, getCurrentStudentId, hermesRequestParts } from "@/lib/farq-api"
+import { API_BASE, api, getCurrentStudentId, hermesRequestParts } from "@/lib/waypoint-api"
 
-const ACTING_USER_STORAGE_KEY = "farq.current-user"
-export const ACTING_USER_EVENT = "farq:acting-user-changed"
+const ACTING_USER_STORAGE_KEY = "waypoint.current-user"
+export const ACTING_USER_EVENT = "waypoint:acting-user-changed"
 
 export type TeamRole = "lead" | "member" | "instructor"
 export type TaskStatus = "todo" | "doing" | "review" | "done"
@@ -121,7 +121,7 @@ export function demoUsers(): Promise<TeamUser[]> {
  * switch (or another tab) can never make an in-flight view act as someone else. */
 export function teamClient(userId: string) {
   function teamApi<T>(path: string, init?: RequestInit): Promise<T> {
-    return api<T>(path, { ...init, headers: { "X-Farq-User": userId, ...(init?.headers as Record<string, string> | undefined) } })
+    return api<T>(path, { ...init, headers: { "X-Waypoint-User": userId, ...(init?.headers as Record<string, string> | undefined) } })
   }
   return {
   userId,
@@ -166,7 +166,7 @@ export function teamClient(userId: string) {
   deleteSection: (sectionId: string) => teamApi<TeamDocumentInfo>(`/api/sections/${sectionId}`, send("DELETE")),
   /** The file itself (not JSON), so this bypasses `api` and returns the response body as a Blob. */
   exportDocument: async (documentId: string, format: ExportFormat, style: ExportStyle): Promise<Blob> => {
-    const response = await fetch(`${API_BASE}/api/documents/${documentId}/export?format=${format}&style=${style}`, { headers: { "X-Farq-User": userId } })
+    const response = await fetch(`${API_BASE}/api/documents/${documentId}/export?format=${format}&style=${style}`, { headers: { "X-Waypoint-User": userId } })
     if (!response.ok) throw new Error(`Export failed (${response.status})`)
     return response.blob()
   },

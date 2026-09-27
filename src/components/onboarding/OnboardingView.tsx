@@ -7,7 +7,7 @@ import { EvidenceReview } from "@/components/onboarding/EvidenceReview"
 import { OnboardingChat } from "@/components/onboarding/OnboardingChat"
 import { RoadmapPreview } from "@/components/onboarding/RoadmapPreview"
 import { SourcesStep } from "@/components/onboarding/SourcesStep"
-import { DEMO_STUDENT_ID, api, getCurrentStudentId, getHermesApiKey, getHermesModel, getHermesProvider, hasChosenStudent, isNvapiKey, modelsFor, saveHermesApiKey, saveHermesModel, saveHermesProvider, setCurrentStudentId, type HermesProvider, type OnboardingStatus, type StudentProfile } from "@/lib/farq-api"
+import { DEMO_STUDENT_ID, api, getCurrentStudentId, getHermesApiKey, getHermesModel, getHermesProvider, hasChosenStudent, isNvapiKey, modelsFor, saveHermesApiKey, saveHermesModel, saveHermesProvider, setCurrentStudentId, type HermesProvider, type OnboardingStatus, type StudentProfile } from "@/lib/waypoint-api"
 import { cn } from "@/lib/utils"
 
 const STEPS: { status: OnboardingStatus[]; label: string }[] = [
@@ -89,7 +89,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
   return (
     <div className="flex min-h-svh flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center gap-4 border-b border-border px-4 py-3 sm:px-8">
-        <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" /></span><span className="text-sm font-semibold">Farq</span></div>
+        <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" /></span><span className="text-sm font-semibold">Waypoint</span></div>
         <ol className="ml-auto flex flex-wrap items-center gap-1.5 text-xs" aria-label="Onboarding progress">
           {STEPS.map((step, index) => (
             <li key={step.label} aria-current={index === stepIndex ? "step" : undefined} className={cn("rounded-full px-2.5 py-1", index === stepIndex ? "bg-primary text-primary-foreground" : index < stepIndex ? "bg-muted text-foreground" : "text-muted-foreground")}>
@@ -101,7 +101,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
       <div className="border-b border-border bg-muted/40 px-4 py-2 sm:px-8">
         <details className="mx-auto w-full max-w-4xl">
           <summary className="cursor-pointer text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-            Using the Farq default model · <span className="underline">Advanced</span>
+            Using the Waypoint default model · <span className="underline">Advanced</span>
           </summary>
           <div className="flex w-full flex-wrap items-center gap-2 pt-2">
           <label htmlFor="onboarding-hermes-provider" className="sr-only">Hermes provider</label>
@@ -115,7 +115,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
             {modelChoices.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
           <label htmlFor="onboarding-hermes-key" className="sr-only">Hermes API key</label>
-          <input id="onboarding-hermes-key" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => onKeyChange(event.target.value)} placeholder="Optional personal key — empty uses the Farq default" autoComplete="off" spellCheck={false} className="h-8 min-w-36 flex-1 rounded-lg border border-border bg-background px-2.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring" />
+          <input id="onboarding-hermes-key" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => onKeyChange(event.target.value)} placeholder="Optional personal key — empty uses the Waypoint default" autoComplete="off" spellCheck={false} className="h-8 min-w-36 flex-1 rounded-lg border border-border bg-background px-2.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring" />
           <button type="button" onClick={() => setShowKey((v) => !v)} aria-label={showKey ? "Hide Hermes API key" : "Show Hermes API key"} className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{showKey ? "Hide" : "Show"}</button>
           </div>
         </details>
@@ -154,8 +154,8 @@ function SignIn({ error, onCreated, onDemo }: { error: string | null; onCreated:
     <div className="grid min-h-svh place-items-center bg-background p-4 text-foreground">
       <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground"><Command className="size-5" /></span>
-        <h1 className="mt-4 text-xl font-semibold">Welcome to Farq</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Farq builds a learning roadmap from what you've already done: your transcript, CV, projects and more. You won't have to type it all out.</p>
+        <h1 className="mt-4 text-xl font-semibold">Welcome to Waypoint</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Waypoint builds a learning roadmap from what you've already done: your transcript, CV, projects and more. You won't have to type it all out.</p>
         <label htmlFor="student-name" className="mt-6 block text-xs font-medium">What should Hermes call you?</label>
         <input id="student-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void create() }} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
         {failure ? <p className="mt-2 text-xs text-destructive">{failure}</p> : null}

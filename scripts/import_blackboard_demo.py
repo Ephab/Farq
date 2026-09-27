@@ -1,7 +1,7 @@
 """Build a read-only Blackboard demo snapshot from approved local lectures.
 
 The script reads only five explicitly mapped course folders and uploads text to
-Farq's authenticated internal import endpoint. Raw files never leave the host.
+Waypoint's authenticated internal import endpoint. Raw files never leave the host.
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ def synthetic_items(course: dict) -> list[dict]:
             "external_id": f"{slug}-syllabus",
             "content_type": "syllabus",
             "title": f"{code} course syllabus (demo)",
-            "body_text": f"Demo syllabus for {course['title']}. Weekly lectures, guided practice, one applied assessment, and a final review. This record is synthetic and exists only for the Farq hackathon demonstration.",
+            "body_text": f"Demo syllabus for {course['title']}. Weekly lectures, guided practice, one applied assessment, and a final review. This record is synthetic and exists only for the Waypoint hackathon demonstration.",
             "origin": "synthetic",
             "source_ref": f"bb://{course['external_id']}/syllabus",
             "posted_at": "2026-09-01T08:00:00Z",
@@ -165,15 +165,15 @@ def upload(payload: dict, api_url: str, token: str) -> dict:
         f"{api_url.rstrip('/')}/internal/demo/blackboard/import",
         data=json.dumps(payload).encode("utf-8"),
         method="POST",
-        headers={"Content-Type": "application/json", "X-Farq-Internal-Token": token},
+        headers={"Content-Type": "application/json", "X-Waypoint-Internal-Token": token},
     )
     try:
         with urlopen(request, timeout=120) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        raise RuntimeError(f"Farq rejected the snapshot ({exc.code}): {exc.read().decode('utf-8', errors='replace')}") from exc
+        raise RuntimeError(f"Waypoint rejected the snapshot ({exc.code}): {exc.read().decode('utf-8', errors='replace')}") from exc
     except URLError as exc:
-        raise RuntimeError(f"Farq API is unavailable: {exc.reason}") from exc
+        raise RuntimeError(f"Waypoint API is unavailable: {exc.reason}") from exc
 
 
 def main() -> None:
@@ -190,7 +190,7 @@ def main() -> None:
         print(json.dumps({"student_id": args.student, "courses": summary}, ensure_ascii=False, indent=2))
         return
     env = read_env(Path(__file__).resolve().parents[1] / ".env")
-    token = os.getenv("FARQ_INTERNAL_TOKEN") or env.get("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+    token = os.getenv("WAYPOINT_INTERNAL_TOKEN") or env.get("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
     result = upload(payload, args.api, token)
     print(json.dumps({**result, "content_by_course": summary}, ensure_ascii=False, indent=2))
 

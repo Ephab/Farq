@@ -3,7 +3,7 @@ from __future__ import annotations
 """Persist Settings-pane Hermes choices to the repo-root .env file.
 
 The Windows/macOS native runners and the documented Docker flow read this file, and only at process startup. After a
-successful write the caller is responsible for restarting the Farq API and
+successful write the caller is responsible for restarting the Waypoint API and
 gateway (the native runner watches .env and restarts its own isolated
 children; other deployments need a manual restart).
 """
@@ -19,7 +19,7 @@ def _resolve_env_path() -> Path:
     the host's secrets file.  An explicit path remains available for other
     deployment layouts.
     """
-    override = os.getenv("FARQ_ENV_PATH")
+    override = os.getenv("WAYPOINT_ENV_PATH")
     if override:
         return Path(override).expanduser().resolve()
 

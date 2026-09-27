@@ -1,6 +1,6 @@
-# Farq
+# Waypoint
 
-Farq is a React/Vite student app with a FastAPI/SQLite backend, a local Hermes
+Waypoint is a React/Vite student app with a FastAPI/SQLite backend, a local Hermes
 Agent gateway, and local Laya email classification. It includes learning roadmaps,
 quizzes, slides, reviewed evidence, group projects and a private email workspace.
 SQLite owns product state; AI suggestions never silently become student facts or
@@ -26,7 +26,7 @@ bash run.sh
 
 Open **http://localhost:5173**. Stop the native runner with Ctrl+C to stop its own
 API, web server and shared Coach/email gateway. Do not run both platform
-runners or another Farq instance on the same ports.
+runners or another Waypoint instance on the same ports.
 
 ## What setup does
 
@@ -37,11 +37,11 @@ runners or another Farq instance on the same ports.
   if missing, and verifies the CLI. It preserves your existing Hermes installation.
 - Downloads/caches the pinned Laya model and runs a synthetic classification check.
   Runtime selects CUDA → MPS → CPU; no training or manual model download is needed.
-- Creates/updates `.env`, generating missing `HERMES_API_KEY`, `FARQ_INTERNAL_TOKEN`
-  and `FARQ_TOKEN_ENCRYPTION_KEY`. Existing valid secrets/provider keys are preserved.
+- Creates/updates `.env`, generating missing `HERMES_API_KEY`, `WAYPOINT_INTERNAL_TOKEN`
+  and `WAYPOINT_TOKEN_ENCRYPTION_KEY`. Existing valid secrets/provider keys are preserved.
 - Detects classic Outlook without opening it and generates `OUTLOOK_LOCAL_TOKEN`
   only on supported Windows devices. No email is read during setup.
-- Provisions Farq's `.hermes-runtime` profile for Coach and email Q&A.
+- Provisions Waypoint's `.hermes-runtime` profile for Coach and email Q&A.
 
 First setup needs internet and several GB of disk/RAM; later runs reuse package and
 model caches. Node.js, Git, GPU drivers and any OS-level installer prerequisites
@@ -57,13 +57,13 @@ classification works locally without an AI-provider key. Model weights, `.venv`,
 ## Email: two methods only
 
 **Classic Outlook (Windows):** open classic Outlook with the desired default mailbox.
-In **Emails**, check **I allow Farq to read and locally classify my classic Outlook
+In **Emails**, check **I allow Waypoint to read and locally classify my classic Outlook
 mailbox**. No pairing code, copied token or app registration is required. Outlook's
 own security prompts and organizational policy still apply. New Outlook, Outlook
 for Mac and Docker do not support this COM method.
 
 **Temporary Microsoft Graph token (Windows/macOS/Docker):** paste an already-issued
-token with User.Read and Mail.Read consent, then accept access. Farq encrypts it on
+token with User.Read and Mail.Read consent, then accept access. Waypoint encrypts it on
 the server. It cannot refresh; reconnect with a new token when it expires. Setup
 cannot mint this token or bypass Microsoft consent. Entra popup and device-code
 sign-in methods have been removed.
@@ -72,7 +72,7 @@ Both methods feed one inbox: Important, Today, Needs review, Follow-ups, search,
 full cleaned message text and batch tools. Home shows today's email in a side
 column. Mail is read-only; no sending, deleting, mark-as-read, calendars or attachments.
 Laya labels are suggestions, and Arabic messages require manual review. Cache
-retention is 30 days; disconnect clears Farq's cached mail.
+retention is 30 days; disconnect clears Waypoint's cached mail.
 
 Selected-email Q&A requires explicit consent to send those messages to the configured
 AI providers (including fallback providers). It runs through the same Hermes gateway as Coach at port 8642, sharing its tools
@@ -126,6 +126,6 @@ npm test
 .venv/bin/python -m pytest services/api/tests
 ```
 
-If an AI provider is unavailable, Farq reports the failure; it does not substitute
+If an AI provider is unavailable, Waypoint reports the failure; it does not substitute
 canned answers. Read [the handoff](docs/handoff.md), [Hermes architecture](docs/hermes-architecture.md)
 and [future work](docs/future-work.md) before extending agent access.

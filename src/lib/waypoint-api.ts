@@ -2,15 +2,15 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ""
 
 export type HermesProvider = "gemini" | "nim" | "hf"
 
-const HERMES_PROVIDER_STORAGE_KEY = "farq.hermes-provider"
-// Tab-only (sessionStorage) so Farq Hermes settings never leak into another
+const HERMES_PROVIDER_STORAGE_KEY = "waypoint.hermes-provider"
+// Tab-only (sessionStorage) so Waypoint Hermes settings never leak into another
 // tab, never touch .env files, and never touch a system Hermes instance.
-const HERMES_GEMINI_MODEL_STORAGE_KEY = "farq.hermes-model-gemini"
-const HERMES_NIM_MODEL_STORAGE_KEY = "farq.hermes-model-nim"
-const HERMES_HF_MODEL_STORAGE_KEY = "farq.hermes-model-hf"
-const HERMES_API_KEY_STORAGE_KEY = "farq.hermes-api-key"
+const HERMES_GEMINI_MODEL_STORAGE_KEY = "waypoint.hermes-model-gemini"
+const HERMES_NIM_MODEL_STORAGE_KEY = "waypoint.hermes-model-nim"
+const HERMES_HF_MODEL_STORAGE_KEY = "waypoint.hermes-model-hf"
+const HERMES_API_KEY_STORAGE_KEY = "waypoint.hermes-api-key"
 
-/** Header carrying the tab-only Farq Hermes gateway key override to Farq API. */
+/** Header carrying the tab-only Waypoint Hermes gateway key override to Waypoint API. */
 export const HERMES_API_KEY_HEADER = "X-Hermes-Api-Key"
 
 // Keep in sync with services/api/app/hermes.py allowlists.
@@ -87,12 +87,12 @@ export function saveHermesModel(provider: HermesProvider, model: string): void {
   window.sessionStorage.setItem(modelKeyFor(provider), model)
 }
 
-/** True when the value is an NVIDIA API key, not a Farq gateway key. */
+/** True when the value is an NVIDIA API key, not a Waypoint gateway key. */
 export function isNvapiKey(key: string): boolean {
   return key.trim().toLowerCase().startsWith("nvapi")
 }
 
-/** Tab-only Farq Hermes gateway key override. Empty string means "use server env". */
+/** Tab-only Waypoint Hermes gateway key override. Empty string means "use server env". */
 export function getHermesApiKey(): string {
   if (typeof window === "undefined") return ""
   try {
@@ -106,7 +106,7 @@ export function saveHermesApiKey(key: string): void {
   window.sessionStorage.setItem(HERMES_API_KEY_STORAGE_KEY, key)
 }
 
-export function clearLocalFarqState(): void {
+export function clearLocalWaypointState(): void {
   if (typeof window === "undefined") return
   try {
     window.sessionStorage.removeItem(HERMES_PROVIDER_STORAGE_KEY)
@@ -114,9 +114,9 @@ export function clearLocalFarqState(): void {
     window.sessionStorage.removeItem(HERMES_NIM_MODEL_STORAGE_KEY)
     window.sessionStorage.removeItem(HERMES_HF_MODEL_STORAGE_KEY)
     window.sessionStorage.removeItem(HERMES_API_KEY_STORAGE_KEY)
-    window.localStorage.removeItem("smartlearn-quiz-library-v1")
-    window.localStorage.removeItem("smartlearn-nim-key")
-    window.localStorage.removeItem("farq-theme")
+    window.localStorage.removeItem("waypoint-quiz-library-v1")
+    window.localStorage.removeItem("waypoint-nim-key")
+    window.localStorage.removeItem("waypoint-theme")
     window.localStorage.removeItem(CURRENT_STUDENT_STORAGE_KEY)
   } catch {
   }
@@ -156,8 +156,8 @@ export interface DecisionStatus {
 
 // The signed-in student. There is no auth yet, so the browser remembers which
 // student record it created (see docs/future-work.md). Falls back to the demo.
-const CURRENT_STUDENT_STORAGE_KEY = "farq.current-student"
-export const ROADMAP_CHANGED_EVENT = "farq:roadmap-changed"
+const CURRENT_STUDENT_STORAGE_KEY = "waypoint.current-student"
+export const ROADMAP_CHANGED_EVENT = "waypoint:roadmap-changed"
 
 export function getCurrentStudentId(): string {
   if (typeof window === "undefined") return DEMO_STUDENT_ID
@@ -256,7 +256,7 @@ export interface ProjectEvaluation {
   finished_at: string | null
 }
 
-export interface FarqProject {
+export interface WaypointProject {
   id: string
   student_id: string
   roadmap_node_id: string
@@ -274,7 +274,7 @@ export interface FarqProject {
 
 export type SourceKind = "transcript_pdf" | "cv_pdf" | "linkedin_pdf" | "linkedin_zip" | "github" | "folder" | "portfolio_url" | "orcid"
 
-/** Readable names for the kinds Farq knows. Sources created without a value of
+/** Readable names for the kinds Waypoint knows. Sources created without a value of
  *  their own are stored with the kind as their label, so this is the fallback. */
 export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   transcript_pdf: "Transcript",

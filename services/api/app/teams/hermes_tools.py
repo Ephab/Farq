@@ -19,14 +19,14 @@ from .proposals import ProposalError, create_proposal, expire_stalled, proposal_
 from .tasks import milestone_dict, task_dict
 from .teams import team_dict
 
-INTERNAL_TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 CARD_CATEGORIES = ("skill", "goal", "strength", "interest")
 CHAT_WINDOW = 50
 router = APIRouter()
 
 
-def require_internal(x_farq_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_farq_internal_token != INTERNAL_TOKEN:
+def require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
+    if x_waypoint_internal_token != INTERNAL_TOKEN:
         raise HTTPException(401, "Invalid internal token")
 
 

@@ -5,7 +5,7 @@ import { OutlookView } from "@/components/outlook/OutlookView"
 import { useCallback, useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import { AlertCircle, ArrowRight, BookOpen, Briefcase, CheckCircle2, FileText, FolderSearch, Globe, GraduationCap, Link2, LoaderCircle, Trash2, UserRound, type LucideIcon } from "lucide-react"
-import { api, hermesRequestParts, uploadSourceFile, type DataSourceItem, type Discipline, type EvidenceItem, type SourceKind, type StudentProfile } from "@/lib/farq-api"
+import { api, hermesRequestParts, uploadSourceFile, type DataSourceItem, type Discipline, type EvidenceItem, type SourceKind, type StudentProfile } from "@/lib/waypoint-api"
 import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 

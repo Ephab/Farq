@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-onboarding-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-onboarding-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.database import SessionLocal, engine  # noqa: E402
@@ -21,7 +21,7 @@ from app.sources import SourceError  # noqa: E402
 from app.sources.pdf_text import redact  # noqa: E402
 from app.sources.web import fetch_page_text  # noqa: E402
 
-INTERNAL = {"X-Farq-Internal-Token": "farq-internal-dev"}
+INTERNAL = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
 HERMES = {"X-Hermes-Api-Key": "test-gateway-key-0123456789"}
 
 
@@ -61,7 +61,7 @@ def fake_gateway(outputs: list[str], prompts: list[str]):
 
         def post(self, url, headers=None, json=None):
             prompts.append(json["input"])
-            assert headers["X-Hermes-Session-Key"].startswith(("farq:ingest:", "farq:roadmap:"))
+            assert headers["X-Hermes-Session-Key"].startswith(("waypoint:ingest:", "waypoint:roadmap:"))
             return _Response({"run_id": f"run-{len(prompts)}"})
 
         def get(self, url, headers=None):

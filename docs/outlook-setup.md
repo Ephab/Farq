@@ -1,6 +1,6 @@
 # Outlook mail
 
-Farq supports exactly two mailbox connections. Both use the same private cache,
+Waypoint supports exactly two mailbox connections. Both use the same private cache,
 email cleaner, local Laya classifier and Emails workspace.
 
 | Method | Platform | What you do |
@@ -8,9 +8,9 @@ email cleaner, local Laya classifier and Emails workspace.
 | Classic Outlook | Native Windows with classic Outlook installed | Open Outlook, then check the consent box in Emails |
 | Temporary Microsoft Graph token | Windows, macOS, or Docker | Paste a Microsoft-issued token and accept mailbox access |
 
-No Entra app registration, OAuth popup or device-code flow is implemented in Farq.
+No Entra app registration, OAuth popup or device-code flow is implemented in Waypoint.
 The temporary-token method still requires Microsoft consent and is subject to
-organization policy; Farq cannot bypass restrictions or mint a Microsoft token.
+organization policy; Waypoint cannot bypass restrictions or mint a Microsoft token.
 
 ## Setup and start
 
@@ -20,8 +20,8 @@ Setup installs locked dependencies, checks/installs Hermes, downloads and smoke-
 Laya, installs frontend packages, and generates missing local credentials in `.env`.
 Existing provider keys and valid generated secrets are preserved.
 
-`HERMES_API_KEY` authenticates Farq to its gateways; `FARQ_INTERNAL_TOKEN`
-authenticates the project plugin; `FARQ_TOKEN_ENCRYPTION_KEY` protects Graph tokens.
+`HERMES_API_KEY` authenticates Waypoint to its gateways; `WAYPOINT_INTERNAL_TOKEN`
+authenticates the project plugin; `WAYPOINT_TOKEN_ENCRYPTION_KEY` protects Graph tokens.
 When the passive Windows registry probe finds classic Outlook, setup also generates
 `OUTLOOK_LOCAL_TOKEN`. This local secret never goes into browser JavaScript and is
 not a Microsoft access token. No mailbox is opened or read during setup. After
@@ -30,8 +30,8 @@ installing classic Outlook later, rerun setup or restart the native runner.
 ## Classic Outlook: checkbox only
 
 Sign in to the desired account in classic Outlook and make it the default mailbox.
-In **Emails**, check **I allow Farq to read and locally classify my classic Outlook
-mailbox**. Farq automatically obtains a short-lived browser consent cookie and
+In **Emails**, check **I allow Waypoint to read and locally classify my classic Outlook
+mailbox**. Waypoint automatically obtains a short-lived browser consent cookie and
 connects; there is no pairing-code field, token copying, or app registration.
 Outlook or your organization can still require its own access approval.
 
@@ -48,7 +48,7 @@ It needs **User.Read** and **Mail.Read** consent. Expand the temporary-token opt
 paste it, accept access and connect. The token remains encrypted on the server.
 It is never stored in `.env`, returned to the browser, or sent to Hermes.
 
-Tokens cannot refresh in Farq. On expiry or provider rejection the worker stops
+Tokens cannot refresh in Waypoint. On expiry or provider rejection the worker stops
 and the Emails view offers the token form again. Reconnecting the same account
 retains its cached messages and resumes sync. Setup cannot generate this credential.
 
@@ -72,7 +72,7 @@ Today, Needs review, Follow-ups, All mail, Dismissed, search, full-text reading,
 pinning, batch actions, follow-up dates, copy and text export.
 
 Mailbox sessions are private and separate from demo student/team identities.
-Disconnect deletes the Farq cache and stored connection credentials, but neither
+Disconnect deletes the Waypoint cache and stored connection credentials, but neither
 changes Outlook messages nor revokes Microsoft-issued tokens externally.
 
 ## Optional email Q&A

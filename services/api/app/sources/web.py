@@ -3,7 +3,7 @@ from __future__ import annotations
 """Public web sources: GitHub, ORCID, and one portfolio page.
 
 GitHub and ORCID use fixed API hosts. The portfolio fetch is the only
-arbitrary-URL request in Farq, so it is guarded against SSRF: https only,
+arbitrary-URL request in Waypoint, so it is guarded against SSRF: https only,
 every hop's host must resolve to public addresses, bounded size and time.
 """
 
@@ -27,7 +27,7 @@ TOP_README_REPOS = 8
 
 
 def _github_headers() -> dict:
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "farq-onboarding"}
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "waypoint-onboarding"}
     token = os.getenv("GITHUB_TOKEN", "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -162,7 +162,7 @@ class _TextExtractor(HTMLParser):
 def fetch_page_text(url: str) -> str:
     """Fetch one public page with SSRF guards and return visible text + links."""
     current = url
-    with httpx.Client(timeout=10, follow_redirects=False, headers={"User-Agent": "farq-onboarding"}) as client:
+    with httpx.Client(timeout=10, follow_redirects=False, headers={"User-Agent": "waypoint-onboarding"}) as client:
         for _ in range(MAX_REDIRECTS + 1):
             parsed = urlparse(current)
             if parsed.scheme != "https" or not parsed.hostname:

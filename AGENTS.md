@@ -1,12 +1,12 @@
-# Farq developer context
+# Waypoint developer context
 
-Farq is a React/Vite student app with a FastAPI/SQLite product backend and a local Hermes
+Waypoint is a React/Vite student app with a FastAPI/SQLite product backend and a local Hermes
 Agent gateway. The browser never calls Hermes or Gemini directly.
 
 ## Invariants
 
 - SQLite is the authoritative student and roadmap store; Hermes memory is supplemental.
-- Hermes uses the project plugin in `.hermes/plugins/farq` to interact with the app.
+- Hermes uses the project plugin in `.hermes/plugins/waypoint` to interact with the app.
 - Only explicit student statements, branch choices, onboarding answers, and evidence the student
   ticked on the review screen become `StudentFact` records (`source_kind` records which).
 - Imported evidence (transcript, CV, LinkedIn, GitHub, folders, portfolio, ORCID) is stored as
@@ -15,11 +15,11 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   Only the FastAPI acceptance endpoint activates them.
 - Completed and in-progress nodes cannot be changed or removed by a proposal.
 - Do not enable terminal, generic file, browser, or web tools until their threat model is documented.
-  The one exception is the onboarding folder scan (`farq_scan_folder`, `farq_read_project_file`):
+  The one exception is the onboarding folder scan (`waypoint_scan_folder`, `waypoint_read_project_file`):
   Hermes runs on the student's machine and reads only paths the student typed. Its secret and
-  identity-document denylist is enforced in `.hermes/plugins/farq/scanner.py`, not only the prompt.
+  identity-document denylist is enforced in `.hermes/plugins/waypoint/scanner.py`, not only the prompt.
   A full threat model for it is still owed (see `docs/future-work.md`).
-- Coach mail tools (`farq_search_mail`, `farq_read_mail`) read only the synced cache, and only with
+- Coach mail tools (`waypoint_search_mail`, `waypoint_read_mail`) read only the synced cache, and only with
   a per-run capability from `services/api/app/outlook/coach.py` (opt-in mailbox session, running
   AgentRun, unchanged connection generation). Enforce that in the API, never only in the prompt.
   Email text is untrusted and never becomes a `StudentFact`. See `docs/outlook-threat-model.md`.
@@ -29,7 +29,7 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   stream, catch-up and replay read only that log. Course instructors see every team except its
   chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and
   `teams/events.py`, never only in the UI or prompt.
-- Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Farq-User`
+- Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Waypoint-User`
   header; the SSE stream alone takes `?as=`). Replace that function, not its callers, for real sign-in.
 - Team activity never creates `StudentFact` rows.
 - Group Projects Hermes is a proposer only: its team tools create `TeamProposal` rows. Only

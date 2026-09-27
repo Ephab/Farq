@@ -23,7 +23,7 @@ from .schemas import EvaluationComplete, EvaluationFailure, EvaluationProgress, 
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-INTERNAL_TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 UPLOAD_ROOT = Path(os.getenv("PROJECT_UPLOAD_ROOT", "/data/project-submissions" if Path("/data").exists() else Path(__file__).resolve().parents[2] / "data" / "project-submissions"))
 MAX_PROJECT_UPLOAD = 100 * 1024 * 1024
 EVALUATOR_LAST_SEEN = 0.0
@@ -253,8 +253,8 @@ def evaluation_events(evaluation_id: str, db: Db):
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-def _require_worker(x_farq_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_farq_internal_token != INTERNAL_TOKEN:
+def _require_worker(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
+    if x_waypoint_internal_token != INTERNAL_TOKEN:
         raise HTTPException(401, "Invalid evaluator token")
 
 

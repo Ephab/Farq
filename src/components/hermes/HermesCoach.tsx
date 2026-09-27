@@ -6,7 +6,7 @@ import { RotateCcw, Sparkles, Trophy } from "lucide-react"
 import { ChatThreadView, type SuggestedPrompt } from "@/components/hermes/ChatThreadView"
 import { CoachPortalIntro, type PortalPhase } from "@/components/animation/CoachPortalIntro"
 import { useHermesChat } from "@/components/hermes/use-hermes-chat"
-import { api, getCurrentStudentId, notifyRoadmapChanged, type OpportunitySummary, type StudentProfile } from "@/lib/farq-api"
+import { api, getCurrentStudentId, notifyRoadmapChanged, type OpportunitySummary, type StudentProfile } from "@/lib/waypoint-api"
 import { EASE_OUT } from "@/lib/ease"
 import "./coach-concept.css"
 
@@ -73,7 +73,7 @@ function factsSummary(facts: Fact[]): string {
 // (and re-block) the intro each time the student returns to the tab.
 let portalPlayed = false
 
-const INTRO_EVERY_VISIT_KEY = "farq.coach-intro-every-visit"
+const INTRO_EVERY_VISIT_KEY = "waypoint.coach-intro-every-visit"
 
 function readIntroEveryVisit(): boolean {
   try {
@@ -217,7 +217,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
     api<StudentProfile>(`/api/students/${studentId}/profile`)
       .then((profile) => setThreadId(profile.thread_id))
       .then(refreshSide)
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not reach Farq API"))
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not reach Waypoint API"))
   }, [studentId, refreshSide, setError])
 
   useEffect(() => {
@@ -251,7 +251,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
   const agentLabel = agent === "ready" ? "Ready" : agent === "checking" ? "Checking…" : agent === "degraded" ? "Degraded" : agent === "unavailable" ? "Reconnecting…" : "Checking…"
   const agentTone = agent === "ready" ? "success" : "warning"
   const agentTitle = agent === "unavailable"
-    ? "Farq is reconnecting to Hermes — your conversation is saved and sending still works"
+    ? "Waypoint is reconnecting to Hermes — your conversation is saved and sending still works"
     : agent === "degraded"
       ? "Hermes is degraded — chat works, some features may be slow"
       : "Hermes connection status"

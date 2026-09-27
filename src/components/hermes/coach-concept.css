@@ -1,7 +1,7 @@
-/* Farq coach concept styles, scoped under `.fq` so the rest of the app is untouched.
- * Faithful port of the 10-coach mockup language (farq.css): glass chat shell,
+/* Waypoint coach concept styles, scoped under `.fq` so the rest of the app is untouched.
+ * Faithful port of the 10-coach mockup language (waypoint.css): glass chat shell,
  * assistant/user bubbles, proposal cards, choice cards, composer, context panel.
- * All data shown through these classes comes from the Farq API — nothing here
+ * All data shown through these classes comes from the Waypoint API — nothing here
  * is hardcoded mock content. */
 
 .fq {

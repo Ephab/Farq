@@ -47,8 +47,8 @@ def test_runner_syncs_every_skill(runner_name: str, tmp_path: Path, monkeypatch)
 
 
 @pytest.mark.parametrize("runner_name", RUNNERS)
-def test_farq_gateway_keeps_a_repo_local_hermes_home(runner_name: str) -> None:
-    """Farq's gateway must load skills in .hermes-runtime, never the daily-use ~/.hermes."""
+def test_waypoint_gateway_keeps_a_repo_local_hermes_home(runner_name: str) -> None:
+    """Waypoint's gateway must load skills in .hermes-runtime, never the daily-use ~/.hermes."""
     runner = load_runner(runner_name)
     env = runner.build_child_env({"HERMES_API_KEY": "k" * 64})
 

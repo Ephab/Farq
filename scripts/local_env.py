@@ -31,17 +31,17 @@ def configure_env(root: Path = ROOT, supported: bool | None = None) -> dict[str,
     text = (path if path.exists() else root / ".env.example").read_text(encoding="utf-8-sig")
     values = read_env(path) if path.exists() else read_env(root / ".env.example")
     updates = {}
-    for name in ("HERMES_API_KEY", "FARQ_INTERNAL_TOKEN"):
-        if not values.get(name) or values.get(name) == "farq-internal-dev":
+    for name in ("HERMES_API_KEY", "WAYPOINT_INTERNAL_TOKEN"):
+        if not values.get(name) or values.get(name) == "waypoint-internal-dev":
             updates[name] = secrets.token_hex(32)
-    if not values.get("FARQ_TOKEN_ENCRYPTION_KEY"):
-        updates["FARQ_TOKEN_ENCRYPTION_KEY"] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+    if not values.get("WAYPOINT_TOKEN_ENCRYPTION_KEY"):
+        updates["WAYPOINT_TOKEN_ENCRYPTION_KEY"] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
     else:
         try:
-            if len(base64.b64decode(values["FARQ_TOKEN_ENCRYPTION_KEY"], altchars=b"-_", validate=True)) != 32:
+            if len(base64.b64decode(values["WAYPOINT_TOKEN_ENCRYPTION_KEY"], altchars=b"-_", validate=True)) != 32:
                 raise ValueError()
         except ValueError:
-            raise RuntimeError("FARQ_TOKEN_ENCRYPTION_KEY is invalid; preserve or restore the existing valid encryption key.") from None
+            raise RuntimeError("WAYPOINT_TOKEN_ENCRYPTION_KEY is invalid; preserve or restore the existing valid encryption key.") from None
     if (classic_outlook_supported() if supported is None else supported) and not values.get("OUTLOOK_LOCAL_TOKEN"):
         updates["OUTLOOK_LOCAL_TOKEN"] = secrets.token_hex(32)
     defaults = {"OUTLOOK_APP_ORIGIN": "http://localhost:5173", "OUTLOOK_SYNC_ENABLED": "true",

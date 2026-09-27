@@ -13,7 +13,7 @@ from app.teams.chat import post_message
 from app.teams.models import Team, TeamAgentRun, TeamProposal
 from app.teams.proposals import ProposalError, create_proposal
 
-INTERNAL = {"X-Farq-Internal-Token": "farq-internal-dev"}
+INTERNAL = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
 
 
 def _propose(team_id, kind, payload, invoked_by):

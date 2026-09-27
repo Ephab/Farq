@@ -1,4 +1,4 @@
-import { API_BASE } from "./farq-api"
+import { API_BASE } from "./waypoint-api"
 
 export interface OutlookStatus {
   configured: boolean; connected: boolean; account?: string; auto_sync?: boolean

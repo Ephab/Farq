@@ -2,17 +2,17 @@ version = 1
 revision = 3
 requires-python = "==3.12.*"
 resolution-markers = [
-    "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')",
-    "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra != 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda'",
-    "sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda'",
-    "platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda'",
-    "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda'",
-    "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')",
-    "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda'",
+    "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')",
+    "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra != 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda'",
+    "sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda'",
+    "platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda'",
+    "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda'",
+    "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')",
+    "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda'",
 ]
 conflicts = [[
-    { package = "farq", extra = "cpu" },
-    { package = "farq", extra = "cuda" },
+    { package = "waypoint", extra = "cpu" },
+    { package = "waypoint", extra = "cuda" },
 ]]
 
 [[package]]
@@ -51,7 +51,7 @@ name = "cffi"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pycparser", marker = "implementation_name != 'PyPy' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "pycparser", marker = "implementation_name != 'PyPy' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz", hash = "sha256:dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be", size = 530807, upload-time = "2026-08-03T21:21:18.939Z" }
 wheels = [
@@ -133,7 +133,7 @@ name = "cryptography"
 version = "48.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "cffi", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/12/45/870e7f4bef50e5f53b9f51d4428aee5290eedf58ba443f16b1ebb7ab8e66/cryptography-48.0.1.tar.gz", hash = "sha256:266f4ee051abb2f725b74ef8072b521ce1feacf685a3364fa6a6b45548db791a", size = 832989, upload-time = "2026-06-09T22:32:31.8Z" }
 wheels = [
@@ -166,78 +166,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/36/bf/ed70785c496e89d7e73b7cda2d21f2447fd6d4e821714b8d04ff217fed92/cryptography-48.0.1-cp39-abi3-win32.whl", hash = "sha256:6b2c0c3e6ccf3ade7750f836ef3ee36eea250cc467d45c256895573ac08cc6f1", size = 3282307, upload-time = "2026-06-09T22:30:53.162Z" },
     { url = "https://files.pythonhosted.org/packages/b3/ff/371ea7d252656ee1eb6d83eeeef3d1d0c6baf1d6497687d081ea03814670/cryptography-48.0.1-cp39-abi3-win_amd64.whl", hash = "sha256:9a49ca6c81417f6a5edb50375a60cccdd70fa0a91a5211829dbea74eba94d2ac", size = 3793408, upload-time = "2026-06-09T22:32:15.191Z" },
 ]
-
-[[package]]
-name = "farq"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "huggingface-hub" },
-    { name = "laya" },
-    { name = "numpy" },
-    { name = "pydantic-settings" },
-    { name = "pypdf", extra = ["crypto"] },
-    { name = "python-docx" },
-    { name = "python-multipart" },
-    { name = "python-pptx" },
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "safetensors" },
-    { name = "sqlalchemy" },
-    { name = "torch", version = "2.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "transformers" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-cpu = [
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
-]
-cuda = [
-    { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform != 'darwin'" },
-]
-
-[package.dev-dependencies]
-benchmark = [
-    { name = "psutil" },
-]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cryptography", specifier = ">=45,<51" },
-    { name = "fastapi", specifier = "==0.116.1" },
-    { name = "httpx", specifier = "==0.28.1" },
-    { name = "huggingface-hub", specifier = "==0.36.2" },
-    { name = "laya", specifier = "==0.3.20" },
-    { name = "numpy", specifier = "==1.26.4" },
-    { name = "pydantic-settings", specifier = "==2.10.1" },
-    { name = "pypdf", extras = ["crypto"], specifier = "==6.1.1" },
-    { name = "python-docx", specifier = "==1.2.0" },
-    { name = "python-multipart", specifier = "==0.0.20" },
-    { name = "python-pptx", specifier = "==1.0.2" },
-    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=311,<312" },
-    { name = "safetensors", specifier = "==0.7.0" },
-    { name = "sqlalchemy", specifier = "==2.0.43" },
-    { name = "torch", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'", specifier = "==2.8.0" },
-    { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'", specifier = "==2.2.2" },
-    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'cpu'", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "farq", extra = "cpu" } },
-    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'cuda'", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "farq", extra = "cuda" } },
-    { name = "transformers", specifier = "==4.57.6" },
-    { name = "uvicorn", extras = ["standard"], specifier = "==0.35.0" },
-]
-provides-extras = ["cuda", "cpu"]
-
-[package.metadata.requires-dev]
-benchmark = [{ name = "psutil", specifier = ">=7,<8" }]
-dev = [{ name = "pytest", specifier = "==8.4.2" }]
 
 [[package]]
 name = "fastapi"
@@ -364,7 +292,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -414,10 +342,11 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "safetensors" },
-    { name = "torch", version = "2.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "torch", version = "2.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "transformers" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/31/82/0964e13e1a67ae4ac2824c3115470d31cd149a065d971a5dec6e4049ca23/laya-0.3.20.tar.gz", hash = "sha256:692de1346cf0239bb7bbcffdf0cfbd538c24834f8bc61e9b60f4106465c033c9", size = 275028, upload-time = "2026-09-24T05:41:07.653Z" }
@@ -549,7 +478,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
@@ -562,7 +491,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.3.83"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/bc/7771846d3a0272026c416fbb7e5f4c1f146d6d80704534d0b187dd6f4800/nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:848ef7224d6305cdb2a4df928759dca7b1201874787083b6e7550dd6765ce69a", size = 193109211, upload-time = "2025-03-07T01:44:56.873Z" },
@@ -594,9 +523,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.3.90"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/32/f7cd6ce8a7690544d084ea21c26e910a97e077c9b7f07bf5de623ee19981/nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:db9ed69dbef9715071232caa9b69c52ac7de3a95773c2db65bdba85916e4e5c0", size = 267229841, upload-time = "2025-03-07T01:46:54.356Z" },
@@ -609,7 +538,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.8.93"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/f7/cd777c4109681367721b00a106f491e0d0d15cfa1fd59672ce580ce42a97/nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9b6c161cb130be1a07a27ea6923df8141f3c295852f4b260c65f18f3e0a091dc", size = 288117129, upload-time = "2025-03-07T01:47:40.407Z" },
@@ -803,7 +732,7 @@ name = "pytest"
 version = "8.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -963,7 +892,7 @@ name = "sqlalchemy"
 version = "2.0.43"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d7/bc/d59b5d97d27229b0e009bd9098cd81af71c2fa5549c580a0a67b9bed0496/sqlalchemy-2.0.43.tar.gz", hash = "sha256:788bfcef6787a7764169cfe9859fe425bf44559619e1d9f56f5bddf2ebf6f417", size = 9762949, upload-time = "2025-08-11T14:24:58.438Z" }
@@ -1038,12 +967,12 @@ resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "fsspec", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "jinja2", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "networkx", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "sympy", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "typing-extensions", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "filelock", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "fsspec", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "jinja2", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "networkx", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "sympy", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "typing-extensions", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4c/0c/d8f77363a7a3350c96e6c9db4ffb101d1c0487cc0b8cdaae1e4bfb2800ad/torch-2.2.2-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:cf12cdb66c9c940227ad647bc9cf5dba7e8640772ae10dfe7569a0c1e2a28aca", size = 755466713, upload-time = "2024-03-27T21:08:48.868Z" },
@@ -1056,34 +985,53 @@ wheels = [
 [[package]]
 name = "torch"
 version = "2.8.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
-    "platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda'",
-    "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')",
+    "platform_machine != 'x86_64' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "fsspec", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "jinja2", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "networkx", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cufile-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "setuptools", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "sympy", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
-    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-4-farq-cpu') or (platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda') or (platform_machine == 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu' and extra != 'extra-4-farq-cuda')" },
+    { name = "filelock", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "fsspec", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "jinja2", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "networkx", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "setuptools", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "sympy", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+]
+wheels = [
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.8.0-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:a47b7986bee3f61ad217d8a8ce24605809ab425baf349f97de758815edd2ef54", upload-time = "2025-10-01T23:35:50Z" },
+]
+
+[[package]]
+name = "torch"
+version = "2.8.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_machine != 'x86_64' or sys_platform != 'darwin'",
+]
+dependencies = [
+    { name = "filelock", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "fsspec", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "jinja2", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "networkx", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cufile-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "setuptools", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "sympy", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/0c/2fd4df0d83a495bb5e54dca4474c4ec5f9c62db185421563deeb5dabf609/torch-2.8.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:e2fab4153768d433f8ed9279c8133a114a034a61e77a3a104dcdf54388838705", size = 101906089, upload-time = "2025-08-06T14:53:52.631Z" },
@@ -1100,13 +1048,13 @@ resolution-markers = [
     "sys_platform != 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "fsspec", marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "jinja2", marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "networkx", marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "setuptools", marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "sympy", marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "typing-extensions", marker = "(sys_platform != 'darwin' and extra == 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "filelock", marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "fsspec", marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "jinja2", marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "networkx", marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "setuptools", marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "sympy", marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "typing-extensions", marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp312-cp312-linux_s390x.whl", hash = "sha256:0e34e276722ab7dd0dffa9e12fe2135a9b34a0e300c456ed7ad6430229404eb5", upload-time = "2025-10-01T23:33:41Z" },
@@ -1124,28 +1072,28 @@ resolution-markers = [
     "platform_machine != 'x86_64' or sys_platform != 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "fsspec", marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "jinja2", marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "networkx", marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cufile-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "setuptools", marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "sympy", marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-4-farq-cuda') or (platform_machine != 'x86_64' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform != 'linux' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
-    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "filelock", marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "fsspec", marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "jinja2", marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "networkx", marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cufile-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "setuptools", marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "sympy", marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-8-waypoint-cuda') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'linux' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu128/torch-2.8.0%2Bcu128-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:4354fc05bb79b208d6995a04ca1ceef6a9547b1c4334435574353d381c55087c", upload-time = "2025-10-01T23:51:02Z" },
@@ -1157,7 +1105,7 @@ name = "tqdm"
 version = "4.70.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
 wheels = [
@@ -1190,7 +1138,7 @@ name = "triton"
 version = "3.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "setuptools", marker = "(platform_machine != 'x86_64' and extra != 'extra-4-farq-cpu') or (sys_platform != 'darwin' and extra == 'extra-4-farq-cuda') or (sys_platform != 'darwin' and extra != 'extra-4-farq-cpu') or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "setuptools", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/66/b1eb52839f563623d185f0927eb3530ee4d5ffe9d377cdaf5346b306689e/triton-3.4.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:31c1d84a5c0ec2c0f8e8a072d7fd150cab84a9c239eaddc6706c081bfae4eb04", size = 155560068, upload-time = "2025-07-30T19:58:37.081Z" },
@@ -1241,11 +1189,11 @@ wheels = [
 
 [package.optional-dependencies]
 standard = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "httptools" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform == 'cygwin' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda') or (sys_platform == 'win32' and extra == 'extra-4-farq-cpu' and extra == 'extra-4-farq-cuda')" },
+    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform == 'cygwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform == 'win32' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "watchfiles" },
     { name = "websockets" },
 ]
@@ -1288,6 +1236,80 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/48/a1/1c4a1b3c8030cd03206232612be8a6e8799093490c220b0fcb935d02b75a/watchfiles-1.3.0-cp310-abi3-win_amd64.whl", hash = "sha256:1acabde19b67e673274e89a04d613b7fb1f122e2c4b8ec9a581e59c149264b61", size = 290643, upload-time = "2026-09-21T09:08:30.45Z" },
     { url = "https://files.pythonhosted.org/packages/82/e0/d2db577c632d26d08078c4390dd870b8555c4e558df25d22270f0166c71f/watchfiles-1.3.0-cp310-abi3-win_arm64.whl", hash = "sha256:d978cc1dd7ba44f5590d7de74f7a9c8be7262d9e469c2c0efb8bbfc2574321dc", size = 285510, upload-time = "2026-09-21T09:08:31.561Z" },
 ]
+
+[[package]]
+name = "waypoint"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "laya" },
+    { name = "numpy" },
+    { name = "pydantic-settings" },
+    { name = "pypdf", extra = ["crypto"] },
+    { name = "python-docx" },
+    { name = "python-multipart" },
+    { name = "python-pptx" },
+    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "safetensors" },
+    { name = "sqlalchemy" },
+    { name = "torch", version = "2.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "transformers" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+cpu = [
+    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda'" },
+    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+]
+cuda = [
+    { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform != 'darwin'" },
+]
+
+[package.dev-dependencies]
+benchmark = [
+    { name = "psutil" },
+]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=45,<51" },
+    { name = "fastapi", specifier = "==0.116.1" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "huggingface-hub", specifier = "==0.36.2" },
+    { name = "laya", specifier = "==0.3.20" },
+    { name = "numpy", specifier = "==1.26.4" },
+    { name = "pydantic-settings", specifier = "==2.10.1" },
+    { name = "pypdf", extras = ["crypto"], specifier = "==6.1.1" },
+    { name = "python-docx", specifier = "==1.2.0" },
+    { name = "python-multipart", specifier = "==0.0.20" },
+    { name = "python-pptx", specifier = "==1.0.2" },
+    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=311,<312" },
+    { name = "safetensors", specifier = "==0.7.0" },
+    { name = "sqlalchemy", specifier = "==2.0.43" },
+    { name = "torch", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'", specifier = "==2.8.0" },
+    { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'", specifier = "==2.2.2" },
+    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'cpu'", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "waypoint", extra = "cpu" } },
+    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'cuda'", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "waypoint", extra = "cuda" } },
+    { name = "transformers", specifier = "==4.57.6" },
+    { name = "uvicorn", extras = ["standard"], specifier = "==0.35.0" },
+]
+provides-extras = ["cuda", "cpu"]
+
+[package.metadata.requires-dev]
+benchmark = [{ name = "psutil", specifier = ">=7,<8" }]
+dev = [{ name = "pytest", specifier = "==8.4.2" }]
 
 [[package]]
 name = "websockets"

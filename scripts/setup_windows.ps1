@@ -14,4 +14,4 @@ if (-not $uvCommand) {
 & $uvPath python install 3.12
 if ($LASTEXITCODE -ne 0) { throw 'Python installation failed.' }
 & $uvPath run --no-project --python 3.12 (Join-Path $PSScriptRoot 'setup_local.py') --uv $uvPath
-if ($LASTEXITCODE -ne 0) { throw 'Farq setup failed. Correct the error above and rerun setup.bat.' }
+if ($LASTEXITCODE -ne 0) { throw 'Waypoint setup failed. Correct the error above and rerun setup.bat.' }

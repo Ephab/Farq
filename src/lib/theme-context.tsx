@@ -11,7 +11,7 @@ import {
 } from "react"
 import { DEFAULT_THEME_ID, getTheme, type ThemeId } from "@/lib/themes"
 
-const STORAGE_KEY = "farq-theme"
+const STORAGE_KEY = "waypoint-theme"
 
 interface ThemeContextValue {
   themeId: ThemeId

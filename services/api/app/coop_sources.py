@@ -204,7 +204,7 @@ def parse_telegram_archive(body: str, archive_url: str = TELEGRAM_ARCHIVE_URL) -
 
 def fetch_telegram_candidates(client: httpx.Client | None = None, archive_url: str = TELEGRAM_ARCHIVE_URL, pages: int = 1) -> list[CoopCandidate]:
     owned = client is None
-    session = client or httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "Farq/0.1 co-op discovery"})
+    session = client or httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "Waypoint/0.1 co-op discovery"})
     try:
         results: dict[str, CoopCandidate] = {}
         next_url = archive_url

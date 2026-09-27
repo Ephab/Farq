@@ -10,8 +10,8 @@ import {
   notifyRoadmapChanged,
   ROADMAP_CHANGED_EVENT,
   type EvidenceItem,
-  type FarqProject,
-} from "@/lib/farq-api"
+  type WaypointProject,
+} from "@/lib/waypoint-api"
 import { cn } from "@/lib/utils"
 
 interface RoadmapResponse {
@@ -46,7 +46,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
   const [stages, setStages] = useState<RoadmapStage[]>([])
   const [evidence, setEvidence] = useState<EvidenceItem[]>([])
   const [savingId, setSavingId] = useState<string | null>(null)
-  const [projects, setProjects] = useState<FarqProject[]>([])
+  const [projects, setProjects] = useState<WaypointProject[]>([])
 
   const load = useCallback(async () => {
     setError(null)
@@ -54,7 +54,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
       const [roadmap, items, projectItems] = await Promise.all([
         api<RoadmapResponse>(`/api/students/${studentId}/roadmap`),
         api<EvidenceItem[]>(`/api/students/${studentId}/evidence`).catch(() => [] as EvidenceItem[]),
-        api<FarqProject[]>(`/api/students/${studentId}/projects`).catch(() => [] as FarqProject[]),
+        api<WaypointProject[]>(`/api/students/${studentId}/projects`).catch(() => [] as WaypointProject[]),
       ])
       setNodes(roadmap.snapshot.nodes)
       setStages(roadmap.snapshot.stages)

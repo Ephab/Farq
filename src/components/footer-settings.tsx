@@ -13,7 +13,7 @@ import {
   DEFAULT_HERMES_HF_MODEL,
   DEFAULT_HERMES_NIM_MODEL,
   api,
-  clearLocalFarqState,
+  clearLocalWaypointState,
   getHermesApiKey,
   getHermesModel,
   getHermesProvider,
@@ -23,7 +23,7 @@ import {
   saveHermesProvider,
   setCurrentStudentId,
   type HermesProvider,
-} from "@/lib/farq-api"
+} from "@/lib/waypoint-api"
 import { getActingUserId } from "@/lib/teams-api"
 import { useTheme } from "@/lib/theme-context"
 import { THEMES } from "@/lib/themes"
@@ -116,7 +116,7 @@ export function FooterSettings() {
       await api("/api/demo/reset-team", {
         method: "POST",
         body: JSON.stringify({ confirm: "RESET" }),
-        headers: { "X-Farq-User": getActingUserId() },
+        headers: { "X-Waypoint-User": getActingUserId() },
       })
       window.location.reload()
     } catch (reason) {
@@ -125,16 +125,16 @@ export function FooterSettings() {
     }
   }
 
-  const restoreFreshFarq = async () => {    if (resetting || !window.confirm("Erase your Farq chat, learned facts, roadmap changes, proposals, and local app data? This cannot be undone.")) return
+  const restoreFreshWaypoint = async () => {    if (resetting || !window.confirm("Erase your Waypoint chat, learned facts, roadmap changes, proposals, and local app data? This cannot be undone.")) return
     setResetting(true)
     setResetError(null)
     try {
       await api("/api/demo/reset", { method: "POST", body: JSON.stringify({ confirm: "RESET" }) })
-      clearLocalFarqState()
+      clearLocalWaypointState()
       window.location.reload()
     } catch (reason) {
       setResetting(false)
-      setResetError(reason instanceof Error ? reason.message : "Could not restore Farq")
+      setResetError(reason instanceof Error ? reason.message : "Could not restore Waypoint")
     }
   }
 
@@ -259,7 +259,7 @@ export function FooterSettings() {
                 setHermesApiKey(event.target.value)
                 saveHermesApiKey(event.target.value)
               }}
-              placeholder={hermesProvider === "nim" ? "Farq Hermes key (nvapi-… lives server-side)" : "Farq Hermes key"}
+              placeholder={hermesProvider === "nim" ? "Waypoint Hermes key (nvapi-… lives server-side)" : "Waypoint Hermes key"}
               autoComplete="off"
               spellCheck={false}
               className="h-9 w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
@@ -289,15 +289,15 @@ export function FooterSettings() {
           </div>
           {hermesProvider === "hf" ? (
             <p className="mt-2 px-1 text-[11px] leading-4 text-muted-foreground">
-              Active model default: {DEFAULT_HERMES_HF_MODEL}. Billed to the HF_TOKEN in Farq&apos;s server .env.
+              Active model default: {DEFAULT_HERMES_HF_MODEL}. Billed to the HF_TOKEN in Waypoint&apos;s server .env.
             </p>
           ) : hermesProvider === "nim" ? (
             <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-              Active model default: {DEFAULT_HERMES_NIM_MODEL}. The NVIDIA provider key stays in Farq&apos;s server env.
+              Active model default: {DEFAULT_HERMES_NIM_MODEL}. The NVIDIA provider key stays in Waypoint&apos;s server env.
             </p>
           ) : (
             <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-              Active model default: {DEFAULT_HERMES_GEMINI_MODEL}. The Google provider key stays in Farq&apos;s server env.
+              Active model default: {DEFAULT_HERMES_GEMINI_MODEL}. The Google provider key stays in Waypoint&apos;s server env.
             </p>
           )}
           <button
@@ -309,7 +309,7 @@ export function FooterSettings() {
             <KeyRound className="size-3.5" aria-hidden="true" />
             {applyState === "saving" ? "Saving…" : applyState === "waiting" ? "Restarting gateway…" : applyState === "live" ? "Live — key applied" : "Apply key + model to server"}
           </button>
-          {applyState === "saved" ? <p className="mt-2 px-1 text-[11px] leading-4 text-amber-700">Saved to .env — restart the Farq stack to apply.</p> : null}
+          {applyState === "saved" ? <p className="mt-2 px-1 text-[11px] leading-4 text-amber-700">Saved to .env — restart the Waypoint stack to apply.</p> : null}
           {applyError ? <p role="alert" className="mt-2 px-1 text-[11px] leading-4 text-destructive">{applyError}</p> : null}
         </div>
 
@@ -331,11 +331,11 @@ export function FooterSettings() {
           <button
             type="button"
             disabled={resetting}
-            onClick={() => void restoreFreshFarq()}
+            onClick={() => void restoreFreshWaypoint()}
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 px-2 py-2 text-xs font-medium text-destructive outline-none transition-colors hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
             {resetting ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <RotateCcw className="size-3.5" aria-hidden="true" />}
-            {resetting ? "Restoring…" : "Restore fresh Farq"}
+            {resetting ? "Restoring…" : "Restore fresh Waypoint"}
           </button>
           <button
             type="button"

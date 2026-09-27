@@ -11,7 +11,7 @@ function hash(seed: string): number {
 export interface Cover { image: string; color: string; accents: [string, string, string] }
 
 export function coverFor(seed: string): Cover {
-  const h = hash(seed || "farq")
+  const h = hash(seed || "waypoint")
   const base = h % 360
   const second = (base + 40 + ((h >>> 9) % 70)) % 360
   const third = (base + 160 + ((h >>> 17) % 80)) % 360

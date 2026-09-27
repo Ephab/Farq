@@ -25,7 +25,7 @@ ORIGIN = "http://localhost:5173"
 @pytest.fixture
 def world(monkeypatch):
     values = {"OUTLOOK_APP_ORIGIN": ORIGIN, "OUTLOOK_LOCAL_TOKEN": "test-local-token-" * 4,
-              "FARQ_TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(), "OUTLOOK_SYNC_ENABLED": "true"}
+              "WAYPOINT_TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(), "OUTLOOK_SYNC_ENABLED": "true"}
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -68,7 +68,7 @@ def test_mailbox_requires_session_not_demo_header(world):
     client, factory, _ = world
     insert_item(factory, "alice")
     client.cookies.clear()
-    assert client.get("/api/outlook/messages", headers={"X-Farq-User": "alice"}).status_code == 401
+    assert client.get("/api/outlook/messages", headers={"X-Waypoint-User": "alice"}).status_code == 401
     assert client.get("/api/outlook/status").json()["connected"] is False
 
 

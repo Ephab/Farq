@@ -1,9 +1,9 @@
 ---
-name: farq-quiz
+name: waypoint-quiz
 description: Write study questions from lecture slides - plausible distractors, balanced true/false, deck-spread coverage, and explanations that teach.
 ---
 
-# Farq quiz generation
+# Waypoint quiz generation
 
 Use this skill whenever writing study questions from a deck
 (the run instructions say so). Return ONLY the JSON object the instructions

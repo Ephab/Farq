@@ -78,7 +78,7 @@ def search_mail(body: MailSearch, db):
                            for column in (MailItem.subject, MailItem.sender, MailItem.excerpt))))
     items = db.scalars(select(MailItem).where(*where).order_by(MailItem.received.desc(), MailItem.id)
                        .offset(body.offset).limit(body.limit + 1)).all()
-    return {"untrusted_email_data": True, "source": "Farq synced cache (not a live mailbox search)",
+    return {"untrusted_email_data": True, "source": "Waypoint synced cache (not a live mailbox search)",
             "items": [{"id": item.id, "subject": item.subject[:300], "sender": item.sender[:300],
                        "received": item.received, "snippet": item.excerpt[:400]} for item in items[:body.limit]],
             "next_offset": body.offset + body.limit if len(items) > body.limit else None}

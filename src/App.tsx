@@ -32,7 +32,7 @@ import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
-import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type StudentProfile } from "@/lib/farq-api"
+import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type StudentProfile } from "@/lib/waypoint-api"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
 import { cn } from "@/lib/utils"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -74,7 +74,7 @@ export default function App() {
     <AnimatePresence>
       {appIntro !== "done" ? (
         <div className="fixed inset-0 z-[70]">
-          <CoachPortalIntro phase={appIntro} speed={0.65} word="Farq" tone="gentle" onSkip={dismissAppIntro} />
+          <CoachPortalIntro phase={appIntro} speed={0.65} word="Waypoint" tone="gentle" onSkip={dismissAppIntro} />
         </div>
       ) : null}
     </AnimatePresence>
@@ -120,14 +120,14 @@ export default function App() {
     <ThemeProvider>
       <div className="min-h-screen bg-background text-foreground">
         <AnimatedSidebarProvider className="min-h-screen bg-background">
-          <AnimatedSidebar collapsible="icon" ariaLabel="Farq navigation">
+          <AnimatedSidebar collapsible="icon" ariaLabel="Waypoint navigation">
             <AnimatedSidebarHeader>
               <div className="flex min-h-11 items-center gap-3 overflow-hidden px-2">
                 <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
                   <Command aria-hidden="true" className="size-4" />
                 </div>
                 <span className="truncate text-sm font-semibold group-data-[state=collapsed]/sidebar:hidden">
-                  Farq
+                  Waypoint
                 </span>
               </div>
             </AnimatedSidebarHeader>
@@ -330,7 +330,7 @@ function useTeamUnread(active: string): number {
   useEffect(() => {
     let stopped = false
     const load = () => {
-      api<TeamsHomeData>("/api/me/teams-home", { headers: { "X-Farq-User": getActingUserId() } })
+      api<TeamsHomeData>("/api/me/teams-home", { headers: { "X-Waypoint-User": getActingUserId() } })
         .then((home) => { if (!stopped) setUnread(home.teams.reduce((sum, team) => sum + (team.unread ?? 0), 0)) })
         .catch(() => undefined)
     }

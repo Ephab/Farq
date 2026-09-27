@@ -1,5 +1,7 @@
 import type { DecisionEngine, EngineId } from "@/lib/outlook-api"
 
+import { InfoTip } from "./InfoTip"
+
 const DISCLOSURE: Record<EngineId, string> = {
   jev: "Sends each new email's subject and cleaned text, after best-effort redaction, to TypeSafe. If Jev fails, Span-01 Lite is tried next, then Laya.",
   span: "Sends each new email's subject and cleaned text, after best-effort redaction, to Respan through OpenRouter (free tier, not zero-retention). If it fails, Laya takes over.",
@@ -18,9 +20,6 @@ export function ClassifierPicker({ engines, selected, busy, onSelect }: Classifi
   return (
     <fieldset className="text-sm">
       <legend className="sr-only">Email classifier</legend>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        Tries Jev, then Span-01 Lite, then Laya. Pick where each email starts.
-      </p>
       <div role="radiogroup" className="mt-2 grid gap-2">
         {engines.map((engine) => {
           // Laya stays selectable when missing: choosing it withdraws cloud consent.
@@ -47,9 +46,7 @@ export function ClassifierPicker({ engines, selected, busy, onSelect }: Classifi
                   >
                     {engine.available ? "Available" : "Not available"}
                   </span>
-                </span>
-                <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">
-                  {engine.available ? DISCLOSURE[engine.id] : engine.reason}
+                  <InfoTip label={`About ${engine.label}`}>{engine.available ? DISCLOSURE[engine.id] : engine.reason}</InfoTip>
                 </span>
               </span>
             </label>

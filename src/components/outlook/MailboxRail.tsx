@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react"
 import { Pause, Play, RefreshCw } from "lucide-react"
 
+import { InfoTip } from "./InfoTip"
+
 import type { OutlookStatus } from "@/lib/outlook-api"
 
 import { ClassifierPicker } from "./ClassifierPicker"
@@ -46,8 +48,8 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
         <p aria-live="polite" className="mt-3 flex items-center gap-2 text-xs">
           <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${status.error ? "bg-amber-500" : syncing ? "animate-pulse bg-primary" : "bg-emerald-500"}`} />
           {syncLine(status)}
+          <InfoTip label="About automatic sync">{status.auto_sync ? "Syncs every 15 minutes while Waypoint runs." : "Automatic sync is paused. Press Resume to sync every 15 minutes while Waypoint runs."}</InfoTip>
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">{status.auto_sync ? "Syncs every 15 minutes while Waypoint runs." : "Automatic sync is paused."}</p>
         <div className="mt-3 flex gap-2">
           <button className={control} disabled={busy || status.status === "running"} onClick={() => void onAction("/sync", "POST")}>
             <RefreshCw className={`size-3.5 ${syncing ? "animate-spin motion-reduce:animate-none" : ""}`} />Sync now
@@ -77,6 +79,7 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
           />
           <label className="mt-3 flex items-center gap-2 text-xs">
             <span className="shrink-0 font-medium">Classify</span>
+            <InfoTip label="About the classify limit">Older mail is kept but not classified.{status.pending ? ` ${status.pending} waiting to be classified.` : ""}</InfoTip>
             <select
               className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={status.classify_limit ?? "none"}
@@ -87,9 +90,6 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
               <option value="none">All emails (no cutoff)</option>
             </select>
           </label>
-          <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
-            Older mail is kept but not classified.{status.pending ? ` ${status.pending} waiting to be classified.` : ""}
-          </p>
         </Section>
       ) : null}
 
@@ -103,10 +103,8 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
             onChange={(event) => void onAction("/coach-access", "PATCH", { accepted: event.target.checked })}
           />
           <span>
-            Let Coach search and read my synced emails in this browser's chats.
-            <span className="mt-1 block text-muted-foreground">
-              Matching text may go to your AI providers, including fallbacks, and stay in their history. Uncheck to stop.
-            </span>
+            Let Coach search and read my synced emails in this browser's chats.{" "}
+            <InfoTip label="About Coach email access">Matching text may go to your AI providers, including fallbacks, and stay in their history. Uncheck to stop.</InfoTip>
           </span>
         </label>
       </Section>

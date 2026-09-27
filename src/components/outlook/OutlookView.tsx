@@ -1,14 +1,15 @@
 import { TokenConnection } from "./TokenConnection"
 import { MailboxRail } from "./MailboxRail"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import { Mail, ShieldCheck } from "lucide-react"
+import { Mail, Search, ShieldCheck, X } from "lucide-react"
 
 import { localDay, outlookApi, type MailItem, type OutlookStatus } from "@/lib/outlook-api"
 
-import { MailWorkspace, type MailFilters } from "./MailWorkspace"
+import { MailWorkspace, mailCategories, type MailFilters } from "./MailWorkspace"
 
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+const selectCls = "h-8 shrink-0 rounded-lg border border-border bg-background px-2 text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 const views = ["important", "today", "review", "followup", "all", "dismissed"] as const
 
@@ -25,6 +26,39 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
   const [view, setView] = useState<View>(compact ? "today" : "important")
 
   const [filters, setFilters] = useState<MailFilters>({ q: "", category: "", sort: "newest" })
+
+  const [draft, setDraft] = useState("")
+
+  useEffect(() => { setDraft(filters.q) }, [filters.q])
+
+  // Sliding pill behind the active tab: measured from the live buttons so it
+  // glides to the right size and position whenever the view changes. Re-measured
+  // after paint, on resize, and when fonts settle, so the box is there on first load.
+  const navRef = useRef<HTMLElement>(null)
+  const tabRefs = useRef(new Map<View, HTMLButtonElement>())
+  const [pill, setPill] = useState({ left: 0, width: 0, ready: false })
+  useLayoutEffect(() => {
+    const measure = () => {
+      const host = navRef.current
+      const active = tabRefs.current.get(view)
+      if (!host || !active) return
+      const navRect = host.getBoundingClientRect()
+      const rect = active.getBoundingClientRect()
+      setPill({ left: rect.left - navRect.left + host.scrollLeft, width: rect.width, ready: true })
+    }
+    measure()
+    const frame = requestAnimationFrame(measure)
+    const host = navRef.current
+    const observer = host ? new ResizeObserver(measure) : null
+    observer?.observe(host as Element)
+    if (document.fonts) void document.fonts.ready.then(() => measure())
+    window.addEventListener("resize", measure)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+      window.removeEventListener("resize", measure)
+    }
+  }, [view])
 
   const [offset, setOffset] = useState(0)
 
@@ -154,11 +188,24 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
     {header}
     {errorBanner}
     <div className={layout}>
-      <div className="min-w-0 space-y-3">
-        <nav aria-label="Mail views" className="flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-muted/60 p-0.5 [scrollbar-width:none] sm:w-fit">
-          {views.map(tab => <button key={tab} className={`h-7 shrink-0 whitespace-nowrap rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{labels[tab]}</button>)}
+      <div className="min-w-0">
+        <MailWorkspace key={view} items={items} total={total} busy={busy} filters={filters} onFilters={next => { setFilters(next); setOffset(0) }} offset={offset} pageSize={pageSize} onPage={setOffset} onAction={action} dismissed={view === "dismissed"} toolbar={(
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
+          <form className="flex h-9 min-w-40 flex-1 items-center gap-1 rounded-lg border border-border bg-background pl-2" role="search" aria-label="Search university mail" onSubmit={event => { event.preventDefault(); setFilters(next => ({ ...next, q: draft.trim() })); setOffset(0); setError("") }}>
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <input aria-label="Search emails" autoComplete="off" maxLength={200} placeholder="Search sender, subject or message…" className="min-w-0 flex-1 bg-transparent text-sm outline-none" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Escape") setDraft(filters.q) }} />
+            {draft && <button type="button" aria-label="Clear search" className="shrink-0 p-1.5 text-muted-foreground hover:text-foreground" onClick={() => { setDraft(""); setFilters(next => ({ ...next, q: "" })); setOffset(0) }}><X className="size-4" /></button>}
+            <button className="mr-1 shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground">Search</button>
+          </form>
+          <select aria-label="Filter by category" value={filters.category} onChange={event => { setFilters(next => ({ ...next, category: event.target.value })); setOffset(0) }} className={`${selectCls} ml-4`}><option value="">All categories</option>{Object.entries(mailCategories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <select aria-label="Sort emails" value={filters.sort} onChange={event => { setFilters(next => ({ ...next, sort: event.target.value })); setOffset(0) }} className={selectCls}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="due">Follow-up date</option></select>
+        </div>
+        )} tabs={(
+        <nav ref={navRef} aria-label="Mail views" className="relative flex h-9 w-fit min-w-0 max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-muted/60 p-0.5 [scrollbar-width:none]">
+          <span aria-hidden="true" style={{ left: pill.left, width: pill.width, opacity: pill.ready ? 1 : 0 }} className="absolute inset-y-0.5 rounded-md bg-background shadow-sm transition-[left,width,opacity] duration-200 ease-out motion-reduce:transition-none" />
+          {views.map(tab => <button key={tab} ref={node => { if (node) tabRefs.current.set(tab, node); else tabRefs.current.delete(tab) }} className={`relative z-10 h-7 shrink-0 whitespace-nowrap rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{labels[tab]}</button>)}
         </nav>
-        <MailWorkspace key={view} items={items} total={total} busy={busy} filters={filters} onFilters={next => { setFilters(next); setOffset(0) }} offset={offset} pageSize={pageSize} onPage={setOffset} onAction={action} dismissed={view === "dismissed"} classifier={status.classifiers?.find(engine => engine.id === (status.classifier ?? "laya"))} />
+        )} />
       </div>
       <MailboxRail status={status} busy={busy} onAction={action} onReconnected={load} />
     </div>

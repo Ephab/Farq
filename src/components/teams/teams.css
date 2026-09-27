@@ -21,12 +21,12 @@
 .fq .tm-viewas { display: inline-flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border: 1px solid var(--fq-line); border-radius: var(--fq-r-pill); background: var(--fq-surface); color: var(--fq-muted); font-size: 13px; }
 .fq .tm-viewas select { padding: 2px 6px; border: 0; border-radius: var(--fq-r-pill); background: transparent; color: var(--fq-text); font: inherit; font-weight: 600; }
 
-.fq .tm-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--fq-r-pill); background: var(--fq-surface-muted); color: var(--fq-text); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 0.15s; }
-.fq .tm-btn:hover:not(:disabled) { background: var(--fq-surface-strong); }
-.fq .tm-btn:disabled { cursor: not-allowed; opacity: 0.5; }
-.fq .tm-btn-primary { background: var(--fq-accent); color: var(--fq-on-accent); box-shadow: var(--fq-shadow-accent); }
-.fq .tm-btn-primary:hover:not(:disabled) { background: var(--fq-accent-hover); }
-.fq .tm-btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.fq button.tm-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--fq-r-pill); background: var(--fq-surface-muted); color: var(--fq-text); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 0.15s; }
+.fq button.tm-btn:hover:not(:disabled) { background: var(--fq-surface-strong); }
+.fq button.tm-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.fq button.tm-btn-primary { background: var(--fq-accent); color: var(--fq-on-accent); box-shadow: var(--fq-shadow-accent); }
+.fq button.tm-btn-primary:hover:not(:disabled) { background: var(--fq-accent-hover); }
+.fq button.tm-btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
 .fq .tm-icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: transparent; color: var(--fq-muted); cursor: pointer; }
 .fq .tm-icon-btn:hover, .fq .tm-icon-btn[aria-pressed="true"] { background: var(--fq-surface-muted); color: var(--fq-text); }
 .fq .tm-input, .fq .tm-select, .fq .tm-textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--fq-line-strong); border-radius: var(--fq-r-sm); background: var(--fq-surface-solid); color: var(--fq-text); font: inherit; font-size: 14px; }
@@ -288,7 +288,7 @@
 .fq .tm-section-tools .tm-input { width: auto; flex: 1 1 180px; padding: 5px 8px; }
 .fq .tm-section-tools .tm-key-input { flex: 0 0 72px; font-variant-numeric: tabular-nums; }
 .fq .tm-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; background: transparent; }
-.fq .tm-btn-danger { background: var(--fq-danger); border-color: var(--fq-danger); color: #fff; }
+.fq button.tm-btn-danger { background: var(--fq-danger); border-color: var(--fq-danger); color: #fff; }
 .fq .tm-export { position: relative; }
 .fq .tm-export-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; gap: 6px; width: 260px; padding: 10px; border: 1px solid var(--fq-line); border-radius: var(--fq-r-md); background: var(--fq-surface-solid); box-shadow: 0 12px 32px rgb(0 0 0 / 0.14); animation: tm-pop 140ms ease-out; }
 .fq .tm-export-menu .tm-muted { margin: 2px 2px 4px; font-size: 12px; line-height: 1.4; }

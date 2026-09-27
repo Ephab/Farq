@@ -67,7 +67,7 @@ function factsSummary(facts: Fact[]): string {
   return parts.slice(0, 3).join(", ")
 }
 
-export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
+export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraft?: string; onConsumeDraft?: () => void }) {
   const studentId = getCurrentStudentId()
   const [threadId, setThreadId] = useState<string | null>(null)
   const [facts, setFacts] = useState<Fact[]>([])
@@ -76,8 +76,12 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
   const [opportunities, setOpportunities] = useState<OpportunitySummary | null>(null)
   const [roadmapTitle, setRoadmapTitle] = useState("")
   const [currentTopic, setCurrentTopic] = useState<{ title: string; status: string } | null>(null)
-  // Prefill handed over from another tab (e.g. My data "Ask Hermes").
-  const [draft] = useState(initialDraft)
+  // One-shot handoff from another tab (e.g. Projects "Refine with Hermes").
+  // The draft prefills the composer once, then the parent clears it so
+  // navigating away and back does not restore the same prompt.
+  useEffect(() => {
+    if (initialDraft) onConsumeDraft?.()
+  }, [initialDraft, onConsumeDraft])
   const markedSeen = useRef(new Set<string>())
   const reduce = useReducedMotion()
   const pendingProposals = useMemo(() => proposals.filter((proposal) => proposal.status === "pending"), [proposals])
@@ -227,7 +231,7 @@ export function HermesCoach({ initialDraft = "" }: { initialDraft?: string }) {
             onStop={() => void chat.stop()}
             placeholder="Ask about goals, tradeoffs, or what to do next…"
             disabled={!threadId}
-            draft={draft}
+            draft={initialDraft}
             fallbackPrompts={fallbackPrompts}
             afterMessages={
               pendingProposals.length ? (

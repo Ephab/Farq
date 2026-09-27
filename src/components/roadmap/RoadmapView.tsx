@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NODES, STAGES, type NodeStatus, type RoadmapNodeData, type RoadmapStage } from "@/data/computer-vision-roadmap";
+import type { RoadmapOrientation } from "@/lib/roadmap-layout";
 import { useRoadmapProgress } from "@/hooks/use-roadmap-progress";
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas";
 import { RoadmapHeader, type LevelFilter } from "@/components/roadmap/RoadmapHeader";
@@ -23,6 +24,7 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<LevelFilter>("All");
+  const [view, setView] = useState<RoadmapOrientation>("vertical");
 
   const initialStatuses = useMemo(() => Object.fromEntries(nodes.map((node) => [node.id, node.status ?? "not-started"])) as Record<string, NodeStatus>, [nodes]);
   const persist = useCallback(async (id: string, status: NodeStatus) => {
@@ -68,7 +70,7 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
 
   return (
     <div className="flex h-[calc(100dvh-4rem)] min-h-0 flex-none flex-col overflow-hidden bg-background">
-      <RoadmapHeader title={title} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} onReset={reset} />
+      <RoadmapHeader title={title} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} view={view} onView={setView} onReset={reset} />
       {version ? <div className="border-b border-border px-6 py-1.5 text-right text-[11px] text-muted-foreground">Personal roadmap · version {version}</div> : null}
       {loadError ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">Backend unavailable: showing the bundled roadmap. {loadError}</div> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -78,6 +80,7 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
           statuses={statuses}
           selectedId={selectedId}
           dimmedIds={dimmedIds}
+          orientation={view}
           onSelect={setSelectedId}
           onToggleDone={(id) => setStatus(id, statuses[id] === "done" ? "not-started" : "done")}
           onOpenProject={onOpenProject}

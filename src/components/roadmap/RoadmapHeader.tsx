@@ -2,6 +2,7 @@
 
 import { RotateCcw, Search } from "lucide-react";
 import type { RoadmapLevel } from "@/data/computer-vision-roadmap";
+import type { RoadmapOrientation } from "@/lib/roadmap-layout";
 import { cn } from "@/lib/utils";
 
 export type LevelFilter = RoadmapLevel | "All";
@@ -15,10 +16,16 @@ interface RoadmapHeaderProps {
   onQuery: (q: string) => void;
   level: LevelFilter;
   onLevel: (l: LevelFilter) => void;
+  view: RoadmapOrientation;
+  onView: (v: RoadmapOrientation) => void;
   onReset: () => void;
 }
 
 const LEVELS: LevelFilter[] = ["All", "Beginner", "Intermediate", "Advanced"];
+const VIEWS: Array<{ value: RoadmapOrientation; label: string }> = [
+  { value: "vertical", label: "Vertical" },
+  { value: "horizontal", label: "Horizontal" },
+];
 
 export function RoadmapHeader({
   title,
@@ -29,6 +36,8 @@ export function RoadmapHeader({
   onQuery,
   level,
   onLevel,
+  view,
+  onView,
   onReset,
 }: RoadmapHeaderProps) {
   return (
@@ -74,6 +83,24 @@ export function RoadmapHeader({
                 )}
               >
                 {l}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1" role="group" aria-label="Change roadmap layout">
+            {VIEWS.map((v) => (
+              <button
+                key={v.value}
+                type="button"
+                onClick={() => onView(v.value)}
+                aria-pressed={view === v.value}
+                className={cn(
+                  "h-8 rounded-lg px-2.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  view === v.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {v.label}
               </button>
             ))}
           </div>

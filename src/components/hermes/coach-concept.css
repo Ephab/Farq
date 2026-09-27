@@ -105,8 +105,9 @@ html[data-theme="dracula"] .fq {
 /* Page wrapper: fills the app tab, concept backdrop wash. */
 .fq-coach-page {
   display: flex;
-  flex: 1;
+  flex: none;
   min-height: 0;
+  height: calc(100vh - 3.5rem);
   height: calc(100dvh - 3.5rem);
   background:
     radial-gradient(circle at 78% -10%, var(--fq-accent-soft), transparent 32rem),
@@ -127,6 +128,7 @@ html[data-theme="dracula"] .fq {
   display: grid;
   min-height: 0;
   grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--fq-line);
   border-radius: var(--fq-r-xl);
@@ -191,7 +193,7 @@ html[data-theme="dracula"] .fq {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 26px clamp(18px, 4vw, 48px);
@@ -213,7 +215,7 @@ html[data-theme="dracula"] .fq {
 .fq .message {
   width: min(100%, 680px);
   border-radius: var(--fq-r-lg);
-  padding: 15px 17px;
+  padding: 10px 13px;
   scroll-margin-bottom: 12px;
 }
 
@@ -226,9 +228,11 @@ html[data-theme="dracula"] .fq {
 
 .fq .message.user {
   align-self: flex-end;
+  width: fit-content;
+  max-width: min(100%, 680px);
   border-radius: var(--fq-r-lg) 6px var(--fq-r-lg) var(--fq-r-lg);
-  background: var(--fq-text);
-  color: var(--fq-surface-solid);
+  background: var(--fq-accent);
+  color: var(--fq-on-accent);
   box-shadow: var(--fq-shadow-sm);
 }
 
@@ -239,14 +243,14 @@ html[data-theme="dracula"] .fq {
 }
 
 .fq .message-meta {
-  margin: 0 0 8px;
+  margin: 0 0 5px;
   color: var(--fq-faint);
   font-size: 11px;
   font-weight: 650;
 }
 
 .fq .message.user .message-meta {
-  color: color-mix(in srgb, var(--fq-surface-solid) 72%, var(--fq-text));
+  color: color-mix(in srgb, var(--fq-on-accent) 72%, var(--fq-accent));
 }
 
 .fq .message .md {
@@ -301,7 +305,7 @@ html[data-theme="dracula"] .fq {
 }
 
 .fq .message.user code {
-  background: color-mix(in srgb, var(--fq-surface-solid) 18%, transparent);
+  background: color-mix(in srgb, var(--fq-on-accent) 18%, transparent);
 }
 
 .fq .message ul,
@@ -521,6 +525,16 @@ html[data-theme="dracula"] .fq {
 .fq .message-tools button:disabled {
   cursor: default;
   opacity: 0.45;
+}
+
+/* Tools on the dark user bubble: light text and hover wash for contrast. */
+.fq .message.user .message-tools button {
+  color: color-mix(in srgb, var(--fq-on-accent) 72%, transparent);
+}
+
+.fq .message.user .message-tools button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fq-on-accent) 16%, transparent);
+  color: var(--fq-on-accent);
 }
 
 /* Typing indicator inside an assistant bubble. */

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap";
-import { computeRoadmapLayout } from "@/lib/roadmap-layout";
+import { computeHorizontalRoadmapLayout, computeRoadmapLayout, HORIZ_COL_W, type RoadmapOrientation } from "@/lib/roadmap-layout";
 import { RoadmapEdges } from "@/components/roadmap/RoadmapEdges";
 import { RoadmapNode } from "@/components/roadmap/RoadmapNode";
 
@@ -16,6 +16,7 @@ interface RoadmapCanvasProps {
   onSelect: (id: string | null) => void;
   onToggleDone: (id: string) => void;
   onOpenProject?: (projectId: string) => void;
+  orientation?: RoadmapOrientation;
 }
 
 const MIN_ZOOM = 0.4;
@@ -30,6 +31,7 @@ export function RoadmapCanvas({
   onSelect,
   onToggleDone,
   onOpenProject,
+  orientation = "vertical",
 }: RoadmapCanvasProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -48,7 +50,12 @@ export function RoadmapCanvas({
     return () => ro.disconnect();
   }, []);
 
-  const layout = useMemo(() => computeRoadmapLayout(nodes, stages, compact), [nodes, stages, compact]);
+  const layout = useMemo(
+    () => orientation === "horizontal"
+      ? computeHorizontalRoadmapLayout(nodes, stages)
+      : computeRoadmapLayout(nodes, stages, compact),
+    [nodes, stages, compact, orientation],
+  );
 
   const stageProgress = useMemo(() => {
     const map: Record<string, { done: number; total: number }> = {};
@@ -124,17 +131,19 @@ export function RoadmapCanvas({
         onPointerUp={endDrag}
         onPointerLeave={endDrag}
         onClick={onBackgroundClick}
-        className="absolute inset-0 cursor-grab overflow-auto overscroll-contain active:cursor-grabbing"
+        className="absolute inset-0 flex cursor-grab overflow-auto overscroll-contain active:cursor-grabbing"
         role="application"
         aria-label="Roadmap canvas. Scroll to explore, drag to pan, click a node for details."
+        style={{
+          backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.2px)",
+          backgroundSize: "24px 24px",
+        }}
       >
         <div
-          className="relative"
+          className="relative m-auto shrink-0"
           style={{
             width: layout.width * zoom,
             height: layout.height * zoom,
-            backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.2px)",
-            backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
           }}
         >
           <div
@@ -155,7 +164,7 @@ export function RoadmapCanvas({
                 <div
                   key={stage.id}
                   className="absolute -translate-x-1/2 rounded-2xl border border-border bg-background/95 px-4 py-2 text-center shadow-sm backdrop-blur"
-                  style={{ left: anchor.x, top: anchor.y, width: compact ? layout.width - 32 : 460, maxWidth: layout.width - 32 }}
+                  style={{ left: anchor.x, top: anchor.y, width: orientation === "horizontal" ? HORIZ_COL_W : compact ? layout.width - 32 : 460, maxWidth: layout.width - 32 }}
                 >
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Stage {si + 1} of {stages.length}

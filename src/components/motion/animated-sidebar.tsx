@@ -1071,13 +1071,14 @@ export function AnimatedSidebarMenuButton({
         <motion.span
           layoutId={context.layoutId}
           transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
-          className="absolute inset-0 rounded-xl bg-muted"
+          // The active page takes the theme accent: a soft tint plus a short bar on the leading edge.
+          className="absolute inset-0 rounded-xl bg-primary/10 before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
         />
       ) : null}
       {icon ? (
         <span
           aria-hidden="true"
-          className="relative z-10 grid size-5 shrink-0 place-items-center"
+          className={cn("relative z-10 grid size-5 shrink-0 place-items-center", isActive && "text-primary")}
         >
           {icon}
         </span>

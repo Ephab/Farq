@@ -3,11 +3,15 @@
 import { memo } from "react";
 import type { NodeStatus } from "@/data/computer-vision-roadmap";
 import {
+  crossColumnPath,
+  crossRowPath,
   edgePath,
   entryTapLevel,
   entryTapPath,
   exitTapLevel,
   exitTapPath,
+  NODE_H,
+  verticalWireChannel,
   type RoadmapLayout,
 } from "@/lib/roadmap-layout";
 
@@ -81,6 +85,45 @@ export const RoadmapEdges = memo(function RoadmapEdges({
     selectedId !== null && (id === selectedId || crossSources.includes(id));
   const entryActive = (id: string) =>
     selectedId !== null && (id === selectedId || crossTargets.includes(id));
+
+  // Horizontal view: every dep draws as a direct orthogonal wire, which
+  // reads cleanly when the whole graph flows left→right. No spine or taps.
+  if (layout.orientation === "horizontal") {
+    return (
+      <svg
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0"
+        width={width}
+        height={height}
+      >
+        {edges.map((e) => {
+          const from = positions[e.from];
+          const to = positions[e.to];
+          if (!from || !to) return null;
+          const sourceDone = statuses[e.from] === "done";
+          const isActive = connected.has(e.id);
+          const isDimmed = focusing && !isActive;
+          // Same-column neighbours drop straight down; anything else rides
+          // the gaps and the bottom bus lane, never through cards.
+          const d = Math.abs(from.x - to.x) < 1 && Math.abs(from.y - to.y) < NODE_H * 1.5
+            ? edgePath(from.x, from.y, to.x, to.y)
+            : crossColumnPath(from.x, from.y, to.x, to.y, height - 24);
+          return (
+            <path
+              key={e.id}
+              d={d}
+              fill="none"
+              stroke={isActive ? "var(--primary)" : sourceDone ? "var(--foreground)" : "var(--muted-foreground)"}
+              strokeWidth={isActive ? 2.75 : 2}
+              strokeOpacity={isDimmed ? 0.07 : sourceDone ? 0.9 : isActive ? 0.85 : 0.45}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        })}
+      </svg>
+    );
+  }
 
   return (
     <svg
@@ -182,10 +225,14 @@ export const RoadmapEdges = memo(function RoadmapEdges({
         const sourceDone = statuses[e.from] === "done";
         const isActive = connected.has(e.id);
         const isDimmed = focusing && !isActive;
+        // Neighbours wire straight; multi-row jumps ride the column gaps.
+        const d = Math.abs(from.y - to.y) < NODE_H * 1.5
+          ? edgePath(from.x, from.y, to.x, to.y)
+          : crossRowPath(from.x, from.y, to.x, to.y, verticalWireChannel(from.x, width));
         return (
           <path
             key={e.id}
-            d={edgePath(from.x, from.y, to.x, to.y)}
+            d={d}
             fill="none"
             stroke={sourceDone ? "var(--foreground)" : "var(--muted-foreground)"}
             strokeWidth={isActive ? 2.75 : 2}

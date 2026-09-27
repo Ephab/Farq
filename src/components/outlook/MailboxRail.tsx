@@ -4,6 +4,7 @@ import { Pause, Play, RefreshCw } from "lucide-react"
 import { InfoTip } from "./InfoTip"
 
 import type { OutlookStatus } from "@/lib/outlook-api"
+import { useI18n } from "@/lib/i18n/context"
 
 import { ClassifierPicker } from "./ClassifierPicker"
 import { TokenConnection } from "./TokenConnection"
@@ -21,10 +22,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-export function syncLine(status: OutlookStatus) {
-  if (status.status === "running" || status.status === "queued") return `Syncing · ${status.processed ?? 0} classified so far`
-  if (status.last_sync) return `Synced ${new Date(status.last_sync * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
-  return "First sync not finished yet"
+type I18n = ReturnType<typeof useI18n>
+
+export function syncLine(status: OutlookStatus, { t, fmt }: Pick<I18n, "t" | "fmt">) {
+  if (status.status === "running" || status.status === "queued") return t("emails.rail.syncing", { count: status.processed ?? 0 })
+  if (status.last_sync) return t("emails.rail.synced", { time: fmt.dateTime(status.last_sync * 1000) })
+  return t("emails.rail.firstSync")
 }
 
 interface MailboxRailProps {
@@ -36,41 +39,43 @@ interface MailboxRailProps {
 
 /** Everything about the connection itself, kept beside the inbox instead of above it. */
 export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRailProps) {
+  const i18n = useI18n()
+  const { t } = i18n
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const syncing = status.status === "running" || status.status === "queued"
 
   return (
-    <aside aria-label="Mailbox settings" className="rounded-2xl border border-border bg-background xl:sticky xl:top-4">
-      <Section title="Mailbox">
+    <aside aria-label={t("emails.rail.label")} className="rounded-2xl border border-border bg-background xl:sticky xl:top-4">
+      <Section title={t("emails.rail.mailbox")}>
         <p className="mt-1 truncate text-xs text-muted-foreground" title={status.account}>
-          {status.provider === "desktop" ? "Classic Outlook" : "Microsoft Graph token"} · {status.account}
+          {status.provider === "desktop" ? t("emails.rail.classicOutlook") : t("emails.rail.graphToken")} · <span className="ltr-value">{status.account}</span>
         </p>
         <p aria-live="polite" className="mt-3 flex items-center gap-2 text-xs">
           <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${status.error ? "bg-amber-500" : syncing ? "animate-pulse bg-primary" : "bg-emerald-500"}`} />
-          {syncLine(status)}
-          <InfoTip label="About automatic sync">{status.auto_sync ? "Syncs every 15 minutes while Waypoint runs." : "Automatic sync is paused. Press Resume to sync every 15 minutes while Waypoint runs."}</InfoTip>
+          {syncLine(status, i18n)}
+          <InfoTip label={t("emails.rail.aboutSync")}>{status.auto_sync ? t("emails.rail.autoOn") : t("emails.rail.autoOff")}</InfoTip>
         </p>
         <div className="mt-3 flex gap-2">
           <button className={control} disabled={busy || status.status === "running"} onClick={() => void onAction("/sync", "POST")}>
-            <RefreshCw className={`size-3.5 ${syncing ? "animate-spin motion-reduce:animate-none" : ""}`} />Sync now
+            <RefreshCw className={`size-3.5 ${syncing ? "animate-spin motion-reduce:animate-none" : ""}`} />{t("emails.rail.syncNow")}
           </button>
           <button className={control} disabled={busy} onClick={() => void onAction("/preferences", "PATCH", { auto_sync: !status.auto_sync })}>
-            {status.auto_sync ? <><Pause className="size-3.5" />Pause</> : <><Play className="size-3.5" />Resume</>}
+            {status.auto_sync ? <><Pause className="size-3.5" />{t("emails.rail.pause")}</> : <><Play className="size-3.5" />{t("emails.rail.resume")}</>}
           </button>
         </div>
         {status.worker_enabled === false && (
           <p role="status" className="mt-3 rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
-            Sync is off on the server. Set OUTLOOK_SYNC_ENABLED=true and restart the API.
+            {t("emails.rail.workerOff", { setting: "⁦OUTLOOK_SYNC_ENABLED=true⁩" })}
           </p>
         )}
-        {status.error && <p role="status" className="mt-3 rounded-lg bg-amber-500/10 p-2.5 text-xs leading-5">{status.error}</p>}
+        {status.error && <p role="status" dir="auto" className="mt-3 rounded-lg bg-amber-500/10 p-2.5 text-xs leading-5">{status.error}</p>}
         {status.status === "reconnect" && status.provider === "token" && (
           <div className="mt-3"><TokenConnection available={!!status.token_available} onConnected={onReconnected} /></div>
         )}
       </Section>
 
       {status.classifiers ? (
-        <Section title="Classifier">
+        <Section title={t("emails.rail.classifier")}>
           <ClassifierPicker
             engines={status.classifiers}
             selected={status.classifier ?? "laya"}
@@ -78,22 +83,22 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
             onSelect={(engine) => void onAction("/classifier", "PATCH", { engine })}
           />
           <label className="mt-3 flex items-center gap-2 text-xs">
-            <span className="shrink-0 font-medium">Classify</span>
-            <InfoTip label="About the classify limit">Older mail is kept but not classified.{status.pending ? ` ${status.pending} waiting to be classified.` : ""}</InfoTip>
+            <span className="shrink-0 font-medium">{t("emails.rail.classify")}</span>
+            <InfoTip label={t("emails.rail.aboutLimit")}>{t("emails.rail.limitInfo")}{status.pending ? ` ${t("emails.rail.pending", { count: status.pending })}` : ""}</InfoTip>
             <select
               className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={status.classify_limit ?? "none"}
               disabled={busy}
               onChange={(event) => void onAction("/classify-limit", "PATCH", { limit: event.target.value === "none" ? null : Number(event.target.value) })}
             >
-              {CUTOFFS.map((value) => <option key={value} value={value}>Latest {value} emails</option>)}
-              <option value="none">All emails (no cutoff)</option>
+              {CUTOFFS.map((value) => <option key={value} value={value}>{t("emails.rail.latest", { count: value })}</option>)}
+              <option value="none">{t("emails.rail.allEmails")}</option>
             </select>
           </label>
         </Section>
       ) : null}
 
-      <Section title="Coach access">
+      <Section title={t("emails.rail.coachAccess")}>
         <label className="mt-2 flex items-start gap-2.5 text-xs leading-5">
           <input
             type="checkbox"
@@ -103,35 +108,35 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
             onChange={(event) => void onAction("/coach-access", "PATCH", { accepted: event.target.checked })}
           />
           <span>
-            Let Coach search and read my synced emails in this browser's chats.{" "}
-            <InfoTip label="About Coach email access">Matching text may go to your AI providers, including fallbacks, and stay in their history. Uncheck to stop.</InfoTip>
+            {t("emails.rail.coachConsent")}{" "}
+            <InfoTip label={t("emails.rail.aboutCoach")}>{t("emails.rail.coachInfo")}</InfoTip>
           </span>
         </label>
       </Section>
 
-      <Section title="How the views work">
+      <Section title={t("emails.rail.howViews")}>
         <ul className="mt-2 space-y-1.5 text-xs leading-5 text-muted-foreground">
-          <li><span className="font-medium text-foreground">Important</span> has your pinned mail and the classifier's picks.</li>
-          <li><span className="font-medium text-foreground">Today</span> has mail received today, plus follow-ups due today.</li>
-          <li><span className="font-medium text-foreground">Needs review</span> keeps Arabic and uncertain mail you haven't checked.</li>
-          <li>Labels are suggestions, never confirmed facts.</li>
+          <li><span className="font-medium text-foreground">{t("emails.views.important")}</span> {t("emails.rail.howImportant")}</li>
+          <li><span className="font-medium text-foreground">{t("emails.views.today")}</span> {t("emails.rail.howToday")}</li>
+          <li><span className="font-medium text-foreground">{t("emails.views.review")}</span> {t("emails.rail.howReview")}</li>
+          <li>{t("emails.rail.howLabels")}</li>
         </ul>
       </Section>
 
       <div className="border-t border-border p-4">
         {confirmDisconnect ? (
           <div role="alert">
-            <p className="text-xs leading-5">Disconnect and delete cached mail, labels and follow-up dates from Waypoint? Your Outlook mailbox isn't touched.</p>
+            <p className="text-xs leading-5">{t("emails.rail.disconnectConfirm")}</p>
             <div className="mt-3 flex gap-2">
               <button className={`${control} border-red-500/40 text-red-700 hover:bg-red-500/10 dark:text-red-300`} disabled={busy} onClick={() => { setConfirmDisconnect(false); void onAction("/connection", "DELETE") }}>
-                Disconnect and delete
+                {t("emails.rail.disconnectDelete")}
               </button>
-              <button className={control} onClick={() => setConfirmDisconnect(false)}>Cancel</button>
+              <button className={control} onClick={() => setConfirmDisconnect(false)}>{t("emails.rail.cancel")}</button>
             </div>
           </div>
         ) : (
           <button className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-red-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-red-300" onClick={() => setConfirmDisconnect(true)}>
-            Disconnect mailbox
+            {t("emails.rail.disconnect")}
           </button>
         )}
       </div>

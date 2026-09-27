@@ -18,19 +18,21 @@ import { useMarkSeen, usePresence, useTeamStream } from "@/components/teams/use-
 import { coverFor } from "@/lib/team-cover"
 import { clampDockWidth, readDockWidth, saveDockWidth } from "@/lib/team-layout"
 import { errorMessage } from "@/lib/teams-api"
+import { useI18n } from "@/lib/i18n/context"
 
 type View = "board" | "timeline" | "docs" | "decisions" | "activity" | "charter"
 
-const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
-  { id: "board", label: "Board", icon: LayoutGrid },
-  { id: "timeline", label: "Timeline", icon: CalendarRange },
-  { id: "docs", label: "Docs", icon: FileText },
-  { id: "decisions", label: "Decisions", icon: Gavel },
-  { id: "activity", label: "Activity", icon: History },
-  { id: "charter", label: "Charter & brief", icon: ScrollText },
+const VIEWS: { id: View; icon: LucideIcon }[] = [
+  { id: "board", icon: LayoutGrid },
+  { id: "timeline", icon: CalendarRange },
+  { id: "docs", icon: FileText },
+  { id: "decisions", icon: Gavel },
+  { id: "activity", icon: History },
+  { id: "charter", icon: ScrollText },
 ]
 
 export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () => void }) {
+  const { t } = useI18n()
   const { store, error, live, reload, update } = useTeamStream(teamId)
   const [view, setView] = useState<View>("board")
   const [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
@@ -53,11 +55,11 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
     return (
       <div className="tm-empty">
         <p>{error}</p>
-        <button type="button" className="tm-btn" onClick={onBack}>Back to all teams</button>
+        <button type="button" className="tm-btn" onClick={onBack}>{t("teams.workspace.backToAll")}</button>
       </div>
     )
   }
-  if (!store) return <div className="tm-empty">Opening the team…</div>
+  if (!store) return <div className="tm-empty">{t("teams.workspace.opening")}</div>
 
   // Any failed write: say why, then return to server truth (undoes optimistic moves).
   const fail = (reason: unknown) => {
@@ -68,25 +70,25 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
 
   return (
     <div ref={studioRef} className="tm-studio" style={{ "--tm-dock-width": `${dockWidth}px` } as CSSProperties}>
-      <aside className="tm-panel tm-rail" aria-label="Team navigation">
-        <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /> All teams</button>
+      <aside className="tm-panel tm-rail" aria-label={t("teams.workspace.railLabel")}>
+        <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" /> {t("teams.workspace.allTeams")}</button>
         <div className="tm-rail-cover" style={{ backgroundImage: cover.image, backgroundColor: cover.color }}>
-          <span>{store.team.course.code} · {store.team.assignment.title}</span>
-          <strong>{store.team.name}</strong>
+          <span><bdi>{store.team.course.code}</bdi> · <bdi>{store.team.assignment.title}</bdi></span>
+          <strong dir="auto">{store.team.name}</strong>
         </div>
         <TeamSettings store={store} update={update} onError={fail} />
-        <nav className="tm-views" aria-label="Team views">
+        <nav className="tm-views" aria-label={t("teams.workspace.viewsLabel")}>
           {VIEWS.map((item) => {
             const Icon = item.icon
             return (
               <button key={item.id} type="button" className="tm-view" aria-current={view === item.id ? "page" : undefined} onClick={() => setView(item.id)}>
-                <Icon className="size-4" aria-hidden="true" /> {item.label}
+                <Icon className="size-4" aria-hidden="true" /> {t(`teams.workspace.views.${item.id}`)}
               </button>
             )
           })}
         </nav>
         <MemberList store={store} canInvite={member} onError={fail} />
-        <p className="tm-live" data-live={live ? "" : undefined}><i aria-hidden="true" />{live ? "Live" : "Connecting…"}</p>
+        <p className="tm-live" data-live={live ? "" : undefined}><i aria-hidden="true" />{live ? t("teams.workspace.live") : t("teams.workspace.connecting")}</p>
       </aside>
       <main className="tm-panel tm-center">
         {notice ? <Banner message={notice} onDismiss={() => setNotice(null)} /> : null}

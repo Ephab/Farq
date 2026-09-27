@@ -7,6 +7,7 @@ import type { NodeStatus, RoadmapNodeData } from "@/data/computer-vision-roadmap
 import { NODE_H, NODE_W } from "@/lib/roadmap-layout";
 import { nodeIcon } from "@/components/roadmap/roadmap-icons";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 
 export function RoadmapNodeIcon({ icon, className }: { icon: string; className?: string }) {
   return createElement(nodeIcon(icon), { className, "aria-hidden": true });
@@ -49,6 +50,7 @@ export const RoadmapNode = memo(function RoadmapNode({
   onToggleDone,
   onOpenProject,
 }: RoadmapNodeProps) {
+  const { t } = useI18n();
   const isDone = status === "done";
   const isOpportunity = node.nodeType === "opportunity";
 
@@ -72,8 +74,11 @@ export const RoadmapNode = memo(function RoadmapNode({
         if (node.nodeType === "project" && node.projectId) onOpenProject?.(node.projectId);
         else onToggleDone(node.id);
       }}
-      title={node.nodeType === "project" ? "Click for details · Double-click or right-click for project workspace" : "Click for details · Double-click or right-click to mark done"}
-      aria-label={`${node.title} — ${status.replace("-", " ")}. ${node.nodeType === "project" ? "Double-click or right-click to open the project workspace." : `Double-click or right-click to ${isDone ? "mark not started" : "mark done"}.`}`}
+      title={node.nodeType === "project" ? t("roadmap.node.titleProject") : t("roadmap.node.titleTopic")}
+      aria-label={t(
+        node.nodeType === "project" ? "roadmap.node.ariaProject" : isDone ? "roadmap.node.ariaMarkNotStarted" : "roadmap.node.ariaMarkDone",
+        { title: node.title, status: t(`roadmap.status.${status}`) },
+      )}
       aria-pressed={selected}
       className={cn(
         "group absolute flex flex-col rounded-xl border p-3 text-start outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md",
@@ -100,10 +105,10 @@ export const RoadmapNode = memo(function RoadmapNode({
           <RoadmapNodeIcon icon={node.icon} className="size-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold leading-tight">
+          <span dir="auto" className="block truncate text-sm font-semibold leading-tight">
             {node.title}
           </span>
-          <span className={cn("mt-0.5 block truncate text-[13px]", isDone ? "text-background/65" : "text-muted-foreground")}>
+          <span dir="auto" className={cn("mt-0.5 block truncate text-[13px]", isDone ? "text-background/65" : "text-muted-foreground")}>
             {node.tagline}
           </span>
         </span>
@@ -122,11 +127,11 @@ export const RoadmapNode = memo(function RoadmapNode({
             isDone ? "bg-background/12 text-background" : LEVEL_BADGE[node.level],
           )}
         >
-          {isOpportunity ? <span className="flex items-center gap-1"><Trophy className="size-3" />Hackathon</span> : node.level}
+          {isOpportunity ? <span className="flex items-center gap-1"><Trophy className="size-3" />{t("roadmap.node.hackathon")}</span> : t(`roadmap.levels.${node.level}`)}
         </span>
-        <span className={isDone ? "text-background/60" : "text-muted-foreground"}>{node.duration}</span>
+        <span className={isDone ? "text-background/60" : "text-muted-foreground"}><bdi>{node.duration}</bdi></span>
         <span className={isDone ? "text-background/60" : "text-muted-foreground"}>
-          {node.subtopics.length} topics
+          {t("roadmap.node.topics", { count: node.subtopics.length })}
         </span>
       </span>
     </motion.button>

@@ -7,10 +7,12 @@ import { TeamsHome } from "@/components/teams/TeamsHome"
 import { ViewAsSwitcher } from "@/components/teams/ViewAsSwitcher"
 import { TeamClientContext } from "@/components/teams/team-client-context"
 import { ACTING_USER_EVENT, getActingUserId, teamClient } from "@/lib/teams-api"
+import { useI18n } from "@/lib/i18n/context"
 import "@/components/hermes/coach-concept.css"
 import "./teams.css"
 
 export function TeamsView() {
+  const { t } = useI18n()
   const [actingUser, setActingUser] = useState(getActingUserId)
   const [teamId, setTeamId] = useState<string | null>(null)
   // One client per acting user: views bound to it keep acting as that user
@@ -38,8 +40,8 @@ export function TeamsView() {
     <div className="fq tm-page">
       <div className="tm-topbar">
         <div>
-          <h1 className="tm-title">Group Projects</h1>
-          <p className="tm-sub">Your course teams: tasks, chat and documents in one place.</p>
+          <h1 className="tm-title">{t("teams.page.title")}</h1>
+          <p className="tm-sub">{t("teams.page.subtitle")}</p>
         </div>
         <ViewAsSwitcher value={actingUser} />
       </div>

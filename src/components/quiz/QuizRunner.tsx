@@ -14,6 +14,7 @@ import {
 import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
 import type { QuizQuestion } from "@/lib/quiz-ai";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 
 export interface QuizAnswer {
   given: string;
@@ -56,14 +57,6 @@ const NAV_STYLES: Record<NavState, string> = {
   todo: "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
 };
 
-const NAV_LABELS: Record<NavState, string> = {
-  current: "current question",
-  correct: "answered correctly",
-  wrong: "answered incorrectly",
-  review: "needs self-grade",
-  todo: "unanswered",
-};
-
 export function QuizRunner({
   questions,
   answers,
@@ -72,6 +65,9 @@ export function QuizRunner({
   onQuit,
   sourceName,
 }: QuizRunnerProps) {
+  const { t, fmt, dir } = useI18n();
+  // Motion x offsets are physical; flip them so cards slide along the reading direction.
+  const sign = dir === "rtl" ? -1 : 1;
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState(""); // selection / textarea before check
   const [shakeKey, setShakeKey] = useState(0);
@@ -142,8 +138,9 @@ export function QuizRunner({
         } else check();
         return;
       }
-      if (e.key === "ArrowRight") go(1);
-      if (e.key === "ArrowLeft") go(-1);
+      // Arrows follow the reading direction: "forward" is left in RTL.
+      if (e.key === "ArrowRight") go(dir === "rtl" ? -1 : 1);
+      if (e.key === "ArrowLeft") go(dir === "rtl" ? 1 : -1);
       if ((q.type === "mcq" || q.type === "true_false") && !revealed) {
         const opts = q.options ?? [];
         const num = Number(e.key);
@@ -159,8 +156,7 @@ export function QuizRunner({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const typeLabel =
-    q.type === "mcq" ? "Multiple choice" : q.type === "true_false" ? "True / False" : "Short answer";
+  const typeLabel = t(`quiz.types.${q.type}`);
 
   return (
     <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col px-4 py-6 sm:px-8">
@@ -169,7 +165,7 @@ export function QuizRunner({
         <button
           type="button"
           onClick={onQuit}
-          aria-label="Back to home"
+          aria-label={t("quiz.runner.backHome")}
           className="grid size-10 shrink-0 place-items-center rounded-xl border border-border text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-4" aria-hidden="true" />
@@ -180,7 +176,7 @@ export function QuizRunner({
           aria-valuenow={answeredCount}
           aria-valuemin={0}
           aria-valuemax={questions.length}
-          aria-label="Quiz progress"
+          aria-label={t("quiz.runner.progressAria")}
         >
           <motion.div
             className="h-full rounded-full bg-primary"
@@ -190,16 +186,16 @@ export function QuizRunner({
           />
         </div>
         <span className="shrink-0 text-sm font-medium tabular-nums text-muted-foreground">
-          {index + 1}/{questions.length}
+          <span dir="ltr">{t("quiz.runner.position", { current: index + 1, total: questions.length })}</span>
         </span>
         {streak >= 2 ? (
           <span className="flex shrink-0 items-center gap-1 rounded-full bg-orange-500/15 px-2.5 py-1 text-xs font-semibold text-orange-600 dark:text-orange-400">
             <Flame className="size-3.5" aria-hidden="true" />
-            {streak}
+            {fmt.number(streak)}
           </span>
         ) : null}
       </div>
-      <p className="mt-2 truncate text-[13px] text-muted-foreground">
+      <p className="ltr-value mt-2 truncate text-start text-[13px] text-muted-foreground" dir="ltr">
         {sourceName}
       </p>
 
@@ -207,10 +203,10 @@ export function QuizRunner({
       <div
         className="mt-4 flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-background px-3 py-2.5"
         role="group"
-        aria-label="Jump to question"
+        aria-label={t("quiz.runner.jumpAria")}
       >
         <span className="shrink-0 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-          {answeredCount}/{questions.length}
+          <span dir="ltr">{t("quiz.runner.position", { current: answeredCount, total: questions.length })}</span>
         </span>
         <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
         {questions.map((qq, i) => {
@@ -220,14 +216,14 @@ export function QuizRunner({
               key={qq.id}
               type="button"
               onClick={() => setIndex(i)}
-              aria-label={`Question ${i + 1}: ${NAV_LABELS[st]}`}
+              aria-label={t("quiz.runner.navLabel", { n: i + 1, state: t(`quiz.runner.navState.${st}`) })}
               aria-current={i === index ? "true" : undefined}
               className={cn(
                 "grid size-9 shrink-0 place-items-center rounded-lg border text-sm font-semibold tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                 NAV_STYLES[st],
               )}
             >
-              {i + 1}
+              {fmt.number(i + 1)}
             </button>
           );
         })}
@@ -237,22 +233,22 @@ export function QuizRunner({
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={q.id}
-          initial={reduce ? false : { opacity: 0, x: 48 }}
+          initial={reduce ? false : { opacity: 0, x: 48 * sign }}
           animate={{ opacity: 1, x: 0 }}
-          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -48 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -48 * sign }}
           transition={{ duration: reduce ? 0 : 0.28, ease: EASE_OUT }}
           className="mt-6 rounded-3xl border border-border bg-muted/30 px-6 py-6 sm:px-8 sm:py-8"
         >
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
             {typeLabel}
-            {q.source ? ` · ${q.source}` : ""}
+            {q.source ? <> · <bdi>{q.source}</bdi></> : null}
           </p>
           <motion.div
             key={shakeKey}
             animate={shakeKey && !reduce ? { x: [0, -10, 10, -6, 6, 0] } : undefined}
             transition={{ duration: 0.35 }}
           >
-            <h2 className="mt-2 text-2xl font-semibold leading-snug tracking-tight sm:text-3xl">
+            <h2 className="mt-2 text-2xl font-semibold leading-snug tracking-tight sm:text-3xl" dir="auto">
               {q.question}
             </h2>
           </motion.div>
@@ -264,12 +260,13 @@ export function QuizRunner({
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={revealed}
                 rows={4}
-                placeholder="Type your answer in 1-2 sentences…"
-                aria-label="Your answer"
+                dir="auto"
+                placeholder={t("quiz.runner.placeholder")}
+                aria-label={t("quiz.runner.yourAnswer")}
                 className="w-full resize-none rounded-2xl border border-border bg-background px-5 py-4 text-base leading-relaxed outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-80 sm:text-lg"
               />
               {!revealed ? (
-                <p className="mt-1.5 text-[13px] text-muted-foreground">⌘/Ctrl + Enter to reveal</p>
+                <p className="mt-1.5 text-[13px] text-muted-foreground">{t("quiz.runner.revealHint")}</p>
               ) : null}
             </div>
           ) : (
@@ -322,7 +319,7 @@ export function QuizRunner({
                         opt[0]
                       )}
                     </span>
-                    <span className="min-w-0 flex-1">{opt}</span>
+                    <span className="min-w-0 flex-1" dir="auto">{opt}</span>
                   </motion.button>
                 );
               })}
@@ -350,11 +347,11 @@ export function QuizRunner({
                   <div>
                     <p className="flex items-center gap-1.5 text-sm font-semibold">
                       <Lightbulb className="size-4" aria-hidden="true" />
-                      Reference answer
+                      {t("quiz.runner.referenceAnswer")}
                     </p>
-                    <p className="mt-1 text-[15px] leading-relaxed">{q.answer}</p>
+                    <p className="mt-1 text-[15px] leading-relaxed" dir="auto">{q.answer}</p>
                     {q.explanation ? (
-                      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground" dir="auto">
                         {q.explanation}
                       </p>
                     ) : null}
@@ -370,7 +367,7 @@ export function QuizRunner({
                             : "border border-border hover:bg-muted",
                         )}
                       >
-                        <Check className="size-4" aria-hidden="true" /> I got it right
+                        <Check className="size-4" aria-hidden="true" /> {t("quiz.runner.gotIt")}
                       </button>
                       <button
                         type="button"
@@ -383,17 +380,23 @@ export function QuizRunner({
                             : "border border-border hover:bg-muted",
                         )}
                       >
-                        <X className="size-4" aria-hidden="true" /> I missed it
+                        <X className="size-4" aria-hidden="true" /> {t("quiz.runner.missedIt")}
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div>
                       <p className="text-[15px] font-semibold">
-                      {saved?.correct ? "Correct. Nice." : `Not quite. Answer: ${q.answer}`}
+                      {saved?.correct ? (
+                        t("quiz.runner.correct")
+                      ) : (
+                        <>
+                          {t("quiz.runner.notQuite")} <bdi>{q.answer}</bdi>
+                        </>
+                      )}
                     </p>
                     {q.explanation ? (
-                      <p className="mt-1 text-sm leading-relaxed opacity-90">{q.explanation}</p>
+                      <p className="mt-1 text-sm leading-relaxed opacity-90" dir="auto">{q.explanation}</p>
                     ) : null}
                   </div>
                 )}
@@ -412,7 +415,7 @@ export function QuizRunner({
             disabled={index === 0}
             className="flex h-12 items-center gap-1 rounded-xl border border-border px-4 text-[15px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <ArrowLeft className="size-4" aria-hidden="true" /> Back
+            <ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" /> {t("quiz.runner.back")}
           </button>
           {!revealed ? (
             <button
@@ -420,7 +423,7 @@ export function QuizRunner({
               onClick={check}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-base font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Check <ChevronRight className="size-5" aria-hidden="true" />
+              {t("quiz.runner.check")} <ChevronRight className="size-5 rtl:-scale-x-100" aria-hidden="true" />
             </button>
           ) : index < questions.length - 1 ? (
             <button
@@ -428,7 +431,7 @@ export function QuizRunner({
               onClick={() => go(1)}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-base font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Next <ArrowRight className="size-5" aria-hidden="true" />
+              {t("quiz.runner.next")} <ArrowRight className="size-5 rtl:-scale-x-100" aria-hidden="true" />
             </button>
           ) : (
             <button
@@ -436,12 +439,12 @@ export function QuizRunner({
               onClick={onFinish}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-base font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              See results <Check className="size-5" aria-hidden="true" />
+              {t("quiz.runner.seeResults")} <Check className="size-5" aria-hidden="true" />
             </button>
           )}
         </div>
         <p className="mt-2 text-center text-[13px] text-muted-foreground">
-          {q.type === "short_answer" ? "Answer, reveal, then grade yourself" : "Keys 1-4 / A-D select · Enter checks"}
+          {q.type === "short_answer" ? t("quiz.runner.shortHint") : t("quiz.runner.keysHint")}
         </p>
       </div>
     </div>

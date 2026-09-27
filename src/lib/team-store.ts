@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n/context"
 import type {
   DocSectionInfo, HermesRunInfo, PresenceEntry, TaskStatus, TeamDecision, TeamDocumentInfo, TeamEvent, TeamInfo, TeamMessage, TeamMilestone, TeamProposal, TeamState, TeamTask,
 } from "@/lib/teams-api"
@@ -14,6 +15,7 @@ export const TEAM_EVENT_TYPES = [
   "hermes.run", "team.updated",
 ] as const
 
+/** `label` is English for tests/logs; components show t(`teams.status.${status}`). */
 export const TASK_COLUMNS: { status: TaskStatus; label: string }[] = [
   { status: "todo", label: "To do" },
   { status: "doing", label: "Doing" },
@@ -254,7 +256,7 @@ export function rebase(reloaded: TeamStore, recent: TeamEvent[], presence: Prese
 
 export function memberName(store: TeamStore, userId: string | null): string {
   if (userId === null) return "Hermes"
-  return store.team.members.find((member) => member.user_id === userId)?.display_name ?? "A classmate"
+  return store.team.members.find((member) => member.user_id === userId)?.display_name ?? translate("teams.common.classmate")
 }
 
 export function tasksByStatus(store: TeamStore): Record<TaskStatus, TeamTask[]> {

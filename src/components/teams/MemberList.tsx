@@ -6,11 +6,13 @@ import { Avatar } from "@/components/teams/ui"
 import type { TeamStore } from "@/lib/team-store"
 import type { Classmate } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
+import { useI18n } from "@/lib/i18n/context"
 
 interface MemberListProps { store: TeamStore; canInvite: boolean; onError: (reason: unknown) => void }
 
 export function MemberList({ store, canInvite, onError }: MemberListProps) {
   const teams = useTeamClient()
+  const { t } = useI18n()
   const [picking, setPicking] = useState(false)
   const [classmates, setClassmates] = useState<Classmate[] | null>(null)
   const [invited, setInvited] = useState<string[]>([])
@@ -39,41 +41,41 @@ export function MemberList({ store, canInvite, onError }: MemberListProps) {
 
   return (
     <section className="tm-members">
-      <h2 className="tm-h2" style={{ marginBottom: 0 }}>Team · {team.members.length}/{team.size_limit}</h2>
+      <h2 className="tm-h2" style={{ marginBottom: 0 }}>{t("teams.members.heading", { count: team.members.length, limit: team.size_limit })}</h2>
       {team.members.map((member) => {
         const entry = online.get(member.user_id)
         return (
           <div key={member.user_id} className="tm-member">
             <Avatar userId={member.user_id} name={member.display_name} size={28} online={Boolean(entry)} typing={Boolean(entry?.typing)} />
             <div className="min-w-0">
-              <span className="block truncate">{member.display_name}{member.is_lead ? " · Lead" : ""}</span>
-              <small className="truncate">{entry?.typing ? "typing…" : member.role_label || (entry ? "online" : "")}</small>
+              <span className="block truncate"><bdi>{member.display_name}</bdi>{member.is_lead ? ` · ${t("teams.members.lead")}` : ""}</span>
+              <small className="truncate" dir="auto">{entry?.typing ? t("teams.members.typing") : member.role_label || (entry ? t("teams.members.online") : "")}</small>
             </div>
           </div>
         )
       })}
       {canInvite && !full && !picking ? (
         <button type="button" className="tm-btn tm-btn-sm" onClick={() => void open()}>
-          <UserPlus className="size-4" aria-hidden="true" /> Invite
+          <UserPlus className="size-4" aria-hidden="true" /> {t("teams.members.invite")}
         </button>
       ) : null}
       {picking ? (
         <div className="tm-list">
-          {classmates === null ? <small className="tm-muted">Loading classmates…</small> : null}
-          {classmates !== null && candidates.length === 0 ? <small className="tm-muted">Everyone in this course is on a team.</small> : null}
+          {classmates === null ? <small className="tm-muted">{t("teams.members.loadingClassmates")}</small> : null}
+          {classmates !== null && candidates.length === 0 ? <small className="tm-muted">{t("teams.members.everyoneOnTeam")}</small> : null}
           {candidates.map((person) => {
             const sent = invited.includes(person.user_id)
             return (
               <div key={person.user_id} className="tm-member">
                 <Avatar userId={person.user_id} name={person.display_name} size={24} />
-                <span className="min-w-0 flex-1 truncate">{person.display_name}</span>
+                <span className="min-w-0 flex-1 truncate" dir="auto">{person.display_name}</span>
                 <button type="button" className="tm-btn tm-btn-sm" disabled={person.has_team || sent} onClick={() => void invite(person.user_id)}>
-                  {person.has_team ? "Has a team" : sent ? "Invited" : "Invite"}
+                  {person.has_team ? t("teams.members.hasTeam") : sent ? t("teams.members.invited") : t("teams.members.invite")}
                 </button>
               </div>
             )
           })}
-          <button type="button" className="tm-back" onClick={() => setPicking(false)}>Done</button>
+          <button type="button" className="tm-back" onClick={() => setPicking(false)}>{t("teams.common.done")}</button>
         </div>
       ) : null}
     </section>

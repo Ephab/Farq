@@ -48,6 +48,8 @@ export interface ChatInteractionInput {
 }
 
 /** Newest agent run for a thread, for resume-after-navigation and global status. */
+/** Stage and error values this hook sets itself are `coach.*` catalog keys;
+ * the view translates them. Server-sent stages/errors stay free text. */
 export interface ActiveRun { id: string; status: string; stage: string; error: string | null; created_at: string }
 
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled"])
@@ -125,7 +127,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
         onRunFinishedRef.current?.()
       }
     })
-    source.onerror = () => { closeStream(); busyRef.current = false; runIdRef.current = null; setRunId(null); setBusy(false); setError("Lost the Hermes progress stream. Your message is saved; refresh to check it.") }
+    source.onerror = () => { closeStream(); busyRef.current = false; runIdRef.current = null; setRunId(null); setBusy(false); setError("coach.errors.streamLost") }
   }, [closeStream, refresh, finishRun])
 
   // Load history, then resume watching a run that is still generating —
@@ -134,12 +136,12 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     if (!threadId) return
     let cancelled = false
     refresh().catch((reason: unknown) => {
-      if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not reach Waypoint API")
+      if (!cancelled) setError(reason instanceof Error ? reason.message : "coach.errors.unreachable")
     })
     api<{ run: ActiveRun | null }>(`/api/chat/threads/${threadId}/runs/latest`)
       .then(({ run }) => {
         if (cancelled || busyRef.current || !isLiveRun(run)) return
-        setStage(run.stage || "Hermes is working")
+        setStage(run.stage || "coach.stage.working")
         watchRun(run.id)
       })
       .catch(() => undefined)
@@ -182,13 +184,13 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
         onRunFinishedRef.current?.()
         return
       }
-      setStage("Starting Hermes")
+      setStage("coach.stage.starting")
       watchRun(result.run_id)
     } catch (reason) {
       busyRef.current = false
       runIdRef.current = null
       setRunId(null)
-      setBusy(false); setError(reason instanceof Error ? reason.message : "Could not start Hermes")
+      setBusy(false); setError(reason instanceof Error ? reason.message : "coach.errors.startFailed")
       await refresh().catch(() => undefined)
     }
   }, [threadId, refresh, watchRun])
@@ -222,7 +224,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
       })
     } catch (reason) {
       busyRef.current = false
-      setBusy(false); setError(reason instanceof Error ? reason.message : "Could not rewind to that message")
+      setBusy(false); setError(reason instanceof Error ? reason.message : "coach.errors.rewindFailed")
       return
     }
     // Confirm the rewind landed before resending: adopt server truth as the
@@ -232,12 +234,12 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
       rewound = await api<ChatMessage[]>(`/api/chat/threads/${threadId}/messages`)
     } catch (reason) {
       busyRef.current = false
-      setBusy(false); setError(reason instanceof Error ? reason.message : "Could not confirm the rewind")
+      setBusy(false); setError(reason instanceof Error ? reason.message : "coach.errors.rewindConfirmFailed")
       return
     }
     if (rewound.some((message) => message.id === messageId)) {
       busyRef.current = false
-      setBusy(false); setError("Hermes kept the old turn — nothing was resent. Try again.")
+      setBusy(false); setError("coach.errors.rewindKept")
       setMessages(rewound)
       return
     }

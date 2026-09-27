@@ -1,4 +1,5 @@
-import { API_BASE } from "./waypoint-api"
+import { API_BASE, httpErrorMessage } from "./waypoint-api"
+import { translate } from "@/lib/i18n/context"
 
 export type EngineId = "jev" | "span" | "laya"
 export interface DecisionEngine {
@@ -20,13 +21,19 @@ export interface MailItem {
   classification: { category?: string | null; review_reasons?: string[]; important_probability?: number | null }
 }
 export async function outlookApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}/api/outlook${path}`, {
-    ...init, credentials: "include", cache: "no-store",
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}/api/outlook${path}`, {
+      ...init, credentials: "include", cache: "no-store",
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    })
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === "AbortError") throw reason
+    throw new Error(translate("common.networkError"))
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { detail?: string }
-    throw new Error(body.detail || `Outlook request failed (${response.status})`)
+    throw new Error(body.detail || httpErrorMessage(response.status))
   }
   return response.json() as Promise<T>
 }

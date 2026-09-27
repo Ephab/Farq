@@ -6,6 +6,7 @@ import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, MapPin, PencilLine, R
 import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
 import { cn } from "@/lib/utils"
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
 import "./coach-concept.css"
 
 /** A suggestion chip above the composer. `message` is what fills the composer
@@ -37,14 +38,15 @@ interface ChatThreadViewProps {
   fallbackPrompts?: SuggestedPrompt[]
 }
 
-function formatTime(iso: string): string {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ""
-  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-}
+/** use-hermes-chat sets `coach.*` catalog keys for its own stages/errors;
+ * anything else (server stages, API error text) is shown as-is. */
+const isCoachKey = (value: string): value is MessageKey => /^coach\.[\w.]+$/.test(value)
 
 /** Message list + composer in the coach concept language (chat-shell interior). */
 export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [] }: ChatThreadViewProps) {
+  const { t, fmt, dir } = useI18n()
+  const display = (value: string) => (isCoachKey(value) ? t(value) : value)
+  const formatTime = (iso: string) => (Number.isNaN(new Date(iso).getTime()) ? "" : fmt.time(iso))
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -150,7 +152,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
     const titles = group.options.filter((item) => selected.includes(item.id)).map((item) => item.title)
     onInteraction(
       { kind: "choice", source_message_id: message.id, selected_option_ids: selected },
-      `Selected: ${titles.join(", ")}`,
+      t("coach.thread.selected", { titles: titles.join(", ") }),
     )
   }
 
@@ -189,7 +191,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
         ref={messagesRef}
         className="chat-messages"
         role="log"
-        aria-label="Conversation with Hermes"
+        aria-label={t("coach.thread.logLabel")}
         onScroll={(event) => {
           const el = event.currentTarget
           stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96
@@ -202,8 +204,8 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
             {empty ?? (
               <>
                 <span className="empty-mark"><Sparkles size={20} /></span>
-                <h2>Shape your roadmap through conversation</h2>
-                <p>Tell Hermes what you enjoy, what you struggle with, or ask it to compare two possible branches.</p>
+                <h2>{t("coach.empty.title")}</h2>
+                <p>{t("coach.empty.bodyDefault")}</p>
               </>
             )}
             {fallbackPrompts.length ? (
@@ -232,10 +234,10 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
               <article
                 key={message.id}
                 className={cn("message", message.role === "user" ? "user" : "assistant")}
-                aria-label={message.role === "user" ? "Your message" : "Hermes reply"}
+                aria-label={message.role === "user" ? t("coach.thread.yourMessage") : t("coach.thread.hermesReply")}
               >
                 <p className="message-meta">
-                  {message.role === "user" ? "You" : "Hermes"}{time ? ` · ${time}` : ""}
+                  {message.role === "user" ? t("coach.thread.you") : t("coach.thread.hermes")}{time ? " · " : ""}{time ? <bdi>{time}</bdi> : null}
                 </p>
                 {message.role === "user" && editingId === message.id ? (
                   <div className="edit-box">
@@ -247,22 +249,23 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                         if (event.key === "Escape") setEditingId(null)
                       }}
                       rows={3}
+                      dir="auto"
                       autoFocus
-                      aria-label="Edit your message"
+                      aria-label={t("coach.thread.editLabel")}
                     />
                     <div className="edit-actions">
-                      <button type="button" onClick={() => setEditingId(null)}>Cancel</button>
-                      <button type="button" disabled={!editDraft.trim() || busy || disabled} onClick={() => saveEdit(message.id)} className="edit-save">Resend</button>
+                      <button type="button" onClick={() => setEditingId(null)}>{t("coach.thread.cancel")}</button>
+                      <button type="button" disabled={!editDraft.trim() || busy || disabled} onClick={() => saveEdit(message.id)} className="edit-save">{t("coach.thread.resend")}</button>
                     </div>
                   </div>
                 ) : message.role === "assistant" ? (
-                  <MarkdownText text={text} />
+                  <div dir="auto"><MarkdownText text={text} /></div>
                 ) : (
-                  <p className="message-p">{text}</p>
+                  <p className="message-p" dir="auto">{text}</p>
                 )}
                 {group ? (
                   <div>
-                    <p className="choice-prompt">{group.prompt}</p>
+                    <p className="choice-prompt" dir="auto">{group.prompt}</p>
                     <div className="choice-grid">
                       {group.options.slice(0, 3).map((option) => {
                         const selected = selectedIds.includes(option.id)
@@ -280,13 +283,13 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                             >
                               <span className="choice-mark" aria-hidden="true"><Check size={13} strokeWidth={3.5} /></span>
                               <span className="choice-copy">
-                                <strong>{option.title}</strong>
-                                <span>{option.description}</span>
+                                <strong dir="auto">{option.title}</strong>
+                                <span dir="auto">{option.description}</span>
                                 {opportunity ? (
                                   <span className="choice-opp">
-                                    <span className="opp-fit">Hackathonat · {opportunity.score}% fit</span>
-                                    {opportunity.source_date ? <span className="opp-meta"><CalendarDays size={12} />{opportunity.source_date}</span> : null}
-                                    {opportunity.locations.length ? <span className="opp-meta"><MapPin size={12} />{opportunity.locations.join(" · ")}</span> : null}
+                                    <span className="opp-fit">{t("coach.thread.fit", { score: fmt.percent(opportunity.score / 100) })}</span>
+                                    {opportunity.source_date ? <span className="opp-meta"><CalendarDays size={12} /><bdi>{opportunity.source_date}</bdi></span> : null}
+                                    {opportunity.locations.length ? <span className="opp-meta"><MapPin size={12} /><bdi>{opportunity.locations.join(" · ")}</bdi></span> : null}
                                     {(opportunity.registration_url || opportunity.detail_url) ? (
                                       <a
                                         href={opportunity.registration_url || opportunity.detail_url}
@@ -294,7 +297,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                                         rel="noreferrer noopener"
                                         onClick={(event) => event.stopPropagation()}
                                       >
-                                        View event<ExternalLink size={12} />
+                                        {t("coach.thread.viewEvent")}<ExternalLink size={12} />
                                       </a>
                                     ) : null}
                                   </span>
@@ -307,14 +310,14 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                     </div>
                     {group.mode === "multiple" && controlsEnabled ? (
                       <div className="choice-continue">
-                        <span>Choose {group.min_selections === group.max_selections ? group.min_selections : `${group.min_selections}–${group.max_selections}`}</span>
+                        <span>{t("coach.thread.choose", { count: group.min_selections === group.max_selections ? fmt.number(group.min_selections) : `${fmt.number(group.min_selections)}–${fmt.number(group.max_selections)}` })}</span>
                         <button
                           type="button"
                           disabled={selectedIds.length < group.min_selections || selectedIds.length > group.max_selections}
                           onClick={() => submitMultiple(message)}
                           className="button small"
                         >
-                          Continue{selectedIds.length ? ` (${selectedIds.length})` : ""}
+                          {selectedIds.length ? t("coach.thread.continueCount", { count: fmt.number(selectedIds.length) }) : t("coach.thread.continue")}
                         </button>
                       </div>
                     ) : null}
@@ -323,23 +326,23 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                 {options.length > 0 && !group && isLast(message) ? (
                   <div className="button-row" style={{ marginTop: 14 }}>
                     {options.map((option) => (
-                      <button key={option} type="button" disabled={busy || disabled} onClick={() => submit(option)} className="button secondary small">
+                      <button key={option} type="button" disabled={busy || disabled} onClick={() => submit(option)} className="button secondary small" dir="auto">
                         {option}
                       </button>
                     ))}
                   </div>
                 ) : null}
                 <div className="message-tools">
-                  <button type="button" aria-label={message.role === "user" ? "Copy prompt" : "Copy output"} onClick={() => void copyText(message.id, text)}>
-                    {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? "Copied" : "Copy"}
+                  <button type="button" aria-label={message.role === "user" ? t("coach.thread.copyPrompt") : t("coach.thread.copyOutput")} onClick={() => void copyText(message.id, text)}>
+                    {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? t("coach.thread.copied") : t("coach.thread.copy")}
                   </button>
                   {message.role === "user" ? (
-                    <button type="button" aria-label="Edit prompt and resend" disabled={busy || disabled || editingId !== null} onClick={() => editPrompt(message)}>
-                      <PencilLine size={12} />Edit &amp; resend
+                    <button type="button" aria-label={t("coach.thread.editResendLabel")} disabled={busy || disabled || editingId !== null} onClick={() => editPrompt(message)}>
+                      <PencilLine size={12} />{t("coach.thread.editResend")}
                     </button>
                   ) : prompt ? (
-                    <button type="button" aria-label="Regenerate from prompt" disabled={busy || disabled} onClick={() => submit(prompt)}>
-                      <RotateCcw size={12} />Regenerate
+                    <button type="button" aria-label={t("coach.thread.regenerateLabel")} disabled={busy || disabled} onClick={() => submit(prompt)}>
+                      <RotateCcw size={12} />{t("coach.thread.regenerate")}
                     </button>
                   ) : null}
                 </div>
@@ -355,12 +358,12 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
               aria-live="polite"
             >
               <div className="message assistant">
-                <p className="message-meta">Hermes · generating</p>
+                <p className="message-meta">{t("coach.thread.generating")}</p>
                 <div className="typing-dots" aria-hidden="true"><span /><span /><span /></div>
-                <p className="typing-stage">{stage || "Hermes is working"}</p>
+                <p className="typing-stage"><bdi>{stage ? display(stage) : t("coach.stage.working")}</bdi></p>
                 <div className="button-row" style={{ marginTop: 12 }}>
-                  <button type="button" onClick={onStop} className="button secondary small" aria-label="Stop generating">
-                    <Square size={13} />Stop
+                  <button type="button" onClick={onStop} className="button secondary small" aria-label={t("coach.thread.stopGenerating")}>
+                    <Square size={13} />{t("coach.thread.stop")}
                   </button>
                 </div>
               </div>
@@ -369,8 +372,8 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
         </AnimatePresence>
         {error ? (
           <div className="fq-error" role="alert">
-            <span>{error}</span>
-            <button type="button" aria-label="Retry" onClick={onRetry}><RefreshCw size={14} /></button>
+            <span>{display(error)}</span>
+            <button type="button" aria-label={t("coach.thread.retry")} onClick={onRetry}><RefreshCw size={14} /></button>
           </div>
         ) : null}
       </div>
@@ -386,7 +389,8 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                   if (threadEnd) onInteraction({ kind: "follow_up", source_message_id: threadEnd.id, selected_option_ids: [item.id] }, item.label)
                 }}
                 className="status"
-                aria-label={`Ask Hermes: ${item.label}`}
+                aria-label={t("coach.thread.askHermes", { label: item.label })}
+                dir="auto"
               >
                 {item.label}
               </button>
@@ -402,7 +406,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                 title={prompt.label}
                 onClick={() => setInput(prompt.message)}
                 className="status"
-                aria-label={`Draft message: ${prompt.label}`}
+                aria-label={t("coach.thread.draftMessage", { label: prompt.label })}
               >
                 {prompt.label}
               </button>
@@ -418,15 +422,16 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
               if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(input) }
               if (event.key === "Escape" && busy) { event.preventDefault(); onStop() }
             }}
-            placeholder={busy ? "Hermes is generating — press Stop or Esc to interrupt…" : placeholder}
+            placeholder={busy ? t("coach.thread.busyPlaceholder") : placeholder}
             rows={1}
-            aria-label="Message Hermes"
+            dir="auto"
+            aria-label={t("coach.thread.messageLabel")}
           />
           {busy ? (
             <motion.button
               type="button"
-              aria-label="Stop generating"
-              title="Stop generating"
+              aria-label={t("coach.thread.stopGenerating")}
+              title={t("coach.thread.stopGenerating")}
               onClick={onStop}
               whileHover={reduce ? undefined : { y: -1 }}
               whileTap={reduce ? undefined : { scale: 0.94 }}
@@ -438,14 +443,14 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
           ) : (
             <motion.button
               type="button"
-              aria-label="Send message"
+              aria-label={t("coach.thread.send")}
               disabled={!input.trim() || busy || disabled}
               onClick={() => submit(input)}
-              whileHover={reduce ? undefined : { y: -1, rotate: -2 }}
+              whileHover={reduce ? undefined : { y: -1, rotate: dir === "rtl" ? 2 : -2 }}
               whileTap={reduce ? undefined : { scale: 0.94 }}
               className="send-button"
             >
-              <ArrowUp size={19} strokeWidth={2.5} />
+              <ArrowUp size={19} strokeWidth={2.5} className="rtl:-scale-x-100" />
             </motion.button>
           )}
         </div>

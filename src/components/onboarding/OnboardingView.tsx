@@ -9,13 +9,14 @@ import { RoadmapPreview } from "@/components/onboarding/RoadmapPreview"
 import { SourcesStep } from "@/components/onboarding/SourcesStep"
 import { DEMO_STUDENT_ID, api, getCurrentStudentId, getHermesApiKey, getHermesModel, getHermesProvider, hasChosenStudent, isNvapiKey, modelsFor, saveHermesApiKey, saveHermesModel, saveHermesProvider, setCurrentStudentId, type HermesProvider, type OnboardingStatus, type StudentProfile } from "@/lib/waypoint-api"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n/context"
 
-const STEPS: { status: OnboardingStatus[]; label: string }[] = [
-  { status: ["basics"], label: "About you" },
-  { status: ["sources"], label: "Connect" },
-  { status: ["review"], label: "Review" },
-  { status: ["chat", "generating"], label: "Chat" },
-  { status: ["preview"], label: "Your roadmap" },
+const STEPS: { status: OnboardingStatus[]; key: "basics" | "sources" | "review" | "chat" | "preview" }[] = [
+  { status: ["basics"], key: "basics" },
+  { status: ["sources"], key: "sources" },
+  { status: ["review"], key: "review" },
+  { status: ["chat", "generating"], key: "chat" },
+  { status: ["preview"], key: "preview" },
 ]
 
 interface OnboardingViewProps {
@@ -24,6 +25,7 @@ interface OnboardingViewProps {
 
 /** New-student flow: sign in, basics, sources, evidence review, chat, roadmap preview. */
 export function OnboardingView({ onDone }: OnboardingViewProps) {
+  const { t, fmt } = useI18n()
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [loading, setLoading] = useState(hasChosenStudent())
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +70,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
     } catch (reason) {
       // A remembered student that no longer exists (e.g. database reset): start over.
       setCurrentStudentId(null)
-      setError(reason instanceof Error ? reason.message : "Could not load your profile")
+      setError(reason instanceof Error ? reason.message : t("onboarding.loadProfileFailed"))
     } finally {
       setLoading(false)
     }
@@ -90,10 +92,10 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
     <div className="flex min-h-svh flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center gap-4 border-b border-border px-4 py-3 sm:px-8">
         <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" /></span><span className="text-sm font-semibold">Waypoint</span></div>
-        <ol className="ml-auto flex flex-wrap items-center gap-1.5 text-xs" aria-label="Onboarding progress">
+        <ol className="ms-auto flex flex-wrap items-center gap-1.5 text-xs" aria-label={t("onboarding.progressLabel")}>
           {STEPS.map((step, index) => (
-            <li key={step.label} aria-current={index === stepIndex ? "step" : undefined} className={cn("rounded-full px-2.5 py-1", index === stepIndex ? "bg-primary text-primary-foreground" : index < stepIndex ? "bg-muted text-foreground" : "text-muted-foreground")}>
-              {index + 1}. {step.label}
+            <li key={step.key} aria-current={index === stepIndex ? "step" : undefined} className={cn("rounded-full px-2.5 py-1", index === stepIndex ? "bg-primary text-primary-foreground" : index < stepIndex ? "bg-muted text-foreground" : "text-muted-foreground")}>
+              {t("onboarding.stepItem", { index: fmt.number(index + 1), label: t(`onboarding.steps.${step.key}`) })}
             </li>
           ))}
         </ol>
@@ -101,22 +103,22 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
       <div className="border-b border-border bg-muted/40 px-4 py-2 sm:px-8">
         <details className="mx-auto w-full max-w-4xl">
           <summary className="cursor-pointer text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-            Using the Waypoint default model · <span className="underline">Advanced</span>
+            {t("onboarding.advanced.summary")}<span className="underline">{t("onboarding.advanced.toggle")}</span>
           </summary>
           <div className="flex w-full flex-wrap items-center gap-2 pt-2">
-          <label htmlFor="onboarding-hermes-provider" className="sr-only">Hermes provider</label>
-          <select id="onboarding-hermes-provider" value={hermesProvider} onChange={(event) => onProviderChange(event.target.value as HermesProvider)} className="h-8 rounded-lg border border-border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" aria-label="Hermes provider">
+          <label htmlFor="onboarding-hermes-provider" className="sr-only">{t("onboarding.advanced.provider")}</label>
+          <select id="onboarding-hermes-provider" value={hermesProvider} onChange={(event) => onProviderChange(event.target.value as HermesProvider)} className="h-8 rounded-lg border border-border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" aria-label={t("onboarding.advanced.provider")}>
             <option value="gemini">Gemini</option>
             <option value="nim">NVIDIA</option>
             <option value="hf">Hugging Face</option>
           </select>
-          <label htmlFor="onboarding-hermes-model" className="sr-only">Hermes model</label>
-          <select id="onboarding-hermes-model" value={hermesModel} onChange={(event) => onModelChange(event.target.value)} className="h-8 max-w-44 rounded-lg border border-border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" aria-label="Hermes model">
+          <label htmlFor="onboarding-hermes-model" className="sr-only">{t("onboarding.advanced.model")}</label>
+          <select id="onboarding-hermes-model" value={hermesModel} onChange={(event) => onModelChange(event.target.value)} className="h-8 max-w-44 rounded-lg border border-border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" aria-label={t("onboarding.advanced.model")}>
             {modelChoices.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
-          <label htmlFor="onboarding-hermes-key" className="sr-only">Hermes API key</label>
-          <input id="onboarding-hermes-key" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => onKeyChange(event.target.value)} placeholder="Optional personal key — empty uses the Waypoint default" autoComplete="off" spellCheck={false} className="h-8 min-w-36 flex-1 rounded-lg border border-border bg-background px-2.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring" />
-          <button type="button" onClick={() => setShowKey((v) => !v)} aria-label={showKey ? "Hide Hermes API key" : "Show Hermes API key"} className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{showKey ? "Hide" : "Show"}</button>
+          <label htmlFor="onboarding-hermes-key" className="sr-only">{t("onboarding.advanced.apiKey")}</label>
+          <input id="onboarding-hermes-key" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => onKeyChange(event.target.value)} placeholder={t("onboarding.advanced.keyPlaceholder")} dir={apiKey ? "ltr" : undefined} autoComplete="off" spellCheck={false} className="h-8 min-w-36 flex-1 rounded-lg border border-border bg-background px-2.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring" />
+          <button type="button" onClick={() => setShowKey((v) => !v)} aria-label={showKey ? t("onboarding.advanced.hideKey") : t("onboarding.advanced.showKey")} className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{showKey ? t("onboarding.advanced.hide") : t("onboarding.advanced.show")}</button>
           </div>
         </details>
       </div>
@@ -136,6 +138,7 @@ function initialHermesProvider(): HermesProvider {
 }
 
 function SignIn({ error, onCreated, onDemo }: { error: string | null; onCreated: (profile: StudentProfile) => void; onDemo: () => void }) {
+  const { t } = useI18n()
   const [name, setName] = useState("")
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(error)
@@ -145,7 +148,7 @@ function SignIn({ error, onCreated, onDemo }: { error: string | null; onCreated:
     try {
       onCreated(await api<StudentProfile>("/api/students", { method: "POST", body: JSON.stringify({ display_name: name.trim() }) }))
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : "Could not create your profile")
+      setFailure(reason instanceof Error ? reason.message : t("onboarding.signIn.createFailed"))
     } finally {
       setBusy(false)
     }
@@ -154,14 +157,14 @@ function SignIn({ error, onCreated, onDemo }: { error: string | null; onCreated:
     <div className="grid min-h-svh place-items-center bg-background p-4 text-foreground">
       <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground"><Command className="size-5" /></span>
-        <h1 className="mt-4 text-xl font-semibold">Welcome to Waypoint</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Waypoint builds a learning roadmap from what you've already done: your transcript, CV, projects and more. You won't have to type it all out.</p>
-        <label htmlFor="student-name" className="mt-6 block text-xs font-medium">What should Hermes call you?</label>
-        <input id="student-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void create() }} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+        <h1 className="mt-4 text-xl font-semibold">{t("onboarding.signIn.title")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("onboarding.signIn.intro")}</p>
+        <label htmlFor="student-name" className="mt-6 block text-xs font-medium">{t("onboarding.signIn.nameLabel")}</label>
+        <input id="student-name" dir="auto" autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void create() }} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
         {failure ? <p className="mt-2 text-xs text-destructive">{failure}</p> : null}
-        <button type="button" disabled={!name.trim() || busy} onClick={() => void create()} className="mt-4 h-10 w-full rounded-xl bg-primary text-sm font-medium text-primary-foreground disabled:opacity-40">{busy ? "Creating…" : "Get started"}</button>
-        <button type="button" onClick={onDemo} className="mt-2 h-9 w-full rounded-xl text-xs text-muted-foreground hover:bg-muted">Explore the demo student instead</button>
-        <p className="mt-4 text-[11px] leading-4 text-muted-foreground">There are no accounts yet. This browser remembers your profile.</p>
+        <button type="button" disabled={!name.trim() || busy} onClick={() => void create()} className="mt-4 h-10 w-full rounded-xl bg-primary text-sm font-medium text-primary-foreground disabled:opacity-40">{busy ? t("onboarding.signIn.creating") : t("onboarding.signIn.getStarted")}</button>
+        <button type="button" onClick={onDemo} className="mt-2 h-9 w-full rounded-xl text-xs text-muted-foreground hover:bg-muted">{t("onboarding.signIn.demo")}</button>
+        <p className="mt-4 text-[11px] leading-4 text-muted-foreground">{t("onboarding.signIn.noAccounts")}</p>
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 "use client";
 
 import { matchesSearch } from "@/lib/i18n/core";
+import { useI18n } from "@/lib/i18n/context";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NODES, STAGES, type NodeStatus, type RoadmapNodeData, type RoadmapStage } from "@/data/computer-vision-roadmap";
 import type { RoadmapOrientation } from "@/lib/roadmap-layout";
@@ -16,10 +17,11 @@ interface RoadmapResponse {
 }
 
 export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: string) => void }) {
+  const { t, fmt } = useI18n();
   const [nodes, setNodes] = useState<RoadmapNodeData[]>(NODES);
   const [stages, setStages] = useState<RoadmapStage[]>(STAGES);
   const [version, setVersion] = useState<number | null>(null);
-  const [title, setTitle] = useState("Computer Vision Roadmap");
+  const [title, setTitle] = useState<string | null>(null);
   const studentId = getCurrentStudentId();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
   useEffect(() => {
     const load = () => api<RoadmapResponse>(`/api/students/${studentId}/roadmap`).then((response) => {
       setNodes(response.snapshot.nodes); setStages(response.snapshot.stages); setVersion(response.version); setTitle(response.snapshot.title); setLoadError(null);
-    }).catch((reason: unknown) => setLoadError(reason instanceof Error ? reason.message : "Could not load the persistent roadmap"));
+    }).catch((reason: unknown) => setLoadError(reason instanceof Error ? reason.message : ""));
     void load();
     // Accepting a proposal anywhere (Hermes Coach, onboarding) creates a new version.
     window.addEventListener(ROADMAP_CHANGED_EVENT, load);
@@ -71,9 +73,9 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
 
   return (
     <div className="flex h-[calc(100dvh-4rem)] min-h-0 flex-none flex-col overflow-hidden bg-background">
-      <RoadmapHeader title={title} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} view={view} onView={setView} onReset={reset} />
-      {version ? <div className="border-b border-border px-6 py-1.5 text-end text-[11px] text-muted-foreground">Personal roadmap · version {version}</div> : null}
-      {loadError ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">Backend unavailable: showing the bundled roadmap. {loadError}</div> : null}
+      <RoadmapHeader title={title ?? t("roadmap.defaultTitle")} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} view={view} onView={setView} onReset={reset} />
+      {version ? <div className="border-b border-border px-6 py-1.5 text-end text-[11px] text-muted-foreground">{t("roadmap.personalVersion", { version: fmt.number(version) })}</div> : null}
+      {loadError !== null ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">{t("roadmap.backendUnavailable", { error: loadError || t("roadmap.loadError") })}</div> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <RoadmapCanvas
           nodes={nodes}

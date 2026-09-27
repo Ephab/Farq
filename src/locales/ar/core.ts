@@ -4,6 +4,9 @@ import type { core as en } from "../en/core"
 export const core: CatalogShape<typeof en> = {
   common: {
     appName: "Waypoint",
+    introLoading: "جارٍ تحميل {name}",
+    introSkip: "انقر في أي مكان أو اضغط Esc للتخطي",
+    coachName: "المدرّب",
     loading: "جارٍ التحميل…",
     retry: "إعادة المحاولة",
     cancel: "إلغاء",
@@ -13,6 +16,24 @@ export const core: CatalogShape<typeof en> = {
     comingSoon: "هذا القسم قادم قريبًا، ويمكنك الآن زيارة خريطة التعلّم.",
     openRoadmap: "فتح خريطة التعلّم",
     networkError: "تعذّر الاتصال بـ Waypoint. تحقّق من اتصالك وحاول مرة أخرى.",
+    sourceKinds: {
+      transcript_pdf: "السجل الأكاديمي",
+      cv_pdf: "السيرة الذاتية",
+      linkedin_pdf: "ملف LinkedIn الشخصي",
+      linkedin_zip: "بيانات LinkedIn المصدَّرة",
+      github: "GitHub",
+      folder: "مجلد المشروع",
+      portfolio_url: "معرض الأعمال",
+      orcid: "ORCID",
+    },
+    errors: {
+      unauthorized: "انتهت صلاحية جلستك. أعد تحميل الصفحة للمتابعة.",
+      forbidden: "ليست لديك صلاحية للقيام بذلك.",
+      notFound: "لم نعثر على المطلوب، وربما تمت إزالته.",
+      timeout: "استغرق الخادم وقتًا طويلًا للرد. حاول مرة أخرى.",
+      server: "حدث خطأ في الخادم (رمز الخطأ {status}). حاول مرة أخرى بعد قليل.",
+      generic: "تعذّر إتمام الطلب (رمز الخطأ {status}).",
+    },
   },
   nav: {
     ariaLabel: "قائمة التنقّل في Waypoint",

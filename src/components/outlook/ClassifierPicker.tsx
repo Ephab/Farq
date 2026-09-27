@@ -1,12 +1,7 @@
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
 import type { DecisionEngine, EngineId } from "@/lib/outlook-api"
 
 import { InfoTip } from "./InfoTip"
-
-const DISCLOSURE: Record<EngineId, string> = {
-  jev: "Sends each new email's subject and cleaned text, after best-effort redaction, to TypeSafe. If Jev fails, Span-01 Lite is tried next, then Laya.",
-  span: "Sends each new email's subject and cleaned text, after best-effort redaction, to Respan through OpenRouter (free tier, not zero-retention). If it fails, Laya takes over.",
-  laya: "Runs on this computer. Email text never leaves it.",
-}
 
 interface ClassifierPickerProps {
   engines: DecisionEngine[]
@@ -17,9 +12,10 @@ interface ClassifierPickerProps {
 
 /** Email classifier choice. Picking a cloud engine is the student's consent to send mail text to it. */
 export function ClassifierPicker({ engines, selected, busy, onSelect }: ClassifierPickerProps) {
+  const { t } = useI18n()
   return (
     <fieldset className="text-sm">
-      <legend className="sr-only">Email classifier</legend>
+      <legend className="sr-only">{t("emails.classifier.legend")}</legend>
       <div role="radiogroup" className="mt-2 grid gap-2">
         {engines.map((engine) => {
           // Laya stays selectable when missing: choosing it withdraws cloud consent.
@@ -39,14 +35,14 @@ export function ClassifierPicker({ engines, selected, busy, onSelect }: Classifi
               />
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{engine.label}</span>
-                  <span className="text-[11px] text-muted-foreground">{engine.location === "local" ? "On this computer" : engine.provider}</span>
+                  <span className="font-medium"><bdi>{engine.label}</bdi></span>
+                  <span className="text-[11px] text-muted-foreground">{engine.location === "local" ? t("emails.classifier.onThisComputer") : <bdi>{engine.provider}</bdi>}</span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${engine.available ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
                   >
-                    {engine.available ? "Available" : "Not available"}
+                    {engine.available ? t("emails.classifier.available") : t("emails.classifier.notAvailable")}
                   </span>
-                  <InfoTip label={`About ${engine.label}`}>{engine.available ? DISCLOSURE[engine.id] : engine.reason}</InfoTip>
+                  <InfoTip label={t("emails.classifier.about", { name: engine.label })}>{engine.available ? t(`emails.classifier.disclosure.${engine.id}` as MessageKey) : <span dir="auto">{engine.reason}</span>}</InfoTip>
                 </span>
               </span>
             </label>

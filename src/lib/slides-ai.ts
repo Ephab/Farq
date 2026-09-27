@@ -1,3 +1,4 @@
+import type { slides as slidesCatalog } from "../locales/en/slides";
 import { API_BASE, HERMES_API_KEY_HEADER, getHermesApiKey } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
@@ -57,14 +58,27 @@ export interface SlidesProgress {
 
 export const MAX_SLIDES_SOURCE_CHARS = 12_000;
 
+/** Catalog key under `slides.errors.*` so the UI can translate library errors. */
+export type SlidesErrorKey = keyof typeof slidesCatalog.errors;
+
 export class SlidesAIError extends Error {
   status?: number;
   retryable?: boolean;
-  constructor(message: string, status?: number, retryable?: boolean) {
+  /** Translation key for the UI; absent when `message` is server-supplied text. */
+  key?: SlidesErrorKey;
+  params?: Record<string, string | number>;
+  constructor(
+    message: string,
+    status?: number,
+    retryable?: boolean,
+    i18n?: { key: SlidesErrorKey; params?: Record<string, string | number> },
+  ) {
     super(message);
     this.name = "SlidesAIError";
     this.status = status;
     this.retryable = retryable;
+    this.key = i18n?.key;
+    this.params = i18n?.params;
   }
 }
 
@@ -163,7 +177,7 @@ function sanitizeSlides(input: unknown[]): ExtendedSlide[] {
 
 function parseTopicsJson(raw: string): SuggestedTopic[] {
   const cleaned = stripFences(raw);
-  if (!cleaned) throw new SlidesAIError("Model returned an empty answer. Try a smaller deck.");
+  if (!cleaned) throw new SlidesAIError("Model returned an empty answer. Try a smaller deck.", undefined, undefined, { key: "emptyTopics" });
   try {
     const parsed = JSON.parse(cleaned) as { topics?: unknown };
     if (Array.isArray(parsed.topics)) {
@@ -196,12 +210,12 @@ function parseTopicsJson(raw: string): SuggestedTopic[] {
   }
   const salvaged = sanitizeTopics(singles);
   if (salvaged.length > 0) return salvaged;
-  throw new SlidesAIError(`Model returned non-JSON output. Received: ${outputSnippet(raw)}`);
+  throw new SlidesAIError(`Model returned non-JSON output. Received: ${outputSnippet(raw)}`, undefined, undefined, { key: "nonJson", params: { snippet: outputSnippet(raw) } });
 }
 
 function parseSlidesJson(raw: string): ExtendedSlide[] {
   const cleaned = stripFences(raw);
-  if (!cleaned) throw new SlidesAIError("Model returned an empty answer. Try again.");
+  if (!cleaned) throw new SlidesAIError("Model returned an empty answer. Try again.", undefined, undefined, { key: "emptySlides" });
   try {
     const parsed = JSON.parse(cleaned) as { slides?: unknown };
     if (Array.isArray(parsed.slides)) {
@@ -233,7 +247,7 @@ function parseSlidesJson(raw: string): ExtendedSlide[] {
   }
   const salvaged = sanitizeSlides(singles);
   if (salvaged.length > 0) return salvaged;
-  throw new SlidesAIError(`Model returned non-JSON output. Received: ${outputSnippet(raw)}`);
+  throw new SlidesAIError(`Model returned non-JSON output. Received: ${outputSnippet(raw)}`, undefined, undefined, { key: "nonJson", params: { snippet: outputSnippet(raw) } });
 }
 
 function requestFailed(status: number, detail: string, what: string): SlidesAIError {
@@ -242,11 +256,12 @@ function requestFailed(status: number, detail: string, what: string): SlidesAIEr
       "Hermes rejected the gateway key (401). Press Apply in footer Settings to save this tab's key to the server, or clear it to use the server key.",
       status,
       false,
+      { key: "unauthorized" },
     );
-  if (status === 422) return new SlidesAIError(detail || `Invalid ${what} request.`, status, false);
+  if (status === 422) return new SlidesAIError(detail || `Invalid ${what} request.`, status, false, detail ? undefined : { key: what === "suggestion" ? "invalidSuggestion" : "invalidExtension" });
   if (status === 502 || status === 503 || status === 504)
-    return new SlidesAIError(detail || "Hermes is unavailable or timed out. Transient, retry in a bit.", status, true);
-  return new SlidesAIError(detail || `${what} request failed (${status}).`, status);
+    return new SlidesAIError(detail || "Hermes is unavailable or timed out. Transient, retry in a bit.", status, true, detail ? undefined : { key: "unavailable" });
+  return new SlidesAIError(detail || `${what} request failed (${status}).`, status, undefined, detail ? undefined : { key: what === "suggestion" ? "suggestionStatus" : "extensionStatus", params: { status } });
 }
 
 function startTicker(total: number, onProgress?: (p: SlidesProgress) => void): () => void {
@@ -283,7 +298,7 @@ async function postSlides(
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     const detail = e instanceof Error ? e.message : "network error";
-    throw new SlidesAIError(`Couldn't reach the Waypoint backend (${detail}). Is the stack running?`);
+    throw new SlidesAIError(`Couldn't reach the Waypoint backend (${detail}). Is the stack running?`, undefined, undefined, { key: "unreachable", params: { detail } });
   }
   if (!res.ok) {
     let detail = "";
@@ -298,10 +313,10 @@ async function postSlides(
   try {
     payload = (await res.json()) as { output?: unknown; model?: unknown; provider?: unknown };
   } catch {
-    throw new SlidesAIError("Backend returned an unreadable answer. Retry.");
+    throw new SlidesAIError("Backend returned an unreadable answer. Retry.", undefined, undefined, { key: "unreadable" });
   }
   const output = payload.output;
-  if (typeof output !== "string" || !output.trim()) throw new SlidesAIError("Backend returned an empty answer. Retry.");
+  if (typeof output !== "string" || !output.trim()) throw new SlidesAIError("Backend returned an empty answer. Retry.", undefined, undefined, { key: "emptyBackend" });
   return {
     output,
     model: typeof payload.model === "string" ? payload.model : "",
@@ -318,7 +333,7 @@ export interface SuggestOptions {
 }
 
 export async function suggestTopics(sourceText: string, options: SuggestOptions = {}): Promise<SuggestedTopic[]> {
-  if (!sourceText.trim()) throw new SlidesAIError("No slide text to suggest from.");
+  if (!sourceText.trim()) throw new SlidesAIError("No slide text to suggest from.", undefined, undefined, { key: "noSuggestText" });
   const source = sourceText.length > MAX_SLIDES_SOURCE_CHARS ? sourceText.slice(0, MAX_SLIDES_SOURCE_CHARS) : sourceText;
   const stop = startTicker(options.count ?? 5, options.onProgress);
   try {
@@ -352,8 +367,8 @@ export async function extendSlides(
   topic: string,
   options: ExtendOptions = {},
 ): Promise<ExtendedSlide[]> {
-  if (!sourceText.trim()) throw new SlidesAIError("No slide text to extend from.");
-  if (!topic.trim()) throw new SlidesAIError("Pick or type a topic first.");
+  if (!sourceText.trim()) throw new SlidesAIError("No slide text to extend from.", undefined, undefined, { key: "noExtendText" });
+  if (!topic.trim()) throw new SlidesAIError("Pick or type a topic first.", undefined, undefined, { key: "noTopic" });
   const length: SlidesLength = options.length ?? "medium";
   const source = sourceText.length > MAX_SLIDES_SOURCE_CHARS ? sourceText.slice(0, MAX_SLIDES_SOURCE_CHARS) : sourceText;
   const stop = startTicker(5, options.onProgress);
@@ -415,7 +430,7 @@ export async function exportExtensionPptx(args: {
     });
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;
-    throw new SlidesAIError("Couldn't reach the Waypoint backend for export.");
+    throw new SlidesAIError("Couldn't reach the Waypoint backend for export.", undefined, undefined, { key: "exportUnreachable" });
   }
   if (!res.ok) {
     let detail = "";
@@ -424,7 +439,7 @@ export async function exportExtensionPptx(args: {
     } catch {
       // binary error unlikely
     }
-    throw new SlidesAIError(detail || `Export failed (${res.status}).`, res.status);
+    throw new SlidesAIError(detail || `Export failed (${res.status}).`, res.status, undefined, detail ? undefined : { key: "exportStatus", params: { status: res.status } });
   }
   return await res.blob();
 }
@@ -437,7 +452,7 @@ export function fileToBase64(file: File): Promise<string> {
       const comma = result.indexOf(",");
       resolve(comma >= 0 ? result.slice(comma + 1) : result);
     };
-    reader.onerror = () => reject(new Error(`Couldn't read “${file.name}” for export.`));
+    reader.onerror = () => reject(new SlidesAIError(`Couldn't read “${file.name}” for export.`, undefined, undefined, { key: "readForExport", params: { name: file.name } }));
     reader.readAsDataURL(file);
   });
 }

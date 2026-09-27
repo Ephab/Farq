@@ -4,33 +4,36 @@ import { ArrowUpRight } from "lucide-react"
 import { avatarColor, coverFor } from "@/lib/team-cover"
 import { dueLabel } from "@/lib/team-format"
 import type { TeamCard } from "@/lib/teams-api"
+import { useI18n } from "@/lib/i18n/context"
 
 function ProgressRing({ value }: { value: number }) {
+  const { t, fmt } = useI18n()
   const radius = 13
   const circumference = 2 * Math.PI * radius
   const clamped = Math.max(0, Math.min(100, value))
   return (
-    <svg className="tm-ring" width="38" height="38" viewBox="0 0 38 38" role="img" aria-label={`${clamped}% done`}>
+    <svg className="tm-ring" width="38" height="38" viewBox="0 0 38 38" role="img" aria-label={t("teams.cover.percentDone", { percent: fmt.percent(clamped / 100) })}>
       <circle cx="19" cy="19" r={radius} fill="none" stroke="var(--fq-surface-strong)" strokeWidth="4" />
       <circle
         cx="19" cy="19" r={radius} fill="none" stroke="var(--fq-accent)" strokeWidth="4" strokeLinecap="round"
         strokeDasharray={circumference} strokeDashoffset={circumference * (1 - clamped / 100)} transform="rotate(-90 19 19)"
       />
-      <text x="19" y="23" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--fq-text)">{clamped}%</text>
+      <text x="19" y="23" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--fq-text)">{fmt.percent(clamped / 100)}</text>
     </svg>
   )
 }
 
 export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void }) {
+  const { t, fmt } = useI18n()
   const cover = coverFor(card.cover_seed)
-  const due = dueLabel(card.assignment.deadline)
+  const due = dueLabel(card.assignment.deadline, t)
   const clamped = Math.max(0, Math.min(100, card.progress))
   return (
     <button
       type="button"
       className="tm-folder"
       onClick={onOpen}
-      aria-label={`Open team ${card.name}`}
+      aria-label={t("teams.cover.open", { name: card.name })}
     >
       <span
         className="tm-folder-cover"
@@ -38,27 +41,27 @@ export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void
       >
         <span className="tm-folder-toprow">
           <span className="tm-cover-chip">{card.course.code}{due ? ` · ${due}` : ""}</span>
-          {card.unread ? <span className="tm-cover-unread">{card.unread} new</span> : null}
+          {card.unread ? <span className="tm-cover-unread">{t("teams.cover.unread", { count: card.unread })}</span> : null}
         </span>
-        {card.risk ? <span className="tm-folder-risk" title={card.risk}>⚠ At risk</span> : null}
+        {card.risk ? <span className="tm-folder-risk" title={card.risk}>⚠ {t("teams.cover.atRisk")}</span> : null}
         <span className="tm-folder-info" aria-hidden="true">
-          <span className="tm-folder-info-title">{card.assignment.title}</span>
+          <span className="tm-folder-info-title" dir="auto">{card.assignment.title}</span>
           <span className="tm-folder-info-meta">
-            {due ?? "No due date"} · {card.members.length} member{card.members.length === 1 ? "" : "s"} · {clamped}%
+            {due ?? t("teams.cover.noDueDate")} · {t("teams.cover.members", { count: card.members.length })} · {fmt.percent(clamped / 100)}
           </span>
           <span className="tm-folder-info-bar"><i style={{ width: `${clamped}%` }} /></span>
-          {card.next_task ? <span className="tm-folder-info-next">Next: {card.next_task.title}</span> : null}
+          {card.next_task ? <span className="tm-folder-info-next" dir="auto">{t("teams.cover.next", { task: card.next_task.title })}</span> : null}
         </span>
       </span>
       <span className="tm-folder-body">
         <span className="tm-folder-tab" aria-hidden="true" />
-        <ArrowUpRight className="tm-folder-arrow" aria-hidden="true" />
+        <ArrowUpRight className="tm-folder-arrow rtl:-scale-x-100" aria-hidden="true" />
         <span className="tm-folder-title-row">
-          <span className="tm-folder-name">{card.name}</span>
+          <span className="tm-folder-name" dir="auto">{card.name}</span>
         </span>
-        <span className="tm-cover-sub tm-folder-sub">{card.assignment.title}</span>
+        <span className="tm-cover-sub tm-folder-sub" dir="auto">{card.assignment.title}</span>
         <span className="tm-folder-foot">
-          <span className="tm-cover-members" aria-label={`${card.members.length} members`}>
+          <span className="tm-cover-members" aria-label={t("teams.cover.members", { count: card.members.length })}>
             {card.members.slice(0, 6).map((id) => <span key={id} className="tm-cover-dot" style={{ background: avatarColor(id) }} />)}
           </span>
           <ProgressRing value={card.progress} />

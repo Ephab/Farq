@@ -34,6 +34,12 @@ interface I18nValue {
 
 const I18nContext = createContext<I18nValue | null>(null)
 
+// Non-React modules (e.g. the API client) translate through this; the provider keeps it current.
+let activeTranslate: I18nValue["t"] = createTranslator(readInitialLocale(), CATALOGS, reportMissing)
+export function translate(key: MessageKey, params?: Params): string {
+  return activeTranslate(key, params)
+}
+
 function readInitialLocale(): Locale {
   if (typeof window === "undefined") return "en"
   let saved: string | null = null
@@ -60,6 +66,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     t: createTranslator(locale, CATALOGS, reportMissing),
     fmt: createFormatters(locale),
   }), [locale, setLocale])
+  activeTranslate = value.t
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 }

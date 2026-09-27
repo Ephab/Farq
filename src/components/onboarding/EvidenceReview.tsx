@@ -3,17 +3,12 @@
 import { useEffect, useMemo, useState } from "react"
 import { LoaderCircle } from "lucide-react"
 import { api, type EvidenceItem, type StudentProfile } from "@/lib/waypoint-api"
+import { useI18n } from "@/lib/i18n/context"
 
-const GROUPS: { kind: string; label: string }[] = [
-  { kind: "education", label: "Education" },
-  { kind: "course", label: "Courses & grades" },
-  { kind: "project", label: "Projects" },
-  { kind: "experience", label: "Experience" },
-  { kind: "skill", label: "Skills" },
-  { kind: "certificate", label: "Certificates" },
-  { kind: "publication", label: "Publications" },
-  { kind: "activity", label: "Activities & honors" },
-]
+const GROUPS = ["education", "course", "project", "experience", "skill", "certificate", "publication", "activity"] as const
+
+/** Unicode first-strong isolate: keeps a file name or title from reordering the sentence around it. */
+const isolate = (text: string) => `⁨${text}⁩`
 
 function detail(item: EvidenceItem): string {
   const d = item.data
@@ -39,6 +34,7 @@ interface EvidenceReviewProps {
 
 /** The student's explicit review: ticked items become facts, unticked ones are dismissed. */
 export function EvidenceReview({ profile, onBack, onNext, onlyNew = false }: EvidenceReviewProps) {
+  const { t } = useI18n()
   const [items, setItems] = useState<EvidenceItem[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [titles, setTitles] = useState<Record<string, string>>({})
@@ -50,10 +46,10 @@ export function EvidenceReview({ profile, onBack, onNext, onlyNew = false }: Evi
       const next = onlyNew ? all.filter((item) => item.status === "suggested") : all
       setItems(next)
       setSelected(new Set(next.map((item) => item.id)))
-    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load evidence"))
+    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : t("onboarding.review.loadFailed")))
   }, [profile.student_id, onlyNew])
 
-  const grouped = useMemo(() => GROUPS.map((group) => ({ ...group, items: (items ?? []).filter((item) => item.kind === group.kind) })).filter((group) => group.items.length), [items])
+  const grouped = useMemo(() => GROUPS.map((kind) => ({ kind, items: (items ?? []).filter((item) => item.kind === kind) })).filter((group) => group.items.length), [items])
 
   const toggle = (id: string) => setSelected((current) => {
     const next = new Set(current)
@@ -73,7 +69,7 @@ export function EvidenceReview({ profile, onBack, onNext, onlyNew = false }: Evi
       })
       onNext(items.filter((item) => selected.has(item.id)).map((item) => titles[item.id]?.trim() || item.title))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save your review")
+      setError(reason instanceof Error ? reason.message : t("onboarding.review.saveFailed"))
       setBusy(false)
     }
   }
@@ -85,31 +81,31 @@ export function EvidenceReview({ profile, onBack, onNext, onlyNew = false }: Evi
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Review the new records.</h1>
-            <p className="mt-2 max-w-[62ch] text-[15px] text-muted-foreground">These suggestions can update future roadmap milestones. Your current work will not change.</p>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("onboarding.review.title")}</h1>
+            <p className="mt-2 max-w-[62ch] text-[15px] text-muted-foreground">{t("onboarding.review.subtitle")}</p>
           </div>
-          <span className="inline-flex min-h-7 items-center rounded-full bg-primary/10 px-2.5 text-xs font-semibold text-primary">{items.length} suggestion{items.length === 1 ? "" : "s"}</span>
+          <span className="inline-flex min-h-7 items-center rounded-full bg-primary/10 px-2.5 text-xs font-semibold text-primary">{t("onboarding.review.suggestions", { count: items.length })}</span>
         </div>
         {items.length === 0 ? (
-          <p className="mt-6 rounded-3xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">{onlyNew ? "No new items to review. Add a source first." : "Nothing to review. That's fine: Hermes will ask you a few more questions instead."}</p>
+          <p className="mt-6 rounded-3xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">{onlyNew ? t("onboarding.review.emptyNew") : t("onboarding.review.empty")}</p>
         ) : (
           <section className="mt-6 rounded-3xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <div className="grid gap-3">
               {grouped.map((group) => (
                 <section key={group.kind} className="overflow-hidden rounded-2xl border border-border bg-background">
                   <div className="flex min-h-[54px] items-center justify-between gap-3 px-4">
-                    <strong className="text-sm">{group.label}</strong>
-                    <span className="inline-flex min-h-7 items-center rounded-full bg-primary/10 px-2.5 text-xs font-semibold text-primary">{group.items.filter((item) => selected.has(item.id)).length} selected</span>
+                    <strong className="text-sm">{t(`onboarding.review.groups.${group.kind}`)}</strong>
+                    <span className="inline-flex min-h-7 items-center rounded-full bg-primary/10 px-2.5 text-xs font-semibold text-primary">{t("onboarding.review.selected", { count: group.items.filter((item) => selected.has(item.id)).length })}</span>
                   </div>
                   <ul className="divide-y divide-border border-t border-border">
                     {group.items.map((item) => (
                       <li key={item.id} className="px-4 py-3.5 transition-colors has-[:not(:checked)]:bg-muted/40">
                         <div className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-3">
-                          <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} aria-label={`Keep ${item.title}`} className="mt-1 size-[22px] accent-[var(--primary)]" />
+                          <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} aria-label={t("onboarding.review.keep", { title: isolate(item.title) })} className="mt-1 size-[22px] accent-[var(--primary)]" />
                           <div className="min-w-0">
-                            <input value={titles[item.id] ?? item.title} onChange={(event) => setTitles((current) => ({ ...current, [item.id]: event.target.value }))} aria-label="Name" className={`w-full bg-transparent text-sm font-medium outline-none focus:underline ${selected.has(item.id) ? "" : "text-muted-foreground line-through"}`} />
-                            {detail(item) ? <span className="mt-0.5 block text-xs text-muted-foreground">{detail(item)}</span> : null}
-                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">From {item.source_ref || "your sources"}</span>
+                            <input dir="auto" value={titles[item.id] ?? item.title} onChange={(event) => setTitles((current) => ({ ...current, [item.id]: event.target.value }))} aria-label={t("onboarding.review.name")} className={`w-full bg-transparent text-start text-sm font-medium outline-none focus:underline ${selected.has(item.id) ? "" : "text-muted-foreground line-through"}`} />
+                            {detail(item) ? <span dir="auto" className="mt-0.5 block text-start text-xs text-muted-foreground">{detail(item)}</span> : null}
+                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">{t("onboarding.review.from", { source: item.source_ref ? isolate(item.source_ref) : t("onboarding.review.yourSources") })}</span>
                           </div>
                         </div>
                       </li>
@@ -121,24 +117,24 @@ export function EvidenceReview({ profile, onBack, onNext, onlyNew = false }: Evi
                       const allOn = group.items.every((item) => next.has(item.id))
                       for (const item of group.items) { if (allOn) next.delete(item.id); else next.add(item.id) }
                       return next
-                    })}>{group.items.every((item) => selected.has(item.id)) ? "Untick all" : "Tick all"}</button>
+                    })}>{group.items.every((item) => selected.has(item.id)) ? t("onboarding.review.untickAll") : t("onboarding.review.tickAll")}</button>
                   </div>
                 </section>
               ))}
             </div>
-            <div className="sticky bottom-4 mt-5 flex flex-wrap items-center justify-between gap-3 rounded-full border border-border bg-background/90 py-2 pl-5 pr-2 shadow-lg backdrop-blur">
-              <p className="text-xs text-muted-foreground"><strong className="text-foreground">{selected.size} selected</strong><br />These facts remain editable later.</p>
+            <div className="sticky bottom-4 mt-5 flex flex-wrap items-center justify-between gap-3 rounded-full border border-border bg-background/90 py-2 ps-5 pe-2 shadow-lg backdrop-blur">
+              <p className="text-xs text-muted-foreground"><strong className="text-foreground">{t("onboarding.review.selected", { count: selected.size })}</strong><br />{t("onboarding.review.editableLater")}</p>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={onBack} className="inline-flex h-11 items-center rounded-full px-4 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">{onlyNew ? "Back" : "Add more"}</button>
-                <button type="button" disabled={busy} onClick={() => void confirm()} className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">{busy ? "Saving…" : items.length ? `Keep ${selected.size} and continue →` : "Continue"}</button>
+                <button type="button" onClick={onBack} className="inline-flex h-11 items-center rounded-full px-4 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">{onlyNew ? t("onboarding.back") : t("onboarding.review.addMore")}</button>
+                <button type="button" disabled={busy} onClick={() => void confirm()} className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">{busy ? t("onboarding.saving") : items.length ? t("onboarding.review.keepAndContinue", { count: selected.size }) : t("onboarding.continue")}</button>
               </div>
             </div>
           </section>
         )}
         {items.length === 0 ? (
           <div className="mt-6 flex flex-wrap gap-3">
-            <button type="button" onClick={onBack} className="inline-flex h-11 items-center rounded-full border border-border px-5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">{onlyNew ? "Back to sources" : "Add more sources"}</button>
-            <button type="button" disabled={busy} onClick={() => void confirm()} className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-40">{busy ? "Saving…" : "Continue"}</button>
+            <button type="button" onClick={onBack} className="inline-flex h-11 items-center rounded-full border border-border px-5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">{onlyNew ? t("onboarding.review.backToSources") : t("onboarding.review.addMoreSources")}</button>
+            <button type="button" disabled={busy} onClick={() => void confirm()} className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-40">{busy ? t("onboarding.saving") : t("onboarding.continue")}</button>
           </div>
         ) : null}
         {error ? <p className="mt-3 text-xs text-destructive">{error}</p> : null}

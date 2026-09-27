@@ -11,6 +11,7 @@ import type {
 } from "@/lib/pptx-design";
 import type { ViewerSlide } from "@/lib/deck-viewer";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 
 /** pt size → cqw so text scales with the slide frame at any size. */
 function cqw(pt: number, deckWidthPx: number): number {
@@ -95,7 +96,7 @@ function VectorShapes({
                 key={j}
                 style={{
                   textAlign: para.align,
-                  marginLeft: para.level > 0 ? `${para.level * 4}%` : undefined,
+                  marginInlineStart: para.level > 0 ? `${para.level * 4}%` : undefined,
                   fontFamily: "inherit",
                   lineHeight: 1.25,
                 }}
@@ -129,6 +130,7 @@ function AiKicker({ text, theme, deckWidthPx }: { text: string; theme: PptxTheme
 }
 
 function AiVisual({ idea, theme, deckWidthPx }: { idea: string; theme: PptxTheme; deckWidthPx: number }) {
+  const { t } = useI18n();
   return (
     <div
       className="absolute"
@@ -141,10 +143,10 @@ function AiVisual({ idea, theme, deckWidthPx }: { idea: string; theme: PptxTheme
           color: theme.accent,
           fontSize: `${cqw(10, deckWidthPx)}cqw`,
           letterSpacing: "0.12em",
-          marginRight: "0.8em",
+          marginInlineEnd: "0.8em",
         }}
       >
-        VISUAL
+        {t("slides.preview.visual")}
       </span>
       <span style={{ fontFamily: theme.bodyFont, color: theme.bodyColor, fontSize: `${cqw(12, deckWidthPx)}cqw`, lineHeight: 1.35 }}>
         {idea}
@@ -446,6 +448,7 @@ function SlideFrame({
   return (
     <div
       className="relative h-full w-full overflow-hidden"
+      dir="auto"
       style={{
         background: slide.background,
         containerType: "inline-size",
@@ -478,6 +481,7 @@ interface DeckPreviewProps {
 }
 
 export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initialIndex = 0 }: DeckPreviewProps) {
+  const { t, fmt, dir } = useI18n();
   const [index, setIndex] = useState(initialIndex);
   const stripRef = useRef<HTMLDivElement>(null);
 
@@ -505,15 +509,17 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-      if (e.key === "ArrowRight") go(index + 1);
-      else if (e.key === "ArrowLeft") go(index - 1);
+      // Arrow keys follow the reading direction: in RTL, ArrowLeft moves forward.
+      const step = dir === "rtl" ? -1 : 1;
+      if (e.key === "ArrowRight") go(index + step);
+      else if (e.key === "ArrowLeft") go(index - step);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, index]);
+  }, [go, index, dir]);
 
   if (!current) {
-    return <p className="text-sm text-muted-foreground">No slides to preview.</p>;
+    return <p className="text-sm text-muted-foreground">{t("slides.preview.empty")}</p>;
   }
 
   const dividerAt = slides.findIndex((s) => s.isNew);
@@ -528,38 +534,41 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
             <button
               type="button"
               onClick={() => go(index - 1)}
-              aria-label="Previous slide"
-              className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur transition-transform hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
+              aria-label={t("slides.preview.prev")}
+              className="absolute start-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur transition-transform hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
             >
-              <ChevronLeft className="size-5" aria-hidden="true" />
+              <ChevronLeft className="size-5 rtl:-scale-x-100" aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={() => go(index + 1)}
-              aria-label="Next slide"
-              className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur transition-transform hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
+              aria-label={t("slides.preview.next")}
+              className="absolute end-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white outline-none backdrop-blur transition-transform hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
             >
-              <ChevronRight className="size-5" aria-hidden="true" />
+              <ChevronRight className="size-5 rtl:-scale-x-100" aria-hidden="true" />
             </button>
           </>
         ) : null}
-        <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+        <div className="absolute bottom-2 end-2 flex items-center gap-1.5">
           {current.isNew ? (
-            <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground">AI</span>
+            <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground">{t("slides.preview.aiBadge")}</span>
           ) : null}
-          <span className="rounded-full bg-black/55 px-2.5 py-0.5 text-xs font-medium tabular-nums text-white">
-            {index + 1} / {total}
+          <span
+            className="rounded-full bg-black/55 px-2.5 py-0.5 text-xs font-medium tabular-nums text-white"
+            aria-label={t("slides.preview.positionAria", { index: fmt.number(index + 1), total: fmt.number(total) })}
+          >
+            {t("slides.preview.position", { index: fmt.number(index + 1), total: fmt.number(total) })}
           </span>
         </div>
       </div>
 
       {total > 1 ? (
-        <div ref={stripRef} className="mt-3 flex gap-2 overflow-x-auto pb-1" role="listbox" aria-label="Slide thumbnails">
+        <div ref={stripRef} className="mt-3 flex gap-2 overflow-x-auto pb-1" role="listbox" aria-label={t("slides.preview.thumbsAria")}>
           {slides.map((slide, i) => (
             <div key={slide.key} className="flex shrink-0 items-stretch gap-2">
               {i === dividerAt && dividerAt > 0 ? (
                 <div className="flex w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 px-1 text-center text-[10px] font-bold leading-tight text-primary">
-                  AI extension
+                  {t("slides.preview.aiDivider")}
                 </div>
               ) : null}
               <button
@@ -567,7 +576,7 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
                 role="option"
                 aria-selected={i === index}
                 data-thumb={i}
-                aria-label={`Show ${slide.label}`}
+                aria-label={t("slides.preview.showAria", { label: slide.label })}
                 onClick={() => setIndex(i)}
                 className={cn(
                   "relative w-28 shrink-0 overflow-hidden rounded-lg border-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",

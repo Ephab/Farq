@@ -1,5 +1,7 @@
 "use client"
 
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
+
 import { useState } from "react"
 import { ArrowDown, ArrowUp, Download, FileDown, FileText, Pencil, Plus, Printer, Trash2 } from "lucide-react"
 import { useTeamClient } from "@/components/teams/team-client-context"
@@ -12,6 +14,7 @@ type Run = (work: () => Promise<void>) => Promise<void>
 
 /** Document title, renamable inline by any member. */
 export function DocTitle({ doc, canEdit, run, update }: { doc: TeamDocumentInfo; canEdit: boolean; run: Run; update: StoreUpdate }) {
+  const { t } = useI18n()
   const teams = useTeamClient()
   const [draft, setDraft] = useState<string | null>(null)
   if (draft === null) {
@@ -19,7 +22,7 @@ export function DocTitle({ doc, canEdit, run, update }: { doc: TeamDocumentInfo;
       <div className="tm-doc-title">
         <h2 dir="auto">{doc.title}</h2>
         {canEdit ? (
-          <button type="button" className="tm-icon-btn" aria-label="Rename document" title="Rename document" onClick={() => setDraft(doc.title)}>
+          <button type="button" className="tm-icon-btn" aria-label={t("teams.docs.rename")} title={t("teams.docs.rename")} onClick={() => setDraft(doc.title)}>
             <Pencil className="size-3.5" aria-hidden="true" />
           </button>
         ) : null}
@@ -33,17 +36,17 @@ export function DocTitle({ doc, canEdit, run, update }: { doc: TeamDocumentInfo;
   })
   return (
     <form className="tm-doc-title" onSubmit={(event) => { event.preventDefault(); void save() }}>
-      <input className="tm-input" dir="auto" aria-label="Document title" value={draft} maxLength={160} autoFocus onChange={(event) => setDraft(event.target.value)} />
-      <button type="button" className="tm-btn tm-btn-sm" onClick={() => setDraft(null)}>Cancel</button>
-      <button type="submit" className="tm-btn tm-btn-sm tm-btn-primary" disabled={!draft.trim()}>Save</button>
+      <input className="tm-input" dir="auto" aria-label={t("teams.docs.docTitle")} value={draft} maxLength={160} autoFocus onChange={(event) => setDraft(event.target.value)} />
+      <button type="button" className="tm-btn tm-btn-sm" onClick={() => setDraft(null)}>{t("teams.common.cancel")}</button>
+      <button type="submit" className="tm-btn tm-btn-sm tm-btn-primary" disabled={!draft.trim()}>{t("teams.common.save")}</button>
     </form>
   )
 }
 
-const FORMATS: { format: ExportFormat | "pdf"; label: string; hint: string; Icon: typeof FileText }[] = [
-  { format: "docx", label: "Word", hint: ".docx, editable", Icon: FileText },
-  { format: "pdf", label: "PDF", hint: "opens the print dialog", Icon: Printer },
-  { format: "md", label: "Markdown", hint: ".md, plain text", Icon: FileDown },
+const FORMATS: { format: ExportFormat | "pdf"; label: MessageKey; hint: MessageKey; Icon: typeof FileText }[] = [
+  { format: "docx", label: "teams.docs.formats.docx.label", hint: "teams.docs.formats.docx.hint", Icon: FileText },
+  { format: "pdf", label: "teams.docs.formats.pdf.label", hint: "teams.docs.formats.pdf.hint", Icon: Printer },
+  { format: "md", label: "teams.docs.formats.md.label", hint: "teams.docs.formats.md.hint", Icon: FileDown },
 ]
 
 function saveBlob(blob: Blob, filename: string) {
@@ -57,6 +60,7 @@ function saveBlob(blob: Blob, filename: string) {
 
 /** Export with a cover page and contents, in the formal IEEE look or a modern one. */
 export function ExportMenu({ doc, teamName, run }: { doc: TeamDocumentInfo; teamName: string; run: Run }) {
+  const { t } = useI18n()
   const teams = useTeamClient()
   const [open, setOpen] = useState(false)
   const [style, setStyle] = useState<ExportStyle>("ieee")
@@ -72,23 +76,23 @@ export function ExportMenu({ doc, teamName, run }: { doc: TeamDocumentInfo; team
   return (
     <div className="tm-export">
       <button type="button" className="tm-btn" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <Download className="size-4" aria-hidden="true" /> Export
+        <Download className="size-4" aria-hidden="true" /> {t("teams.docs.export")}
       </button>
       {open ? (
-        <div className="tm-export-menu" role="dialog" aria-label="Export document">
-          <div className="tm-seg" role="radiogroup" aria-label="Style">
+        <div className="tm-export-menu" role="dialog" aria-label={t("teams.docs.exportLabel")}>
+          <div className="tm-seg" role="radiogroup" aria-label={t("teams.docs.style")}>
             {(["ieee", "modern"] as const).map((value) => (
               <button key={value} type="button" role="radio" aria-checked={style === value} onClick={() => setStyle(value)}>
-                {value === "ieee" ? "IEEE formal" : "Modern"}
+                {value === "ieee" ? t("teams.docs.ieee") : t("teams.docs.modern")}
               </button>
             ))}
           </div>
-          <p className="tm-muted">Includes a cover page (team, course, members, date) and a table of contents.</p>
+          <p className="tm-muted">{t("teams.docs.exportNote")}</p>
           {FORMATS.map(({ format, label, hint, Icon }) => (
             <button key={format} type="button" className="tm-export-option" onClick={() => void exportAs(format)}>
               <Icon className="size-4" aria-hidden="true" />
-              <span>{label}</span>
-              <small>{hint}</small>
+              <span>{t(label)}</span>
+              <small>{t(hint)}</small>
             </button>
           ))}
         </div>
@@ -110,6 +114,7 @@ type Mode = { kind: "idle" } | { kind: "rename" | "add"; key: string; title: str
 
 /** Reorder, renumber/rename, delete, or add a section after this one. */
 export function SectionTools({ doc, section, busy, run, update, onSelect }: SectionToolsProps) {
+  const { t } = useI18n()
   const teams = useTeamClient()
   const [mode, setMode] = useState<Mode>({ kind: "idle" })
   const index = doc.sections.findIndex((item) => item.id === section.id)
@@ -137,46 +142,46 @@ export function SectionTools({ doc, section, busy, run, update, onSelect }: Sect
   if (mode.kind === "delete") {
     return (
       <div className="tm-section-tools" role="alert">
-        <span>Delete {section.key} {section.title} and its text?</span>
-        <button type="button" className="tm-btn tm-btn-sm" onClick={() => setMode({ kind: "idle" })}>Keep</button>
-        <button type="button" className="tm-btn tm-btn-sm tm-btn-danger" disabled={busy} onClick={() => void remove()}>Delete</button>
+        <span>{t("teams.docs.deleteConfirm", { section: `${section.key} ${section.title}` })}</span>
+        <button type="button" className="tm-btn tm-btn-sm" onClick={() => setMode({ kind: "idle" })}>{t("teams.docs.keep")}</button>
+        <button type="button" className="tm-btn tm-btn-sm tm-btn-danger" disabled={busy} onClick={() => void remove()}>{t("teams.common.delete")}</button>
       </div>
     )
   }
   if (mode.kind === "rename" || mode.kind === "add") {
     return (
       <form className="tm-section-tools" onSubmit={(event) => { event.preventDefault(); void submit() }}>
-        <span>{mode.kind === "add" ? "New section after this one" : "Number and title"}</span>
-        <input className="tm-input tm-key-input" aria-label="Section number" value={mode.key} maxLength={16} onChange={(event) => setMode({ ...mode, key: event.target.value })} />
-        <input className="tm-input" dir="auto" aria-label="Section title" value={mode.title} maxLength={160} autoFocus onChange={(event) => setMode({ ...mode, title: event.target.value })} />
-        <button type="button" className="tm-btn tm-btn-sm" onClick={() => setMode({ kind: "idle" })}>Cancel</button>
+        <span>{mode.kind === "add" ? t("teams.docs.newSectionAfter") : t("teams.docs.numberAndTitle")}</span>
+        <input dir="ltr" className="tm-input tm-key-input" aria-label={t("teams.docs.sectionNumber")} value={mode.key} maxLength={16} onChange={(event) => setMode({ ...mode, key: event.target.value })} />
+        <input className="tm-input" dir="auto" aria-label={t("teams.docs.sectionTitle")} value={mode.title} maxLength={160} autoFocus onChange={(event) => setMode({ ...mode, title: event.target.value })} />
+        <button type="button" className="tm-btn tm-btn-sm" onClick={() => setMode({ kind: "idle" })}>{t("teams.common.cancel")}</button>
         <button type="submit" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy || !mode.key.trim() || !mode.title.trim()}>
-          {mode.kind === "add" ? "Add" : "Save"}
+          {mode.kind === "add" ? t("teams.docs.add") : t("teams.common.save")}
         </button>
       </form>
     )
   }
   return (
     <div className="tm-section-tools" data-idle="">
-      <button type="button" className="tm-icon-btn" aria-label="Move section up" title="Move up" disabled={busy || index <= 0} onClick={() => void move("up")}>
+      <button type="button" className="tm-icon-btn" aria-label={t("teams.docs.moveUp")} title={t("teams.docs.moveUpHint")} disabled={busy || index <= 0} onClick={() => void move("up")}>
         <ArrowUp className="size-4" aria-hidden="true" />
       </button>
-      <button type="button" className="tm-icon-btn" aria-label="Move section down" title="Move down" disabled={busy || index >= doc.sections.length - 1} onClick={() => void move("down")}>
+      <button type="button" className="tm-icon-btn" aria-label={t("teams.docs.moveDown")} title={t("teams.docs.moveDownHint")} disabled={busy || index >= doc.sections.length - 1} onClick={() => void move("down")}>
         <ArrowDown className="size-4" aria-hidden="true" />
       </button>
-      <button type="button" className="tm-icon-btn" aria-label="Rename section" title="Rename or renumber" onClick={() => setMode({ kind: "rename", key: section.key, title: section.title })}>
+      <button type="button" className="tm-icon-btn" aria-label={t("teams.docs.renameSection")} title={t("teams.docs.renameSectionHint")} onClick={() => setMode({ kind: "rename", key: section.key, title: section.title })}>
         <Pencil className="size-4" aria-hidden="true" />
       </button>
       <button
         type="button"
         className="tm-icon-btn"
-        aria-label="Add a section after this one"
-        title="Add section after"
+        aria-label={t("teams.docs.addAfter")}
+        title={t("teams.docs.addAfterHint")}
         onClick={() => setMode({ kind: "add", key: nextSectionKey(section.key, doc.sections.map((item) => item.key)), title: "" })}
       >
         <Plus className="size-4" aria-hidden="true" />
       </button>
-      <button type="button" className="tm-icon-btn" aria-label="Delete section" title="Delete section" disabled={busy || doc.sections.length <= 1} onClick={() => setMode({ kind: "delete" })}>
+      <button type="button" className="tm-icon-btn" aria-label={t("teams.docs.deleteSection")} title={t("teams.docs.deleteSection")} disabled={busy || doc.sections.length <= 1} onClick={() => setMode({ kind: "delete" })}>
         <Trash2 className="size-4" aria-hidden="true" />
       </button>
     </div>

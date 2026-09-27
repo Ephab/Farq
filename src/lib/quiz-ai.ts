@@ -64,15 +64,40 @@ export const QUIZ_MODELS = [...HERMES_GEMINI_MODELS, ...HERMES_NIM_MODELS, ...HE
 /** Max chars of slide text sent for generation — keeps it fast + cheap. */
 export const MAX_SOURCE_CHARS = 12_000;
 
+export type QuizAIErrorCode =
+  | "emptyOutput"
+  | "nonJson"
+  | "unauthorized"
+  | "invalidRequest"
+  | "unavailable"
+  | "requestFailed"
+  | "noSource"
+  | "noTypes"
+  | "unreachable"
+  | "unreadable"
+  | "empty"
+  | "noQuestions";
+
 export class QuizAIError extends Error {
   status?: number;
   /** True when retrying later (or with another model) may succeed. */
   retryable?: boolean;
-  constructor(message: string, status?: number, retryable?: boolean) {
+  /** UI message key (quiz.errors.ai.<code>) + params; absent when the message is server detail. */
+  code?: QuizAIErrorCode;
+  params?: Record<string, string | number>;
+  constructor(
+    message: string,
+    status?: number,
+    retryable?: boolean,
+    code?: QuizAIErrorCode,
+    params?: Record<string, string | number>,
+  ) {
     super(message);
     this.name = "QuizAIError";
     this.status = status;
     this.retryable = retryable;
+    this.code = code;
+    this.params = params;
   }
 }
 
@@ -95,6 +120,9 @@ function parseQuizJson(raw: string): QuizQuestion[] {
   if (!cleaned) {
     throw new QuizAIError(
       "Model returned an empty answer — it likely ran out of tokens. Try fewer questions or a smaller deck.",
+      undefined,
+      undefined,
+      "emptyOutput",
     );
   }
   // 1) Pristine JSON.
@@ -141,6 +169,10 @@ function parseQuizJson(raw: string): QuizQuestion[] {
   if (salvaged.length > 0) return salvaged;
   throw new QuizAIError(
     `Model returned non-JSON output. Received: ${outputSnippet(raw)}`,
+    undefined,
+    undefined,
+    "nonJson",
+    { snippet: outputSnippet(raw) },
   );
 }
 
@@ -240,15 +272,23 @@ function hermesRequestFailed(status: number, detail: string): QuizAIError {
       "Hermes rejected the gateway key (401). Press Apply in footer Settings to save this tab's key to the server, or clear it to use the server key.",
       status,
       false,
+      "unauthorized",
     );
-  if (status === 422) return new QuizAIError(detail || "Invalid quiz request.", status, false);
+  if (status === 422) return new QuizAIError(detail || "Invalid quiz request.", status, false, detail ? undefined : "invalidRequest");
   if (status === 502 || status === 503 || status === 504)
     return new QuizAIError(
       detail || "Hermes is unavailable or timed out — transient, retry in a bit.",
       status,
       true,
+      detail ? undefined : "unavailable",
     );
-  return new QuizAIError(detail || `Quiz request failed (${status}).`, status);
+  return new QuizAIError(
+    detail || `Quiz request failed (${status}).`,
+    status,
+    undefined,
+    detail ? undefined : "requestFailed",
+    { status },
+  );
 }
 
 /**
@@ -296,8 +336,8 @@ export async function generateQuiz(
   sourceText: string,
   options: QuizGenerationOptions,
 ): Promise<QuizGenerationResult> {
-  if (!sourceText.trim()) throw new QuizAIError("No slide text to generate from.");
-  if (options.types.length === 0) throw new QuizAIError("Select at least one question type.");
+  if (!sourceText.trim()) throw new QuizAIError("No slide text to generate from.", undefined, undefined, "noSource");
+  if (options.types.length === 0) throw new QuizAIError("Select at least one question type.", undefined, undefined, "noTypes");
 
   const source =
     sourceText.length > MAX_SOURCE_CHARS ? sourceText.slice(0, MAX_SOURCE_CHARS) : sourceText;
@@ -328,6 +368,10 @@ export async function generateQuiz(
     const detail = e instanceof Error ? e.message : "network error";
     throw new QuizAIError(
       `Couldn't reach the Waypoint backend (${detail}). Is the stack running (run.bat or run.sh)?`,
+      undefined,
+      undefined,
+      "unreachable",
+      { detail },
     );
   }
   if (!res.ok) {
@@ -345,12 +389,12 @@ export async function generateQuiz(
     payload = (await res.json()) as { output?: unknown; model?: unknown; provider?: unknown };
   } catch {
     stopTicker();
-    throw new QuizAIError("Backend returned an unreadable answer. Retry.");
+    throw new QuizAIError("Backend returned an unreadable answer. Retry.", undefined, undefined, "unreadable");
   }
   stopTicker();
   const output = payload.output;
   if (typeof output !== "string" || !output.trim()) {
-    throw new QuizAIError("Backend returned an empty answer. Retry.");
+    throw new QuizAIError("Backend returned an empty answer. Retry.", undefined, undefined, "empty");
   }
   options.onProgress?.({
     percent: 96,
@@ -360,7 +404,7 @@ export async function generateQuiz(
     totalQuestions: options.count,
   });
   const questions = parseQuizJson(output);
-  if (questions.length === 0) throw new QuizAIError("Model returned no valid questions. Retry.");
+  if (questions.length === 0) throw new QuizAIError("Model returned no valid questions. Retry.", undefined, undefined, "noQuestions");
   options.onProgress?.({
     percent: 100,
     stage: "done",

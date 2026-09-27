@@ -1,5 +1,7 @@
 "use client"
 
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
+
 import { useState } from "react"
 import { Check, Sparkles, ThumbsDown, ThumbsUp, X } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
@@ -9,13 +11,22 @@ import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { memberName, sectionById, upsertProposal, voteSummary, type TeamStore } from "@/lib/team-store"
 import { errorMessage, type SplitTaskPayload, type TeamProposal } from "@/lib/teams-api"
 
-const STATUS_LABEL: Record<TeamProposal["status"], string> = {
-  pending: "Waiting", applied: "Applied", rejected: "Rejected", stale: "Out of date", awaiting_lead: "Lead decides",
-}
 
 interface ProposalCardProps { proposal: TeamProposal; store: TeamStore; update: StoreUpdate }
 
+const FIELD_KEYS: Record<string, MessageKey> = {
+  title: "teams.proposal.fields.title",
+  description: "teams.proposal.fields.description",
+  assignee_id: "teams.proposal.fields.assignee_id",
+  estimate_points: "teams.proposal.fields.estimate_points",
+  due: "teams.proposal.fields.due",
+  status: "teams.proposal.fields.status",
+  milestone_id: "teams.proposal.fields.milestone_id",
+  depends_on: "teams.proposal.fields.depends_on",
+}
+
 export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
+  const { t } = useI18n()
   const teams = useTeamClient()
   const me = teams.userId
   const [busy, setBusy] = useState(false)
@@ -40,8 +51,8 @@ export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
   return (
     <div className="tm-proposal" data-status={proposal.status}>
       <header>
-        <span className="tm-chip tm-chip-accent"><Sparkles className="size-3" aria-hidden="true" /> Hermes proposal</span>
-        <span className="tm-chip">{STATUS_LABEL[proposal.status]}</span>
+        <span className="tm-chip tm-chip-accent"><Sparkles className="size-3" aria-hidden="true" /> {t("teams.proposal.badge")}</span>
+        <span className="tm-chip">{t(`teams.proposal.status.${proposal.status}`)}</span>
       </header>
       <strong dir="auto">{proposal.summary}</strong>
       <ProposalBody proposal={proposal} store={store} />
@@ -50,14 +61,14 @@ export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
         <div className="tm-vote">
           <div className="tm-bar"><i style={{ width: `${Math.min(100, (100 * votes.up) / votes.needed)}%` }} /></div>
           <div className="tm-proposal-actions">
-            <small className="tm-muted">{votes.up} of {votes.members} agree · applies at {votes.needed}</small>
+            <small className="tm-muted">{t("teams.proposal.agreeCount", { up: votes.up, members: votes.members, needed: votes.needed })}</small>
             {member ? (
               <>
                 <button type="button" className="tm-btn tm-btn-sm" aria-pressed={votes.mine === "down"} disabled={busy} onClick={() => void act(() => teams.vote(proposal.id, "down"))}>
-                  <ThumbsDown className="size-3.5" aria-hidden="true" /> No
+                  <ThumbsDown className="size-3.5" aria-hidden="true" /> {t("teams.proposal.no")}
                 </button>
                 <button type="button" className="tm-btn tm-btn-sm tm-btn-primary" aria-pressed={votes.mine === "up"} disabled={busy} onClick={() => void act(() => teams.vote(proposal.id, "up"))}>
-                  <ThumbsUp className="size-3.5" aria-hidden="true" /> Agree
+                  <ThumbsUp className="size-3.5" aria-hidden="true" /> {t("teams.proposal.agree")}
                 </button>
               </>
             ) : null}
@@ -67,19 +78,19 @@ export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
       {proposal.status === "pending" && proposal.scope === "personal" ? (
         me === proposal.affected_user_id ? (
           <div className="tm-proposal-actions">
-            <button type="button" className="tm-btn tm-btn-sm" disabled={busy} onClick={() => void act(() => teams.rejectProposal(proposal.id))}><X className="size-3.5" aria-hidden="true" /> Reject</button>
-            <button type="button" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy} onClick={() => void act(() => teams.acceptProposal(proposal.id))}><Check className="size-3.5" aria-hidden="true" /> Accept</button>
+            <button type="button" className="tm-btn tm-btn-sm" disabled={busy} onClick={() => void act(() => teams.rejectProposal(proposal.id))}><X className="size-3.5" aria-hidden="true" /> {t("teams.proposal.reject")}</button>
+            <button type="button" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy} onClick={() => void act(() => teams.acceptProposal(proposal.id))}><Check className="size-3.5" aria-hidden="true" /> {t("teams.proposal.accept")}</button>
           </div>
-        ) : <small className="tm-muted">Waiting for {memberName(store, proposal.affected_user_id)}</small>
+        ) : <small className="tm-muted">{t("teams.proposal.waitingFor", { name: memberName(store, proposal.affected_user_id) })}</small>
       ) : null}
       {proposal.status === "awaiting_lead" ? (
         me === store.team.lead_user_id ? (
           <div className="tm-proposal-actions">
-            <small className="tm-muted">The vote stalled for 48 hours. You decide as lead.</small>
-            <button type="button" className="tm-btn tm-btn-sm" disabled={busy} onClick={() => void act(() => teams.rejectProposal(proposal.id))}>Discard</button>
-            <button type="button" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy} onClick={() => void act(() => teams.acceptProposal(proposal.id))}>Apply</button>
+            <small className="tm-muted">{t("teams.proposal.stalledLead")}</small>
+            <button type="button" className="tm-btn tm-btn-sm" disabled={busy} onClick={() => void act(() => teams.rejectProposal(proposal.id))}>{t("teams.proposal.discard")}</button>
+            <button type="button" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy} onClick={() => void act(() => teams.acceptProposal(proposal.id))}>{t("teams.proposal.apply")}</button>
           </div>
-        ) : <small className="tm-muted">The vote stalled; waiting for the team lead.</small>
+        ) : <small className="tm-muted">{t("teams.proposal.stalledWaiting")}</small>
       ) : null}
       {error ? <p className="tm-banner">{error}</p> : null}
     </div>
@@ -87,6 +98,7 @@ export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
 }
 
 function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: TeamStore }) {
+  const { t } = useI18n()
   const payload = proposal.payload
   switch (proposal.kind) {
     case "task_split": {
@@ -97,7 +109,7 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
             <li key={`${task.title}-${index}`}>
               <Avatar userId={task.assignee_id} name={memberName(store, task.assignee_id)} size={22} />
               <div className="min-w-0">
-                <span dir="auto">{task.title}</span> <span className="tm-chip">{task.estimate_points} pt</span>
+                <span dir="auto">{task.title}</span> <span className="tm-chip">{t("teams.common.points", { count: task.estimate_points })}</span>
                 <small dir="auto">{task.rationale}</small>
               </div>
             </li>
@@ -109,7 +121,7 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
       const ids = (payload.task_ids ?? []) as string[]
       return (
         <ul className="tm-proposal-tasks">
-          {ids.map((id) => <li key={id} className="tm-change-remove" dir="auto">{store.tasks[id]?.title ?? "A task that no longer exists"}</li>)}
+          {ids.map((id) => <li key={id} className="tm-change-remove" dir="auto">{store.tasks[id]?.title ?? t("teams.proposal.missingTask")}</li>)}
           {payload.rationale ? <li><small dir="auto">{String(payload.rationale)}</small></li> : null}
         </ul>
       )
@@ -124,17 +136,17 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
             const task = store.tasks[change.task_id]
             const parts = [
               "assignee_id" in change ? `${memberName(store, task?.assignee_id ?? null)} \u2192 ${memberName(store, change.assignee_id ?? null)}` : null,
-              change.estimate_points !== undefined ? `${task?.estimate_points ?? "?"} \u2192 ${change.estimate_points} pt` : null,
-              change.title !== undefined ? `renamed to \u201c${change.title}\u201d` : null,
+              change.estimate_points !== undefined ? `${task?.estimate_points ?? "?"} → ${t("teams.common.points", { count: change.estimate_points })}` : null,
+              change.title !== undefined ? t("teams.proposal.renamedTo", { title: change.title }) : null,
             ].filter(Boolean)
-            return <li key={change.task_id} className="tm-change-move" dir="auto"><span>{task?.title ?? "A task"}</span> <small>{parts.join(" · ")}</small></li>
+            return <li key={change.task_id} className="tm-change-move" dir="auto"><span>{task?.title ?? t("teams.proposal.aTask")}</span> <small>{parts.join(" · ")}</small></li>
           })}
-          {deletes.map((id) => <li key={id} className="tm-change-remove" dir="auto">{store.tasks[id]?.title ?? "A task"}</li>)}
+          {deletes.map((id) => <li key={id} className="tm-change-remove" dir="auto">{store.tasks[id]?.title ?? t("teams.proposal.aTask")}</li>)}
           {adds.map((task, index) => (
             <li key={`add-${index}`} className="tm-change-add">
               <Avatar userId={task.assignee_id} name={memberName(store, task.assignee_id)} size={22} />
               <div className="min-w-0">
-                <span dir="auto">{task.title}</span> <span className="tm-chip">{task.estimate_points} pt</span>
+                <span dir="auto">{task.title}</span> <span className="tm-chip">{t("teams.common.points", { count: task.estimate_points })}</span>
                 <small dir="auto">{task.rationale}</small>
               </div>
             </li>
@@ -146,14 +158,20 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
     case "task_edit": {
       const task = store.tasks[String(payload.task_id)]
       const changes = (payload.changes ?? {}) as Record<string, unknown>
-      const described = Object.entries(changes).map(([field, value]) => `${field.replace("_id", "")}: ${field === "assignee_id" ? memberName(store, value as string | null) : String(value)}`)
-      return <p className="m-0" dir="auto">{task?.title ?? "A task"} → {described.join(" · ")}</p>
+      const described = Object.entries(changes).map(([field, value]) => {
+        const label = FIELD_KEYS[field] ? t(FIELD_KEYS[field]) : field
+        const display = field === "assignee_id" ? memberName(store, value as string | null)
+          : field === "status" && (value === "todo" || value === "doing" || value === "review" || value === "done")
+            ? t(`teams.status.${value}`) : String(value)
+        return `${label}: ${display}`
+      })
+      return <p className="m-0" dir="auto">{task?.title ?? t("teams.proposal.aTask")} → {described.join(" · ")}</p>
     }
     case "doc_section": {
       const section = sectionById(store, String(payload.section_id))
       return (
         <div className="tm-proposal-doc">
-          <small className="tm-muted">{section ? `${section.key} ${section.title}` : "Section"}</small>
+          <small className="tm-muted">{section ? `${section.key} ${section.title}` : t("teams.proposal.section")}</small>
           <div dir="auto"><MarkdownText text={String(payload.content_md ?? "").slice(0, 900)} /></div>
         </div>
       )
@@ -163,7 +181,7 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
     case "milestones":
       return <p className="m-0">{((payload.milestones ?? []) as { title: string }[]).map((item) => item.title).join(" · ")}</p>
     case "section_owners":
-      return <p className="m-0">{Object.keys((payload.owners ?? {}) as Record<string, string>).length} sections get owners</p>
+      return <p className="m-0">{t("teams.proposal.sectionOwners", { count: Object.keys((payload.owners ?? {}) as Record<string, string>).length })}</p>
     default:
       return null
   }

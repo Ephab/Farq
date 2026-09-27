@@ -1,5 +1,7 @@
 "use client"
 
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
+
 import { useEffect, useState } from "react"
 import { FileText, Lock, PencilLine, Sparkles } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
@@ -11,10 +13,10 @@ import { memberName, upsertDocument, upsertMessage, upsertSection, type TeamStor
 import { errorMessage, type DocSectionInfo, type DocumentKind } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
 
-const DOC_KINDS: { kind: DocumentKind; label: string; full: string }[] = [
-  { kind: "srs", label: "SRS", full: "Software Requirements Specification" },
-  { kind: "sds", label: "SDS", full: "Software Design Specification" },
-  { kind: "spmp", label: "SPMP", full: "Software Project Management Plan" },
+const DOC_KINDS: { kind: DocumentKind; label: string; full: MessageKey }[] = [
+  { kind: "srs", label: "SRS", full: "teams.docs.kinds.srs" },
+  { kind: "sds", label: "SDS", full: "teams.docs.kinds.sds" },
+  { kind: "spmp", label: "SPMP", full: "teams.docs.kinds.spmp" },
 ]
 
 function lockedByOther(section: DocSectionInfo, me: string): boolean {
@@ -26,6 +28,7 @@ function lockedByOther(section: DocSectionInfo, me: string): boolean {
 interface DocStudioProps { store: TeamStore; canEdit: boolean; update: StoreUpdate; onFocus: (focus: string | null) => void }
 
 export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
+  const { t } = useI18n()
   const teams = useTeamClient()
   const me = teams.userId
   const docs = Object.values(store.documents).sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -97,17 +100,17 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
   const expected = new Set(store.team.assignment.deliverables)
   const customForm = customTitle === null ? null : (
     <form className="tm-section-tools" onSubmit={(event) => { event.preventDefault(); void create("custom", customTitle.trim()) }}>
-      <span>New custom document</span>
-      <input className="tm-input" dir="auto" aria-label="Document title" placeholder="e.g. Test plan" value={customTitle} maxLength={160} autoFocus onChange={(event) => setCustomTitle(event.target.value)} />
-      <button type="button" className="tm-btn tm-btn-sm" onClick={() => setCustomTitle(null)}>Cancel</button>
-      <button type="submit" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy || !customTitle.trim()}>Create</button>
+      <span>{t("teams.docs.newCustom")}</span>
+      <input className="tm-input" dir="auto" aria-label={t("teams.docs.docTitle")} placeholder={t("teams.docs.docTitlePlaceholder")} value={customTitle} maxLength={160} autoFocus onChange={(event) => setCustomTitle(event.target.value)} />
+      <button type="button" className="tm-btn tm-btn-sm" onClick={() => setCustomTitle(null)}>{t("teams.common.cancel")}</button>
+      <button type="submit" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy || !customTitle.trim()}>{t("teams.common.create")}</button>
     </form>
   )
   if (!doc) {
     return (
       <div className="flex flex-col gap-4">
-        <h2 className="tm-h2" style={{ marginBottom: 0 }}>Documents</h2>
-        <p className="tm-muted">Start a deliverable. Each one gets the standard IEEE outline, and every section can have an owner.</p>
+        <h2 className="tm-h2" style={{ marginBottom: 0 }}>{t("teams.docs.title")}</h2>
+        <p className="tm-muted">{t("teams.docs.intro")}</p>
         {error ? <p className="tm-banner">{error}</p> : null}
         <div className="flex flex-wrap gap-2">
           {DOC_KINDS.map((item) => (
@@ -118,11 +121,11 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
               disabled={!canEdit || busy}
               onClick={() => void create(item.kind)}
             >
-              <FileText className="size-4" aria-hidden="true" /> {item.full}
+              <FileText className="size-4" aria-hidden="true" /> {t(item.full)}
             </button>
           ))}
           <button type="button" className="tm-btn" disabled={!canEdit || busy} onClick={() => setCustomTitle("")}>
-            <FileText className="size-4" aria-hidden="true" /> Custom document…
+            <FileText className="size-4" aria-hidden="true" /> {t("teams.docs.custom")}
           </button>
         </div>
         {customForm}
@@ -155,7 +158,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
           <select
             className="tm-select"
             style={{ width: "auto" }}
-            aria-label="New document"
+            aria-label={t("teams.docs.newDocument")}
             value=""
             disabled={busy}
             onChange={(event) => {
@@ -164,9 +167,9 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
               else if (kind) void create(kind)
             }}
           >
-            <option value="">+ New document</option>
-            {missing.map((item) => <option key={item.kind} value={item.kind}>{item.full}</option>)}
-            <option value="custom">Custom document…</option>
+            <option value="">{t("teams.docs.newDocumentOption")}</option>
+            {missing.map((item) => <option key={item.kind} value={item.kind}>{t(item.full)}</option>)}
+            <option value="custom">{t("teams.docs.custom")}</option>
           </select>
         ) : null}
         </div>
@@ -175,7 +178,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
       <DocTitle key={doc.id} doc={doc} canEdit={canEdit} run={run} update={update} />
       {error ? <p className="tm-banner">{error}</p> : null}
       <div className="tm-docs">
-        <nav className="tm-outline" aria-label={`${doc.title} outline`}>
+        <nav className="tm-outline" aria-label={t("teams.docs.outline", { title: doc.title })}>
           {doc.sections.map((item) => (
             <button
               key={item.id}
@@ -184,9 +187,9 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
               aria-current={item.id === section?.id}
               onClick={() => select(item.id)}
             >
-              <span className="tm-status" data-status={item.status} aria-label={item.status} role="img" />
-              <span className="min-w-0 flex-1 truncate">{item.key} {item.title}</span>
-              {lockedByOther(item, me) ? <Lock className="size-3" aria-label="Being edited" /> : null}
+              <span className="tm-status" data-status={item.status} aria-label={t(`teams.docs.sectionStatus.${item.status}`)} role="img" />
+              <span className="min-w-0 flex-1 truncate"><bdi>{item.key} {item.title}</bdi></span>
+              {lockedByOther(item, me) ? <Lock className="size-3" aria-label={t("teams.docs.beingEdited")} /> : null}
               {item.owner_user_id ? <Avatar userId={item.owner_user_id} name={memberName(store, item.owner_user_id)} size={18} /> : null}
             </button>
           ))}
@@ -194,33 +197,33 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
         {section ? (
           <section className="tm-section">
             <div className="tm-section-head">
-              <h3>{section.key} {section.title}</h3>
+              <h3 dir="auto">{section.key} {section.title}</h3>
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   className="tm-select"
                   style={{ width: "auto" }}
-                  aria-label="Section owner"
+                  aria-label={t("teams.docs.sectionOwner")}
                   value={section.owner_user_id ?? ""}
                   disabled={!canEdit || busy}
                   onChange={(event) => void setOwner(section, event.target.value)}
                 >
-                  <option value="">No owner</option>
+                  <option value="">{t("teams.docs.noOwner")}</option>
                   {store.team.members.map((member) => <option key={member.user_id} value={member.user_id}>{member.display_name}</option>)}
                 </select>
                 {canEdit && editing ? (
                   <>
-                    <button type="button" className="tm-btn" onClick={() => setEditing(false)}>Cancel</button>
-                    <button type="button" className="tm-btn tm-btn-primary" disabled={busy} onClick={() => void save(section)}>Save</button>
+                    <button type="button" className="tm-btn" onClick={() => setEditing(false)}>{t("teams.common.cancel")}</button>
+                    <button type="button" className="tm-btn tm-btn-primary" disabled={busy} onClick={() => void save(section)}>{t("teams.common.save")}</button>
                   </>
                 ) : null}
                 {canEdit && !editing ? (
                   <button type="button" className="tm-btn" disabled={busy || blocked || Boolean(pendingDraft)} onClick={() => void draft(section)}>
-                    <Sparkles className="size-4" aria-hidden="true" /> Draft this
+                    <Sparkles className="size-4" aria-hidden="true" /> {t("teams.docs.draftThis")}
                   </button>
                 ) : null}
                 {canEdit && !editing ? (
                   <button type="button" className="tm-btn" disabled={busy || blocked} onClick={() => void startEdit(section)}>
-                    <PencilLine className="size-4" aria-hidden="true" /> Edit
+                    <PencilLine className="size-4" aria-hidden="true" /> {t("teams.common.edit")}
                   </button>
                 ) : null}
               </div>
@@ -229,14 +232,14 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
               <SectionTools key={section.id} doc={doc} section={section} busy={busy || blocked} run={run} update={update} onSelect={setSectionId} />
             ) : null}
             {blocked ? (
-              <p className="tm-muted"><Lock className="mr-1 inline size-3.5" aria-hidden="true" />{memberName(store, section.lock_user_id)} is editing this section.</p>
+              <p className="tm-muted"><Lock className="me-1 inline size-3.5" aria-hidden="true" />{t("teams.docs.isEditing", { name: memberName(store, section.lock_user_id) })}</p>
             ) : null}
             {pendingDraft ? <ProposalCard proposal={pendingDraft} store={store} update={update} /> : null}
             {editing ? (
               <textarea className="tm-textarea" style={{ minHeight: 320 }} dir="auto" autoFocus value={text} onChange={(event) => setText(event.target.value)} />
             ) : (
               <div className="tm-section-body" dir="auto">
-                {section.content_md.trim() ? <MarkdownText text={section.content_md} /> : <p className="tm-muted">Nobody has written this section yet.</p>}
+                {section.content_md.trim() ? <MarkdownText text={section.content_md} /> : <p className="tm-muted">{t("teams.docs.emptySection")}</p>}
               </div>
             )}
           </section>

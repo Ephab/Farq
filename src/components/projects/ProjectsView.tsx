@@ -13,6 +13,7 @@ import {
   type WaypointProject,
 } from "@/lib/waypoint-api"
 import { cn } from "@/lib/utils"
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
 
 interface RoadmapResponse {
   version: number
@@ -26,20 +27,21 @@ interface ProjectsViewProps {
   onAskHermes?: (prompt: string) => void
 }
 
-function statusLabel(status: NodeStatus): string {
-  if (status === "done") return "Done"
-  if (status === "in-progress") return "In progress"
-  return "Up next"
+function statusLabel(status: NodeStatus): MessageKey {
+  if (status === "done") return "dashboard.projects.status.done"
+  if (status === "in-progress") return "dashboard.projects.status.inProgress"
+  return "dashboard.projects.status.upNext"
 }
 
-function nextAction(status: NodeStatus): { label: string; next: NodeStatus } {
-  if (status === "in-progress") return { label: "Mark done", next: "done" }
-  if (status === "done") return { label: "Revisit", next: "in-progress" }
-  return { label: "Start", next: "in-progress" }
+function nextAction(status: NodeStatus): { label: MessageKey; next: NodeStatus } {
+  if (status === "in-progress") return { label: "dashboard.projects.action.markDone", next: "done" }
+  if (status === "done") return { label: "dashboard.projects.action.revisit", next: "in-progress" }
+  return { label: "dashboard.projects.action.start", next: "in-progress" }
 }
 
 export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectProject = () => undefined, onAskHermes = () => undefined }: ProjectsViewProps) {
   const studentId = getCurrentStudentId()
+  const { t, fmt } = useI18n()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nodes, setNodes] = useState<RoadmapNodeData[]>([])
@@ -61,11 +63,11 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
       setEvidence(items)
       setProjects(projectItems)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not load projects")
+      setError(reason instanceof Error ? reason.message : t("dashboard.projects.loadError"))
     } finally {
       setLoading(false)
     }
-  }, [studentId])
+  }, [studentId, t])
 
   useEffect(() => {
     void load()
@@ -105,12 +107,12 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
         setNodes((previous) => previous.map((node) => (node.id === id ? { ...node, status } : node)))
         notifyRoadmapChanged()
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Could not update that milestone")
+        setError(reason instanceof Error ? reason.message : t("dashboard.projects.updateError"))
       } finally {
         setSavingId(null)
       }
     },
-    [studentId],
+    [studentId, t],
   )
 
   if (selectedProject) {
@@ -119,7 +121,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
 
   if (loading) {
     return (
-      <div className="mx-auto grid w-full max-w-6xl gap-5 p-4 sm:p-8" aria-label="Loading Projects">
+      <div className="mx-auto grid w-full max-w-6xl gap-5 p-4 sm:p-8" aria-label={t("dashboard.projects.loadingLabel")}>
         <div className="h-24 animate-pulse rounded-2xl bg-muted" />
         <div className="h-64 animate-pulse rounded-2xl bg-muted" />
       </div>
@@ -130,7 +132,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
     return (
       <div className="mx-auto grid w-full max-w-6xl place-items-center p-8">
         <div className="text-center">
-          <p className="text-sm font-semibold">Projects could not load</p>
+          <p className="text-sm font-semibold">{t("dashboard.projects.couldNotLoad")}</p>
           <p className="mt-1 text-[13px] text-muted-foreground">{error}</p>
           <button
             type="button"
@@ -140,7 +142,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
             }}
             className="mt-3 h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Try again
+            {t("dashboard.projects.tryAgain")}
           </button>
         </div>
       </div>
@@ -150,13 +152,13 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
   return (
     <div className="mx-auto w-full max-w-6xl p-4 sm:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Projects make progress visible.</h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("dashboard.projects.title")}</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
           {projectNodes.length > 0
-            ? `${projectNodes.length} project ${projectNodes.length === 1 ? "milestone" : "milestones"} in your roadmap · ${doneCount} done`
-            : "No project milestones in your roadmap yet"}
+            ? t("dashboard.projects.milestones", { count: projectNodes.length, done: doneCount })
+            : t("dashboard.projects.noMilestonesYetLine")}
           {projectRecords.length > 0
-            ? ` · ${projectRecords.length} project ${projectRecords.length === 1 ? "record" : "records"} confirmed`
+            ? t("dashboard.projects.recordsConfirmed", { count: projectRecords.length })
             : ""}
         </p>
       </div>
@@ -185,28 +187,35 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
                       status === "not-started" && "bg-muted text-muted-foreground",
                     )}
                   >
-                    {statusLabel(status)}
+                    {t(statusLabel(status))}
                   </span>
-                  <span className="text-xs text-muted-foreground">{node.duration}</span>
+                  <bdi className="text-xs text-muted-foreground">{node.duration}</bdi>
                 </div>
-                {project?.latest_score !== null && project?.latest_score !== undefined ? <p className="mt-3 text-3xl font-semibold tabular-nums">{project.latest_score}% <span className="text-xs font-medium text-muted-foreground">latest evaluation</span></p> : null}
-                <h2 className="mt-3 text-xl font-semibold">{node.title}</h2>
+                {project?.latest_score !== null && project?.latest_score !== undefined ? <p className="mt-3 text-3xl font-semibold tabular-nums">{fmt.percent(project.latest_score / 100)} <span className="text-xs font-medium text-muted-foreground">{t("dashboard.projects.latestEvaluation")}</span></p> : null}
+                <h2 dir="auto" className="mt-3 text-start text-xl font-semibold">{node.title}</h2>
                 {node.tagline || node.description ? (
-                  <p className="mt-1.5 text-sm text-muted-foreground">
+                  <p dir="auto" className="mt-1.5 text-start text-sm text-muted-foreground">
                     {node.tagline || node.description}
                   </p>
                 ) : null}
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {stage ? stage.title : ""}
-                  {node.nodeType === "opportunity" ? " · Opportunity" : " · Project"}
+                  {stage ? <bdi>{stage.title}</bdi> : ""}
+                  {node.nodeType === "opportunity" ? t("dashboard.projects.kind.opportunity") : t("dashboard.projects.kind.project")}
                 </p>
                 {node.rationale ? (
-                  <p className="mt-2 text-[13px] text-muted-foreground">Why: {node.rationale}</p>
+                  <p className="mt-2 text-[13px] text-muted-foreground">
+                    {t("dashboard.projects.why", { reason: "\u2068" + node.rationale + "\u2069" })}
+                  </p>
                 ) : null}
                 {node.nodeType === "opportunity" && node.opportunity ? (
                   <div className="mt-2 text-[13px] text-muted-foreground">
                     {node.opportunity.source_date ? (
-                      <p>Date shown by {node.opportunity.source === "hackathonat" ? "Hackathonat" : node.opportunity.source}: {node.opportunity.source_date}</p>
+                      <p>
+                        {t("dashboard.projects.dateShownBy", {
+                          source: "\u2068" + (node.opportunity.source === "hackathonat" ? "Hackathonat" : node.opportunity.source) + "\u2069",
+                          date: "\u2068" + node.opportunity.source_date + "\u2069",
+                        })}
+                      </p>
                     ) : null}
                     <div className="mt-2 flex flex-wrap gap-2">
                       {node.opportunity.detail_url ? (
@@ -216,7 +225,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
                           rel="noreferrer"
                           className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border px-3.5 text-[13px] font-semibold text-primary outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          Details <ExternalLink aria-hidden="true" className="size-3.5" />
+                          {t("dashboard.projects.details")} <ExternalLink aria-hidden="true" className="size-3.5" />
                         </a>
                       ) : null}
                       {node.opportunity.registration_url ? (
@@ -226,7 +235,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
                           rel="noreferrer"
                           className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border px-3.5 text-[13px] font-semibold text-primary outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          Register <ExternalLink aria-hidden="true" className="size-3.5" />
+                          {t("dashboard.projects.register")} <ExternalLink aria-hidden="true" className="size-3.5" />
                         </a>
                       ) : null}
                     </div>
@@ -242,27 +251,27 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
                         rel="noreferrer"
                         className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border px-3.5 text-[13px] font-semibold text-primary outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        {resource.label} <ExternalLink aria-hidden="true" className="size-3.5" />
+                        <bdi>{resource.label}</bdi> <ExternalLink aria-hidden="true" className="size-3.5" />
                       </a>
                     ))}
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
-                  {node.nodeType === "project" && project ? <button type="button" onClick={() => onSelectProject(project.id)} className="inline-flex h-9 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">Open workspace</button> : null}
+                  {node.nodeType === "project" && project ? <button type="button" onClick={() => onSelectProject(project.id)} className="inline-flex h-9 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("dashboard.projects.openWorkspace")}</button> : null}
                   <button
                     type="button"
                     disabled={savingId === node.id}
                     onClick={() => void setNodeStatus(node.id, action.next)}
                     className="inline-flex h-9 items-center rounded-xl border border-border px-4 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
-                    {savingId === node.id ? "Saving…" : action.label}
+                    {savingId === node.id ? t("dashboard.projects.saving") : t(action.label)}
                   </button>
                   <button
                     type="button"
                     onClick={() => onNavigate("Roadmap")}
                     className="inline-flex h-9 items-center rounded-xl border border-border px-4 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Open in roadmap
+                    {t("dashboard.projects.openInRoadmap")}
                   </button>
                 </div>
               </article>
@@ -270,26 +279,23 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
           })}
         </div>
       ) : (
-        <section className="rounded-2xl border border-border p-6 shadow-sm" aria-label="No project milestones">
-          <h2 className="text-xl font-semibold">No project milestones yet</h2>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-            Project work appears here when your roadmap includes project milestones. Ask Hermes Coach to add
-            one, or confirm project evidence in My data so future drafts include it.
-          </p>
+        <section className="rounded-2xl border border-border p-6 shadow-sm" aria-label={t("dashboard.projects.empty.label")}>
+          <h2 className="text-xl font-semibold">{t("dashboard.projects.empty.title")}</h2>
+          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{t("dashboard.projects.empty.body")}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => onNavigate("Hermes Coach")}
               className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Ask Hermes Coach <ArrowRight aria-hidden="true" className="size-4" />
+              {t("dashboard.projects.empty.askCoach")} <ArrowRight aria-hidden="true" className="size-4 rtl:-scale-x-100" />
             </button>
             <button
               type="button"
               onClick={() => onNavigate("My data")}
               className="inline-flex h-9 items-center rounded-xl border border-border px-4 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Open My data
+              {t("dashboard.projects.empty.openMyData")}
             </button>
           </div>
         </section>
@@ -297,17 +303,17 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
 
       {projectRecords.length > 0 ? (
         <section aria-labelledby="projects-records" className="mt-5 rounded-2xl border border-border p-6 shadow-sm">
-          <h2 id="projects-records" className="text-xl font-semibold">Project records</h2>
+          <h2 id="projects-records" className="text-xl font-semibold">{t("dashboard.projects.records.title")}</h2>
           <p className="text-[13px] text-muted-foreground">
-            {projectRecords.length} confirmed from your sources
+            {t("dashboard.projects.records.confirmed", { count: projectRecords.length })}
           </p>
           <ul className="mt-3 divide-y divide-border border-t border-border">
             {projectRecords.map((item) => (
               <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
                 <span className="min-w-0">
-                  <strong className="block truncate text-sm">{item.title}</strong>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {item.source_ref || "Confirmed evidence"}
+                  <bdi className="block truncate text-start text-sm font-bold">{item.title}</bdi>
+                  <span dir={item.source_ref ? "auto" : undefined} className="block truncate text-start text-xs text-muted-foreground">
+                    {item.source_ref || t("dashboard.projects.records.fallback")}
                   </span>
                 </span>
                 <button
@@ -315,7 +321,7 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
                   onClick={() => onNavigate("My data")}
                   className="shrink-0 text-sm font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  View
+                  {t("dashboard.projects.records.view")}
                 </button>
               </li>
             ))}

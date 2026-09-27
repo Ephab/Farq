@@ -70,3 +70,40 @@ describe("search matching", () => {
     expect(stored).toBe("مَدْرَسَة إدارة الأعمال")
   })
 })
+
+describe("catalog quality", () => {
+  // Catches English pasted into the Arabic catalog; brand names and codes (no spaces) are allowed.
+  it("has Arabic text wherever English has a sentence", () => {
+    const leaks: string[] = []
+    const walk = (e: Catalog, a: Catalog, path: string) => {
+      for (const [k, v] of Object.entries(e)) {
+        const other = a[k]
+        const here = `${path}${k}`
+        if (typeof v === "string" || "other" in v) {
+          const values = typeof other === "string" ? [other] : Object.values(other as Record<string, string>)
+          const words = (typeof v === "string" ? v : (v as { other: string }).other).replace(/\{\w+\}/g, "").match(/\b[a-z]{2,}\b/g) ?? []
+          if (words.length >= 2 && values.some((text) => !/[؀-ۿ]/.test(text))) leaks.push(here)
+        } else walk(v as Catalog, other as Catalog, `${here}.`)
+      }
+    }
+    walk(en as unknown as Catalog, ar as unknown as Catalog, "")
+    expect(leaks).toEqual([])
+  })
+
+  it("keeps the same {placeholders} in every translation", () => {
+    const bad: string[] = []
+    const names = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((n) => n !== "count").sort().join()
+    const walk = (e: Catalog, a: Catalog, path: string) => {
+      for (const [k, v] of Object.entries(e)) {
+        const other = a[k]
+        if (typeof v === "string" || "other" in v) {
+          const want = names(typeof v === "string" ? v : (v as { other: string }).other)
+          const values = typeof other === "string" ? [other] : Object.values(other as Record<string, string>)
+          if (values.some((text) => names(text) !== want)) bad.push(`${path}${k}`)
+        } else walk(v as Catalog, other as Catalog, `${path}${k}.`)
+      }
+    }
+    walk(en as unknown as Catalog, ar as unknown as Catalog, "")
+    expect(bad).toEqual([])
+  })
+})

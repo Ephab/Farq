@@ -2,6 +2,7 @@
 
 import { motion } from "motion/react"
 import { EASE_OUT } from "@/lib/ease"
+import { useI18n } from "@/lib/i18n/context"
 
 export type PortalPhase = "loading" | "leave"
 
@@ -28,16 +29,19 @@ const VEIL_DURATION = 0.65
 const VEIL_LIFT = -32
 
 /** Full-bleed theme-aware loading stage that dissolves into the page. */
-export function CoachPortalIntro({ phase, onSkip, speed = 1, word = "Coach", tone = "standard" }: CoachPortalIntroProps) {
+export function CoachPortalIntro({ phase, onSkip, speed = 1, word, tone = "standard" }: CoachPortalIntroProps) {
+  const { t, dir } = useI18n()
+  const title = word ?? t("common.coachName")
   const leaving = phase === "leave"
   const gentle = tone === "gentle"
   const d = (seconds: number) => seconds / speed
-  const letters = word.split("")
+  // Keep connected Arabic letters together during the reveal animation.
+  const letters = dir === "rtl" ? [title] : Array.from(title)
   return (
     <motion.div
       role="status"
       aria-live="polite"
-      aria-label={`Loading ${word}`}
+      aria-label={t("common.introLoading", { name: title })}
       onClick={onSkip}
       initial={{ opacity: 1, y: 0 }}
       animate={leaving ? { opacity: 0, y: gentle ? -12 : VEIL_LIFT } : { opacity: 1, y: 0 }}
@@ -107,7 +111,7 @@ export function CoachPortalIntro({ phase, onSkip, speed = 1, word = "Coach", ton
         transition={{ duration: d(0.25), ease: EASE_OUT }}
         className="absolute bottom-6 text-[11px] font-medium text-muted-foreground"
       >
-        Click anywhere or press Esc to skip
+        {t("common.introSkip")}
       </motion.p>
     </motion.div>
   )

@@ -7,6 +7,7 @@
 import type { ExtractedSource } from "./quiz-extract";
 import type { QuizQuestion } from "./quiz-ai";
 import type { ExtendedSlide } from "./slides-ai";
+import type { Translate } from "./team-format";
 
 export interface SlideDeck {
   id: string;
@@ -112,20 +113,11 @@ export function sortDecks(decks: SlideDeck[], sort: DeckSort): SlideDeck[] {
   return copy;
 }
 
-export function formatDeckDate(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  if (sameDay) return `Today, ${time}`;
-  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
-}
-
 /** Short display label for a set of decks: "a.pdf" or "a.pdf + 2 more". */
-export function decksLabel(decks: SlideDeck[]): string {
+export function decksLabel(decks: SlideDeck[], t: Translate): string {
   if (decks.length === 0) return "";
   if (decks.length === 1) return decks[0].fileName;
-  return `${decks[0].fileName} + ${decks.length - 1} more`;
+  return t("quiz.deckLabel", { name: decks[0].fileName, count: decks.length - 1 });
 }
 
 /** Join deck texts with file headers so the model can cite sources. */

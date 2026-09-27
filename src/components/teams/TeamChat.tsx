@@ -1,5 +1,7 @@
 "use client"
 
+import { useI18n } from "@/lib/i18n/context"
+
 import { matchesSearch } from "@/lib/i18n/core"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ArrowUp, BarChart3, CornerUpLeft, Flag, ListPlus, Pencil, Pin, Search, Sparkles, Trash2, X } from "lucide-react"
@@ -25,6 +27,7 @@ interface TeamChatProps {
 }
 
 export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }: TeamChatProps) {
+  const { t, fmt } = useI18n()
   const teams = useTeamClient()
   const me = teams.userId
   const teamId = store.team.id
@@ -54,8 +57,8 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
     { id: "hermes", name: "Hermes", hermes: true },
   ].filter((option) => option.name.toLowerCase().startsWith(mention.toLowerCase()))
   const commandOptions = slash === null ? [] : [
-    { cmd: "/poll", hint: "Question | Option A | Option B", hermes: false },
-    ...HERMES_COMMANDS.map((command) => ({ cmd: command.cmd as string, hint: command.hint as string, hermes: true })),
+    { cmd: "/poll", hint: t("teams.chat.pollHint"), hermes: false },
+    ...HERMES_COMMANDS.map((command) => ({ cmd: command.cmd as string, hint: t(`teams.chat.commandHints.${command.hint}`), hermes: true })),
   ].filter((option) => option.cmd.slice(1).startsWith(slash.toLowerCase()))
 
   // Follow new messages only while the reader is at the bottom (true on first load),
@@ -121,7 +124,7 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
         setEditing(null)
       } else {
         const poll = parsePoll(text)
-        if (text.startsWith("/poll") && !poll) throw new Error("Write a poll as /poll Question | Option A | Option B")
+        if (text.startsWith("/poll") && !poll) throw new Error(t("teams.errors.pollFormat"))
         const message = await teams.postMessage(teamId, poll
           ? { content: poll.question, poll_options: poll.options }
           : { content: text, reply_to_id: replyTo?.id ?? null })
@@ -167,20 +170,20 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
   }
 
   return (
-    <aside className="tm-panel tm-dock" aria-label="Team chat">
+    <aside className="tm-panel tm-dock" aria-label={t("teams.chat.title")}>
       <header className="tm-chat-head">
         <div>
-          <strong>Team chat</strong>
-          <small className="block text-[11px] text-[var(--fq-muted)]">Private to your team · @Hermes or / for commands</small>
+          <strong>{t("teams.chat.title")}</strong>
+          <small className="block text-[11px] text-[var(--fq-muted)]">{t("teams.chat.subtitle")}</small>
         </div>
         <div className="flex items-center gap-1">
-        <button type="button" className="tm-btn tm-btn-sm" title="Summarise what changed since your last catch-up" onClick={() => { setDraft("/catchup"); inputRef.current?.focus() }}>
-          <Sparkles className="size-3.5" aria-hidden="true" /> Catch me up
+        <button type="button" className="tm-btn tm-btn-sm" title={t("teams.chat.catchUpHint")} onClick={() => { setDraft("/catchup"); inputRef.current?.focus() }}>
+          <Sparkles className="size-3.5" aria-hidden="true" /> {t("teams.chat.catchUp")}
         </button>
         <button
           type="button"
           className="tm-icon-btn"
-          aria-label="Search messages"
+          aria-label={t("teams.chat.search")}
           aria-pressed={searching}
           onClick={() => { setSearching((value) => !value); setQuery("") }}
         >
@@ -190,11 +193,11 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
       </header>
       {searching ? (
         <div className="px-3 pt-2">
-          <input className="tm-input" autoFocus placeholder="Search this chat" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input className="tm-input" dir="auto" autoFocus placeholder={t("teams.chat.searchPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
       ) : null}
       <div ref={listRef} className="tm-chat-list" onScroll={onListScroll}>
-        {visible.length === 0 ? <p className="tm-muted m-auto">{needle ? "No messages match." : "Say hello to your team."}</p> : null}
+        {visible.length === 0 ? <p className="tm-muted m-auto">{needle ? t("teams.chat.noMatch") : t("teams.chat.empty")}</p> : null}
         {visible.map((message, index) => (
           <MessageItem
             key={message.id}
@@ -219,30 +222,30 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
         ))}
       </div>
       {store.hermes ? (
-        <div className="tm-hermes-bar" role="status"><HermesAvatar size={18} /> {store.hermes.stage}…</div>
+        <div className="tm-hermes-bar" role={t("teams.proposal.fields.status")}><HermesAvatar size={18} /> {store.hermes.stage}…</div>
       ) : null}
       <div className="tm-typing" aria-live="polite">
-        {typers.length ? `${typers.join(", ")} ${typers.length === 1 ? "is" : "are"} typing…` : ""}
+        {typers.length ? t("teams.chat.typing", { count: typers.length, names: fmt.list(typers) }) : ""}
       </div>
       <div className="tm-composer">
         {mentionOptions.length > 0 ? (
-          <div className="tm-suggest" role="listbox" aria-label="Mention">
+          <div className="tm-suggest" role="listbox" aria-label={t("teams.chat.mention")}>
             {mentionOptions.map((option) => (
               <button key={option.id} type="button" onClick={() => { setDraft((current) => insertMention(current, option.name)); inputRef.current?.focus() }}>
                 {option.hermes ? <HermesAvatar size={20} /> : <Avatar userId={option.id} name={option.name} size={20} />}
                 {option.name}
-                {option.hermes ? <small>AI teammate</small> : null}
+                {option.hermes ? <small>{t("teams.chat.aiTeammate")}</small> : null}
               </button>
             ))}
           </div>
         ) : null}
         {commandOptions.length > 0 ? (
-          <div className="tm-suggest" role="listbox" aria-label="Commands">
+          <div className="tm-suggest" role="listbox" aria-label={t("teams.chat.commands")}>
             {commandOptions.map((option) => (
               <button key={option.cmd} type="button" onClick={() => { setDraft(`${option.cmd} `); inputRef.current?.focus() }}>
-                <strong>{option.cmd}</strong>
+                <strong dir="ltr">{option.cmd}</strong>
                 <span className="text-[var(--fq-muted)]">{option.hint}</span>
-                <small>{option.hermes ? "Hermes" : "Poll"}</small>
+                <small>{option.hermes ? "Hermes" : t("teams.chat.poll")}</small>
               </button>
             ))}
           </div>
@@ -250,13 +253,13 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
         {error ? (
           <div className="tm-composer-bar" role="alert">
             <span>{error}</span>
-            <button type="button" className="tm-icon-btn" aria-label="Dismiss" onClick={() => setError(null)}><X className="size-3.5" /></button>
+            <button type="button" className="tm-icon-btn" aria-label={t("teams.common.dismiss")} onClick={() => setError(null)}><X className="size-3.5" /></button>
           </div>
         ) : null}
         {replyTo || editing ? (
           <div className="tm-composer-bar">
-            <span>{editing ? "Editing your message" : `Replying to ${memberName(store, replyTo?.author_user_id ?? null)}`}</span>
-            <button type="button" className="tm-icon-btn" aria-label="Cancel" onClick={clearContext}><X className="size-3.5" /></button>
+            <span>{editing ? t("teams.chat.editing") : t("teams.chat.replyingTo", { name: memberName(store, replyTo?.author_user_id ?? null) })}</span>
+            <button type="button" className="tm-icon-btn" aria-label={t("teams.common.cancel")} onClick={clearContext}><X className="size-3.5" /></button>
           </div>
         ) : null}
         <div className="tm-composer-row">
@@ -265,8 +268,8 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
             dir="auto"
             rows={1}
             value={draft}
-            aria-label="Message your team"
-            placeholder="Message your team: @ to mention, / for commands"
+            aria-label={t("teams.chat.inputLabel")}
+            placeholder={t("teams.chat.placeholder")}
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -280,7 +283,7 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
             type="button"
             className="tm-btn tm-btn-primary"
             style={{ width: 40, padding: 0 }}
-            aria-label="Send"
+            aria-label={t("teams.chat.send")}
             disabled={!draft.trim() || sending}
             onClick={() => void send()}
           >
@@ -313,13 +316,14 @@ interface MessageItemProps {
 }
 
 function MessageItem({ message, continued, followed, flash, handles, onOpenDecisions, store, me, pinned, onReply, onEdit, onDelete, onPin, onReact, onVote, onMakeTask, update }: MessageItemProps) {
+  const { t, fmt } = useI18n()
   if (message.kind === "system") return <div className="tm-system" dir="auto">{message.content}</div>
   if (message.kind === "notice") {
     return (
       <div className="tm-notice" dir="auto">
         <Flag className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
         <span>{message.content}</span>
-        {message.visible_to_user_id ? <small>only you</small> : null}
+        {message.visible_to_user_id ? <small>{t("teams.chat.onlyYou")}</small> : null}
       </div>
     )
   }
@@ -334,7 +338,7 @@ function MessageItem({ message, continued, followed, flash, handles, onOpenDecis
   const reactions = Object.entries(message.reactions)
   const flag = (on: boolean) => (on ? "" : undefined)
   const pinMark = pinned ? (
-    <button type="button" className="tm-pin-mark" title="Pinned as a decision. Open Decisions" aria-label="Pinned as a decision. Open Decisions" onClick={onOpenDecisions}>
+    <button type="button" className="tm-pin-mark" title={t("teams.chat.pinnedOpen")} aria-label={t("teams.chat.pinnedOpen")} onClick={onOpenDecisions}>
       <Pin className="size-3" aria-hidden="true" />
     </button>
   ) : null
@@ -350,26 +354,26 @@ function MessageItem({ message, continued, followed, flash, handles, onOpenDecis
       data-continued={flag(continued)}
       data-followed={flag(followed)}
       data-flash={flag(flash)}
-      title={mine ? new Date(message.created_at).toLocaleString() : undefined}
+      title={mine ? fmt.dateTime(message.created_at) : undefined}
     >
       {mine ? null : continued ? <span className="tm-avatar-spacer" aria-hidden="true" /> : hermes ? <HermesAvatar size={28} /> : <Avatar userId={message.author_user_id ?? ""} name={author} size={28} />}
       <div className="tm-msg-body">
         {showHeader ? (
           <header>
-            {mine ? null : <strong>{author}</strong>}
-            {mine ? null : <time dateTime={message.created_at}>{timeAgo(message.created_at)}</time>}
-            {message.edited_at ? <span>edited</span> : null}
-            {message.visible_to_user_id ? <span>only you</span> : null}
+            {mine ? null : <strong><bdi>{author}</bdi></strong>}
+            {mine ? null : <time dateTime={message.created_at}>{timeAgo(message.created_at, t)}</time>}
+            {message.edited_at ? <span>{t("teams.chat.edited")}</span> : null}
+            {message.visible_to_user_id ? <span>{t("teams.chat.onlyYou")}</span> : null}
             {pinMark}
           </header>
         ) : null}
         {parent ? (
           <blockquote className="tm-reply" dir="auto">
-            {memberName(store, parent.author_user_id)}: {parent.deleted ? "deleted message" : parent.content.slice(0, 140)}
+            {memberName(store, parent.author_user_id)}: {parent.deleted ? t("teams.chat.deletedQuote") : parent.content.slice(0, 140)}
           </blockquote>
         ) : null}
         {message.deleted ? (
-          <p className="tm-deleted">Message deleted</p>
+          <p className="tm-deleted">{t("teams.chat.deleted")}</p>
         ) : message.kind === "poll" ? (
           <PollView message={message} me={me} store={store} onVote={(option) => onVote(message, option)} />
         ) : hermes ? (
@@ -392,7 +396,7 @@ function MessageItem({ message, continued, followed, flash, handles, onOpenDecis
                 title={users.map((userId) => memberName(store, userId)).join(", ")}
                 onClick={() => onReact(message, emoji)}
               >
-                {emoji} <span>{users.length}</span>
+                {emoji} <span>{fmt.number(users.length)}</span>
               </button>
             ))}
           </div>
@@ -401,17 +405,17 @@ function MessageItem({ message, continued, followed, flash, handles, onOpenDecis
       {!message.deleted ? (
         <div className="tm-msg-actions">
           {QUICK_REACTIONS.map((emoji) => (
-            <button key={emoji} type="button" aria-label={`React with ${emoji}`} onClick={() => onReact(message, emoji)}>{emoji}</button>
+            <button key={emoji} type="button" aria-label={t("teams.chat.react", { emoji })} onClick={() => onReact(message, emoji)}>{emoji}</button>
           ))}
-          <button type="button" aria-label="Reply" title="Reply" onClick={() => onReply(message)}><CornerUpLeft className="size-3.5" /></button>
+          <button type="button" aria-label={t("teams.chat.reply")} title={t("teams.chat.reply")} onClick={() => onReply(message)}><CornerUpLeft className="size-3.5 rtl:-scale-x-100" /></button>
           {!pinned && !message.visible_to_user_id ? (
-            <button type="button" aria-label="Pin as decision" title="Pin as decision" onClick={() => onPin(message)}><Pin className="size-3.5" /></button>
+            <button type="button" aria-label={t("teams.chat.pin")} title={t("teams.chat.pin")} onClick={() => onPin(message)}><Pin className="size-3.5" /></button>
           ) : null}
-          <button type="button" aria-label="Make a task" title="Make a task" onClick={() => onMakeTask(message)}><ListPlus className="size-3.5" /></button>
+          <button type="button" aria-label={t("teams.chat.makeTask")} title={t("teams.chat.makeTask")} onClick={() => onMakeTask(message)}><ListPlus className="size-3.5" /></button>
           {mine ? (
             <>
-              <button type="button" aria-label="Edit" title="Edit" onClick={() => onEdit(message)}><Pencil className="size-3.5" /></button>
-              <button type="button" aria-label="Delete" title="Delete" onClick={() => onDelete(message)}><Trash2 className="size-3.5" /></button>
+              <button type="button" aria-label={t("teams.common.edit")} title={t("teams.common.edit")} onClick={() => onEdit(message)}><Pencil className="size-3.5" /></button>
+              <button type="button" aria-label={t("teams.common.delete")} title={t("teams.common.delete")} onClick={() => onDelete(message)}><Trash2 className="size-3.5" /></button>
             </>
           ) : null}
         </div>
@@ -421,6 +425,7 @@ function MessageItem({ message, continued, followed, flash, handles, onOpenDecis
 }
 
 function PollView({ message, me, store, onVote }: { message: TeamMessage; me: string; store: TeamStore; onVote: (option: number) => void }) {
+  const { t, fmt } = useI18n()
   const metadata = (message.metadata ?? {}) as { options?: string[]; votes?: Record<string, number> }
   const options = metadata.options ?? []
   const votes = Object.values(metadata.votes ?? {})
@@ -428,20 +433,20 @@ function PollView({ message, me, store, onVote }: { message: TeamMessage; me: st
   const voters = (index: number) =>
     Object.entries(metadata.votes ?? {}).filter(([, vote]) => vote === index).map(([userId]) => memberName(store, userId)).join(", ")
   return (
-    <div className="tm-poll" role="group" aria-label={`Poll: ${message.content}`}>
+    <div className="tm-poll" role="group" aria-label={t("teams.chat.pollLabel", { question: message.content })}>
       <strong className="tm-poll-question" dir="auto"><BarChart3 className="size-3.5" aria-hidden="true" /> {message.content}</strong>
       {options.map((option, index) => {
         const count = votes.filter((vote) => vote === index).length
         const pct = votes.length ? Math.round((100 * count) / votes.length) : 0
         return (
-          <button key={option} type="button" className="tm-poll-option" aria-pressed={mine === index} title={voters(index) || "No votes yet"} onClick={() => onVote(index)}>
+          <button key={option} type="button" className="tm-poll-option" aria-pressed={mine === index} title={voters(index) || t("teams.chat.noVotes")} onClick={() => onVote(index)}>
             <i style={{ width: `${pct}%` }} />
             <span dir="auto">{option}</span>
-            <span>{count}</span>
+            <span>{fmt.number(count)}</span>
           </button>
         )
       })}
-      <small className="tm-muted">{votes.length} {votes.length === 1 ? "vote" : "votes"}{mine === undefined ? " · tap to vote" : " · tap another to change"}</small>
+      <small className="tm-muted">{t("teams.chat.votes", { count: votes.length })}{t("teams.common.separator")}{t(mine === undefined ? "teams.chat.tapToVote" : "teams.chat.tapToChange")}</small>
     </div>
   )
 }

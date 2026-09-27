@@ -6,6 +6,7 @@ import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas"
 import { NodeDetailPanel } from "@/components/roadmap/NodeDetailPanel"
 import { api, notifyRoadmapChanged, type EvidenceItem, type StudentProfile } from "@/lib/waypoint-api"
+import { useI18n } from "@/lib/i18n/context"
 
 interface InitialProposal {
   id: string
@@ -22,6 +23,7 @@ interface RoadmapPreviewProps {
 
 /** Review the generated first roadmap: untick anything you haven't really mastered, then accept. */
 export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPreviewProps) {
+  const { t, fmt } = useI18n()
   const [proposal, setProposal] = useState<InitialProposal | null>(null)
   const [evidence, setEvidence] = useState<Record<string, EvidenceItem>>({})
   const [notDone, setNotDone] = useState<Set<string>>(new Set())
@@ -36,7 +38,7 @@ export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPre
     ]).then(([proposals, items]) => {
       setProposal(proposals.find((item) => item.kind === "initial" && item.status === "pending") ?? null)
       setEvidence(Object.fromEntries(items.map((item) => [item.id, item])))
-    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load your roadmap"))
+    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : t("onboarding.preview.loadFailed")))
   }, [profile.student_id])
 
   const nodes = useMemo(() => proposal?.snapshot?.nodes ?? [], [proposal])
@@ -60,7 +62,7 @@ export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPre
       notifyRoadmapChanged()
       onAccepted()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not accept the roadmap")
+      setError(reason instanceof Error ? reason.message : t("onboarding.preview.acceptFailed"))
       setBusy(false)
     }
   }
@@ -72,31 +74,31 @@ export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPre
   }
 
   if (!proposal?.snapshot) {
-    return <div className="grid flex-1 place-items-center p-8">{error ? <p className="text-sm text-destructive">{error}</p> : proposal === null && !error ? <button type="button" onClick={() => void regenerate()} className="text-sm underline">No draft found. Generate again</button> : <LoaderCircle className="size-5 animate-spin" />}</div>
+    return <div className="grid flex-1 place-items-center p-8">{error ? <p className="text-sm text-destructive">{error}</p> : proposal === null && !error ? <button type="button" onClick={() => void regenerate()} className="text-sm underline">{t("onboarding.preview.noDraft")}</button> : <LoaderCircle className="size-5 animate-spin" />}</div>
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-8">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-semibold">{proposal.snapshot.title}</h1>
-          <p className="text-xs text-muted-foreground">{nodes.length} topics in {proposal.snapshot.stages.length} stages · a draft until you accept it</p>
+          <h1 dir="auto" className="truncate text-start text-base font-semibold">{proposal.snapshot.title}</h1>
+          <p className="text-xs text-muted-foreground">{t("onboarding.preview.summary", { topics: t("onboarding.preview.topics", { count: nodes.length }), stages: t("onboarding.preview.stages", { count: proposal.snapshot.stages.length }) })}</p>
         </div>
-        <button type="button" onClick={() => void regenerate()} disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-xs"><RotateCcw className="size-3.5" />Regenerate</button>
-        <button type="button" onClick={() => void accept()} disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground disabled:opacity-40">{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}Accept roadmap</button>
+        <button type="button" onClick={() => void regenerate()} disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-xs"><RotateCcw className="size-3.5" />{t("onboarding.preview.regenerate")}</button>
+        <button type="button" onClick={() => void accept()} disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground disabled:opacity-40">{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}{t("onboarding.preview.accept")}</button>
       </div>
       {error ? <p className="px-4 py-2 text-xs text-destructive sm:px-8">{error}</p> : null}
       {preDone.length ? (
         <div className="border-b border-border px-4 py-3 sm:px-8">
-          <p className="text-xs font-medium">Already mastered, based on your records. Untick anything you'd like to study again.</p>
+          <p className="text-xs font-medium">{t("onboarding.preview.mastered")}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {preDone.map((node) => {
               const kept = !notDone.has(node.id)
-              const because = (node.evidence ?? []).map((id) => evidence[id]?.title).filter(Boolean).join(", ")
+              const because = (node.evidence ?? []).map((id) => evidence[id]?.title).filter(Boolean) as string[]
               return (
-                <label key={node.id} title={because ? `Because of: ${because}` : undefined} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${kept ? "border-emerald-500/40 bg-emerald-500/10" : "border-border text-muted-foreground line-through"}`}>
+                <label key={node.id} title={because.length ? t("onboarding.preview.because", { items: fmt.list(because) }) : undefined} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${kept ? "border-emerald-500/40 bg-emerald-500/10" : "border-border text-muted-foreground line-through"}`}>
                   <input type="checkbox" checked={kept} onChange={(event) => toggleDone(node.id, event.target.checked)} className="size-3.5" />
-                  {node.title}{because ? <span className="text-muted-foreground no-underline"> · {because}</span> : null}
+                  <bdi>{node.title}</bdi>{because.length ? <span className="text-muted-foreground no-underline"> · <bdi>{because.join(", ")}</bdi></span> : null}
                 </label>
               )
             })}

@@ -21,7 +21,7 @@ import {
   getCurrentStudentId,
   notifyRoadmapChanged,
   ROADMAP_CHANGED_EVENT,
-  SOURCE_KIND_LABEL,
+  sourceKindLabel,
   type DataSourceItem,
   type EvidenceItem,
   type StudentProfile,
@@ -30,6 +30,15 @@ import { loadLibrary, type QuizLibrary } from "@/lib/quiz-store"
 import { EASE_OUT, SPRING_MOUSE } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 import { OutlookView } from "@/components/outlook/OutlookView"
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
+
+type Translate = ReturnType<typeof useI18n>["t"]
+type Formatters = ReturnType<typeof useI18n>["fmt"]
+
+/** Wraps dynamic text of unknown direction (names, titles) in Unicode isolates, like <bdi>. */
+function isolate(value: string): string {
+  return "\u2068" + value + "\u2069"
+}
 
 // Shape rule for this page: hero 32px, panels 24px, buttons and pills full round.
 // Color rule: primary is the only accent. Emerald and amber appear only as
@@ -74,10 +83,10 @@ const STATUS_TONE: Record<NodeStatus, Tone> = {
   "not-started": "neutral",
 }
 
-const STATUS_LABEL: Record<NodeStatus, string> = {
-  done: "Done",
-  "in-progress": "In progress",
-  "not-started": "Up next",
+const STATUS_LABEL: Record<NodeStatus, MessageKey> = {
+  done: "dashboard.today.status.done",
+  "in-progress": "dashboard.today.status.inProgress",
+  "not-started": "dashboard.today.status.upNext",
 }
 
 function statusOf(node: RoadmapNodeData): NodeStatus {
@@ -90,10 +99,10 @@ function topicGlyph(icon: string, className = "size-[18px]") {
 }
 
 /** The one status change a student can make from this page. */
-function nextAction(status: NodeStatus): { label: string; next: NodeStatus } {
-  if (status === "in-progress") return { label: "Mark done", next: "done" }
-  if (status === "done") return { label: "Reopen topic", next: "in-progress" }
-  return { label: "Start topic", next: "in-progress" }
+function nextAction(status: NodeStatus): { label: MessageKey; next: NodeStatus } {
+  if (status === "in-progress") return { label: "dashboard.today.action.markDone", next: "done" }
+  if (status === "done") return { label: "dashboard.today.action.reopen", next: "in-progress" }
+  return { label: "dashboard.today.action.start", next: "in-progress" }
 }
 
 /** Backend timestamps are UTC ISO strings; SQLite can drop the offset. */
@@ -105,21 +114,16 @@ function parseTime(value: string | number): number | null {
 /** A source saved without a value of its own is stored with the kind as its label. */
 function sourceName(source: DataSourceItem): string {
   const label = source.label?.trim()
-  return label && label !== source.kind ? label : SOURCE_KIND_LABEL[source.kind]
+  return label && label !== source.kind ? label : sourceKindLabel(source.kind)
 }
 
-function timeAgo(at: number): string {
-  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000))
-  if (seconds < 60) return "just now"
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} min ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} h ago`
-  const days = Math.round(hours / 24)
-  if (days < 7) return `${days} d ago`
-  const weeks = Math.round(days / 7)
-  if (weeks < 9) return `${weeks} w ago`
-  return new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+function timeAgo(at: number, t: Translate, fmt: Formatters): string {
+  const now = Date.now()
+  const seconds = Math.max(0, Math.round((now - at) / 1000))
+  if (seconds < 60) return t("dashboard.today.justNow")
+  // Recent enough to read as relative time (about nine weeks), then a short date.
+  if (seconds < 86400 * 63) return fmt.relative(at, now)
+  return fmt.date(at, { day: "numeric", month: "short" })
 }
 
 function Pill({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
@@ -269,7 +273,7 @@ function ProgressTrack({ percent, label }: { percent: number; label: string }) {
       aria-label={label}
     >
       <motion.div
-        className="h-full w-full origin-left rounded-full bg-primary"
+        className="h-full w-full origin-left rounded-full bg-primary rtl:origin-right"
         initial={false}
         animate={{ scaleX: Math.max(0, Math.min(1, percent / 100)) }}
         transition={{ duration: 0.7, ease: EASE_OUT }}
@@ -281,6 +285,7 @@ function ProgressTrack({ percent, label }: { percent: number; label: string }) {
 /** Live stage ring drawn from real progress. The honest visual for the hero. */
 function StageRing({ percent, done, total }: { percent: number; done: number; total: number }) {
   const reduce = useReducedMotion()
+  const { t, fmt } = useI18n()
   const R = 52
   const C = 2 * Math.PI * R
   const clamped = Math.max(0, Math.min(100, percent))
@@ -288,7 +293,7 @@ function StageRing({ percent, done, total }: { percent: number; done: number; to
   return (
     <div
       role="img"
-      aria-label={`Stage progress ${clamped} percent, ${done} of ${total} done`}
+      aria-label={t("dashboard.today.hero.ring", { percent: fmt.percent(clamped / 100), done, total })}
       className="relative grid shrink-0 place-items-center"
     >
       <svg width="148" height="148" viewBox="0 0 120 120" aria-hidden="true" className="block">
@@ -317,9 +322,9 @@ function StageRing({ percent, done, total }: { percent: number; done: number; to
         />
       </svg>
       <div className="absolute text-center text-primary-foreground">
-        <p className="text-[26px] font-bold leading-none tracking-tight">{clamped}%</p>
+        <p className="text-[26px] font-bold leading-none tracking-tight">{fmt.percent(clamped / 100)}</p>
         <p className="mt-1 text-xs opacity-75">
-          {done} of {total} done
+          {t("dashboard.today.hero.ringDone", { done, total })}
         </p>
       </div>
     </div>
@@ -339,6 +344,19 @@ interface ActionRow {
 /** One timestamped thing that really happened. */
 interface ActivityItem extends ActionRow {
   at: number
+}
+
+const DIFFICULTY_LABEL: Record<string, MessageKey> = {
+  Easy: "dashboard.today.difficulty.Easy",
+  Medium: "dashboard.today.difficulty.Medium",
+  Hard: "dashboard.today.difficulty.Hard",
+  Mixed: "dashboard.today.difficulty.Mixed",
+}
+
+/** Stored difficulty is an English enum; show it in the active language, or as-is if unknown. */
+function difficultyLabel(value: string, t: Translate): string {
+  const key = DIFFICULTY_LABEL[value]
+  return key ? t(key) : value
 }
 
 function emptyLibrary(): QuizLibrary {
@@ -367,6 +385,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
   })
   const [savingId, setSavingId] = useState<string | null>(null)
   const reduce = useReducedMotion()
+  const { t, fmt } = useI18n()
 
   const load = useCallback(async () => {
     setError(null)
@@ -392,11 +411,11 @@ export function TodayView({ onNavigate }: TodayViewProps) {
       setSources(sourceItems.filter((item) => item.status !== "removed"))
       if (context && !profile && context.display_name) setDisplayName(context.display_name)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not load your dashboard")
+      setError(reason instanceof Error ? reason.message : t("dashboard.today.loadError"))
     } finally {
       setLoading(false)
     }
-  }, [studentId])
+  }, [studentId, t])
 
   useEffect(() => {
     void load()
@@ -490,31 +509,33 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
   const todayLabel = useMemo(
     () =>
-      new Date().toLocaleDateString("en-GB", {
+      fmt.date(new Date(), {
         weekday: "long",
         day: "numeric",
         month: "long",
       }),
-    [],
+    [fmt],
   )
 
   /** One honest sentence. No forecasts, no invented pacing. Keeps to 20 words. */
   const headline = useMemo(() => {
-    const donePart = `${summary.done} of ${summary.total} topics done`
+    const donePart = t("dashboard.today.topicsDone", { done: summary.done, count: summary.total })
     if (failedSources.length > 0) {
-      const s = failedSources.length === 1 ? "" : "s"
-      return `${donePart}. ${failedSources.length} source${s} failed to sync.`
+      return t("dashboard.today.sentences", {
+        first: donePart,
+        second: t("dashboard.today.sourcesFailed", { count: failedSources.length }),
+      })
     }
     const waiting: string[] = []
     if (suggestedCount > 0) {
-      waiting.push(`${suggestedCount} record${suggestedCount === 1 ? "" : "s"} to review`)
+      waiting.push(t("dashboard.today.recordsToReview", { count: suggestedCount }))
     }
     if (pendingProposals.length > 0) {
-      waiting.push(`${pendingProposals.length} draft${pendingProposals.length === 1 ? "" : "s"} to accept`)
+      waiting.push(t("dashboard.today.draftsToAccept", { count: pendingProposals.length }))
     }
-    if (waiting.length === 0) return `${donePart}.`
-    return `${donePart}. ${waiting.join(" and ")}.`
-  }, [summary, suggestedCount, pendingProposals.length, failedSources.length])
+    if (waiting.length === 0) return t("dashboard.today.sentence", { text: donePart })
+    return t("dashboard.today.sentences", { first: donePart, second: fmt.list(waiting) })
+  }, [summary, suggestedCount, pendingProposals.length, failedSources.length, t, fmt])
 
   /** Everything that really changed, newest first. Empty means genuinely nothing yet. */
   const activity = useMemo<ActivityItem[]>(() => {
@@ -527,12 +548,17 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: `proposal-${proposal.id}`,
         icon: pending ? <Sparkles className="size-[18px]" /> : <CircleCheck className="size-[18px]" />,
         title: proposal.summary,
-        detail: pending
-          ? `Waiting for review, ${timeAgo(at)}`
-          : `${proposal.status === "accepted" ? "Accepted" : "Dismissed"}, ${timeAgo(at)}`,
+        detail: t(
+          pending
+            ? "dashboard.today.activity.waitingReview"
+            : proposal.status === "accepted"
+              ? "dashboard.today.activity.accepted"
+              : "dashboard.today.activity.dismissed",
+          { time: timeAgo(at, t, fmt) },
+        ),
         at,
         tab: "Hermes Coach",
-        action: pending ? "Review drafts" : "Open coach",
+        action: t(pending ? "dashboard.today.links.reviewDrafts" : "dashboard.today.links.openCoach"),
       })
     }
     for (const source of sources) {
@@ -542,11 +568,11 @@ export function TodayView({ onNavigate }: TodayViewProps) {
       items.push({
         id: `source-${source.id}`,
         icon: <Database className="size-[18px]" />,
-        title: `${sourceName(source)} synced`,
-        detail: timeAgo(at),
+        title: t("dashboard.today.activity.synced", { name: isolate(sourceName(source)) }),
+        detail: timeAgo(at, t, fmt),
         at,
         tab: "My data",
-        action: "Open records",
+        action: t("dashboard.today.links.openRecords"),
       })
     }
     for (const deck of practice.decks) {
@@ -554,36 +580,43 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: `deck-${deck.id}`,
         icon: <Presentation className="size-[18px]" />,
         title: deck.fileName,
-        detail: `${timeAgo(deck.uploadedAt)}, ${deck.units} pages read`,
+        detail: t("dashboard.today.activity.deckDetail", { time: timeAgo(deck.uploadedAt, t, fmt), count: deck.units }),
         at: deck.uploadedAt,
         tab: "Slides",
-        action: "Open slides",
+        action: t("dashboard.today.links.openSlides"),
       })
     }
     for (const quiz of practice.quizzes) {
       items.push({
         id: `quiz-${quiz.id}`,
         icon: <ListChecks className="size-[18px]" />,
-        title: `Practice set from ${quiz.deckName}`,
-        detail: `${timeAgo(quiz.createdAt)}, ${quiz.questions.length} questions, ${quiz.difficulty}`,
+        title: t("dashboard.today.activity.quizTitle", { deck: isolate(quiz.deckName) }),
+        detail: t("dashboard.today.activity.quizDetail", {
+          time: timeAgo(quiz.createdAt, t, fmt),
+          count: quiz.questions.length,
+          difficulty: difficultyLabel(quiz.difficulty, t),
+        }),
         at: quiz.createdAt,
         tab: "Quizzes",
-        action: "Open practice",
+        action: t("dashboard.today.links.openPractice"),
       })
     }
     for (const extension of practice.extensions) {
       items.push({
         id: `extension-${extension.id}`,
         icon: <Sparkles className="size-[18px]" />,
-        title: `Slides expanded: ${extension.topic}`,
-        detail: `${timeAgo(extension.createdAt)}, from ${extension.deckName}`,
+        title: t("dashboard.today.activity.extensionTitle", { topic: isolate(extension.topic) }),
+        detail: t("dashboard.today.activity.extensionDetail", {
+          time: timeAgo(extension.createdAt, t, fmt),
+          deck: isolate(extension.deckName),
+        }),
         at: extension.createdAt,
         tab: "Slides",
-        action: "Open slides",
+        action: t("dashboard.today.links.openSlides"),
       })
     }
     return items.sort((a, b) => b.at - a.at).slice(0, 4)
-  }, [proposals, sources, practice])
+  }, [proposals, sources, practice, t, fmt])
 
   /** Only rendered when something is genuinely waiting on the student. */
   const attention = useMemo<ActionRow[]>(() => {
@@ -592,34 +625,34 @@ export function TodayView({ onNavigate }: TodayViewProps) {
       rows.push({
         id: `failed-${source.id}`,
         icon: <TriangleAlert className="size-[18px]" />,
-        title: `${sourceName(source)} failed to sync`,
-        detail: source.error || "Waypoint could not read this source",
+        title: t("dashboard.today.attention.failedTitle", { name: isolate(sourceName(source)) }),
+        detail: source.error || t("dashboard.today.attention.failedDetail"),
         tab: "My data",
-        action: "Fix source",
+        action: t("dashboard.today.links.fixSource"),
       })
     }
     if (suggestedCount > 0) {
       rows.push({
         id: "attention-evidence",
         icon: <Inbox className="size-[18px]" />,
-        title: `${suggestedCount} ${suggestedCount === 1 ? "record" : "records"} to review`,
-        detail: "Imported evidence stays pending until you confirm it",
+        title: t("dashboard.today.attention.recordsTitle", { count: suggestedCount }),
+        detail: t("dashboard.today.attention.recordsDetail"),
         tab: "My data",
-        action: "Review records",
+        action: t("dashboard.today.links.reviewRecords"),
       })
     }
     if (pendingProposals.length > 0) {
       rows.push({
         id: "attention-proposals",
         icon: <Sparkles className="size-[18px]" />,
-        title: `${pendingProposals.length} roadmap ${pendingProposals.length === 1 ? "draft" : "drafts"} waiting`,
-        detail: "Completed and in-progress topics stay untouched",
+        title: t("dashboard.today.attention.draftsTitle", { count: pendingProposals.length }),
+        detail: t("dashboard.today.attention.draftsDetail"),
         tab: "Hermes Coach",
-        action: "Review drafts",
+        action: t("dashboard.today.links.reviewDrafts"),
       })
     }
     return rows
-  }, [failedSources, suggestedCount, pendingProposals.length])
+  }, [failedSources, suggestedCount, pendingProposals.length, t])
 
   const setNodeStatus = useCallback(
     async (id: string, status: NodeStatus) => {
@@ -632,12 +665,12 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         setNodes((previous) => previous.map((node) => (node.id === id ? { ...node, status } : node)))
         notifyRoadmapChanged()
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Could not update that topic")
+        setError(reason instanceof Error ? reason.message : t("dashboard.today.updateError"))
       } finally {
         setSavingId(null)
       }
     },
-    [studentId],
+    [studentId, t],
   )
 
   const retry = () => {
@@ -647,7 +680,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-[1320px] px-4 py-8 sm:px-8 sm:py-10" aria-label="Loading Today">
+      <div className="mx-auto w-full max-w-[1320px] px-4 py-8 sm:px-8 sm:py-10" aria-label={t("dashboard.today.loadingLabel")}>
         <div className="h-4 w-32 animate-pulse rounded-full bg-muted" />
         <div className="mt-3 h-11 w-2/3 animate-pulse rounded-2xl bg-muted" />
         <div className="mt-4 h-5 w-1/2 animate-pulse rounded-full bg-muted" />
@@ -677,14 +710,14 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     return (
       <div className="grid min-h-[60vh] place-items-center px-4 py-10">
         <div className="text-center">
-          <p className="text-sm font-semibold">Today could not load</p>
+          <p className="text-sm font-semibold">{t("dashboard.today.couldNotLoad")}</p>
           <p className="mt-1 text-[13px] text-muted-foreground">{error}</p>
           <button
             type="button"
             onClick={retry}
             className="mt-4 inline-flex min-h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Try again
+            {t("dashboard.today.tryAgain")}
           </button>
         </div>
       </div>
@@ -695,20 +728,19 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     return (
       <div className="grid min-h-[60vh] place-items-center px-4 py-10">
         <div className="max-w-[46ch] text-center">
-          <p className="text-xs font-bold text-primary">Today</p>
+          <p className="text-xs font-bold text-primary">{t("dashboard.today.empty.eyebrow")}</p>
           <h1 className="mt-2 text-[clamp(28px,4vw,44px)] font-bold leading-[1.05] tracking-tight">
-            No roadmap yet{displayName ? `, ${displayName}` : ""}.
+            {displayName
+              ? t("dashboard.today.empty.titleNamed", { name: isolate(displayName) })
+              : t("dashboard.today.empty.title")}
           </h1>
-          <p className="mt-3 text-[15px] text-muted-foreground">
-            This page fills in once a roadmap exists. Ask Hermes to build one from your records, or add
-            a source in My data first.
-          </p>
+          <p className="mt-3 text-[15px] text-muted-foreground">{t("dashboard.today.empty.body")}</p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <MagneticButton variant="primary" onClick={() => onNavigate("Hermes Coach")}>
-              Ask Hermes <ArrowRight aria-hidden="true" className="size-4" />
+              {t("dashboard.today.empty.askHermes")} <ArrowRight aria-hidden="true" className="size-4 rtl:-scale-x-100" />
             </MagneticButton>
             <MagneticButton variant="secondary" onClick={() => onNavigate("My data")}>
-              Add records
+              {t("dashboard.today.empty.addRecords")}
             </MagneticButton>
           </div>
         </div>
@@ -723,12 +755,16 @@ export function TodayView({ onNavigate }: TodayViewProps) {
   const currentAction = nextAction(currentStatus)
   const stagePill: { tone: Tone; label: string } =
     stageProgress.total === 0
-      ? { tone: "neutral", label: "No topics" }
+      ? { tone: "neutral", label: t("dashboard.today.pill.noTopics") }
       : stageProgress.done === stageProgress.total
-        ? { tone: "success", label: "Stage complete" }
+        ? { tone: "success", label: t("dashboard.today.pill.stageComplete") }
         : stageProgress.done > 0
-          ? { tone: "accent", label: "In progress" }
-          : { tone: "neutral", label: "Not started" }
+          ? { tone: "accent", label: t("dashboard.today.pill.inProgress") }
+          : { tone: "neutral", label: t("dashboard.today.pill.notStarted") }
+  const currentStageTitle = currentStage?.title ?? t("dashboard.today.hero.currentStage")
+  const planLabel = version
+    ? t("dashboard.today.momentum.planVersion", { version: String(version) })
+    : t("dashboard.today.momentum.currentPlan")
 
   return (
     <div className="h-[calc(100dvh-4rem)] overflow-y-auto bg-background">
@@ -742,7 +778,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         <div className="min-w-0 max-w-[72ch]">
           <p className="mb-2.5 text-xs font-bold text-primary">{todayLabel}</p>
           <h1 className="text-[clamp(30px,4vw,52px)] font-bold leading-[1.03] tracking-tight">
-            {complete ? "Roadmap complete." : "One useful step today."}
+            {complete ? t("dashboard.today.heading.complete") : t("dashboard.today.heading.step")}
           </h1>
           <p className="mt-2.5 max-w-[62ch] text-[15px] leading-relaxed text-muted-foreground">{headline}</p>
         </div>
@@ -759,17 +795,17 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         {/* Focus hero: asymmetric split, live stage ring on the right. */}
         <Reveal className="mt-8" delay={0}>
           <section
-            aria-label="Your next step"
+            aria-label={t("dashboard.today.hero.label")}
             className="relative overflow-hidden rounded-[32px] bg-primary p-6 text-primary-foreground shadow-lg sm:p-8 lg:p-10"
           >
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute -bottom-28 -right-20 size-[310px] rounded-full bg-primary-foreground/10 blur-3xl"
+              className="pointer-events-none absolute -bottom-28 -end-20 size-[310px] rounded-full bg-primary-foreground/10 blur-3xl"
             />
             {!reduce ? (
               <motion.span
                 aria-hidden="true"
-                className="pointer-events-none absolute -left-24 -top-24 size-[260px] rounded-full bg-primary-foreground/10 blur-3xl"
+                className="pointer-events-none absolute -start-24 -top-24 size-[260px] rounded-full bg-primary-foreground/10 blur-3xl"
                 animate={{ y: [0, -14, 0], opacity: [0.7, 1, 0.7] }}
                 transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
               />
@@ -778,42 +814,47 @@ export function TodayView({ onNavigate }: TodayViewProps) {
               <div className="min-w-0">
                 <Pill tone="inverse">
                   {currentNode
-                    ? `${STATUS_LABEL[currentStatus]}${currentNode.duration ? `, ${currentNode.duration}` : ""}`
-                    : `All ${summary.total} ${summary.total === 1 ? "topic" : "topics"} done`}
+                    ? currentNode.duration
+                      ? t("dashboard.today.hero.withDuration", {
+                          status: t(STATUS_LABEL[currentStatus]),
+                          duration: isolate(currentNode.duration),
+                        })
+                      : t(STATUS_LABEL[currentStatus])
+                    : t("dashboard.today.hero.allDone", { count: summary.total })}
                 </Pill>
-                <h2 className="mt-6 max-w-[16ch] text-[clamp(28px,3.6vw,44px)] font-bold leading-[1.05] tracking-tight">
-                  {currentNode?.title ?? "Every topic is done"}
+                <h2 dir="auto" className="mt-6 max-w-[16ch] text-start text-[clamp(28px,3.6vw,44px)] font-bold leading-[1.05] tracking-tight">
+                  {currentNode?.title ?? t("dashboard.today.hero.everyTopicDone")}
                 </h2>
-                <p className="mt-2.5 max-w-[52ch] text-[15px] leading-relaxed opacity-75">
+                <p dir="auto" className="mt-2.5 max-w-[52ch] text-start text-[15px] leading-relaxed opacity-75">
                   {currentNode
                     ? currentNode.tagline || currentNode.description
-                    : "This roadmap has nothing left to do. Ask Hermes Coach what to learn next."}
+                    : t("dashboard.today.hero.nothingLeft")}
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-2.5">
                   {currentNode ? (
                     <>
                       <MagneticButton variant="onDark" onClick={() => onNavigate("Roadmap")}>
-                        Continue topic <ArrowRight aria-hidden="true" className="size-4" />
+                        {t("dashboard.today.hero.continue")} <ArrowRight aria-hidden="true" className="size-4 rtl:-scale-x-100" />
                       </MagneticButton>
                       <MagneticButton
                         variant="onDarkGhost"
                         disabled={savingId === currentNode.id}
                         onClick={() => void setNodeStatus(currentNode.id, currentAction.next)}
                       >
-                        {savingId === currentNode.id ? "Saving" : currentAction.label}
+                        {savingId === currentNode.id ? t("dashboard.today.hero.saving") : t(currentAction.label)}
                       </MagneticButton>
                     </>
                   ) : (
                     <MagneticButton variant="onDark" onClick={() => onNavigate("Hermes Coach")}>
-                      Ask Hermes <ArrowRight aria-hidden="true" className="size-4" />
+                      {t("dashboard.today.hero.askHermes")} <ArrowRight aria-hidden="true" className="size-4 rtl:-scale-x-100" />
                     </MagneticButton>
                   )}
                 </div>
               </div>
               <div className="flex flex-col items-center gap-4 lg:items-end">
                 <StageRing percent={stageProgress.percent} done={stageProgress.done} total={stageProgress.total} />
-                <p className="max-w-[32ch] text-center text-[13px] leading-relaxed opacity-75 lg:text-end">
-                  {currentStage?.title ?? "Current stage"}
+                <p dir="auto" className="max-w-[32ch] text-center text-[13px] leading-relaxed opacity-75 lg:text-end">
+                  {currentStageTitle}
                 </p>
               </div>
             </div>
@@ -823,19 +864,21 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         {/* Queue and plan health: stacked list next to display number. */}
         <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
           <Reveal delay={0.05} className="h-full">
-            <Panel label="Up next" className="h-full">
+            <Panel label={t("dashboard.today.upNext.title")} className="h-full">
               <PanelHead
-                title="Up next"
+                title={t("dashboard.today.upNext.title")}
                 sub={
                   summary.remaining > 0
-                    ? `${summary.remaining} ${summary.remaining === 1 ? "topic" : "topics"} left`
-                    : "Everything is done"
+                    ? t("dashboard.today.upNext.left", { count: summary.remaining })
+                    : t("dashboard.today.upNext.everythingDone")
                 }
               />
               {upNext.length === 0 ? (
                 <p className="mt-4 flex items-start gap-2.5 text-[13px] leading-relaxed text-muted-foreground">
                   <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  Every topic in {title || "this roadmap"} is done. Ask Hermes Coach what to learn next.
+                  {t("dashboard.today.upNext.allDoneIn", {
+                    title: title ? isolate(title) : t("dashboard.today.upNext.thisRoadmap"),
+                  })}
                 </p>
               ) : (
                 <ul className="mt-4 space-y-2">
@@ -857,20 +900,20 @@ export function TodayView({ onNavigate }: TodayViewProps) {
                           {topicGlyph(node.icon)}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold" title={node.title}>
+                          <bdi className="block truncate text-start text-sm font-semibold" title={node.title}>
                             {node.title}
-                          </span>
+                          </bdi>
                           <span
                             className="block truncate text-xs text-muted-foreground"
-                            title={`${node.duration}, ${node.level}`}
+                            title={t("dashboard.today.upNext.meta", { duration: isolate(node.duration), level: isolate(t(`roadmap.levels.${node.level}`)) })}
                           >
-                            {node.duration}, {node.level}
+                            {t("dashboard.today.upNext.meta", { duration: isolate(node.duration), level: isolate(t(`roadmap.levels.${node.level}`)) })}
                           </span>
                         </span>
                         {index === 0 ? (
-                          <Pill tone="warning">Now</Pill>
+                          <Pill tone="warning">{t("dashboard.today.upNext.now")}</Pill>
                         ) : (
-                          <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>
+                          <Pill tone={STATUS_TONE[status]}>{t(STATUS_LABEL[status])}</Pill>
                         )}
                       </motion.li>
                     )
@@ -882,22 +925,25 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
           <div className="space-y-5">
             <Reveal delay={0.1}>
-              <Panel label="Roadmap momentum">
+              <Panel label={t("dashboard.today.momentum.title")}>
                 <PanelHead
-                  title="Roadmap momentum"
-                  sub={title || "Your plan"}
+                  title={t("dashboard.today.momentum.title")}
+                  sub={title ? <bdi>{title}</bdi> : t("dashboard.today.momentum.yourPlan")}
                   tone={stagePill.tone}
                   pill={stagePill.label}
                 />
                 <p className="mt-5 text-[34px] font-bold leading-none tracking-tight">
-                  {stageProgress.percent}
-                  <span className="text-lg font-semibold text-muted-foreground">%</span>
+                  {fmt.percent(stageProgress.percent / 100)}
                 </p>
                 <div className="mt-3">
-                  <ProgressTrack percent={stageProgress.percent} label={`${currentStage?.title ?? "Current stage"} progress`} />
+                  <ProgressTrack percent={stageProgress.percent} label={t("dashboard.today.momentum.progressLabel", { stage: isolate(currentStageTitle) })} />
                 </div>
                 <p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
-                  {currentStage?.title ?? "Current stage"}, {stageProgress.done} of {stageProgress.total} done
+                  {t("dashboard.today.momentum.stageDone", {
+                    stage: isolate(currentStageTitle),
+                    done: stageProgress.done,
+                    total: stageProgress.total,
+                  })}
                 </p>
                 <div className="mt-4 flex items-center gap-3 rounded-2xl bg-muted/60 p-3">
                   <span
@@ -907,11 +953,15 @@ export function TodayView({ onNavigate }: TodayViewProps) {
                     {currentNode ? topicGlyph(currentNode.icon) : <Route className="size-[18px]" />}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold" title={version ? `Plan version ${version}` : "Current plan"}>
-                      {version ? `Plan version ${version}` : "Current plan"}
+                    <span className="block truncate text-sm font-semibold" title={planLabel}>
+                      {planLabel}
                     </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {reason || `${stages.length} ${stages.length === 1 ? "stage" : "stages"}, ${summary.total} ${summary.total === 1 ? "topic" : "topics"}`}
+                    <span dir={reason ? "auto" : undefined} className="block truncate text-start text-xs text-muted-foreground">
+                      {reason ||
+                        t("dashboard.today.momentum.shape", {
+                          stages: t("dashboard.today.momentum.stages", { count: stages.length }),
+                          topics: t("dashboard.today.momentum.topics", { count: summary.total }),
+                        })}
                     </span>
                   </span>
                 </div>
@@ -926,13 +976,12 @@ export function TodayView({ onNavigate }: TodayViewProps) {
 
         {/* What moved: simple feed, newest first. */}
         <Reveal delay={0.15} className="mt-5">
-          <Panel label="What changed">
-            <PanelHead title="What changed" />
+          <Panel label={t("dashboard.today.changed.title")}>
+            <PanelHead title={t("dashboard.today.changed.title")} />
             {activity.length === 0 ? (
               <p className="mt-4 flex items-start gap-2.5 text-[13px] leading-relaxed text-muted-foreground">
                 <CircleSlash aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                Nothing yet. Sync a source, upload a deck, or ask Hermes to change your plan. It shows
-                up here.
+                {t("dashboard.today.changed.empty")}
               </p>
             ) : (
               <ul className="mt-4 grid gap-x-8 gap-y-1 md:grid-cols-2">
@@ -952,15 +1001,15 @@ export function TodayView({ onNavigate }: TodayViewProps) {
                       {item.icon}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold" title={item.title}>
+                      <bdi className="block truncate text-start text-sm font-semibold" title={item.title}>
                         {item.title}
-                      </span>
+                      </bdi>
                       <span className="block truncate text-xs text-muted-foreground" title={item.detail}>
                         {item.detail}
                       </span>
                     </span>
                     <RowLink onClick={() => onNavigate(item.tab)}>
-                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5" />
+                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5 rtl:-scale-x-100" />
                     </RowLink>
                   </motion.li>
                 ))}
@@ -972,11 +1021,11 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         {/* Only when something is genuinely waiting on the student. */}
         {attention.length > 0 ? (
           <Reveal delay={0.2} className="mt-5">
-            <Panel label="Needs attention">
+            <Panel label={t("dashboard.today.attention.title")}>
               <PanelHead
-                title="Needs attention"
+                title={t("dashboard.today.attention.title")}
                 tone="warning"
-                pill={`${attention.length}`}
+                pill={fmt.number(attention.length)}
               />
               <ul className="mt-4 grid gap-2.5 md:grid-cols-2">
                 {attention.map((item) => (
@@ -991,15 +1040,15 @@ export function TodayView({ onNavigate }: TodayViewProps) {
                       {item.icon}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold" title={item.title}>
+                      <bdi className="block truncate text-start text-sm font-semibold" title={item.title}>
                         {item.title}
-                      </span>
+                      </bdi>
                       <span className="block truncate text-xs text-muted-foreground" title={item.detail}>
                         {item.detail}
                       </span>
                     </span>
                     <RowLink onClick={() => onNavigate(item.tab)}>
-                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5" />
+                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5 rtl:-scale-x-100" />
                     </RowLink>
                   </li>
                 ))}

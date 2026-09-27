@@ -15,6 +15,7 @@ import {
 import { EASE_OUT } from "@/lib/ease";
 import type { QuizQuestion } from "@/lib/quiz-ai";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 import type { QuizAnswer } from "./QuizRunner";
 
 interface QuizResultsProps {
@@ -26,6 +27,7 @@ interface QuizResultsProps {
 }
 
 export function QuizResults({ questions, answers, sourceName, onRetry, onHome }: QuizResultsProps) {
+  const { t, fmt } = useI18n();
   const [openId, setOpenId] = useState<string | null>(null);
   const reduce = useReducedMotion();
 
@@ -42,7 +44,16 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
   ).best;
 
   const headline =
-    pct === 100 ? "Flawless. You own this deck." : pct >= 70 ? "Strong. A quick review locks it in." : pct >= 40 ? "Warming up. Review the misses below." : "Tough deck. Review, then retry.";
+    t(
+      pct === 100
+        ? "quiz.results.headline.flawless"
+        : pct >= 70
+          ? "quiz.results.headline.strong"
+          : pct >= 40
+            ? "quiz.results.headline.warming"
+            : "quiz.results.headline.tough",
+    );
+  const fraction = t("quiz.results.fraction", { correct, total });
 
   const R = 44;
   const circ = 2 * Math.PI * R;
@@ -57,7 +68,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
           transition={{ duration: reduce ? 0 : 0.4, ease: EASE_OUT }}
           className="relative mx-auto grid size-36 place-items-center lg:mx-0"
           role="img"
-          aria-label={`Score ${correct} out of ${total}`}
+          aria-label={t("quiz.results.scoreAria", { correct, total })}
         >
           <svg viewBox="0 0 100 100" className="absolute inset-0 size-full -rotate-90">
             <circle cx="50" cy="50" r={R} fill="none" strokeWidth="10" className="stroke-muted" />
@@ -76,23 +87,23 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
             />
           </svg>
           <div>
-            <p className="text-3xl font-bold tabular-nums">{pct}%</p>
-            <p className="text-[13px] text-muted-foreground tabular-nums">
-              {correct}/{total}
+            <p className="text-3xl font-bold tabular-nums">{fmt.percent(pct / 100)}</p>
+            <p className="text-[13px] text-muted-foreground tabular-nums" dir="ltr">
+              {fraction}
             </p>
           </div>
         </motion.div>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">{headline}</h1>
-        <p className="mt-1.5 truncate text-sm text-muted-foreground">{sourceName}</p>
+        <p className="ltr-value mt-1.5 truncate text-sm text-muted-foreground" dir="ltr">{sourceName}</p>
 
         <div className="mt-5 grid grid-cols-3 gap-2">
           {[
-            { icon: Target, label: "Correct", value: `${correct}/${total}` },
-            { icon: Flame, label: "Best streak", value: `${bestStreak}` },
+            { icon: Target, label: t("quiz.results.correct"), value: fraction },
+            { icon: Flame, label: t("quiz.results.bestStreak"), value: fmt.number(bestStreak) },
             {
               icon: Award,
-              label: "Grade",
-              value: pct >= 90 ? "A" : pct >= 70 ? "B" : pct >= 50 ? "C" : "Retry",
+              label: t("quiz.results.grade"),
+              value: pct >= 90 ? "A" : pct >= 70 ? "B" : pct >= 50 ? "C" : t("quiz.results.gradeRetry"),
             },
           ].map((s, i) => (
             <motion.div
@@ -115,33 +126,28 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
             onClick={onRetry}
             className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-[15px] font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <RotateCcw className="size-4" aria-hidden="true" /> Retry quiz
+            <RotateCcw className="size-4" aria-hidden="true" /> {t("quiz.results.retry")}
           </button>
           <button
             type="button"
             onClick={onHome}
             className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border px-4 text-[15px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Home className="size-4" aria-hidden="true" /> Quizzes home
+            <Home className="size-4" aria-hidden="true" /> {t("quiz.results.home")}
           </button>
         </div>
       </div>
 
       <div className="min-w-0">
         <h2 className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-          Review ({total})
+          {t("quiz.results.review", { count: total })}
         </h2>
         <div className="mt-3 flex flex-col gap-4">
           {questions.map((q, i) => {
             const a = answers[q.id];
             const ok = a?.correct ?? false;
             const open = openId === q.id;
-            const typeLabel =
-              q.type === "mcq"
-                ? "Multiple choice"
-                : q.type === "true_false"
-                  ? "True / False"
-                  : "Short answer";
+            const typeLabel = t(`quiz.types.${q.type}`);
             return (
               <div key={q.id} className="overflow-hidden rounded-3xl border border-border bg-background">
                 <button
@@ -161,15 +167,15 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                       {ok ? <Check className="size-4" /> : <X className="size-4" />}
                     </span>
                     <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                      Question {i + 1}, {typeLabel}
-                      {q.source ? `, ${q.source}` : ""}
+                      {t("quiz.results.questionLabel", { n: i + 1, type: typeLabel })}
+                      {q.source ? <>, <bdi>{q.source}</bdi></> : null}
                     </span>
                     <ChevronDown
-                      className={cn("ml-auto size-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+                      className={cn("ms-auto size-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
                       aria-hidden="true"
                     />
                   </span>
-                  <span className="mt-3 block text-base font-medium leading-relaxed sm:text-lg">
+                  <span className="mt-3 block text-base font-medium leading-relaxed sm:text-lg" dir="auto">
                     {q.question}
                   </span>
                   <span
@@ -181,13 +187,13 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                     )}
                   >
                     <span className="block">
-                      <span className="font-semibold">Your answer: </span>
-                      {a?.given ?? "-"}
+                      <span className="font-semibold">{t("quiz.results.yourAnswer")} </span>
+                      <bdi>{a?.given ?? "-"}</bdi>
                     </span>
                     {!ok ? (
                       <span className="mt-1.5 block">
-                        <span className="font-semibold">Correct answer: </span>
-                        {q.answer}
+                        <span className="font-semibold">{t("quiz.results.correctAnswer")} </span>
+                        <bdi>{q.answer}</bdi>
                       </span>
                     ) : null}
                   </span>
@@ -199,6 +205,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                         {q.options.map((opt) => (
                           <p
                             key={opt}
+                            dir="auto"
                             className={cn(
                               "rounded-xl px-3 py-2",
                               opt === q.answer
@@ -213,12 +220,12 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                     ) : null}
                     {q.type === "short_answer" ? (
                       <p>
-                        <span className="font-medium">Reference answer: </span>
-                        {q.answer}
+                        <span className="font-medium">{t("quiz.results.referenceAnswer")} </span>
+                        <bdi>{q.answer}</bdi>
                       </p>
                     ) : null}
                     {q.explanation ? (
-                      <p className="mt-3 text-muted-foreground">{q.explanation}</p>
+                      <p className="mt-3 text-muted-foreground" dir="auto">{q.explanation}</p>
                     ) : null}
                   </div>
                 ) : null}

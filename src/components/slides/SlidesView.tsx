@@ -26,6 +26,7 @@ import {
 import { parsePptxDesign, type ParsedPptx } from "@/lib/pptx-design";
 import { renderPdfPages } from "@/lib/pdf-pages";
 import { NEUTRAL_THEME, type ViewerSlide } from "@/lib/deck-viewer";
+import { useI18n, type MessageKey } from "@/lib/i18n/context";
 import { SlidesHome } from "./SlidesHome";
 
 export type DeckVisualStatus = "loading" | "ready" | "unavailable" | "error";
@@ -40,11 +41,20 @@ export interface DeckVisuals {
 }
 
 export function SlidesView() {
+  const { t } = useI18n();
+  /** Translate a library error when it carries a key; server-supplied text passes through. */
+  const errorText = useCallback(
+    (e: unknown, fallback: MessageKey): string => {
+      if (e instanceof SlidesAIError) return e.key ? t(`slides.errors.${e.key}`, e.params) : e.message;
+      return e instanceof Error && e.message ? e.message : t(fallback);
+    },
+    [t],
+  );
   const [library, setLibrary] = useState<QuizLibrary>(loadLibrary);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hermesModel, setHermesModel] = useState({ id: "", label: "Hermes" });
+  const [hermesModel, setHermesModel] = useState({ id: "" });
 
   const [topics, setTopics] = useState<SuggestedTopic[]>([]);
   const [topicsLoading, setTopicsLoading] = useState(false);
@@ -79,9 +89,9 @@ export function SlidesView() {
     libraryRef.current = next;
     setLibrary(next);
     if (!saveLibrary(next)) {
-      setError("Browser storage is full. Delete old decks or extensions to free space.");
+      setError(t("slides.errors.storageFull"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +99,7 @@ export function SlidesView() {
       .then((health) => {
         if (cancelled || !health.model) return;
         // Raw infra ids (nvidia/…) mean nothing to students: show a human label.
-        setHermesModel({ id: health.model, label: "Waypoint default" });
+        setHermesModel({ id: health.model });
       })
       .catch(() => undefined);
     return () => {
@@ -118,12 +128,12 @@ export function SlidesView() {
         setExtendError(null);
         setSelectedDeckId(deck.id);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not read that file.");
+        setError(errorText(e, "slides.errors.readFile"));
       } finally {
         setUploading(false);
       }
     },
-    [persist],
+    [persist, errorText],
   );
 
   /** Selecting a deck immediately shows the analyzing state (no empty flash). */
@@ -197,9 +207,7 @@ export function SlidesView() {
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === "AbortError") return;
-        setTopicsError(
-          e instanceof SlidesAIError ? e.message : e instanceof Error ? e.message : "Suggestion failed.",
-        );
+        setTopicsError(errorText(e, "slides.errors.suggestFailed"));
       })
       .finally(() => {
         if (!ctrl.signal.aborted) {
@@ -208,6 +216,7 @@ export function SlidesView() {
         }
       });
     return () => ctrl.abort();
+    // errorText is deliberately omitted: a locale change must not re-run the model call.
   }, [selectedDeckId]);
 
   // Clear selection state when the deck list changes underneath us.
@@ -250,7 +259,7 @@ export function SlidesView() {
         if (visualReq.current !== req) return;
         setVisuals((prev) => ({
           ...prev,
-          [deck.id]: { status: "error", error: e instanceof Error ? e.message : "Could not preview these slides." },
+          [deck.id]: { status: "error", error: e instanceof Error && e.message ? e.message : undefined },
         }));
       }
     })();
@@ -275,7 +284,7 @@ export function SlidesView() {
         const theme = visual.parsed.theme;
         return visual.parsed.slides.map((slide, i) => ({
           key: `${deckId}-orig-${i}`,
-          label: `Slide ${i + 1}`,
+          label: t("slides.preview.slideLabel", { n: i + 1 }),
           isNew: false,
           background: slide.background ?? theme.background,
           shapes: slide.shapes,
@@ -285,14 +294,14 @@ export function SlidesView() {
       }
       return (visual.pdfImages ?? []).map((src, i) => ({
         key: `${deckId}-page-${i}`,
-        label: `Page ${i + 1}`,
+        label: t("slides.preview.pageLabel", { n: i + 1 }),
         isNew: false,
         background: "#FFFFFF",
         rasterSrc: src,
         theme: NEUTRAL_THEME,
       }));
     },
-    [library.decks, visuals],
+    [library.decks, visuals, t],
   );
 
   const buildAiSlides = useCallback(
@@ -302,7 +311,7 @@ export function SlidesView() {
       const background = theme.background;
       return slides.map((slide, i) => ({
         key: `${deckId}-new-${startIndex + i}`,
-        label: `New ${startIndex + i + 1}`,
+        label: t("slides.preview.newLabel", { n: startIndex + i + 1 }),
         isNew: true,
         background,
         shapes: [],
@@ -311,7 +320,7 @@ export function SlidesView() {
         theme,
       }));
     },
-    [visuals],
+    [visuals, t],
   );
 
   const workbenchSlides: ViewerSlide[] | null = (() => {
@@ -381,14 +390,14 @@ export function SlidesView() {
       setPreviewTopic(topic);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      setExtendError(e instanceof SlidesAIError ? e.message : e instanceof Error ? e.message : "Extension failed.");
+      setExtendError(errorText(e, "slides.errors.extendFailed"));
     } finally {
       if (!ctrl.signal.aborted) {
         setExtending(false);
         setExtendProgress(null);
       }
     }
-  }, [selectedDeckId, customTopic, selectedTopic, extensionLength, designHintFor]);
+  }, [selectedDeckId, customTopic, selectedTopic, extensionLength, designHintFor, errorText]);
 
   const savePreview = useCallback(() => {
     const deck = libraryRef.current.decks.find((d) => d.id === selectedDeckId);
@@ -452,17 +461,17 @@ export function SlidesView() {
         window.setTimeout(() => URL.revokeObjectURL(url), 5000);
         setNewExtensionIds((prev) => prev.filter((x) => x !== ext.id));
       } catch (e) {
-        setError(e instanceof SlidesAIError ? e.message : e instanceof Error ? e.message : "Export failed.");
+        setError(errorText(e, "slides.errors.exportFailed"));
       } finally {
         setExportingId(null);
       }
     },
-    [visuals],
+    [visuals, errorText],
   );
 
   return (
     <SlidesHome
-      modelLabel={hermesModel.label}
+      modelLabel={hermesModel.id ? t("slides.modelDefault") : "Hermes"}
       decks={library.decks}
       selectedDeckId={selectedDeckId}
       onSelectDeck={handleSelectDeck}

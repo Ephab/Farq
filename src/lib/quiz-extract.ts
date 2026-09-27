@@ -13,13 +13,36 @@ export interface ExtractedSource {
 }
 
 export const MAX_FILE_MB = 25;
+
+/** Extraction failure with a UI message key (quiz.errors.extract.<code>); message stays English. */
+export type QuizExtractErrorCode =
+  | "tooLarge"
+  | "pdfEngine"
+  | "unreadable"
+  | "invalidPdf"
+  | "pdfParse"
+  | "pptxOpen"
+  | "noSlides"
+  | "unsupported"
+  | "noText";
+
+export class QuizExtractError extends Error {
+  code: QuizExtractErrorCode;
+  params: Record<string, string | number>;
+  constructor(code: QuizExtractErrorCode, message: string, params: Record<string, string | number> = {}) {
+    super(message);
+    this.name = "QuizExtractError";
+    this.code = code;
+    this.params = params;
+  }
+}
 const MAX_UNITS = 60; // pages/slides parsed max
 const MAX_CHARS = 60_000; // local cap before AI truncation
 
 function checkSize(file: File) {
   const mb = file.size / (1024 * 1024);
   if (mb > MAX_FILE_MB) {
-    throw new Error(`File is ${mb.toFixed(1)}MB — keep it under ${MAX_FILE_MB}MB for in-browser parsing.`);
+    throw new QuizExtractError("tooLarge", `File is ${mb.toFixed(1)}MB — keep it under ${MAX_FILE_MB}MB for in-browser parsing.`, { mb: mb.toFixed(1), max: MAX_FILE_MB });
   }
 }
 
@@ -31,13 +54,13 @@ export async function extractPdf(file: File): Promise<ExtractedSource> {
     const { default: workerUrl } = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
   } catch {
-    throw new Error("PDF engine failed to start. Reload the page and try again.");
+    throw new QuizExtractError("pdfEngine", "PDF engine failed to start. Reload the page and try again.");
   }
   let buf: ArrayBuffer;
   try {
     buf = await file.arrayBuffer();
   } catch {
-    throw new Error(`Couldn't read “${file.name}”. The file may be locked or corrupted.`);
+    throw new QuizExtractError("unreadable", `Couldn't read “${file.name}”. The file may be locked or corrupted.`, { name: file.name });
   }
   let loadingTask: ReturnType<typeof pdfjs.getDocument>;
   try {
@@ -46,7 +69,7 @@ export async function extractPdf(file: File): Promise<ExtractedSource> {
       useSystemFonts: true,
     });
   } catch {
-    throw new Error(`“${file.name}” doesn't look like a valid PDF.`);
+    throw new QuizExtractError("invalidPdf", `“${file.name}” doesn't look like a valid PDF.`, { name: file.name });
   }
   // NOTE: in pdfjs-dist v5+, destroy() lives on the loading task,
   // not on the document proxy.
@@ -59,7 +82,7 @@ export async function extractPdf(file: File): Promise<ExtractedSource> {
     } catch {
       // ignore cleanup errors
     }
-    throw new Error(`Couldn't parse “${file.name}”. Password-protected or image-only PDFs aren't supported yet.`);
+    throw new QuizExtractError("pdfParse", `Couldn't parse “${file.name}”. Password-protected or image-only PDFs aren't supported yet.`, { name: file.name });
   }
   const pages = Math.min(pdf.numPages, MAX_UNITS);
   const parts: string[] = [];
@@ -94,7 +117,7 @@ export async function extractPptx(file: File): Promise<ExtractedSource> {
     const { default: JSZip } = await import("jszip");
     zip = await JSZip.loadAsync(await file.arrayBuffer());
   } catch {
-    throw new Error(`Couldn't open “${file.name}”. It may be corrupted or not a real .pptx (old .ppt isn't supported).`);
+    throw new QuizExtractError("pptxOpen", `Couldn't open “${file.name}”. It may be corrupted or not a real .pptx (old .ppt isn't supported).`, { name: file.name });
   }
   // Collect slide XMLs in numeric order: ppt/slides/slide1.xml, slide2.xml, ...
   const slidePaths = Object.keys(zip.files)
@@ -106,7 +129,7 @@ export async function extractPptx(file: File): Promise<ExtractedSource> {
     })
     .slice(0, MAX_UNITS);
 
-  if (slidePaths.length === 0) throw new Error("No slides found — is this a valid .pptx?");
+  if (slidePaths.length === 0) throw new QuizExtractError("noSlides", "No slides found — is this a valid .pptx?");
 
   const parser = new DOMParser();
   const parts: string[] = [];
@@ -137,7 +160,7 @@ export async function extractSource(file: File): Promise<ExtractedSource> {
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".pdf")) return extractPdf(file);
   if (lower.endsWith(".pptx")) return extractPptx(file);
-  throw new Error("Unsupported file — upload a .pdf or .pptx.");
+  throw new QuizExtractError("unsupported", "Unsupported file — upload a .pdf or .pptx.");
 }
 
 function finalize(
@@ -149,7 +172,7 @@ function finalize(
   const full = parts.join("\n\n");
   const truncated = totalUnits > MAX_UNITS || full.length > MAX_CHARS;
   const text = full.slice(0, MAX_CHARS);
-  if (!text.trim()) throw new Error("No readable text found — scanned images need OCR, not supported yet.");
+  if (!text.trim()) throw new QuizExtractError("noText", "No readable text found — scanned images need OCR, not supported yet.");
   return {
     fileName,
     kind,

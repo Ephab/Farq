@@ -2,6 +2,9 @@
 export const core = {
   common: {
     appName: "Waypoint",
+    introLoading: "Loading {name}",
+    introSkip: "Click anywhere or press Esc to skip",
+    coachName: "Coach",
     loading: "Loading…",
     retry: "Try again",
     cancel: "Cancel",
@@ -11,6 +14,24 @@ export const core = {
     comingSoon: "This section is coming soon — check out the Roadmap tab.",
     openRoadmap: "Open Roadmap",
     networkError: "Can't reach Waypoint. Check your connection and try again.",
+    sourceKinds: {
+      transcript_pdf: "Transcript",
+      cv_pdf: "CV",
+      linkedin_pdf: "LinkedIn profile",
+      linkedin_zip: "LinkedIn export",
+      github: "GitHub",
+      folder: "Project folder",
+      portfolio_url: "Portfolio",
+      orcid: "ORCID",
+    },
+    errors: {
+      unauthorized: "Your session has expired. Reload the page to continue.",
+      forbidden: "You don't have permission to do that.",
+      notFound: "We couldn't find that. It may have been removed.",
+      timeout: "The server took too long to respond. Try again.",
+      server: "Something went wrong on the server (error {status}). Try again shortly.",
+      generic: "The request failed (error {status}).",
+    },
   },
   nav: {
     ariaLabel: "Waypoint navigation",

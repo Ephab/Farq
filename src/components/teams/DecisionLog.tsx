@@ -5,6 +5,7 @@ import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { timeAgo } from "@/lib/team-format"
 import { memberName, removeDecision, type TeamStore } from "@/lib/team-store"
 import { useTeamClient } from "@/components/teams/team-client-context"
+import { useI18n } from "@/lib/i18n/context"
 
 interface DecisionLogProps {
   store: TeamStore
@@ -17,6 +18,7 @@ interface DecisionLogProps {
 
 export function DecisionLog({ store, canEdit, update, onError, onJump }: DecisionLogProps) {
   const teams = useTeamClient()
+  const { t } = useI18n()
   const decisions = Object.values(store.decisions).sort((a, b) => b.created_at.localeCompare(a.created_at))
   const unpin = async (decisionId: string) => {
     try {
@@ -28,25 +30,25 @@ export function DecisionLog({ store, canEdit, update, onError, onJump }: Decisio
   }
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="tm-h2" style={{ marginBottom: 0 }}>Decisions</h2>
+      <h2 className="tm-h2" style={{ marginBottom: 0 }}>{t("teams.decisions.title")}</h2>
       {decisions.length === 0 ? (
-        <p className="tm-muted">No decisions yet. Pin a chat message to record one. Instructors can see pinned decisions, never the chat.</p>
+        <p className="tm-muted">{t("teams.decisions.empty")}</p>
       ) : (
         <div className="tm-list">
           {decisions.map((decision) => (
             <div key={decision.id} className="tm-card flex items-start justify-between gap-3">
               {onJump && decision.source_message_id ? (
-                <button type="button" className="tm-decision-link" title="Show in chat" onClick={() => onJump(decision.source_message_id as string)}>
+                <button type="button" className="tm-decision-link" title={t("teams.decisions.showInChat")} onClick={() => onJump(decision.source_message_id as string)}>
                   <p className="m-0" dir="auto">{decision.text}</p>
-                  <small>Pinned by {memberName(store, decision.pinned_by)} · {timeAgo(decision.created_at)} · <MessageSquare className="inline size-3" aria-hidden="true" /> Show in chat</small>
+                  <small>{t("teams.decisions.pinnedBy", { name: memberName(store, decision.pinned_by), time: timeAgo(decision.created_at, t) })} · <MessageSquare className="inline size-3" aria-hidden="true" /> {t("teams.decisions.showInChat")}</small>
                 </button>
               ) : (
                 <div>
                   <p className="m-0" dir="auto">{decision.text}</p>
-                  <small>Pinned by {memberName(store, decision.pinned_by)} · {timeAgo(decision.created_at)}</small>
+                  <small>{t("teams.decisions.pinnedBy", { name: memberName(store, decision.pinned_by), time: timeAgo(decision.created_at, t) })}</small>
                 </div>
               )}
-              {canEdit ? <button type="button" className="tm-btn tm-btn-sm" onClick={() => void unpin(decision.id)}>Unpin</button> : null}
+              {canEdit ? <button type="button" className="tm-btn tm-btn-sm" onClick={() => void unpin(decision.id)}>{t("teams.decisions.unpin")}</button> : null}
             </div>
           ))}
         </div>

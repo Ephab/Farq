@@ -8,6 +8,7 @@ import { fromDateInput, toDateInput } from "@/lib/team-format"
 import { TASK_COLUMNS, removeTask, upsertMessage, upsertTask, type TeamStore } from "@/lib/team-store"
 import type { TaskStatus, TeamTask } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
+import { useI18n } from "@/lib/i18n/context"
 
 export type TaskSheetState = { mode: "create"; title?: string } | { mode: "edit"; task: TeamTask }
 
@@ -22,6 +23,7 @@ interface TaskSheetProps {
 
 export function TaskSheet({ state, store, canEdit, update, onError, onClose }: TaskSheetProps) {
   const teams = useTeamClient()
+  const { t } = useI18n()
   const existing = state.mode === "edit" ? store.tasks[state.task.id] ?? state.task : null
   const [title, setTitle] = useState(existing?.title ?? (state.mode === "create" ? state.title ?? "" : ""))
   const [description, setDescription] = useState(existing?.description ?? "")
@@ -87,62 +89,62 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
       {existing ? (
         <div className="flex gap-2">
           <button type="button" className="tm-btn" disabled={saving} onClick={() => void remove()}>
-            <Trash2 className="size-4" aria-hidden="true" /> Delete
+            <Trash2 className="size-4" aria-hidden="true" /> {t("teams.common.delete")}
           </button>
           {existing.status === "todo" ? (
             <button type="button" className="tm-btn" disabled={saving} onClick={() => void breakDown()}>
-              <Sparkles className="size-4" aria-hidden="true" /> Break down
+              <Sparkles className="size-4" aria-hidden="true" /> {t("teams.sheet.breakDown")}
             </button>
           ) : null}
         </div>
       ) : <span />}
       <button type="button" className="tm-btn tm-btn-primary" disabled={saving || !title.trim()} onClick={() => void save()}>
-        {existing ? "Save" : "Create task"}
+        {existing ? t("teams.common.save") : t("teams.sheet.createTask")}
       </button>
     </>
   ) : undefined
 
   return (
-    <Sheet title={existing ? "Task" : "New task"} onClose={onClose} footer={footer}>
-      <label className="tm-field">Title
+    <Sheet title={existing ? t("teams.sheet.task") : t("teams.sheet.newTask")} onClose={onClose} footer={footer}>
+      <label className="tm-field">{t("teams.sheet.title")}
         <input className="tm-input" dir="auto" value={title} maxLength={200} disabled={!canEdit} onChange={(event) => setTitle(event.target.value)} />
       </label>
-      <label className="tm-field">Description
+      <label className="tm-field">{t("teams.sheet.description")}
         <textarea className="tm-textarea" dir="auto" value={description} disabled={!canEdit} onChange={(event) => setDescription(event.target.value)} />
       </label>
       {existing?.rationale ? (
-        <p className="tm-rationale"><Sparkles className="mr-1 inline size-3.5" aria-hidden="true" />{existing.rationale}</p>
+        <p className="tm-rationale"><Sparkles className="me-1 inline size-3.5" aria-hidden="true" /><bdi>{existing.rationale}</bdi></p>
       ) : null}
       <div className="tm-grid2">
-        <label className="tm-field">Status
+        <label className="tm-field">{t("teams.sheet.status")}
           <select className="tm-select" value={status} disabled={!canEdit} onChange={(event) => setStatus(event.target.value as TaskStatus)}>
-            {TASK_COLUMNS.map((column) => <option key={column.status} value={column.status}>{column.label}</option>)}
+            {TASK_COLUMNS.map((column) => <option key={column.status} value={column.status}>{t(`teams.status.${column.status}`)}</option>)}
           </select>
         </label>
-        <label className="tm-field">Assignee
+        <label className="tm-field">{t("teams.sheet.assignee")}
           <select className="tm-select" value={assignee} disabled={!canEdit} onChange={(event) => setAssignee(event.target.value)}>
-            <option value="">Unassigned</option>
+            <option value="">{t("teams.sheet.unassigned")}</option>
             {store.team.members.map((member) => <option key={member.user_id} value={member.user_id}>{member.display_name}</option>)}
           </select>
         </label>
-        <label className="tm-field">Points
+        <label className="tm-field">{t("teams.sheet.points")}
           <select className="tm-select" value={points} disabled={!canEdit} onChange={(event) => setPoints(Number(event.target.value))}>
             {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
         </label>
-        <label className="tm-field">Due
+        <label className="tm-field">{t("teams.sheet.due")}
           <input type="date" className="tm-input" value={due} disabled={!canEdit} onChange={(event) => setDue(event.target.value)} />
         </label>
       </div>
-      <label className="tm-field">Milestone
+      <label className="tm-field">{t("teams.sheet.milestone")}
         <select className="tm-select" value={milestone} disabled={!canEdit} onChange={(event) => setMilestone(event.target.value)}>
-          <option value="">None</option>
+          <option value="">{t("teams.sheet.none")}</option>
           {milestones.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
         </select>
       </label>
       {others.length > 0 ? (
         <fieldset className="tm-field">
-          <legend>Depends on</legend>
+          <legend>{t("teams.sheet.dependsOn")}</legend>
           <div className="tm-checks">
             {others.map((task) => (
               <label key={task.id} className="flex items-center gap-2">

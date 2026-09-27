@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap";
-import { computeHorizontalRoadmapLayout, computeRoadmapLayout, HORIZ_COL_W, type RoadmapOrientation } from "@/lib/roadmap-layout";
+import { computeHorizontalRoadmapLayout, computeRoadmapLayout, HORIZ_COL_W, NODE_W, type RoadmapOrientation } from "@/lib/roadmap-layout";
 import { RoadmapEdges } from "@/components/roadmap/RoadmapEdges";
 import { RoadmapNode } from "@/components/roadmap/RoadmapNode";
+import { useI18n } from "@/lib/i18n/context";
 
 interface RoadmapCanvasProps {
   nodes: RoadmapNodeData[];
@@ -33,6 +34,11 @@ export function RoadmapCanvas({
   onOpenProject,
   orientation = "vertical",
 }: RoadmapCanvasProps) {
+  const { t, fmt, dir } = useI18n();
+  // The horizontal layout is a left-to-right progression, so in RTL it runs right-to-left: node and
+  // stage x are mirrored here and the edge SVG is flipped with scaleX(-1), which maps the same
+  // coordinates. The vertical layout is a top-to-bottom graph and stays physical.
+  const mirror = dir === "rtl" && orientation === "horizontal";
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [compact, setCompact] = useState(false);
@@ -56,6 +62,15 @@ export function RoadmapCanvas({
       : computeRoadmapLayout(nodes, stages, compact),
     [nodes, stages, compact, orientation],
   );
+
+  const nodeX = (x: number) => (mirror ? layout.width - x - NODE_W : x);
+  const anchorX = (x: number) => (mirror ? layout.width - x : x);
+
+  // A mirrored horizontal roadmap starts at the right edge.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && mirror) el.scrollLeft = el.scrollWidth;
+  }, [mirror, layout.width]);
 
   const stageProgress = useMemo(() => {
     const map: Record<string, { done: number; total: number }> = {};
@@ -83,7 +98,7 @@ export function RoadmapCanvas({
     const scale = (el.clientWidth - 32) / layout.width;
     setZoom(Math.min(1, Math.max(MIN_ZOOM, scale)));
     requestAnimationFrame(() => {
-      el.scrollTo({ left: 0, top: 0 });
+      el.scrollTo({ left: mirror ? el.scrollWidth : 0, top: 0 });
     });
   };
 
@@ -133,7 +148,8 @@ export function RoadmapCanvas({
         onClick={onBackgroundClick}
         className="absolute inset-0 flex cursor-grab overflow-auto overscroll-contain active:cursor-grabbing"
         role="application"
-        aria-label="Roadmap canvas. Scroll to explore, drag to pan, click a node for details."
+        aria-label={t("roadmap.canvas.ariaLabel")}
+        dir="ltr"
         style={{
           backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.2px)",
           backgroundSize: "24px 24px",
@@ -154,7 +170,13 @@ export function RoadmapCanvas({
               transform: `scale(${zoom})`,
             }}
           >
-            <RoadmapEdges layout={layout} statuses={statuses} selectedId={selectedId} />
+            {mirror ? (
+              <div className="pointer-events-none absolute inset-0" style={{ transform: "scaleX(-1)" }}>
+                <RoadmapEdges layout={layout} statuses={statuses} selectedId={selectedId} />
+              </div>
+            ) : (
+              <RoadmapEdges layout={layout} statuses={statuses} selectedId={selectedId} />
+            )}
 
             {stages.map((stage, si) => {
               const anchor = layout.stageAnchors.find((a) => a.stageId === stage.id);
@@ -164,13 +186,14 @@ export function RoadmapCanvas({
                 <div
                   key={stage.id}
                   className="absolute -translate-x-1/2 rounded-2xl border border-border bg-background/95 px-4 py-2 text-center shadow-sm backdrop-blur"
-                  style={{ left: anchor.x, top: anchor.y, width: orientation === "horizontal" ? HORIZ_COL_W : compact ? layout.width - 32 : 460, maxWidth: layout.width - 32 }}
+                  dir={dir}
+                  style={{ left: anchorX(anchor.x), top: anchor.y, width: orientation === "horizontal" ? HORIZ_COL_W : compact ? layout.width - 32 : 460, maxWidth: layout.width - 32 }}
                 >
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Stage {si + 1} of {stages.length}
+                    {t("roadmap.canvas.stageOf", { index: fmt.number(si + 1), total: fmt.number(stages.length) })}
                   </p>
-                  <p className="truncate text-[15px] font-semibold">{stage.title.replace(/^Stage \d+ · /, "")}</p>
-                  <p className="truncate text-[13px] text-muted-foreground">{stage.description}</p>
+                  <p dir="auto" className="truncate text-[15px] font-semibold">{stage.title.replace(/^Stage \d+ · /, "")}</p>
+                  <p dir="auto" className="truncate text-[13px] text-muted-foreground">{stage.description}</p>
                   <div className="mx-auto mt-1.5 h-1 w-3/4 overflow-hidden rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-primary transition-[width]"
@@ -188,7 +211,7 @@ export function RoadmapCanvas({
                 <RoadmapNode
                   key={node.id}
                   node={node}
-                  x={p.x}
+                  x={nodeX(p.x)}
                   y={p.y}
                   status={statuses[node.id] ?? "not-started"}
                   selected={selectedId === node.id}
@@ -202,10 +225,10 @@ export function RoadmapCanvas({
             })}
 
             {allDimmed ? (
-              <div className="absolute left-1/2 top-1/3 w-72 -translate-x-1/2 rounded-2xl border border-border bg-background p-5 text-center shadow-lg">
-                <p className="text-[15px] font-semibold">No topics match</p>
+              <div className="absolute left-1/2 top-1/3 w-72 -translate-x-1/2 rounded-2xl border border-border bg-background p-5 text-center shadow-lg" dir={dir}>
+                <p className="text-[15px] font-semibold">{t("roadmap.canvas.noMatchTitle")}</p>
                 <p className="mt-1 text-[13px] text-muted-foreground">
-                  Try a different search term or level filter.
+                  {t("roadmap.canvas.noMatchBody")}
                 </p>
               </div>
             ) : null}
@@ -218,11 +241,11 @@ export function RoadmapCanvas({
       <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 z-[5] w-6 bg-gradient-to-l from-background to-transparent" />
 
       {/* Zoom controls */}
-      <div className="absolute bottom-4 left-4 z-10 flex items-center gap-1 rounded-xl border border-border bg-background/95 p-1 shadow-md backdrop-blur">
+      <div className="absolute bottom-4 start-4 z-10 flex items-center gap-1 rounded-xl border border-border bg-background/95 p-1 shadow-md backdrop-blur">
         <button
           type="button"
           onClick={() => stepZoom(-1)}
-          aria-label="Zoom out"
+          aria-label={t("roadmap.canvas.zoomOut")}
           className="grid size-8 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Minus className="size-4" aria-hidden="true" />
@@ -230,15 +253,15 @@ export function RoadmapCanvas({
         <button
           type="button"
           onClick={() => setZoom(1)}
-          title="Reset zoom to 100%"
+          title={t("roadmap.canvas.resetZoom")}
           className="min-w-12 rounded-lg px-1 text-[13px] font-medium tabular-nums text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {Math.round(zoom * 100)}%
+          {fmt.percent(zoom)}
         </button>
         <button
           type="button"
           onClick={() => stepZoom(1)}
-          aria-label="Zoom in"
+          aria-label={t("roadmap.canvas.zoomIn")}
           className="grid size-8 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Plus className="size-4" aria-hidden="true" />
@@ -247,8 +270,8 @@ export function RoadmapCanvas({
         <button
           type="button"
           onClick={fitView}
-          aria-label="Fit roadmap to view"
-          title="Fit roadmap to view"
+          aria-label={t("roadmap.canvas.fit")}
+          title={t("roadmap.canvas.fit")}
           className="grid size-8 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Maximize className="size-4" aria-hidden="true" />

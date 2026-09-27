@@ -20,7 +20,7 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     const token = match[0]
     const key = `${keyPrefix}-i${n}`
     if (token.startsWith("`")) {
-      push(<code key={key} className="rounded bg-muted px-1 py-0.5 text-[0.85em]" dangerouslySetInnerHTML={{ __html: token.slice(1, -1) }} />)
+      push(<code key={key} dir="ltr" className="rounded bg-muted px-1 py-0.5 text-[0.85em]" dangerouslySetInnerHTML={{ __html: token.slice(1, -1) }} />)
     } else if (token.startsWith("**")) {
       push(<strong key={key} dangerouslySetInnerHTML={{ __html: token.slice(2, -2) }} />)
     } else if (token.startsWith("*")) {
@@ -47,8 +47,8 @@ export function MarkdownText({ text }: { text: string }) {
     list = null
     blocks.push(
       ordered
-        ? <ol key={`b${blocks.length}`} className="list-decimal space-y-1 pl-5">{items.map((item, i) => <li key={i}>{inline(item, `b${blocks.length}o${i}`)}</li>)}</ol>
-        : <ul key={`b${blocks.length}`} className="list-disc space-y-1 pl-5">{items.map((item, i) => <li key={i}>{inline(item, `b${blocks.length}u${i}`)}</li>)}</ul>,
+        ? <ol key={`b${blocks.length}`} className="list-decimal space-y-1 ps-5">{items.map((item, i) => <li key={i} dir="auto">{inline(item, `b${blocks.length}o${i}`)}</li>)}</ol>
+        : <ul key={`b${blocks.length}`} className="list-disc space-y-1 ps-5">{items.map((item, i) => <li key={i} dir="auto">{inline(item, `b${blocks.length}u${i}`)}</li>)}</ul>,
     )
   }
   lines.forEach((line) => {
@@ -65,8 +65,8 @@ export function MarkdownText({ text }: { text: string }) {
       flush()
       if (line.trim()) {
         blocks.push(heading
-          ? <p key={`b${blocks.length}`} className="font-semibold">{inline(heading[1], `b${blocks.length}h`)}</p>
-          : <p key={`b${blocks.length}`}>{inline(line.trim(), `b${blocks.length}p`)}</p>)
+          ? <p key={`b${blocks.length}`} dir="auto" className="font-semibold">{inline(heading[1], `b${blocks.length}h`)}</p>
+          : <p key={`b${blocks.length}`} dir="auto">{inline(line.trim(), `b${blocks.length}p`)}</p>)
       }
     }
   })

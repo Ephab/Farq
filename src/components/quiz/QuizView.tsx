@@ -17,7 +17,8 @@ import {
   type QuizQuestionType,
 } from "@/lib/quiz-ai";
 import { api } from "@/lib/waypoint-api";
-import { extractSource } from "@/lib/quiz-extract";
+import { extractSource, QuizExtractError } from "@/lib/quiz-extract";
+import { useI18n, type MessageKey } from "@/lib/i18n/context";
 import {
   combineDeckTexts,
   deckFromSource,
@@ -40,7 +41,19 @@ function modelLabelFor(id: string): string {
   return QUIZ_MODELS.find((m) => m.id === id)?.label ?? id;
 }
 
-export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
+type Translate = ReturnType<typeof useI18n>["t"];
+
+/** UI text for a quiz error: coded lib errors are translated; server detail stays verbatim. */
+function errorText(e: unknown, t: Translate, fallback: MessageKey): string {
+  if (e instanceof QuizExtractError) return t(`quiz.errors.extract.${e.code}` as MessageKey, e.params);
+  if (e instanceof QuizAIError) return e.code ? t(`quiz.errors.ai.${e.code}` as MessageKey, e.params) : e.message;
+  if (e instanceof Error) return e.message;
+  return t(fallback);
+}
+
+export function QuizView() {
+  const { t } = useI18n();
+  const [phase, setPhase] = useState<Phase>("home");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [library, setLibrary] = useState<QuizLibrary>(loadLibrary);
@@ -79,9 +92,9 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
     libraryRef.current = next;
     setLibrary(next);
     if (!saveLibrary(next)) {
-      setError("Browser storage is full. Delete old decks or quizzes to free space.");
+      setError(t("quiz.errors.storageFull"));
     }
-  }, []);
+  }, [t]);
 
   const uploadFile = useCallback(
     async (file: File) => {
@@ -92,12 +105,12 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
         persist({ ...library, decks: [deck, ...library.decks] });
         setSelectedDeckIds((sel) => (sel.includes(deck.id) ? sel : [...sel, deck.id]));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not read that file.");
+        setError(errorText(e, t, "quiz.errors.readFailed"));
       } finally {
         setUploading(false);
       }
     },
-    [library, persist],
+    [library, persist, t],
   );
 
   const toggleDeck = useCallback((id: string) => {
@@ -149,7 +162,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
         setJobs((prev) =>
           prev.map((j) =>
             j.id === job.id
-              ? { ...j, status: "failed" as const, error: "Source decks were deleted.", showFallback: false }
+              ? { ...j, status: "failed" as const, error: t("quiz.errors.decksDeleted"), showFallback: false }
               : j,
           ),
         );
@@ -197,12 +210,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
           setJobs((prev) => prev.filter((j) => j.id !== job.id));
           return;
         }
-        const msg =
-          e instanceof QuizAIError
-            ? e.message
-            : e instanceof Error
-              ? e.message
-              : "Generation failed. Try again.";
+        const msg = errorText(e, t, "quiz.errors.generationFailed");
         const showFallback =
           e instanceof QuizAIError && e.retryable === true && job.model !== NIM_FALLBACK_MODEL;
         setJobs((prev) =>
@@ -216,21 +224,21 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
         abortControllers.current.delete(job.id);
       }
     },
-    [persist, hermesModel],
+    [persist, hermesModel, t],
   );
 
   /** Fire a generation job and return straight to home. Safe to call in parallel. */
   const startGeneration = useCallback(() => {
     const decks = library.decks.filter((d) => selectedDeckIds.includes(d.id));
     if (decks.length === 0) {
-      setError("Select at least one deck first.");
+      setError(t("quiz.errors.selectDeck"));
       return;
     }
     setError(null);
     const job: GenJob = {
       id: makeId(),
       deckIds: decks.map((d) => d.id),
-      label: decksLabel(decks),
+      label: decksLabel(decks, t),
       count: shape.count,
       difficulty: shape.difficulty,
       types: [...shape.types],
@@ -251,7 +259,7 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
     setJobs((prev) => [job, ...prev]);
     setPhase("home");
     void runJob(job, ctrl);
-  }, [library, selectedDeckIds, shape, hermesModel, runJob]);
+  }, [library, selectedDeckIds, shape, hermesModel, runJob, t]);
 
   const retryJob = useCallback(
     (job: GenJob, modelOverride?: string) => {
@@ -296,9 +304,9 @@ export function QuizView() {  const [phase, setPhase] = useState<Phase>("home");
     setError(null);
     setQuestions(getMockQuiz());
     setAnswers({});
-    setGenMeta({ sourceName: "Demo questions", model: "Demo", difficulty: "Mixed" });
+    setGenMeta({ sourceName: t("quiz.demoSource"), model: t("quiz.demoModel"), difficulty: "Mixed" });
     setPhase("running");
-  }, []);
+  }, [t]);
 
   const startSavedQuiz = useCallback((quiz: SavedQuiz) => {
     setError(null);

@@ -47,7 +47,7 @@ export function InfoTip({ label, children }: { label: string; children: ReactNod
       <span ref={iconRef} tabIndex={0} role="img" aria-label={label} className="grid size-3.5 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         <CircleAlert className="size-3.5" />
       </span>
-      <span ref={bubbleRef} role="tooltip" style={{ transform: shift ? `translateX(${shift}px)` : undefined }} className={`pointer-events-none absolute left-0 z-20 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-2.5 text-[11px] font-normal leading-5 text-popover-foreground shadow-md ${open ? "block" : "hidden"} ${placed ? "visible" : "invisible"} ${above ? "bottom-full mb-1" : "top-full mt-1"}`}>
+      <span ref={bubbleRef} role="tooltip" style={{ transform: shift ? `translateX(${shift}px)` : undefined }} className={`pointer-events-none absolute start-0 z-20 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-2.5 text-[11px] font-normal leading-5 text-popover-foreground shadow-md ${open ? "block" : "hidden"} ${placed ? "visible" : "invisible"} ${above ? "bottom-full mb-1" : "top-full mt-1"}`}>
         {children}
       </span>
     </span>

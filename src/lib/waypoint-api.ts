@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n/context"
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ""
 
 export type HermesProvider = "gemini" | "nim" | "hf"
@@ -122,14 +123,31 @@ export function clearLocalWaypointState(): void {
   }
 }
 
+/** Localized message for a bare HTTP failure (no server `detail`). */
+export function httpErrorMessage(status: number): string {
+  if (status === 401) return translate("common.errors.unauthorized")
+  if (status === 403) return translate("common.errors.forbidden")
+  if (status === 404) return translate("common.errors.notFound")
+  if (status === 408 || status === 504) return translate("common.errors.timeout")
+  if (status >= 500) return translate("common.errors.server", { status })
+  return translate("common.errors.generic", { status })
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init?.body instanceof FormData
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...init?.headers },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...init?.headers },
+    })
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === "AbortError") throw reason
+    throw new Error(translate("common.networkError"))
+  }
   if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`
+    // Server `detail` text is server content and passes through; a bare status gets a localized message.
+    let message = httpErrorMessage(response.status)
     try {
       const payload = await response.json() as { detail?: string }
       if (payload.detail) message = payload.detail
@@ -277,17 +295,10 @@ export interface WaypointProject {
 
 export type SourceKind = "transcript_pdf" | "cv_pdf" | "linkedin_pdf" | "linkedin_zip" | "github" | "folder" | "portfolio_url" | "orcid"
 
-/** Readable names for the kinds Waypoint knows. Sources created without a value of
+/** Readable name for a source kind in the active language. Sources created without a value of
  *  their own are stored with the kind as their label, so this is the fallback. */
-export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
-  transcript_pdf: "Transcript",
-  cv_pdf: "CV",
-  linkedin_pdf: "LinkedIn profile",
-  linkedin_zip: "LinkedIn export",
-  github: "GitHub",
-  folder: "Project folder",
-  portfolio_url: "Portfolio",
-  orcid: "ORCID",
+export function sourceKindLabel(kind: SourceKind): string {
+  return translate(`common.sourceKinds.${kind}`)
 }
 
 export interface DataSourceItem {
@@ -327,9 +338,14 @@ export async function uploadSourceFile(studentId: string, sourceId: string, file
   form.append("provider", body.provider)
   form.append("model", body.model)
   // No JSON content-type: the browser sets the multipart boundary.
-  const response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload`, { method: "POST", body: form, headers })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload`, { method: "POST", body: form, headers })
+  } catch {
+    throw new Error(translate("common.networkError"))
+  }
   if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`
+    let message = httpErrorMessage(response.status)
     try {
       const payload = await response.json() as { detail?: string }
       if (payload.detail) message = payload.detail

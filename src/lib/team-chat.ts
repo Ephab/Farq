@@ -1,11 +1,11 @@
-/** Hermes slash commands. Shown now, answered from Plan 2 onwards. */
+/** Hermes slash commands. The command text is sent as-is; `hint` is a key under teams.chat.commandHints. */
 export const HERMES_COMMANDS = [
-  { cmd: "/split", hint: "Split the remaining work fairly" },
-  { cmd: "/catchup", hint: "Summarise what you missed" },
-  { cmd: "/describe", hint: "Write a task description" },
-  { cmd: "/draft", hint: "Draft an SRS, SDS or SPMP section" },
-  { cmd: "/standup", hint: "Run an async stand-up" },
-  { cmd: "/risks", hint: "Flag deadline risks" },
+  { cmd: "/split", hint: "split" },
+  { cmd: "/catchup", hint: "catchup" },
+  { cmd: "/describe", hint: "describe" },
+  { cmd: "/draft", hint: "draft" },
+  { cmd: "/standup", hint: "standup" },
+  { cmd: "/risks", hint: "risks" },
 ] as const
 
 /** The partial handle after a trailing "@", or null when not mentioning. */

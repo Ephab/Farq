@@ -1,7 +1,8 @@
 "use client"
 
 import type { RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap"
-import { API_BASE } from "@/lib/waypoint-api"
+import { API_BASE, httpErrorMessage } from "@/lib/waypoint-api"
+import { translate } from "@/lib/i18n/context"
 
 export interface StagedPlanStage {
   id: string
@@ -43,9 +44,12 @@ export async function streamStagedRoadmap(
   const response = await fetch(`${API_BASE}/api/students/${studentId}/onboarding/generate/stream?${params}`, {
     headers,
     signal,
+  }).catch((reason: unknown) => {
+    if (signal.aborted) throw reason
+    throw new Error(translate("common.networkError"))
   })
   if (!response.ok || !response.body) {
-    let message = `${response.status} ${response.statusText}`
+    let message = httpErrorMessage(response.status)
     try {
       const payload = (await response.json()) as { detail?: string }
       if (payload.detail) message = payload.detail
@@ -74,7 +78,7 @@ export async function streamStagedRoadmap(
       callbacks.onDone(data.proposal_id ?? "")
     } else if (type === "error") {
       finished = true
-      callbacks.onError(data.error ?? "Generation failed", data.stage_id)
+      callbacks.onError(data.error ?? translate("onboarding.chat.generateFailed"), data.stage_id)
     }
   }
 
@@ -101,5 +105,5 @@ export async function streamStagedRoadmap(
   } finally {
     reader.releaseLock()
   }
-  if (!finished) throw new Error("The generation stream ended before the roadmap was ready")
+  if (!finished) throw new Error(translate("onboarding.chat.streamEnded"))
 }

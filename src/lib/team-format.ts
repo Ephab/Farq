@@ -1,4 +1,9 @@
+import type { MessageKey } from "@/lib/i18n/context"
+import { intlLocale, type Locale, type Params } from "@/lib/i18n/core"
 import type { TeamsHomeData } from "@/lib/teams-api"
+
+/** The `t` from useI18n(); these helpers build UI text but stay framework-free. */
+export type Translate = (key: MessageKey, params?: Params) => string
 
 const DAY = 86_400_000
 
@@ -6,34 +11,34 @@ export function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`
 }
 
-export function dueLabel(iso: string | null, now: Date = new Date()): string | null {
+export function dueLabel(iso: string | null, t: Translate, now: Date = new Date()): string | null {
   if (!iso) return null
   const time = new Date(iso).getTime()
   if (Number.isNaN(time)) return null
   // Whole local calendar days, so "6 pm today" is due today, not tomorrow.
   const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
   const days = Math.round((startOfDay(new Date(time)) - startOfDay(now)) / DAY)
-  if (days < 0) return `${-days}d overdue`
-  if (days === 0) return "due today"
-  if (days === 1) return "due tomorrow"
-  return `due in ${days} days`
+  if (days < 0) return t("teams.due.overdue", { count: -days })
+  if (days === 0) return t("teams.due.today")
+  if (days === 1) return t("teams.due.tomorrow")
+  return t("teams.due.inDays", { count: days })
 }
 
-export function shortDate(iso: string): string {
+export function shortDate(iso: string, locale: Locale): string {
   const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(intlLocale(locale), { month: "short", day: "numeric" })
 }
 
-export function timeAgo(iso: string, now: Date = new Date()): string {
+export function timeAgo(iso: string, t: Translate, now: Date = new Date()): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return ""
   const minutes = Math.max(0, Math.round((now.getTime() - then) / 60_000))
-  if (minutes < 1) return "just now"
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 1) return t("teams.time.justNow")
+  if (minutes < 60) return t("teams.time.minutesAgo", { count: minutes })
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return t("teams.time.hoursAgo", { count: hours })
   const days = Math.round(hours / 24)
-  return days === 1 ? "yesterday" : `${days} days ago`
+  return days === 1 ? t("teams.time.yesterday") : t("teams.time.daysAgo", { count: days })
 }
 
 /** ISO instant → the local calendar date an `<input type="date">` shows. */
@@ -53,25 +58,28 @@ export function fromDateInput(value: string): string | null {
 }
 
 /** Deterministic one-liners for the front-page strip (no model involved). */
-export function briefingLines(home: TeamsHomeData): string[] {
+export function briefingLines(home: TeamsHomeData, t: Translate): string[] {
   if (home.user.role === "instructor") {
-    if (home.teams.length === 0) return ["No teams have formed in your courses yet."]
+    if (home.teams.length === 0) return [t("teams.briefing.instructorNone")]
     const courses = new Set(home.teams.map((team) => team.course.id)).size
-    const summary = `${plural(home.teams.length, "team")} across ${plural(courses, "course")}. Team chats stay private to students.`
-    return [summary, ...home.teams.filter((team) => team.risk).map((team) => `${team.name}: ${team.risk}`)]
+    const summary = t("teams.briefing.instructorSummary", {
+      teams: t("teams.briefing.teamCount", { count: home.teams.length }),
+      courses: t("teams.briefing.courseCount", { count: courses }),
+    })
+    return [summary, ...home.teams.filter((team) => team.risk).map((team) => t("teams.briefing.risk", { team: team.name, risk: team.risk ?? "" }))]
   }
   const lines: string[] = []
   for (const team of home.teams) {
-    if (team.unread) lines.push(`${plural(team.unread, "new message")} in ${team.name}`)
+    if (team.unread) lines.push(t("teams.briefing.unread", { count: team.unread, team: team.name }))
   }
   for (const team of home.teams) {
-    if (team.risk) lines.push(`${team.name}: ${team.risk}`)
+    if (team.risk) lines.push(t("teams.briefing.risk", { team: team.name, risk: team.risk }))
   }
   const next = home.teams.find((team) => team.next_task)
-  if (next?.next_task) lines.push(`Next for you: ${next.next_task.title} (${next.name})`)
-  if (home.invites.length) lines.push(`${plural(home.invites.length, "invite")} waiting`)
-  for (const item of home.needs_team) lines.push(`${item.course.code} ${item.title} still needs a team`)
-  return lines.length ? lines : ["You're all caught up."]
+  if (next?.next_task) lines.push(t("teams.briefing.next", { task: next.next_task.title, team: next.name }))
+  if (home.invites.length) lines.push(t("teams.briefing.invites", { count: home.invites.length }))
+  for (const item of home.needs_team) lines.push(t("teams.briefing.needsTeam", { course: item.course.code, title: item.title }))
+  return lines.length ? lines : [t("teams.briefing.caughtUp")]
 }
 
 /** Suggest a free number for a section added after `after`: 1.2 → 1.3, 3 → 4 (skipping taken keys);

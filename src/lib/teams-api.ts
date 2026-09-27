@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n/context"
 import { API_BASE, api, getCurrentStudentId, hermesRequestParts } from "@/lib/waypoint-api"
 
 const ACTING_USER_STORAGE_KEY = "waypoint.current-user"
@@ -106,7 +107,7 @@ export function setActingUserId(id: string | null): void {
 }
 
 export function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : "Something went wrong"
+  return reason instanceof Error ? reason.message : translate("teams.errors.generic")
 }
 
 function send(method: string, body?: unknown): RequestInit {
@@ -167,7 +168,7 @@ export function teamClient(userId: string) {
   /** The file itself (not JSON), so this bypasses `api` and returns the response body as a Blob. */
   exportDocument: async (documentId: string, format: ExportFormat, style: ExportStyle): Promise<Blob> => {
     const response = await fetch(`${API_BASE}/api/documents/${documentId}/export?format=${format}&style=${style}`, { headers: { "X-Waypoint-User": userId } })
-    if (!response.ok) throw new Error(`Export failed (${response.status})`)
+    if (!response.ok) throw new Error(translate("teams.errors.exportFailed", { status: String(response.status) }))
     return response.blob()
   },
   activity: (teamId: string, before?: number) =>

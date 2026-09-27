@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
-import { en } from "@/locales/en"
-import { ar } from "@/locales/ar"
+import { en } from "@/locales/en/index"
+import { ar } from "@/locales/ar/index"
 import { createFormatters, createTranslator, dirOf, matchesSearch, resolveInitialLocale, type Catalog, type Locale } from "./core"
 
 const catalogs = { en, ar } as unknown as Record<Locale, Catalog>

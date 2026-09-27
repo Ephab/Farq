@@ -1,8 +1,8 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
-import { en } from "@/locales/en"
-import { ar } from "@/locales/ar"
+import { en } from "@/locales/en/index"
+import { ar } from "@/locales/ar/index"
 import {
   LOCALE_STORAGE_KEY,
   createFormatters,

@@ -1,7 +1,5 @@
-// English is the source catalog and fallback. Add keys here first; `ar.ts` must then match
-// (enforced by its CatalogShape type). Group by feature, reuse `common.*` for shared words.
-
-export const en = {
+// Shared words, app shell, navigation and settings.
+export const core = {
   common: {
     appName: "Waypoint",
     loading: "Loading…",

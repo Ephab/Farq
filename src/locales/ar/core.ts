@@ -1,10 +1,7 @@
 import type { CatalogShape } from "@/lib/i18n/core"
-import type { en } from "./en"
+import type { core as en } from "../en/core"
 
-// Modern Standard Arabic for a university app. Product and model names (Waypoint, Hermes,
-// Gemini) stay in Latin script; students know them by those names.
-
-export const ar: CatalogShape<typeof en> = {
+export const core: CatalogShape<typeof en> = {
   common: {
     appName: "Waypoint",
     loading: "جارٍ التحميل…",

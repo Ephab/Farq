@@ -1,10 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, MapPin, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
+import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, LoaderCircle, MapPin, Mic, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
+import { useVoiceInput } from "@/components/hermes/use-voice-input"
+import { VoiceWaveform } from "@/components/hermes/VoiceWaveform"
 import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
 import "./coach-concept.css"
@@ -55,6 +57,15 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const reduce = useReducedMotion()
+  // Voice dictation: record with the mic, transcribe server-side, fill the
+  // composer as an editable draft. Never auto-sends.
+  const fillFromVoice = useCallback((text: string) => {
+    setInput((current) => (current ? `${current.replace(/\s+$/, "")} ${text}` : text))
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [])
+  const voice = useVoiceInput(fillFromVoice)
+  const formatVoiceTime = (totalSeconds: number) =>
+    `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`
   // Stick to the bottom while new content arrives, but let go the moment the
   // student scrolls up to read history.
   const stickRef = useRef(true)
@@ -413,7 +424,60 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
             ))}
           </div>
         ) : null}
+        {voice.status !== "idle" ? (
+          <div className="voice-status" role="status">
+            {voice.status === "recording" ? (
+              <>
+                <VoiceWaveform analyserRef={voice.analyserRef} mode="live" />
+                <span dir="auto">{t("coach.thread.voice.recording", { time: formatVoiceTime(voice.seconds) })}</span>
+                <button type="button" onClick={voice.cancel} className="voice-cancel">
+                  {t("coach.thread.voice.cancelRecording")}
+                </button>
+              </>
+            ) : (
+              <>
+                <VoiceWaveform mode="processing" />
+                <span className="voice-transcribing">
+                  <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
+                  {t("coach.thread.voice.transcribing")}
+                </span>
+              </>
+            )}
+          </div>
+        ) : null}
+        {voice.error && voice.status === "idle" ? (
+          <div className="voice-error" role="alert">
+            <span dir="auto">{display(voice.error)}</span>
+            <button type="button" onClick={() => voice.setError(null)} aria-label={t("coach.thread.voice.dismiss")}>
+              ✕
+            </button>
+          </div>
+        ) : null}
         <div className="composer">
+          {voice.status === "recording" ? (
+            <button
+              type="button"
+              aria-label={t("coach.thread.voice.stopRecording")}
+              title={t("coach.thread.voice.stopRecording")}
+              onClick={voice.stop}
+              className="mic-button recording"
+            >
+              <Square size={17} strokeWidth={2.5} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label={t("coach.thread.voice.dictate")}
+              title={t("coach.thread.voice.dictate")}
+              disabled={busy || disabled || voice.status === "transcribing"}
+              onClick={() => void voice.start()}
+              className="mic-button"
+            >
+              {voice.status === "transcribing"
+                ? <LoaderCircle size={18} className="animate-spin" />
+                : <Mic size={18} strokeWidth={2.2} />}
+            </button>
+          )}
           <textarea
             ref={textareaRef}
             value={input}

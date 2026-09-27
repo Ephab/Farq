@@ -18,6 +18,9 @@ services:
       HERMES_API_KEY: ${HERMES_API_KEY:?Run setup.bat or setup.sh first}
       HERMES_MODEL: ${HERMES_MODEL:-gemini-3.8-flash}
       HERMES_PROVIDER: ${HERMES_PROVIDER:-gemini}
+      # Same provider key the Hermes gateway uses; lets the API transcribe
+      # voice clips server-side so the browser never holds a Gemini key.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       WAYPOINT_INTERNAL_TOKEN: ${WAYPOINT_INTERNAL_TOKEN:?Run setup.bat or setup.sh first}
       OPPORTUNITY_SYNC_ENABLED: ${OPPORTUNITY_SYNC_ENABLED:-true}
       COOP_TELEGRAM_ARCHIVE_ENABLED: ${COOP_TELEGRAM_ARCHIVE_ENABLED:-true}

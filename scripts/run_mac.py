@@ -33,7 +33,7 @@ def log(msg: str) -> None:
 
 sys.path.insert(0, REPO)
 from scripts.local_env import configure_env, read_env
-from scripts.runtime import build_env, child_env, executable, provision, require_python
+from scripts.runtime import build_env, child_env, executable, hermes_command, provision, require_python
 from pathlib import Path
 
 
@@ -106,6 +106,15 @@ def main() -> int:
     if not executable("hermes"):
         log("ERROR: hermes binary not found on PATH.")
         return 1
+    hermes_cmd = hermes_command()
+    if hermes_cmd is None:
+        log("ERROR: the hermes launcher on PATH is broken (its managed Python is missing).")
+        log("Repair the global install by re-running the official Hermes installer from your home")
+        log("directory with a clean environment, then re-run run.sh. Nothing was modified.")
+        return 1
+    if hermes_cmd != [executable("hermes")]:
+        log("hermes launcher is stale; starting the gateway through your install's own managed")
+        log("Python instead (read-only — your base Hermes installation is untouched).")
     if not os.path.isdir(os.path.join(REPO, "node_modules")):
         log("Run setup.bat (Windows) or bash setup.sh (macOS) first.")
         return 1
@@ -118,7 +127,7 @@ def main() -> int:
         # NOTE: `gateway run` stays in the foreground as our child, tied to
         # HERMES_HOME above. Bare `hermes gateway` would daemonize and escape
         # shutdown, so never use it here.
-        "hermes": [executable("hermes"), "gateway", "run"],
+        "hermes": [*hermes_cmd, "gateway", "run"],
         "web": ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", str(WEB_PORT)],
     }
     # Only Waypoint's own children are ever restarted here. The daily-use base

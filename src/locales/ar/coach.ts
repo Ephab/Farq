@@ -109,6 +109,21 @@ export const coach: CatalogShape<typeof en> = {
     busyPlaceholder: "Hermes يكتب — اضغط إيقاف أو Esc للمقاطعة…",
     messageLabel: "راسل Hermes",
     send: "إرسال الرسالة",
+    voice: {
+      dictate: "إملاء بالميكروفون",
+      stopRecording: "إيقاف ونسخ الكلام",
+      cancelRecording: "إلغاء التسجيل",
+      recording: "جارٍ التسجيل {time} — اضغط إيقاف عند الانتهاء",
+      transcribing: "جارٍ معالجة تسجيلك…",
+      dismiss: "إغلاق",
+      errors: {
+        unsupported: "الإملاء الصوتي غير مدعوم في هذا المتصفح",
+        denied: "تم رفض الوصول إلى الميكروفون — اسمح به من شريط المتصفح وحاول مجددًا",
+        noMic: "لم يتم العثور على ميكروفون",
+        failed: "تعذّر نسخ هذا المقطع — حاول مجددًا أو اكتب رسالتك",
+        empty: "لم يتم رصد أي كلام — حاول مجددًا أو اكتب رسالتك",
+      },
+    },
   },
   stage: {
     starting: "جارٍ تشغيل Hermes",

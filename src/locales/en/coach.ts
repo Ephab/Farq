@@ -107,6 +107,21 @@ export const coach = {
     busyPlaceholder: "Hermes is generating — press Stop or Esc to interrupt…",
     messageLabel: "Message Hermes",
     send: "Send message",
+    voice: {
+      dictate: "Dictate with microphone",
+      stopRecording: "Stop and transcribe",
+      cancelRecording: "Cancel recording",
+      recording: "Recording {time} — press stop when done",
+      transcribing: "Processing your recording…",
+      dismiss: "Dismiss",
+      errors: {
+        unsupported: "Voice dictation is not supported in this browser",
+        denied: "Microphone access was denied — allow it in the browser address bar and try again",
+        noMic: "No microphone found",
+        failed: "Could not transcribe that clip — try again or type your message",
+        empty: "No speech detected — try again or type your message",
+      },
+    },
   },
   stage: {
     starting: "Starting Hermes",

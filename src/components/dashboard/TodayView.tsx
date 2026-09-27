@@ -1,7 +1,7 @@
 "use client"
 
 import { createElement, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useMotionValue, useReducedMotion, useSpring } from "motion/react"
 import {
   ArrowRight,
   CircleCheck,
@@ -27,8 +27,12 @@ import {
   type StudentProfile,
 } from "@/lib/farq-api"
 import { loadLibrary, type QuizLibrary } from "@/lib/quiz-store"
-import { EASE_OUT } from "@/lib/ease"
+import { EASE_OUT, SPRING_MOUSE } from "@/lib/ease"
 import { cn } from "@/lib/utils"
+
+// Shape rule for this page: hero 32px, panels 24px, buttons and pills full round.
+// Color rule: primary is the only accent. Emerald and amber appear only as
+// real status (done, in progress, failed), never as decoration.
 
 interface RoadmapResponse {
   version: number | string
@@ -141,7 +145,7 @@ function Panel({ label, className, children }: { label: string; className?: stri
   )
 }
 
-/** Panel heading: title, optional supporting line, optional status on the right. */
+/** Panel heading: title stacked above supporting line, status pill on the right. */
 function PanelHead({
   title,
   sub,
@@ -164,39 +168,79 @@ function PanelHead({
   )
 }
 
-/** Icon tile + copy + trailing slot. The trailing slot owns the row's only action. */
-function ListRow({
-  icon,
-  title,
-  detail,
-  trailing,
-  divider = true,
+/** Scroll reveal wrapper. Uses transform and opacity only. */
+function Reveal({
+  children,
+  delay = 0,
+  className,
 }: {
-  icon: ReactNode
-  title: string
-  detail: ReactNode
-  trailing?: ReactNode
-  divider?: boolean
+  children: ReactNode
+  delay?: number
+  className?: string
 }) {
+  const reduce = useReducedMotion()
   return (
-    <div
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.3 }}
+      transition={{ duration: 0.6, delay, ease: EASE_OUT }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+/** Magnetic CTA. Pulls toward the cursor with spring physics, static when reduced motion. */
+function MagneticButton({
+  children,
+  onClick,
+  variant = "primary",
+  disabled,
+  label,
+}: {
+  children: ReactNode
+  onClick: () => void
+  variant?: "primary" | "secondary" | "onDark" | "onDarkGhost"
+  disabled?: boolean
+  label?: string
+}) {
+  const reduce = useReducedMotion()
+  const x = useMotionValue(0)
+  const y = useMotionValue(0)
+  const sx = useSpring(x, SPRING_MOUSE)
+  const sy = useSpring(y, SPRING_MOUSE)
+
+  return (
+    <motion.button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      style={reduce ? undefined : { x: sx, y: sy }}
+      whileTap={reduce ? undefined : { scale: 0.98 }}
+      transition={{ duration: 0.3, ease: EASE_OUT }}
+      onMouseMove={(event) => {
+        if (reduce) return
+        const rect = event.currentTarget.getBoundingClientRect()
+        x.set((event.clientX - (rect.left + rect.width / 2)) * 0.18)
+        y.set((event.clientY - (rect.top + rect.height / 2)) * 0.22)
+      }}
+      onMouseLeave={() => {
+        x.set(0)
+        y.set(0)
+      }}
       className={cn(
-        "flex items-center gap-3 py-2.5",
-        divider && "border-b border-border last:border-b-0",
+        "inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-[18px] text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+        variant === "primary" && "bg-primary text-primary-foreground shadow-sm hover:opacity-90",
+        variant === "secondary" && "border border-border shadow-sm hover:bg-muted",
+        variant === "onDark" && "bg-background text-foreground shadow-sm hover:opacity-90",
+        variant === "onDarkGhost" && "border border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10",
       )}
     >
-      <span
-        aria-hidden="true"
-        className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-muted text-primary"
-      >
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold" title={title}>{title}</span>
-        <span className="block truncate text-xs text-muted-foreground" title={typeof detail === "string" ? detail : undefined}>{detail}</span>
-      </span>
-      {trailing}
-    </div>
+      {children}
+    </motion.button>
   )
 }
 
@@ -206,7 +250,7 @@ function RowLink({ children, onClick }: { children: ReactNode; onClick: () => vo
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-1 text-sm font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children}
     </button>
@@ -224,11 +268,59 @@ function ProgressTrack({ percent, label }: { percent: number; label: string }) {
       aria-label={label}
     >
       <motion.div
-        className="h-full rounded-full bg-primary"
+        className="h-full w-full origin-left rounded-full bg-primary"
         initial={false}
-        animate={{ width: `${percent}%` }}
+        animate={{ scaleX: Math.max(0, Math.min(1, percent / 100)) }}
         transition={{ duration: 0.7, ease: EASE_OUT }}
       />
+    </div>
+  )
+}
+
+/** Live stage ring drawn from real progress. The honest visual for the hero. */
+function StageRing({ percent, done, total }: { percent: number; done: number; total: number }) {
+  const reduce = useReducedMotion()
+  const R = 52
+  const C = 2 * Math.PI * R
+  const clamped = Math.max(0, Math.min(100, percent))
+  const offset = C - (clamped / 100) * C
+  return (
+    <div
+      role="img"
+      aria-label={`Stage progress ${clamped} percent, ${done} of ${total} done`}
+      className="relative grid shrink-0 place-items-center"
+    >
+      <svg width="148" height="148" viewBox="0 0 120 120" aria-hidden="true" className="block">
+        <circle
+          cx="60"
+          cy="60"
+          r={R}
+          fill="none"
+          stroke="var(--primary-foreground)"
+          strokeOpacity="0.22"
+          strokeWidth="10"
+        />
+        <motion.circle
+          cx="60"
+          cy="60"
+          r={R}
+          fill="none"
+          stroke="var(--primary-foreground)"
+          strokeWidth="10"
+          strokeLinecap="round"
+          strokeDasharray={C}
+          transform="rotate(-90 60 60)"
+          initial={reduce ? false : { strokeDashoffset: C }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 1.1, ease: EASE_OUT }}
+        />
+      </svg>
+      <div className="absolute text-center text-primary-foreground">
+        <p className="text-[26px] font-bold leading-none tracking-tight">{clamped}%</p>
+        <p className="mt-1 text-xs opacity-75">
+          {done} of {total} done
+        </p>
+      </div>
     </div>
   )
 }
@@ -358,7 +450,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     return stages.find((stage) => stage.nodeIds.includes(currentNode.id)) ?? stages[0] ?? null
   }, [currentNode, stages])
 
-  /** Progress inside the current stage — the roadmap page owns the whole-plan number. */
+  /** Progress inside the current stage, the roadmap page owns the whole plan number. */
   const stageProgress = useMemo(() => {
     const ids = currentStage?.nodeIds ?? []
     const members = nodes.filter((node) => ids.includes(node.id))
@@ -405,23 +497,22 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     [],
   )
 
-  /** One honest sentence per state. No forecasts, no invented pacing. */
+  /** One honest sentence. No forecasts, no invented pacing. Keeps to 20 words. */
   const headline = useMemo(() => {
-    const parts = [`${summary.done} of ${summary.total} topics done`]
+    const donePart = `${summary.done} of ${summary.total} topics done`
+    if (failedSources.length > 0) {
+      const s = failedSources.length === 1 ? "" : "s"
+      return `${donePart}. ${failedSources.length} source${s} failed to sync.`
+    }
     const waiting: string[] = []
     if (suggestedCount > 0) {
-      waiting.push(`${suggestedCount} new ${suggestedCount === 1 ? "record" : "records"} to review`)
+      waiting.push(`${suggestedCount} record${suggestedCount === 1 ? "" : "s"} to review`)
     }
     if (pendingProposals.length > 0) {
-      waiting.push(
-        `${pendingProposals.length} roadmap ${pendingProposals.length === 1 ? "draft" : "drafts"} to accept`,
-      )
+      waiting.push(`${pendingProposals.length} draft${pendingProposals.length === 1 ? "" : "s"} to accept`)
     }
-    if (failedSources.length > 0) {
-      parts.push(`${failedSources.length} ${failedSources.length === 1 ? "source" : "sources"} failed to sync`)
-    }
-    if (waiting.length > 0) parts.push(waiting.join(" and "))
-    return `${parts.join(" · ")}.`
+    if (waiting.length === 0) return `${donePart}.`
+    return `${donePart}. ${waiting.join(" and ")}.`
   }, [summary, suggestedCount, pendingProposals.length, failedSources.length])
 
   /** Everything that really changed, newest first. Empty means genuinely nothing yet. */
@@ -436,11 +527,11 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         icon: pending ? <Sparkles className="size-[18px]" /> : <CircleCheck className="size-[18px]" />,
         title: proposal.summary,
         detail: pending
-          ? `Waiting for you · ${timeAgo(at)}`
-          : `${proposal.status === "accepted" ? "Accepted" : "Dismissed"} · ${timeAgo(at)}`,
+          ? `Waiting for review, ${timeAgo(at)}`
+          : `${proposal.status === "accepted" ? "Accepted" : "Dismissed"}, ${timeAgo(at)}`,
         at,
         tab: "Hermes Coach",
-        action: pending ? "Review" : "View",
+        action: pending ? "Review drafts" : "Open coach",
       })
     }
     for (const source of sources) {
@@ -454,7 +545,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         detail: timeAgo(at),
         at,
         tab: "My data",
-        action: "Open",
+        action: "Open records",
       })
     }
     for (const deck of practice.decks) {
@@ -462,10 +553,10 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: `deck-${deck.id}`,
         icon: <Presentation className="size-[18px]" />,
         title: deck.fileName,
-        detail: `${timeAgo(deck.uploadedAt)} · ${deck.units} pages read`,
+        detail: `${timeAgo(deck.uploadedAt)}, ${deck.units} pages read`,
         at: deck.uploadedAt,
         tab: "Slides",
-        action: "Open",
+        action: "Open slides",
       })
     }
     for (const quiz of practice.quizzes) {
@@ -473,10 +564,10 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: `quiz-${quiz.id}`,
         icon: <ListChecks className="size-[18px]" />,
         title: `Practice set from ${quiz.deckName}`,
-        detail: `${timeAgo(quiz.createdAt)} · ${quiz.questions.length} questions · ${quiz.difficulty}`,
+        detail: `${timeAgo(quiz.createdAt)}, ${quiz.questions.length} questions, ${quiz.difficulty}`,
         at: quiz.createdAt,
         tab: "Quizzes",
-        action: "Practise",
+        action: "Open practice",
       })
     }
     for (const extension of practice.extensions) {
@@ -484,10 +575,10 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: `extension-${extension.id}`,
         icon: <Sparkles className="size-[18px]" />,
         title: `Slides expanded: ${extension.topic}`,
-        detail: `${timeAgo(extension.createdAt)} · from ${extension.deckName}`,
+        detail: `${timeAgo(extension.createdAt)}, from ${extension.deckName}`,
         at: extension.createdAt,
         tab: "Slides",
-        action: "Open",
+        action: "Open slides",
       })
     }
     return items.sort((a, b) => b.at - a.at).slice(0, 4)
@@ -503,7 +594,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         title: `${sourceName(source)} failed to sync`,
         detail: source.error || "Farq could not read this source",
         tab: "My data",
-        action: "Fix",
+        action: "Fix source",
       })
     }
     if (suggestedCount > 0) {
@@ -511,9 +602,9 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: "attention-evidence",
         icon: <Inbox className="size-[18px]" />,
         title: `${suggestedCount} ${suggestedCount === 1 ? "record" : "records"} to review`,
-        detail: "Imported evidence only becomes yours when you confirm it",
+        detail: "Imported evidence stays pending until you confirm it",
         tab: "My data",
-        action: "Review",
+        action: "Review records",
       })
     }
     if (pendingProposals.length > 0) {
@@ -521,9 +612,9 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: "attention-proposals",
         icon: <Sparkles className="size-[18px]" />,
         title: `${pendingProposals.length} roadmap ${pendingProposals.length === 1 ? "draft" : "drafts"} waiting`,
-        detail: "Completed and in-progress topics are never changed",
+        detail: "Completed and in-progress topics stay untouched",
         tab: "Hermes Coach",
-        action: "Review",
+        action: "Review drafts",
       })
     }
     return rows
@@ -559,11 +650,21 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         <div className="h-4 w-32 animate-pulse rounded-full bg-muted" />
         <div className="mt-3 h-11 w-2/3 animate-pulse rounded-2xl bg-muted" />
         <div className="mt-4 h-5 w-1/2 animate-pulse rounded-full bg-muted" />
-        <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
-          <div className="h-[330px] animate-pulse rounded-[32px] bg-muted" />
-          <div className="h-[330px] animate-pulse rounded-3xl bg-muted" />
+        <div className="mt-8 animate-pulse rounded-[32px] bg-muted p-6 sm:p-8">
+          <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div>
+              <div className="h-7 w-40 rounded-full bg-background/60" />
+              <div className="mt-6 h-10 w-3/4 rounded-2xl bg-background/60" />
+              <div className="mt-3 h-5 w-1/2 rounded-full bg-background/60" />
+              <div className="mt-8 flex gap-3">
+                <div className="h-11 w-36 rounded-full bg-background/60" />
+                <div className="h-11 w-28 rounded-full bg-background/40" />
+              </div>
+            </div>
+            <div className="mx-auto size-[148px] rounded-full bg-background/40" />
+          </div>
         </div>
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
+        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
           <div className="h-56 animate-pulse rounded-3xl bg-muted" />
           <div className="h-56 animate-pulse rounded-3xl bg-muted" />
         </div>
@@ -593,7 +694,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     return (
       <div className="grid min-h-[60vh] place-items-center px-4 py-10">
         <div className="max-w-[46ch] text-center">
-          <p className="text-xs font-bold uppercase tracking-wide text-primary">Today</p>
+          <p className="text-xs font-bold text-primary">Today</p>
           <h1 className="mt-2 text-[clamp(28px,4vw,44px)] font-bold leading-[1.05] tracking-tight">
             No roadmap yet{displayName ? `, ${displayName}` : ""}.
           </h1>
@@ -602,20 +703,12 @@ export function TodayView({ onNavigate }: TodayViewProps) {
             a source in My data first.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => onNavigate("Hermes Coach")}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            <MagneticButton variant="primary" onClick={() => onNavigate("Hermes Coach")}>
               Ask Hermes <ArrowRight aria-hidden="true" className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate("My data")}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            </MagneticButton>
+            <MagneticButton variant="secondary" onClick={() => onNavigate("My data")}>
               Add records
-            </button>
+            </MagneticButton>
           </div>
         </div>
       </div>
@@ -641,241 +734,269 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         transition={{ duration: 0.5, ease: EASE_OUT }}
         className="mx-auto w-full max-w-[1320px] px-4 py-8 sm:px-8 sm:py-10"
       >
-      {/* Header: the date, the promise, and the plan in one line. */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
+        {/* Header: date, promise, plan in one short line. */}
+        <div className="min-w-0 max-w-[72ch]">
           <p className="mb-2.5 text-xs font-bold text-primary">{todayLabel}</p>
           <h1 className="text-[clamp(30px,4vw,52px)] font-bold leading-[1.03] tracking-tight">
             {complete ? "Roadmap complete." : "One useful step today."}
           </h1>
-          <p className="mt-2.5 max-w-[62ch] text-[15px] text-muted-foreground">{headline}</p>
+          <p className="mt-2.5 max-w-[62ch] text-[15px] leading-relaxed text-muted-foreground">{headline}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => onNavigate("Roadmap")}
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-[18px] text-sm font-semibold shadow-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Route aria-hidden="true" className="size-4" />
-          View roadmap
-        </button>
-      </div>
 
-      {error ? (
-        <p
-          role="alert"
-          className="mt-4 rounded-xl border border-border bg-muted px-4 py-2 text-xs text-muted-foreground"
-        >
-          {error}
-        </p>
-      ) : null}
+        {error ? (
+          <p
+            role="alert"
+            className="mt-4 rounded-xl border border-border bg-muted px-4 py-2 text-xs text-muted-foreground"
+          >
+            {error}
+          </p>
+        ) : null}
 
-      {/* The one decision, plus the queue behind it. */}
-      <div className="mt-8 grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
-        <motion.section
-          aria-label="Your next step"
-          initial={reduce ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: EASE_OUT }}
-          className="relative flex min-h-[330px] flex-col overflow-hidden rounded-[32px] bg-primary p-6 text-primary-foreground shadow-lg sm:p-8 lg:p-10"
-        >
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute -bottom-28 -right-20 size-[310px] rounded-full bg-primary-foreground/10 blur-3xl"
-          />
-          <div className="relative flex flex-1 flex-col">
-            <Pill tone="inverse">
-              {currentNode
-                ? `${STATUS_LABEL[currentStatus]}${currentNode.duration ? ` · ${currentNode.duration}` : ""}`
-                : `All ${summary.total} ${summary.total === 1 ? "topic" : "topics"} done`}
-            </Pill>
-            <h2 className="mt-10 max-w-[16ch] text-[clamp(28px,3.6vw,44px)] font-bold leading-[1.05] tracking-tight">
-              {currentNode?.title ?? "Every topic is done"}
-            </h2>
-            <p className="mt-2.5 max-w-[52ch] text-[15px] opacity-75">
-              {currentNode
-                ? currentNode.tagline || currentNode.description
-                : "This roadmap has nothing left to do. Ask Hermes Coach what to learn next."}
-            </p>
-            <div className="mt-auto flex flex-wrap items-center gap-2.5 pt-8">
-              {currentNode ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate("Roadmap")}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-full bg-background px-[18px] text-sm font-semibold text-foreground shadow-sm outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    Continue topic <ArrowRight aria-hidden="true" className="size-4" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={savingId === currentNode.id}
-                    onClick={() => void setNodeStatus(currentNode.id, currentAction.next)}
-                    className="inline-flex min-h-11 items-center rounded-full border border-primary-foreground/30 px-[18px] text-sm font-semibold outline-none hover:bg-primary-foreground/10 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-                  >
-                    {savingId === currentNode.id ? "Saving…" : currentAction.label}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onNavigate("Hermes Coach")}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-background px-[18px] text-sm font-semibold text-foreground shadow-sm outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  Ask Hermes Coach <ArrowRight aria-hidden="true" className="size-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        </motion.section>
-
-        <motion.div
-          initial={reduce ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.05, ease: EASE_OUT }}
-        >
-          <Panel label="Up next" className="h-full">
-            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-muted-foreground">
-              <span>Up next</span>
-              {summary.remaining > 0 ? (
-                <span className="inline-flex items-center before:mr-2 before:size-[3px] before:rounded-full before:bg-muted-foreground/50 before:content-['']">
-                  {summary.remaining} {summary.remaining === 1 ? "topic" : "topics"} left
-                </span>
-              ) : null}
-            </div>
-            {upNext.length === 0 ? (
-              <p className="mt-4 flex items-start gap-2.5 text-[13px] text-muted-foreground">
-                <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                Every topic in {title || "this roadmap"} is done. Ask Hermes Coach what to learn next.
-              </p>
-            ) : (
-              <ul className="mt-3">
-                {upNext.map((node, index) => {
-                  const status = statusOf(node)
-                  return (
-                    <li key={node.id}>
-                      <ListRow
-                        icon={topicGlyph(node.icon)}
-                        title={node.title}
-                        detail={`${node.duration} · ${node.level}`}
-                        trailing={
-                          index === 0 ? (
-                            <Pill tone="warning">Now</Pill>
-                          ) : (
-                            <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>
-                          )
-                        }
-                      />
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </Panel>
-        </motion.div>
-      </div>
-
-      {/* Plan health, and what actually moved. */}
-      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
-        <motion.div
-          initial={reduce ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.1, ease: EASE_OUT }}
-        >
-          <Panel label="Roadmap momentum" className="h-full">
-            <PanelHead
-              title="Roadmap momentum"
-              sub={title || "Your plan"}
-              tone={stagePill.tone}
-              pill={stagePill.label}
+        {/* Focus hero: asymmetric split, live stage ring on the right. */}
+        <Reveal className="mt-8" delay={0}>
+          <section
+            aria-label="Your next step"
+            className="relative overflow-hidden rounded-[32px] bg-primary p-6 text-primary-foreground shadow-lg sm:p-8 lg:p-10"
+          >
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -bottom-28 -right-20 size-[310px] rounded-full bg-primary-foreground/10 blur-3xl"
             />
-            <div className="mt-5">
-              <ProgressTrack percent={stageProgress.percent} label={`${currentStage?.title ?? "Current stage"} progress`} />
+            {!reduce ? (
+              <motion.span
+                aria-hidden="true"
+                className="pointer-events-none absolute -left-24 -top-24 size-[260px] rounded-full bg-primary-foreground/10 blur-3xl"
+                animate={{ y: [0, -14, 0], opacity: [0.7, 1, 0.7] }}
+                transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+              />
+            ) : null}
+            <div className="relative grid items-center gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+              <div className="min-w-0">
+                <Pill tone="inverse">
+                  {currentNode
+                    ? `${STATUS_LABEL[currentStatus]}${currentNode.duration ? `, ${currentNode.duration}` : ""}`
+                    : `All ${summary.total} ${summary.total === 1 ? "topic" : "topics"} done`}
+                </Pill>
+                <h2 className="mt-6 max-w-[16ch] text-[clamp(28px,3.6vw,44px)] font-bold leading-[1.05] tracking-tight">
+                  {currentNode?.title ?? "Every topic is done"}
+                </h2>
+                <p className="mt-2.5 max-w-[52ch] text-[15px] leading-relaxed opacity-75">
+                  {currentNode
+                    ? currentNode.tagline || currentNode.description
+                    : "This roadmap has nothing left to do. Ask Hermes Coach what to learn next."}
+                </p>
+                <div className="mt-8 flex flex-wrap items-center gap-2.5">
+                  {currentNode ? (
+                    <>
+                      <MagneticButton variant="onDark" onClick={() => onNavigate("Roadmap")}>
+                        Continue topic <ArrowRight aria-hidden="true" className="size-4" />
+                      </MagneticButton>
+                      <MagneticButton
+                        variant="onDarkGhost"
+                        disabled={savingId === currentNode.id}
+                        onClick={() => void setNodeStatus(currentNode.id, currentAction.next)}
+                      >
+                        {savingId === currentNode.id ? "Saving" : currentAction.label}
+                      </MagneticButton>
+                    </>
+                  ) : (
+                    <MagneticButton variant="onDark" onClick={() => onNavigate("Hermes Coach")}>
+                      Ask Hermes <ArrowRight aria-hidden="true" className="size-4" />
+                    </MagneticButton>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col items-center gap-4 lg:items-end">
+                <StageRing percent={stageProgress.percent} done={stageProgress.done} total={stageProgress.total} />
+                <p className="max-w-[32ch] text-center text-[13px] leading-relaxed opacity-75 lg:text-right">
+                  {currentStage?.title ?? "Current stage"}
+                </p>
+              </div>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-muted-foreground">
-              <span>{currentStage?.title ?? "Current stage"}</span>
-              <span className="inline-flex items-center before:mr-2 before:size-[3px] before:rounded-full before:bg-muted-foreground/50 before:content-['']">
-                {stageProgress.done} of {stageProgress.total} done
-              </span>
-            </div>
-            <ul className="mt-3">
-              <li>
-                <ListRow
-                  icon={currentNode ? topicGlyph(currentNode.icon) : <Route className="size-[18px]" />}
-                  title={version ? `Plan version ${version}` : "Current plan"}
-                  detail={
-                    reason ||
-                    `${stages.length} ${stages.length === 1 ? "stage" : "stages"} · ${summary.total} ${summary.total === 1 ? "topic" : "topics"}`
-                  }
-                  trailing={<RowLink onClick={() => onNavigate("Roadmap")}>Open →</RowLink>}
-                />
-              </li>
-            </ul>
-          </Panel>
-        </motion.div>
+          </section>
+        </Reveal>
 
-        <motion.div
-          initial={reduce ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.15, ease: EASE_OUT }}
-        >
-          <Panel label="What changed" className="h-full">
-            <PanelHead title="What changed" sub="Only things that really happened" />
+        {/* Queue and plan health: stacked list next to display number. */}
+        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
+          <Reveal delay={0.05} className="h-full">
+            <Panel label="Up next" className="h-full">
+              <PanelHead
+                title="Up next"
+                sub={
+                  summary.remaining > 0
+                    ? `${summary.remaining} ${summary.remaining === 1 ? "topic" : "topics"} left`
+                    : "Everything is done"
+                }
+              />
+              {upNext.length === 0 ? (
+                <p className="mt-4 flex items-start gap-2.5 text-[13px] leading-relaxed text-muted-foreground">
+                  <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  Every topic in {title || "this roadmap"} is done. Ask Hermes Coach what to learn next.
+                </p>
+              ) : (
+                <ul className="mt-4 space-y-2">
+                  {upNext.map((node, index) => {
+                    const status = statusOf(node)
+                    return (
+                      <motion.li
+                        key={node.id}
+                        initial={reduce ? false : { opacity: 0, y: 12 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, amount: 0.4 }}
+                        transition={{ duration: 0.5, delay: index * 0.06, ease: EASE_OUT }}
+                        className="flex items-center gap-3 rounded-2xl bg-muted/60 p-3"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-background text-primary shadow-sm"
+                        >
+                          {topicGlyph(node.icon)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold" title={node.title}>
+                            {node.title}
+                          </span>
+                          <span
+                            className="block truncate text-xs text-muted-foreground"
+                            title={`${node.duration}, ${node.level}`}
+                          >
+                            {node.duration}, {node.level}
+                          </span>
+                        </span>
+                        {index === 0 ? (
+                          <Pill tone="warning">Now</Pill>
+                        ) : (
+                          <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>
+                        )}
+                      </motion.li>
+                    )
+                  })}
+                </ul>
+              )}
+            </Panel>
+          </Reveal>
+
+          <Reveal delay={0.1} className="h-full">
+            <Panel label="Roadmap momentum" className="h-full">
+              <PanelHead
+                title="Roadmap momentum"
+                sub={title || "Your plan"}
+                tone={stagePill.tone}
+                pill={stagePill.label}
+              />
+              <p className="mt-5 text-[34px] font-bold leading-none tracking-tight">
+                {stageProgress.percent}
+                <span className="text-lg font-semibold text-muted-foreground">%</span>
+              </p>
+              <div className="mt-3">
+                <ProgressTrack percent={stageProgress.percent} label={`${currentStage?.title ?? "Current stage"} progress`} />
+              </div>
+              <p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
+                {currentStage?.title ?? "Current stage"}, {stageProgress.done} of {stageProgress.total} done
+              </p>
+              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-muted/60 p-3">
+                <span
+                  aria-hidden="true"
+                  className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-background text-primary shadow-sm"
+                >
+                  {currentNode ? topicGlyph(currentNode.icon) : <Route className="size-[18px]" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold" title={version ? `Plan version ${version}` : "Current plan"}>
+                    {version ? `Plan version ${version}` : "Current plan"}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {reason || `${stages.length} ${stages.length === 1 ? "stage" : "stages"}, ${summary.total} ${summary.total === 1 ? "topic" : "topics"}`}
+                  </span>
+                </span>
+              </div>
+            </Panel>
+          </Reveal>
+        </div>
+
+        {/* What moved: simple feed, newest first. */}
+        <Reveal delay={0.15} className="mt-5">
+          <Panel label="What changed">
+            <PanelHead title="What changed" />
             {activity.length === 0 ? (
-              <p className="mt-4 flex items-start gap-2.5 text-[13px] text-muted-foreground">
+              <p className="mt-4 flex items-start gap-2.5 text-[13px] leading-relaxed text-muted-foreground">
                 <CircleSlash aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                Nothing yet. Sync a source, upload a deck, or ask Hermes to change your plan — it shows
+                Nothing yet. Sync a source, upload a deck, or ask Hermes to change your plan. It shows
                 up here.
               </p>
             ) : (
-              <ul className="mt-3">
-                {activity.map((item) => (
-                  <li key={item.id}>
-                    <ListRow
-                      icon={item.icon}
-                      title={item.title}
-                      detail={item.detail}
-                      trailing={<RowLink onClick={() => onNavigate(item.tab)}>{item.action} →</RowLink>}
-                    />
-                  </li>
+              <ul className="mt-4 grid gap-x-8 gap-y-1 md:grid-cols-2">
+                {activity.map((item, index) => (
+                  <motion.li
+                    key={item.id}
+                    initial={reduce ? false : { opacity: 0, y: 12 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.4 }}
+                    transition={{ duration: 0.5, delay: Math.min(index * 0.05, 0.2), ease: EASE_OUT }}
+                    className="flex items-center gap-3 rounded-2xl p-2"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-muted text-primary"
+                    >
+                      {item.icon}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold" title={item.title}>
+                        {item.title}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground" title={item.detail}>
+                        {item.detail}
+                      </span>
+                    </span>
+                    <RowLink onClick={() => onNavigate(item.tab)}>
+                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5" />
+                    </RowLink>
+                  </motion.li>
                 ))}
               </ul>
             )}
           </Panel>
-        </motion.div>
-      </div>
+        </Reveal>
 
-      {/* Only when something is genuinely waiting on the student. */}
-      {attention.length > 0 ? (
-        <motion.section
-          aria-label="Needs attention"
-          initial={reduce ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.2, ease: EASE_OUT }}
-          className="mt-5"
-        >
-          <Panel label="Needs attention">
-            <PanelHead
-              title="Needs attention"
-              sub="Nothing changes until you decide"
-              tone="warning"
-              pill={`${attention.length}`}
-            />
-            <ul className="mt-3 grid gap-x-8 gap-y-1 md:grid-cols-2">
-              {attention.map((item) => (
-                <li key={item.id}>
-                  <ListRow
-                    divider={false}
-                    icon={item.icon}
-                    title={item.title}
-                    detail={item.detail}
-                    trailing={<RowLink onClick={() => onNavigate(item.tab)}>{item.action} →</RowLink>}
-                  />
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        </motion.section>
-      ) : null}
+        {/* Only when something is genuinely waiting on the student. */}
+        {attention.length > 0 ? (
+          <Reveal delay={0.2} className="mt-5">
+            <Panel label="Needs attention">
+              <PanelHead
+                title="Needs attention"
+                tone="warning"
+                pill={`${attention.length}`}
+              />
+              <ul className="mt-4 grid gap-2.5 md:grid-cols-2">
+                {attention.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-3 rounded-2xl bg-muted/60 p-3"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-background text-primary shadow-sm"
+                    >
+                      {item.icon}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold" title={item.title}>
+                        {item.title}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground" title={item.detail}>
+                        {item.detail}
+                      </span>
+                    </span>
+                    <RowLink onClick={() => onNavigate(item.tab)}>
+                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5" />
+                    </RowLink>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          </Reveal>
+        ) : null}
       </motion.div>
     </div>
   )

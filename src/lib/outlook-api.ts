@@ -3,8 +3,9 @@ import { API_BASE } from "./farq-api"
 export interface OutlookStatus {
   configured: boolean; connected: boolean; account?: string; auto_sync?: boolean
   status?: string; last_sync?: number; processed?: number; error?: string
-  worker_enabled?: boolean
-  provider?: "graph" | "desktop" | "personal"
+  coach_access?: boolean; worker_enabled?: boolean
+  provider?: "desktop" | "token"
+  desktop_available?: boolean; token_available?: boolean
 }
 export interface MailItem {
   id: string; subject: string; sender: string; excerpt: string; received: string; web_url: string

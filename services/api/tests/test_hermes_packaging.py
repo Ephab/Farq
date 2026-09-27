@@ -6,7 +6,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[3]
 SKILLS = REPO / ".hermes" / "skills"
-RUNNERS = ("firas_run_mac", "run_windows")
+RUNNERS = ("run_mac", "run_windows")
 
 
 def skill_names() -> set[str]:
@@ -70,16 +70,3 @@ def test_prompts_only_reference_provisioned_skills() -> None:
             assert (SKILLS / name / "SKILL.md").is_file()
 
 
-@pytest.mark.parametrize("runner_name", RUNNERS)
-def test_email_runner_has_separate_home_and_no_internal_secret(runner_name, tmp_path, monkeypatch):
-    runner = load_runner(runner_name)
-    monkeypatch.setattr(runner, "REPO", str(tmp_path))
-    config = tmp_path / "services" / "hermes" / "email-config.yaml"
-    config.parent.mkdir(parents=True)
-    config.write_text((REPO / "services/hermes/email-config.yaml").read_text(encoding="utf-8"), encoding="utf-8")
-    env = runner.email_env({"HERMES_HOME": "coach", "FARQ_INTERNAL_TOKEN": "private", "FARQ_TOKEN_ENCRYPTION_KEY": "secret", "HERMES_ENABLE_PROJECT_PLUGINS": "1"})
-    assert env["HERMES_HOME"] == str(tmp_path / ".hermes-email-runtime")
-    assert env["HERMES_ENABLE_PROJECT_PLUGINS"] == "0"
-    assert env["API_SERVER_PORT"] == "8643"
-    assert "FARQ_INTERNAL_TOKEN" not in env and "FARQ_TOKEN_ENCRYPTION_KEY" not in env
-    assert not (Path(env["HERMES_HOME"]) / "plugins").exists()

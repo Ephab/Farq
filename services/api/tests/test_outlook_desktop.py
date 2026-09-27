@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.outlook import auth, desktop, sync
 from app.email_cleaning import CLEANING_VERSION
-from app.outlook.models import MailConnection, MailItem
+from app.outlook.models import MailConnection, MailItem, MailboxConsent
 from test_outlook import world, insert_item
 
 
@@ -64,11 +64,10 @@ def test_unchanged_mail_does_not_read_body_and_deleted_ids_continue():
     assert page["value"] == [{"id": "same", "@unchanged": True}, {"id": "deleted", "@removed": {}}]
 
 
-def test_desktop_consent_pairing_and_private_session(world, monkeypatch):
+def test_desktop_checkbox_consent_and_private_session(world, monkeypatch):
     client, factory, _ = world
-    monkeypatch.setenv("OUTLOOK_PROVIDER", "desktop")
+    monkeypatch.setattr(desktop, "enabled", lambda: True)
     monkeypatch.setattr(desktop, "origin", lambda: "http://localhost:5173")
-    monkeypatch.setattr(desktop, "pairing_key", lambda: "local-secret")
     calls = []
     def profile():
         calls.append(True)
@@ -76,10 +75,13 @@ def test_desktop_consent_pairing_and_private_session(world, monkeypatch):
     monkeypatch.setattr(desktop, "profile", profile)
     client.cookies.clear()
     assert client.get("/api/outlook/status").json()["provider"] == "desktop"
-    assert client.post("/api/outlook/desktop/connect", json={"pairing_code": "wrong", "accepted": True}).status_code == 403
-    assert client.post("/api/outlook/desktop/connect", json={"pairing_code": "local-secret", "accepted": False}).status_code == 403
+    assert client.post("/api/outlook/desktop/connect", json={"accepted": True}).status_code == 403
+    assert client.post("/api/outlook/desktop/consent").status_code == 200
+    assert client.post("/api/outlook/desktop/connect", json={"accepted": False}).status_code == 403
     assert calls == []
-    assert client.post("/api/outlook/desktop/connect", json={"pairing_code": "local-secret", "accepted": True}).status_code == 200
+    assert client.post("/api/outlook/desktop/connect", json={"accepted": True}).status_code == 200
+    assert len(calls) == 1
+    assert client.post("/api/outlook/desktop/connect", json={"accepted": True}).status_code == 403
     assert client.get("/api/outlook/status").json()["connected"]
     with factory() as db:
         connection = db.scalar(select(MailConnection).where(MailConnection.tenant == desktop.TENANT))
@@ -102,7 +104,7 @@ def test_desktop_does_not_allow_remote_or_non_windows(monkeypatch):
 
 def test_desktop_worker_uses_local_adapter_and_deduplicates(world, monkeypatch):
     client, factory, _ = world
-    monkeypatch.setenv("OUTLOOK_PROVIDER", "desktop")
+    monkeypatch.setattr(desktop, "enabled", lambda: True)
     with factory() as db:
         row = db.get(MailConnection, "alice")
         row.tenant = desktop.TENANT
@@ -123,3 +125,30 @@ def test_desktop_worker_uses_local_adapter_and_deduplicates(world, monkeypatch):
         assert item.subject == "Class"
         assert item.content_hash == "desktop:revision"
         assert db.get(MailConnection, "alice").processed == 1
+
+
+def test_desktop_consent_is_private_origin_bound_and_expires(world, monkeypatch):
+    import time
+    client, factory, _ = world
+    monkeypatch.setattr(desktop, "enabled", lambda: True)
+    monkeypatch.setattr(desktop, "origin", lambda: "http://localhost:5173")
+    monkeypatch.setattr(desktop, "profile", lambda: pytest.fail("No mailbox access before valid consent"))
+    assert client.post("/api/outlook/desktop/consent", headers={"Origin": "https://evil.test"}).status_code == 403
+    assert client.post("/api/outlook/desktop/consent", headers={"Host": "rebound.evil.test"}).status_code == 403
+    response = client.post("/api/outlook/desktop/consent")
+    assert response.json() == {"ready": True}
+    assert "HttpOnly" in response.headers["set-cookie"]
+    cookie = client.cookies.get(auth.CONSENT_COOKIE)
+    with factory() as db:
+        consent = db.get(MailboxConsent, desktop.consent_digest(cookie))
+        assert consent and consent.token_hash != cookie
+        consent.expires = time.time() - 1; db.commit()
+    assert client.post("/api/outlook/desktop/connect", json={"accepted": True}).status_code == 403
+
+
+def test_setup_local_token_required_for_desktop(monkeypatch):
+    monkeypatch.setattr(desktop, "classic_outlook_supported", lambda: True)
+    monkeypatch.delenv("OUTLOOK_LOCAL_TOKEN", raising=False)
+    assert desktop.enabled() is False
+    monkeypatch.setenv("OUTLOOK_LOCAL_TOKEN", "x" * 64)
+    assert desktop.enabled() is True

@@ -5,21 +5,25 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 
 ## What was built
 
-### Integrated Outlook and local Laya (2026-09-27)
-- `app/outlook` implements browser-bound Microsoft consent, encrypted server-side
-  token caches, private mailbox sessions and resumable read-only Graph delta sync.
-  Desktop COM, main's public-client device flow and temporary tokens share this cache.
-  Old student-ID mailbox endpoints were removed; prototype users must reconnect.
-- The unified Emails view provides Important, Today, Needs review, Follow-ups, All mail and Dismissed;
-  Home places mail in the right column; onboarding also exposes the integration. Laya runs locally using the
-  pinned model installed by `setup.bat` / `setup.sh` through uv.
-- Mailbox ownership is independent of demo student profiles. Mail does not become
-  StudentFact records or team activity. Explicit selected-email Q&A uses a separate
-  tool-free Hermes gateway; automatic sync remains local. Coach sharing and real
-  student-account migration remain separate work.
-- See `docs/outlook-setup.md` and `docs/outlook-threat-model.md` before extending
-  access. Mocked authorization/sync tests pass; live tenant consent and token
-  renewal still require a configured Microsoft app and university account.
+### Outlook and local setup (2026-09-27)
+- Exactly two mailbox methods: native Windows classic Outlook and a temporary
+  Microsoft Graph access token. Entra/OAuth/device-code routes and MSAL are removed.
+- Classic Outlook asks only for a browser consent checkbox. Setup generates its
+  server-only local token after a passive capability probe; browser consent is
+  protected by same-origin/localhost checks and expiring one-time cookies.
+- Both methods share full cleaned-text caching, local Laya suggestions and one
+  Emails workspace. Home's email widget is in the right column. Cache retention
+  is 30 days; classifications never become StudentFacts or team events.
+- Windows: `setup.bat`, `run.bat`. macOS: `bash setup.sh`, `bash run.sh`.
+  Shared setup manages uv/Python/locked dependencies, verifies Hermes and Laya,
+  installs frontend packages and generates missing `.env` secrets without rotating
+  valid existing credentials. Duplicate pip and platform setup paths are removed.
+- Coach and selected-email Q&A share the gateway at port 8642. Opt-in Coach mail
+  search uses expiring run capabilities and read-only cached-mail tools. Explicit
+  consent is required before sending email text to configured AI providers.
+- See `outlook-setup.md` and `outlook-threat-model.md` for setup, privacy and upgrades.
+  Tests mock Microsoft; live tenant policy and macOS setup require target-device checks.
+
 ### Group Projects (course teams with Hermes as a teammate)
 - Spec: `docs/superpowers/specs/2026-09-25-group-projects-design.md`; plans 1-3 in
   `docs/superpowers/plans/`. Backend in `services/api/app/teams/`, UI in `src/components/teams/`.
@@ -141,8 +145,8 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 
 ### 6. Smaller fixes
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.
-- `scripts/dev.ps1` re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start.
-  `scripts/firas_run_mac.py` and its Windows port `scripts/run_windows.py` copy the same set
+- `scripts/runtime.py`, shared by `scripts/run_mac.py` and `scripts/run_windows.py`,
+  re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start
   (every dir under `.hermes/skills`); Docker mounts each
   skill into `/opt/data/skills`. `tests/test_hermes_packaging.py` fails if a checked-in skill is not
   provisioned on every launch path.
@@ -174,7 +178,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 - No visual diff for proposals; quiz results do not feed the roadmap yet.
 
 ## Next steps (in order)
-1. Restart (`scripts/dev.ps1`) and run the full onboarding live with a real model; fix what breaks.
+1. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.
 2. Dry-run a non-CS student (e.g. Medicine with only a CV) and check discipline cards + roadmap shape.
 3. Put `HF_TOKEN` in `.env`, restart, confirm a Hugging Face run through the gateway.
 4. Replace placeholders (Home/Dashboard) with roadmap progress + recent proposals for the demo.

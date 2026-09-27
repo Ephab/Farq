@@ -286,17 +286,3 @@ class OpportunitySyncRun(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class OutlookAccount(Base):
-    """Legacy prototype table; not used by mailbox routes. Users must reconnect."""
-
-    __tablename__ = "outlook_accounts"
-    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), default="")
-    access_token: Mapped[str] = mapped_column(Text, default="")
-    refresh_token: Mapped[str] = mapped_column(Text, default="")
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
-

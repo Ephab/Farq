@@ -8,12 +8,12 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from test_outlook import world, insert_item, ORIGIN  # noqa: F401
-from app.outlook import auth, chat, personal
-from app.outlook.models import MailConnection, OAuthAttempt
+from app.outlook import auth, chat, graph
+from app.outlook.models import MailConnection
 
 
 def mock_profile(monkeypatch):
-    monkeypatch.setattr(personal.httpx, "get", lambda *args, **kwargs: httpx.Response(200, json={
+    monkeypatch.setattr(graph.httpx, "get", lambda *args, **kwargs: httpx.Response(200, json={
         "id": "graph-account", "mail": "synthetic@outlook.com", "displayName": "Synthetic student"
     }, request=httpx.Request("GET", "https://graph.microsoft.com/v1.0/me")))
 
@@ -23,15 +23,15 @@ def test_temporary_connection_uses_encrypted_private_cache(world, monkeypatch):
     mock_profile(monkeypatch)
     client.cookies.clear()
     secret = "synthetic-token-" * 8
-    result = client.post("/api/outlook/personal/token", json={"access_token": secret, "accepted": True})
+    result = client.post("/api/outlook/token", json={"access_token": secret, "accepted": True})
     assert result.status_code == 200
     assert secret not in result.text
     with factory() as db:
         conn = db.scalar(select(MailConnection).where(MailConnection.account_id == "graph-account"))
         assert conn.user_id not in {"alice", "bob"}
         assert secret not in conn.token_cache
-        assert personal.token_for_public(conn)[0] == secret
-    assert client.get("/api/outlook/status").json()["provider"] == "personal"
+        assert auth.token_for(conn)[0] == secret
+    assert client.get("/api/outlook/status").json()["provider"] == "token"
     assert client.get("/api/outlook/messages").status_code == 200
     assert client.delete("/api/outlook/connection").status_code == 200
     assert client.get("/api/outlook/messages").status_code == 401
@@ -39,56 +39,23 @@ def test_temporary_connection_uses_encrypted_private_cache(world, monkeypatch):
 
 def test_temporary_token_needs_consent_origin_and_valid_token(world, monkeypatch):
     client, _, _ = world
-    assert client.post("/api/outlook/personal/token", json={"access_token": "short", "accepted": True}).status_code == 422
+    assert client.post("/api/outlook/token", json={"access_token": "short", "accepted": True}).status_code == 422
     body = {"access_token": "token" * 10, "accepted": False}
-    assert client.post("/api/outlook/personal/token", json=body).status_code == 403
+    assert client.post("/api/outlook/token", json=body).status_code == 403
     body["accepted"] = True
-    assert client.post("/api/outlook/personal/token", json=body, headers={"Origin": "https://evil.invalid"}).status_code == 403
-    monkeypatch.setattr(personal.httpx, "get", lambda *args, **kwargs: httpx.Response(401, request=httpx.Request("GET", "https://graph.microsoft.com/v1.0/me")))
-    assert client.post("/api/outlook/personal/token", json=body).status_code == 401
+    assert client.post("/api/outlook/token", json=body, headers={"Origin": "https://evil.invalid"}).status_code == 403
+    monkeypatch.setattr(graph.httpx, "get", lambda *args, **kwargs: httpx.Response(401, request=httpx.Request("GET", "https://graph.microsoft.com/v1.0/me")))
+    assert client.post("/api/outlook/token", json=body).status_code == 401
 
 
 def test_expired_temporary_token_requires_reconnect(world):
     stored = {"access_token": "test", "expires": time.time() - 1}
     with pytest.raises(ValueError, match="reauthorization_required"):
-        personal.token_for_public(SimpleNamespace(token_cache=auth.seal(json.dumps(stored))))
+        auth.token_for(SimpleNamespace(tenant=auth.TOKEN_TENANT, token_cache=auth.seal(json.dumps(stored))))
 
 
-def test_public_refresh_returns_encrypted_rotated_tokens(world, monkeypatch):
-    stored = {"access_token": "old", "refresh_token": "old-refresh", "expires": 0, "tenant": "consumers", "client_id": "client"}
-    monkeypatch.setattr(personal, "microsoft_post", lambda *args: (200, {"access_token": "new-token", "refresh_token": "new-refresh", "expires_in": 3600}))
-    token, cache = personal.token_for_public(SimpleNamespace(token_cache=auth.seal(json.dumps(stored))))
-    assert token == "new-token" and "new-token" not in cache
-    assert json.loads(auth.unseal(cache))["refresh_token"] == "new-refresh"
 
 
-def test_device_flow_is_browser_bound_throttled_and_single_use(world, monkeypatch):
-    client, factory, values = world
-    monkeypatch.setenv("OUTLOOK_CLIENT_ID", values["MICROSOFT_CLIENT_ID"])
-    mock_profile(monkeypatch)
-    calls = []
-    def post(tenant, path, data):
-        calls.append(path)
-        if path == "devicecode":
-            return 200, {"device_code": "private-device-code", "user_code": "TEST-CODE", "expires_in": 600, "interval": 5}
-        return 200, {"access_token": "synthetic-access-token", "refresh_token": "synthetic-refresh-token"}
-    monkeypatch.setattr(personal, "microsoft_post", post)
-    client.cookies.clear()
-    result = client.post("/api/outlook/personal/device/start", json={"accepted": True})
-    assert result.status_code == 200 and "private-device-code" not in result.text
-    flow_cookie = client.cookies.get(personal.PUBLIC_COOKIE)
-    assert client.post("/api/outlook/personal/device/poll").json()["connected"] is False
-    assert calls == ["devicecode"]
-    client.cookies.clear()
-    assert client.post("/api/outlook/personal/device/poll").status_code == 410
-    client.cookies.set(personal.PUBLIC_COOKIE, flow_cookie)
-    with factory() as db:
-        attempt = db.get(OAuthAttempt, auth.digest(flow_cookie))
-        assert "private-device-code" not in attempt.flow
-        flow = json.loads(auth.unseal(attempt.flow)); flow["next_poll"] = 0
-        attempt.flow = auth.seal(json.dumps(flow)); db.commit()
-    assert client.post("/api/outlook/personal/device/poll").json()["connected"] is True
-    assert client.post("/api/outlook/personal/device/poll").status_code == 410
 
 
 def test_qa_requires_owned_unexpired_mail_and_explicit_consent(world, monkeypatch):
@@ -128,18 +95,15 @@ def test_prompt_is_untrusted_and_oversize_is_rejected_not_truncated():
         chat.run_email_chat([], "   ")
 
 
-def test_email_qa_uses_separate_gateway_and_fresh_session(world, monkeypatch):
+def test_email_qa_uses_coach_gateway_and_fresh_session(world, monkeypatch):
     calls = []
     monkeypatch.setenv("HERMES_EMAIL_URL", "http://127.0.0.1:8643")
     monkeypatch.setattr(chat, "execute_with_fallback", lambda *args, **kwargs: (calls.append((args, kwargs)) or ("Answer", "mock-model", "mock-provider")))
     for _ in range(2):
         result = chat.run_email_chat([], "Question", hermes_api_key="test-key-123456789")
         assert result["model"] == "mock-model"
-    assert calls[0][1]["gateway_url"] == "http://127.0.0.1:8643"
+    assert calls[0][1]["gateway_url"] == chat.HERMES_URL
     assert calls[0][0][2]["session_id"] != calls[1][0][2]["session_id"]
-    monkeypatch.setenv("HERMES_EMAIL_URL", chat.HERMES_URL)
-    with pytest.raises(chat.EmailChatError):
-        chat.run_email_chat([], "Question", hermes_api_key="test-key-123456789")
 
 
 def test_mail_session_does_not_replace_team_demo_identity(world):
@@ -154,3 +118,91 @@ def test_mail_session_does_not_replace_team_demo_identity(world):
         assert current_user(request("/api/outlook/messages"), db, "demo-member").id == "alice"
         with pytest.raises(HTTPException):
             current_user(request("/api/me"), db, "alice")
+
+
+@pytest.mark.parametrize("method,path", [("post", "/authorize"), ("get", "/callback"),
+    ("post", "/personal/device/start"), ("post", "/personal/device/poll"), ("get", "/personal/config")])
+def test_removed_sign_in_routes_are_unavailable(world, method, path):
+    client, _, _ = world
+    assert getattr(client, method)("/api/outlook" + path).status_code == 404
+
+
+def test_retired_connections_are_not_exposed_or_synced(world, monkeypatch):
+    from app.outlook import sync, desktop
+    client, factory, _ = world
+    with factory() as db:
+        for key in ("alice", "bob"):
+            db.get(MailConnection, key).tenant = "retired-entra"
+        db.commit()
+    assert client.get("/api/outlook/status").json()["connected"] is False
+    assert client.get("/api/outlook/messages").status_code == 401
+    monkeypatch.setattr(sync, "work_one_page", lambda *args: pytest.fail("Retired connection must not sync"))
+    sync.tick()
+
+
+def coach_request(cookie="alice-cookie"):
+    from starlette.requests import Request
+    return Request({"type": "http", "method": "POST", "path": "/api/chat/threads/t1/messages",
+                    "headers": [(b"cookie", f"{auth.COOKIE}={cookie}".encode()), (b"origin", ORIGIN.encode())]})
+
+
+def coach_grant(factory, status="running"):
+    from app.models import AgentRun
+    from app.outlook import coach
+    with factory() as db:
+        run = AgentRun(thread_id="t1", user_message_id="m1", status=status)
+        db.add(run); db.flush()
+        token = coach.issue_grant(coach_request(), db, run.id)
+        db.commit()
+        return token, run.id
+
+
+def test_coach_mail_needs_session_consent_and_sees_only_owned_mail(world):
+    from app.outlook import coach
+    client, factory, _ = world
+    own = insert_item(factory)
+    with factory() as db:
+        from app.outlook.models import MailItem
+        db.get(MailItem, own).excerpt = "Private " + "A" * 8992
+        db.commit()
+    insert_item(factory, connection="bob")
+    assert coach_grant(factory)[0] is None
+    assert client.get("/api/outlook/status").json()["coach_access"] is False
+    assert client.patch("/api/outlook/coach-access", json={"accepted": True}, headers={"Origin": "https://evil.test"}).status_code == 403
+    assert client.patch("/api/outlook/coach-access", json={"accepted": True}).json() == {"coach_access": True}
+    token, _ = coach_grant(factory)
+    assert token
+    with factory() as db:
+        found = coach.search_mail(coach.MailSearch(mailbox_access=token, query="private"), db)
+        assert [item["id"] for item in found["items"]] == [own]
+        first = coach.read_mail(coach.MailRead(mailbox_access=token, item_id=own), db)
+        assert len(first["body"]) == 8000 and first["next_cursor"] == 8000
+        rest = coach.read_mail(coach.MailRead(mailbox_access=token, item_id=own, cursor=8000), db)
+        assert len(rest["body"]) == 1000 and rest["next_cursor"] is None
+        with pytest.raises(HTTPException):
+            coach.search_mail(coach.MailSearch(mailbox_access="forged-" * 6), db)
+
+
+def test_coach_mail_revoked_by_consent_run_state_and_disconnect(world):
+    from app.models import AgentRun
+    from app.outlook import coach
+    client, factory, _ = world
+    insert_item(factory)
+    client.patch("/api/outlook/coach-access", json={"accepted": True})
+    finished, _ = coach_grant(factory, status="completed")
+    token, run_id = coach_grant(factory)
+    with factory() as db:
+        with pytest.raises(HTTPException):
+            coach.search_mail(coach.MailSearch(mailbox_access=finished), db)
+        assert coach.search_mail(coach.MailSearch(mailbox_access=token), db)["items"]
+    client.patch("/api/outlook/coach-access", json={"accepted": False})
+    client.patch("/api/outlook/coach-access", json={"accepted": True})
+    with factory() as db:
+        with pytest.raises(HTTPException):  # re-enabling does not revive revoked grants
+            coach.search_mail(coach.MailSearch(mailbox_access=token), db)
+    token, _ = coach_grant(factory)
+    assert client.delete("/api/outlook/connection").status_code == 200
+    with factory() as db:
+        with pytest.raises(HTTPException):
+            coach.search_mail(coach.MailSearch(mailbox_access=token), db)
+        assert db.get(AgentRun, run_id) is not None

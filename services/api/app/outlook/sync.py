@@ -16,7 +16,7 @@ from ..database import SessionLocal
 from ..email_classifier import ClassifierUnavailable, EmailClassifier, EmailInput
 from ..email_cleaning import clean_email_body
 from ..sources.pdf_text import redact
-from .auth import digest, token_for
+from .auth import digest, token_for, TOKEN_TENANT
 from .models import MailConnection, MailFolder, MailItem
 from . import desktop
 
@@ -248,7 +248,7 @@ def work_one_page(connection_id: str, lease: str) -> None:
             retry = error.retry if isinstance(error, GraphError) else 300
             reconnect = (isinstance(error, ValueError) and str(error) == "reauthorization_required") or (isinstance(error, GraphError) and error.status in {401, 403})
             connection.status = "reconnect" if reconnect else "error"
-            connection.error = "Sign in again; your university may require administrator consent." if reconnect else (
+            connection.error = "Reconnect with a fresh Microsoft Graph token. Your organization must permit Mail.Read access." if reconnect else (
                 "Laya is unavailable. Run setup.bat or setup.sh, then retry sync." if isinstance(error, ClassifierUnavailable)
                 else "Classic Outlook could not be read. Check its profile, security prompts and organization policy; then retry." if connection.tenant == desktop.TENANT
                 else "Sync paused after a provider error. Previous results are preserved; retry later.")
@@ -263,7 +263,7 @@ def tick() -> None:
     with SessionLocal() as db:
         db.execute(delete(MailItem).where(MailItem.expires < stamp))
         row = db.scalar(select(MailConnection).where(
-            or_(MailConnection.tenant == desktop.TENANT, MailConnection.tenant.startswith("public:")) if desktop.enabled() else MailConnection.tenant != desktop.TENANT,
+            MailConnection.tenant.in_([desktop.TENANT, TOKEN_TENANT] if desktop.enabled() else [TOKEN_TENANT]),
             MailConnection.connected.is_(True), MailConnection.status != "reconnect",
             MailConnection.next_sync <= stamp, MailConnection.lease_until < stamp,
             or_(MailConnection.auto_sync.is_(True), MailConnection.status.in_(["queued", "running"])),

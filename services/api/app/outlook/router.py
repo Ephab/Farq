@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import html
 import json
 import secrets
 import os
@@ -8,10 +7,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
-import httpx
-import msal
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, or_, and_
 from sqlalchemy.orm import Session
@@ -20,7 +16,7 @@ from ..database import get_db
 from ..identity import CurrentUser, User
 from ..models import uid
 from . import auth, desktop
-from .models import MailConnection, MailFolder, MailItem, MailSession, OAuthAttempt
+from .models import MailConnection, MailFolder, MailItem, MailSession, MailboxConsent, MailCoachGrant
 
 router = APIRouter(prefix="/api/outlook", tags=["Outlook"])
 Db = Annotated[Session, Depends(get_db)]
@@ -30,7 +26,7 @@ def connection_for(user: User, db: Session) -> MailConnection:
     if user.source not in {"microsoft", "outlook-desktop"}:
         raise HTTPException(401, "Connect your university Outlook account first")
     connection = db.scalar(select(MailConnection).where(MailConnection.user_id == user.id))
-    if connection is None or not connection.connected:
+    if connection is None or not connection.connected or connection.tenant not in {desktop.TENANT, auth.TOKEN_TENANT}:
         raise HTTPException(401, "Connect your university Outlook account first")
     return connection
 
@@ -38,33 +34,66 @@ def connection_for(user: User, db: Session) -> MailConnection:
 @router.get("/status")
 def status(request: Request, response: Response, db: Db):
     response.headers["Cache-Control"] = "no-store"
+    desktop_available = desktop.enabled()
+    if desktop_available:
+        try:
+            desktop.require_local(request)
+        except HTTPException:
+            desktop_available = False
+    try:
+        auth.encryption_key()
+        token_available = True
+    except HTTPException:
+        token_available = False
+    options = {"configured": desktop_available or token_available, "desktop_available": desktop_available,
+               "token_available": token_available, "provider": "desktop" if desktop_available else "token"}
     user = auth.session_user(request, db)
     connection = db.scalar(select(MailConnection).where(MailConnection.user_id == user.id)) if user else None
-    if not connection or not connection.connected:
-        try:
-            desktop.require_local(request) if desktop.enabled() else auth.settings()
-        except HTTPException as error:
-            return {"configured": False, "connected": False, "provider": "desktop" if desktop.enabled() else "graph", "error": error.detail}
-        return {"configured": True, "connected": False, "provider": "desktop" if desktop.enabled() else "graph"}
-    return {"configured": True, "connected": True, "account": connection.label,
-            "provider": "desktop" if connection.tenant == desktop.TENANT else "personal" if connection.tenant.startswith("public:") else "graph",
+    if not connection or not connection.connected or connection.tenant not in {desktop.TENANT, auth.TOKEN_TENANT}:
+        return {**options, "connected": False}
+    return {**options, "connected": True, "account": connection.label,
+            "provider": "desktop" if connection.tenant == desktop.TENANT else "token",
             "worker_enabled": os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true",
+            "coach_access": db.get(MailSession, auth.digest(request.cookies[auth.COOKIE])).coach_access,
             "auto_sync": connection.auto_sync, "status": connection.status,
             "last_sync": connection.last_sync, "processed": connection.processed, "error": connection.error}
 
 
 class DesktopConsent(BaseModel):
-    pairing_code: str = Field(min_length=1, max_length=128)
     accepted: bool
+
+
+@router.post("/desktop/consent")
+def desktop_consent(request: Request, response: Response, db: Db):
+    auth.require_origin(request)
+    desktop.require_local(request)
+    if not desktop.enabled():
+        raise HTTPException(503, "Install classic Outlook and rerun setup.bat on this Windows computer.")
+    nonce = secrets.token_urlsafe(32)
+    previous = request.cookies.get(auth.CONSENT_COOKIE, "")
+    db.execute(delete(MailboxConsent).where(MailboxConsent.token_hash == desktop.consent_digest(previous)))
+    db.execute(delete(MailboxConsent).where(MailboxConsent.expires < time.time()))
+    db.add(MailboxConsent(token_hash=desktop.consent_digest(nonce), expires=time.time() + 120))
+    db.commit()
+    response.set_cookie(auth.CONSENT_COOKIE, nonce, max_age=120, httponly=True, samesite="strict", path="/api/outlook")
+    response.headers["Cache-Control"] = "no-store"
+    return {"ready": True}
 
 
 @router.post("/desktop/connect")
 def connect_desktop(body: DesktopConsent, request: Request, response: Response, db: Db):
-    if not desktop.enabled():
-        raise HTTPException(404, "Desktop Outlook is not enabled")
     auth.require_origin(request)
-    if not body.accepted or not secrets.compare_digest(body.pairing_code.strip(), desktop.pairing_key()):
-        raise HTTPException(403, "Accept local mailbox access and enter the pairing code from this computer.")
+    desktop.require_local(request)
+    if not desktop.enabled():
+        raise HTTPException(503, "Install classic Outlook and rerun setup.bat on this Windows computer.")
+    if not body.accepted:
+        raise HTTPException(403, "Accept local mailbox access first.")
+    token_hash = desktop.consent_digest(request.cookies.get(auth.CONSENT_COOKIE, ""))
+    consumed = db.execute(delete(MailboxConsent).where(MailboxConsent.token_hash == token_hash, MailboxConsent.expires > time.time())).rowcount
+    db.commit()
+    if not consumed:
+        raise HTTPException(403, "Consent expired. Check the consent box again.")
+    response.delete_cookie(auth.CONSENT_COOKIE, path="/api/outlook")
     try:
         store_id, label = desktop.profile()
     except Exception:
@@ -90,94 +119,6 @@ def connect_desktop(body: DesktopConsent, request: Request, response: Response, 
     return {"connected": True}
 
 
-@router.post("/authorize")
-def authorize(request: Request, response: Response, db: Db):
-    auth.require_origin(request)
-    if desktop.enabled():
-        raise HTTPException(409, "Use the local Outlook connection")
-    config = auth.settings()
-    browser = secrets.token_urlsafe(32)
-    flow = auth.client().initiate_auth_code_flow(auth.SCOPES, redirect_uri=config.redirect, prompt="select_account")
-    if not flow.get("auth_uri") or not flow.get("state"):
-        raise HTTPException(502, "Microsoft sign-in is unavailable")
-    db.execute(delete(OAuthAttempt).where(OAuthAttempt.expires < time.time()))
-    db.add(OAuthAttempt(state_hash=auth.digest(flow["state"]), browser_hash=auth.digest(browser),
-                        flow=auth.seal(json.dumps(flow)), expires=time.time() + 600))
-    db.commit()
-    response.set_cookie(auth.FLOW_COOKIE, browser, max_age=600, httponly=True, secure=config.secure, samesite="lax", path="/api/outlook")
-    response.headers["Cache-Control"] = "no-store"
-    return {"url": flow["auth_uri"]}
-
-
-def completion(success: bool) -> HTMLResponse:
-    config, nonce = auth.settings(), secrets.token_urlsafe(24)
-    state = "connected" if success else "failed"
-    origin = json.dumps(config.origin.rstrip("/")).replace("<", "\\u003c")
-    text = "Outlook connected. You can close this window." if success else "Sign-in was cancelled or failed. Return to Farq and try again. University administrator approval may be required."
-    response = HTMLResponse(f'''<!doctype html><html><head><meta charset="utf-8"><title>Farq Outlook</title></head>
-<body><p>{text}</p><a href="{html.escape(config.origin, quote=True)}">Return to Farq</a>
-<script nonce="{nonce}">if(window.opener){{window.opener.postMessage({{type:"farq-outlook",status:"{state}"}},{origin});window.close();}}</script></body></html>''')
-    response.headers.update({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
-                             "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; base-uri 'none'; frame-ancestors 'none'"})
-    response.delete_cookie(auth.FLOW_COOKIE, path="/api/outlook")
-    return response
-
-
-@router.get("/callback")
-def callback(request: Request, db: Db):
-    state = auth.digest(request.query_params.get("state", ""))
-    attempt = db.get(OAuthAttempt, state)
-    browser = auth.digest(request.cookies.get(auth.FLOW_COOKIE, ""))
-    if not attempt or attempt.expires < time.time() or not secrets.compare_digest(attempt.browser_hash, browser):
-        raise HTTPException(400, "Invalid or expired sign-in. Start again from Farq.")
-    flow = json.loads(auth.unseal(attempt.flow))
-    consumed = db.execute(delete(OAuthAttempt).where(OAuthAttempt.state_hash == state)).rowcount
-    db.commit()  # Consume before external calls; replay is never accepted.
-    if not consumed:
-        raise HTTPException(400, "Sign-in already used")
-    config = auth.settings()
-    try:
-        cache = msal.SerializableTokenCache()
-        result = auth.client(cache).acquire_token_by_auth_code_flow(flow, dict(request.query_params))
-        claims = result.get("id_token_claims", {})
-        if "access_token" not in result or claims.get("tid", "").lower() != config.tenant.lower() or not claims.get("oid"):
-            return completion(False)
-        with httpx.Client(timeout=20, follow_redirects=False) as graph:
-            me = graph.get("https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName", headers={"Authorization": f"Bearer {result['access_token']}"})
-            me.raise_for_status()
-            profile = me.json()
-        if profile.get("id", "").lower() != claims["oid"].lower():
-            return completion(False)
-        connection = db.scalar(select(MailConnection).where(MailConnection.tenant == config.tenant.lower(), MailConnection.account_id == profile["id"]))
-        if connection is None:
-            # No browser-supplied student ID may claim a mailbox. This identity owns
-            # private mail only; legacy demo profiles are deliberately not migrated.
-            user = User(id=uid(), display_name=str(profile.get("displayName") or "Student")[:120], source="microsoft", role="student")
-            db.add(user)
-            db.flush()
-            connection = MailConnection(user_id=user.id, tenant=config.tenant.lower(), account_id=profile["id"], label="")
-            db.add(connection)
-            db.flush()
-        connection.label = str(profile.get("mail") or profile.get("userPrincipalName") or "University Outlook")[:200]
-        connection.token_cache = auth.seal(cache.serialize())
-        connection.connected, connection.status, connection.error = True, "queued", ""
-        connection.generation += 1
-        connection.next_sync, connection.lease_until, connection.lease_id = 0, 0, ""
-        session_token = secrets.token_urlsafe(32)
-        old = request.cookies.get(auth.COOKIE)
-        if old:
-            db.execute(delete(MailSession).where(MailSession.token_hash == auth.digest(old)))
-        db.execute(delete(MailSession).where(MailSession.expires < time.time()))
-        db.add(MailSession(token_hash=auth.digest(session_token), user_id=connection.user_id, expires=time.time() + 7 * 86400))
-        db.commit()
-    except Exception:
-        db.rollback()
-        return completion(False)
-    response = completion(True)
-    response.set_cookie(auth.COOKIE, session_token, max_age=7 * 86400, httponly=True, secure=config.secure, samesite="lax", path="/")
-    return response
-
-
 @router.post("/sync")
 def sync(request: Request, user: CurrentUser, db: Db):
     auth.require_origin(request)
@@ -190,6 +131,24 @@ def sync(request: Request, user: CurrentUser, db: Db):
         connection.next_sync = 0
     db.commit()
     return {"status": connection.status}
+
+
+class CoachAccess(BaseModel):
+    accepted: bool
+
+
+@router.patch("/coach-access")
+def coach_access(body: CoachAccess, request: Request, user: CurrentUser, db: Db):
+    auth.require_origin(request)
+    connection_for(user, db)
+    session = db.get(MailSession, auth.digest(request.cookies.get(auth.COOKIE, "")))
+    if not session or session.expires <= time.time():
+        raise HTTPException(401, "Reconnect Outlook")
+    session.coach_access = body.accepted
+    # Revocation stays effective even if permission is later enabled again.
+    db.execute(delete(MailCoachGrant).where(MailCoachGrant.session_hash == session.token_hash))
+    db.commit()
+    return {"coach_access": session.coach_access}
 
 
 class Preferences(BaseModel):
@@ -221,16 +180,14 @@ def disconnect(request: Request, response: Response, user: CurrentUser, db: Db):
     connection.label = ""
     db.execute(delete(MailItem).where(MailItem.connection_id == connection.id))
     db.execute(delete(MailFolder).where(MailFolder.connection_id == connection.id))
+    db.execute(delete(MailCoachGrant).where(MailCoachGrant.connection_id == connection.id))
     db.execute(delete(MailSession).where(MailSession.user_id == user.id))
-    # Browser-bound pending sign-ins must not reconnect after disconnect.
-    flow_cookie = request.cookies.get(auth.FLOW_COOKIE, "")
-    db.execute(delete(OAuthAttempt).where(OAuthAttempt.browser_hash == auth.digest(flow_cookie)))
-    from .personal import PUBLIC_COOKIE
-    db.execute(delete(OAuthAttempt).where(OAuthAttempt.state_hash == auth.digest(request.cookies.get(PUBLIC_COOKIE, ""))))
+    consent = request.cookies.get(auth.CONSENT_COOKIE, "")
+    if consent and desktop.enabled():
+        db.execute(delete(MailboxConsent).where(MailboxConsent.token_hash == desktop.consent_digest(consent)))
     db.commit()
-    response.delete_cookie(PUBLIC_COOKIE, path="/api/outlook")
     response.delete_cookie(auth.COOKIE, path="/")
-    response.delete_cookie(auth.FLOW_COOKIE, path="/api/outlook")
+    response.delete_cookie(auth.CONSENT_COOKIE, path="/api/outlook")
     return {"connected": False}
 
 
@@ -360,5 +317,5 @@ def email_chat(body: EmailQuestion, request: Request, response: Response, user: 
     return {**result, "email_count": len(items)}
 
 
-# Register main's alternate sign-in against the same private session/cache routes.
-from . import personal  # noqa: E402,F401
+# Register temporary Graph-token access against the shared private cache.
+from . import graph  # noqa: E402,F401

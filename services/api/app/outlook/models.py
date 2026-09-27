@@ -28,18 +28,27 @@ class MailConnection(Base):
     processed: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class MailCoachGrant(Base):
+    __tablename__ = "outlook_coach_grants"
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    session_hash: Mapped[str] = mapped_column(String)
+    run_id: Mapped[str] = mapped_column(String)
+    connection_id: Mapped[str] = mapped_column(String)
+    generation: Mapped[int] = mapped_column(Integer)
+    expires: Mapped[float] = mapped_column(Float)
+
+
 class MailSession(Base):
     __tablename__ = "outlook_sessions"
+    coach_access: Mapped[bool] = mapped_column(Boolean, default=False)
     token_hash: Mapped[str] = mapped_column(String, primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     expires: Mapped[float] = mapped_column(Float)
 
 
-class OAuthAttempt(Base):
-    __tablename__ = "outlook_oauth_attempts"
-    state_hash: Mapped[str] = mapped_column(String, primary_key=True)
-    browser_hash: Mapped[str] = mapped_column(String)
-    flow: Mapped[str] = mapped_column(Text)
+class MailboxConsent(Base):
+    __tablename__ = "outlook_desktop_consents"
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
     expires: Mapped[float] = mapped_column(Float)
 
 

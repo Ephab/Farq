@@ -18,7 +18,7 @@ export function EmailQuestion({ ids }: { ids: string[] }) {
   }
   return <details className="border-t border-border bg-muted/15 p-4 sm:p-5">
     <summary className="cursor-pointer text-sm font-semibold">Ask about {ids.length === 1 ? "this email" : `${ids.length} selected emails`}</summary>
-    <p className="mt-3 text-xs leading-5 text-muted-foreground">Hermes answers from the selected messages only, separately from Coach. Up to 25 emails and 24,000 characters; larger selections are rejected without cutting the text. The email gateway and AI provider may retain request history.</p>
+    <p className="mt-3 text-xs leading-5 text-muted-foreground">Coach answers from the selected messages using the shared Hermes gateway. Up to 25 emails and 24,000 characters; larger selections are rejected without cutting the text. Coach shares its tools and memory; Hermes and AI providers may retain request history.</p>
     <form className="mt-3 space-y-3" onSubmit={event => { event.preventDefault(); void ask() }}>
       <textarea aria-label="Question about selected emails" placeholder="What do I need to do, and by when?" maxLength={2000} value={question} onChange={event => setQuestion(event.target.value)} className="min-h-20 w-full rounded-xl border border-border bg-background p-3 text-sm" />
       <label className="flex items-start gap-2 text-xs leading-5"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} /><span>Send these emails and my question to the AI providers configured in Settings, including fallback providers, for this answer.</span></label>

@@ -16,7 +16,7 @@ from app.database import Base, get_db
 from app.email_classifier import EmailClassification
 from app.identity import User
 from app.outlook import auth, sync
-from app.outlook.models import MailConnection, MailFolder, MailItem, MailSession, OAuthAttempt
+from app.outlook.models import MailConnection, MailFolder, MailItem, MailSession
 from app.outlook.router import router
 
 ORIGIN = "http://localhost:5173"
@@ -24,9 +24,7 @@ ORIGIN = "http://localhost:5173"
 
 @pytest.fixture
 def world(monkeypatch):
-    values = {"MICROSOFT_CLIENT_ID": str(uuid.uuid4()), "MICROSOFT_TENANT_ID": str(uuid.uuid4()),
-              "MICROSOFT_CLIENT_SECRET": "test-only-secret", "OUTLOOK_APP_ORIGIN": ORIGIN,
-              "MICROSOFT_REDIRECT_URI": ORIGIN + "/api/outlook/callback",
+    values = {"OUTLOOK_APP_ORIGIN": ORIGIN, "OUTLOOK_LOCAL_TOKEN": "test-local-token-" * 4,
               "FARQ_TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(), "OUTLOOK_SYNC_ENABLED": "true"}
     for key, value in values.items():
         monkeypatch.setenv(key, value)
@@ -47,10 +45,10 @@ def world(monkeypatch):
         for user_id in ("alice", "bob"):
             db.add(User(id=user_id, display_name=user_id, source="microsoft"))
             db.flush()
-            db.add(MailConnection(id=user_id, user_id=user_id, account_id=user_id, tenant=values["MICROSOFT_TENANT_ID"], label=user_id + "@uni.edu", token_cache=auth.seal("cache")))
+            db.add(MailConnection(id=user_id, user_id=user_id, account_id=user_id, tenant=auth.TOKEN_TENANT, label=user_id + "@uni.edu", token_cache=auth.seal("cache")))
             db.add(MailSession(token_hash=auth.digest(user_id + "-cookie"), user_id=user_id, expires=time.time() + 600))
         db.commit()
-    with TestClient(app) as client:
+    with TestClient(app, base_url=ORIGIN) as client:
         client.cookies.set(auth.COOKIE, "alice-cookie")
         client.headers["Origin"] = ORIGIN
         yield client, factory, values
@@ -109,21 +107,6 @@ def test_today_uses_local_midnight_and_excludes_next_day(world):
     assert [item["id"] for item in result["items"]] == [ids[1]]
 
 
-def test_token_refresh_persists_only_encrypted_cache(world, monkeypatch):
-    _, _, _ = world
-    cache = auth.msal.SerializableTokenCache()
-    connection = SimpleNamespace(tenant="graph-test", token_cache=auth.seal(cache.serialize()))
-    def fake_client(token_cache):
-        def refresh(scopes, account):
-            assert scopes == ["User.Read", "Mail.Read"]
-            token_cache.deserialize(json.dumps({"test_refresh_marker": "renewed"}))
-            return {"access_token": "fresh-token"}
-        return SimpleNamespace(get_accounts=lambda: [{"id": "account"}], acquire_token_silent=refresh)
-    monkeypatch.setattr(auth, "client", fake_client)
-    token, encrypted_cache = auth.token_for(connection)
-    assert token == "fresh-token"
-    assert "renewed" not in encrypted_cache
-    assert json.loads(auth.unseal(encrypted_cache))["test_refresh_marker"] == "renewed"
 
 
 @pytest.mark.parametrize("url", ["http://graph.microsoft.com/v1.0/me/mailFolders", "https://evil.test/v1.0/me/mailFolders", "https://graph.microsoft.com/v1.0/users/bob/mailFolders", "https://graph.microsoft.com/v1.0/me/mailFolders/../sendMail", "https://graph.microsoft.com/v1.0/me/messages"])
@@ -137,20 +120,6 @@ def test_normalization_does_not_render_html_or_store_identifiers():
     assert sync.source_url("javascript:alert(1)") == ""
 
 
-def test_oauth_state_browser_binding_and_replay(world, monkeypatch):
-    client, factory, _ = world
-    monkeypatch.setattr(auth, "client", lambda *args: SimpleNamespace(initiate_auth_code_flow=lambda *a, **k: {"state": "one-time", "auth_uri": "https://login.microsoftonline.com/test", "code_verifier": "private-pkce"},
-        acquire_token_by_auth_code_flow=lambda *args: {"error": "access_denied"}))
-    assert client.post("/api/outlook/authorize").status_code == 200
-    with factory() as db:
-        row = db.get(OAuthAttempt, auth.digest("one-time"))
-        assert "private-pkce" not in row.flow
-    flow_cookie = client.cookies.get(auth.FLOW_COOKIE)
-    client.cookies.delete(auth.FLOW_COOKIE)
-    assert client.get("/api/outlook/callback?state=one-time").status_code == 400
-    client.cookies.set(auth.FLOW_COOKIE, flow_cookie, path="/api/outlook")
-    assert client.get("/api/outlook/callback?state=one-time&error=access_denied").status_code == 200
-    assert client.get("/api/outlook/callback?state=one-time").status_code == 400
 
 
 def test_sync_pagination_dedup_and_removed_message(world, monkeypatch):
@@ -250,40 +219,13 @@ def test_bulk_edits_are_atomic_and_account_scoped(world):
     assert client.get("/api/outlook/messages?view=review").json()["total"] == 0
 
 
-def test_successful_oauth_creates_private_identity_and_encrypted_cache(world, monkeypatch):
-    client, factory, config = world
-    remote_id = str(uuid.uuid4())
-    monkeypatch.setattr(auth, "client", lambda *args: SimpleNamespace(
-        initiate_auth_code_flow=lambda *a, **k: {"state": "success-state", "auth_uri": "https://login.microsoftonline.com/test"},
-        acquire_token_by_auth_code_flow=lambda *args: {"access_token": "sensitive-token", "id_token_claims": {"tid": config["MICROSOFT_TENANT_ID"], "oid": remote_id}},
-    ))
-    class GraphClient:
-        def __init__(self, **kwargs): pass
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def get(self, url, **kwargs):
-            assert url.startswith("https://graph.microsoft.com/v1.0/me?")
-            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"id": remote_id, "displayName": "New Student", "mail": "student@uni.edu"})
-    monkeypatch.setattr("app.outlook.router.httpx.Client", GraphClient)
-    assert client.post("/api/outlook/authorize").status_code == 200
-    response = client.get("/api/outlook/callback?state=success-state&code=test")
-    assert response.status_code == 200 and "sensitive-token" not in response.text
-    assert "HttpOnly" in response.headers["set-cookie"]
-    assert client.get("/api/outlook/status").json()["account"] == "student@uni.edu"
-    with factory() as db:
-        connection = db.scalar(select(MailConnection).where(MailConnection.account_id == remote_id))
-        assert db.get(User, connection.user_id).student_id is None
-        assert connection.token_cache != auth.unseal(connection.token_cache)
 
 
-def test_expired_state_and_session_rejected(world):
+def test_expired_session_rejected(world):
     client, factory, _ = world
     with factory() as db:
         db.get(MailSession, auth.digest("alice-cookie")).expires = 0
-        db.add(OAuthAttempt(state_hash=auth.digest("expired"), browser_hash=auth.digest("browser"), flow=auth.seal("{}"), expires=0))
         db.commit()
-    client.cookies.set(auth.FLOW_COOKIE, "browser", path="/api/outlook")
-    assert client.get("/api/outlook/callback?state=expired").status_code == 400
     assert client.get("/api/outlook/messages").status_code == 401
 
 

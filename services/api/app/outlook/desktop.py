@@ -3,8 +3,8 @@ from contextlib import contextmanager
 from datetime import timezone
 import json
 import os
-from pathlib import Path
-import secrets
+import hashlib
+import hmac
 import sys
 from urllib.parse import unquote, urlparse
 
@@ -12,35 +12,35 @@ from fastapi import HTTPException
 from ..email_cleaning import CLEANING_VERSION
 
 TENANT = "local-outlook-desktop"
-KEY_FILE = Path(__file__).resolve().parents[4] / ".local-outlook-key"
+from .platform import classic_outlook_supported
 
 
 def enabled():
-    return os.getenv("OUTLOOK_PROVIDER", "graph") == "desktop"
+    return classic_outlook_supported() and len(os.getenv("OUTLOOK_LOCAL_TOKEN", "")) >= 32
 
 
 def origin():
-    value = os.getenv("OUTLOOK_APP_ORIGIN", "http://localhost:5173").rstrip("/")
+    from .auth import origin as app_origin
+    value = app_origin()
     parsed = urlparse(value)
-    if sys.platform != "win32" or parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1"} or parsed.path or parsed.username or parsed.query or parsed.fragment:
-        raise HTTPException(503, "Desktop Outlook requires native Windows and a localhost app origin.")
+    if sys.platform != "win32" or parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1"}:
+        raise HTTPException(503, "Classic Outlook requires native Windows and a localhost app origin.")
     return value
 
 
-def pairing_key():
-    if not KEY_FILE.exists():
-        try:
-            with KEY_FILE.open("x", encoding="utf-8") as handle:
-                handle.write(secrets.token_hex(16))
-        except FileExistsError:
-            pass
-    return KEY_FILE.read_text(encoding="utf-8").strip()
+def consent_digest(value):
+    key = os.getenv("OUTLOOK_LOCAL_TOKEN", "")
+    if len(key) < 32:
+        raise HTTPException(503, "Run setup.bat to enable classic Outlook on this computer.")
+    return hmac.new(key.encode(), value.encode(), hashlib.sha256).hexdigest()
 
 
 def require_local(request):
     origin()
     if not request.client or request.client.host not in {"127.0.0.1", "::1", "testclient"}:
-        raise HTTPException(403, "Desktop Outlook is available only on this computer.")
+        raise HTTPException(403, "Classic Outlook is available only on this computer.")
+    if request.url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise HTTPException(403, "Classic Outlook requires a localhost request host.")
 
 
 @contextmanager
@@ -149,8 +149,3 @@ def _page(namespace, store, url, store_id, known):
     remaining = ids[20:]
     return {"value": rows, **({"@odata.nextLink": "desktop:" + json.dumps({"folder": folder_id, "ids": remaining})}
                               if remaining else {"@odata.deltaLink": "desktop:complete"})}
-
-
-
-if __name__ == "__main__":
-    print("Local Outlook pairing code: " + pairing_key())

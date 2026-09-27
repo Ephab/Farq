@@ -1,123 +1,89 @@
 # Outlook threat model
 
-## Boundaries and authorization
+## Authorization
 
-Browser -> same-origin FastAPI -> Microsoft identity / fixed Graph read endpoints.
-Laya runs in the API worker process and has no tools. Mailbox tables are separate
-from student facts, public opportunities, team events and Hermes sessions.
+Mailbox identity is separate from demo student/team IDs. `current_user()` recognizes
+a private HttpOnly mailbox session on `/api/outlook/*` and personal Coach message
+creation (for scoped mail grants only). Demo headers cannot
+impersonate mailbox users. Every mail read, edit and Q&A request checks ownership,
+connection status and record expiry. Only classic Outlook and temporary Graph-token
+connections are accepted; retired sign-in connections cannot read or sync mail.
 
-The legacy demo student UUID is not authentication. Microsoft mailbox identity is
-derived from MSAL-validated tenant/object claims and matched to Graph `/me`. A new
-private User is created without attaching arbitrary student IDs. Only an HttpOnly
-seven-day server session authorizes mailbox routes through `current_user()`.
-Unknown, expired and forged sessions fail closed. Demo headers cannot impersonate
-Microsoft users. Existing non-mail student APIs remain a demo, not production auth.
+Classic Outlook is a local, single-trusted-OS-user feature. Setup passively checks
+Windows COM registration and generates a server-only `OUTLOOK_LOCAL_TOKEN` in `.env`.
+It does not launch Outlook. After the student checks the browser consent checkbox,
+a same-origin POST creates a random two-minute HttpOnly SameSite=Strict cookie.
+The database stores an HMAC digest keyed by the local secret. Connecting requires
+explicit `accepted=true`, an exact Origin, a loopback client and localhost Host,
+and atomically consumes that cookie once before COM is called. The local secret
+never reaches the UI. Replays, missing/expired cookies, hostile Origins and DNS
+rebinding Hosts fail before mailbox access. Disconnect invalidates pending consent.
 
-OAuth uses MSAL's authorization-code flow with PKCE and nonce, a random browser
-cookie, ten-minute encrypted flow storage and an atomically consumed state hash.
-Callbacks must match both state and browser cookie. The configured tenant is a
-specific UUID. No personal, shared, archive or application-wide mailbox grant is
-requested. Writes require the exact configured Origin to protect cookie sessions
-from CSRF; no wildcard-origin policy authorizes mailbox operations.
+Graph identity comes from `/me` using the provided Microsoft-issued token; browser
+student IDs cannot claim accounts. Tokens require User.Read/Mail.Read consent and
+are subject to Microsoft policy. There is no app-registration flow, device code,
+refresh-token exchange, or way for setup to mint a Graph access token.
 
-Only the configured same-origin callback can notify the popup opener. The browser
-checks both message origin and popup source, then fetches actual server status.
-Callback HTML has a nonce CSP, no-referrer policy and no token-bearing script.
-Use HTTPS except on localhost. Host compromise or same-origin XSS can still operate
-the user's session; this is outside the protection of HttpOnly cookies alone.
+## Secrets and isolation
 
-## Secrets and transport
+Setup generates missing gateway, internal API, encryption and supported-device
+secrets without printing them; preserves existing valid keys; and never commits
+`.env`. Temporary Graph access tokens are Fernet-encrypted in SQLite, never copied
+into `.env` or API responses. The frontend development server does not inherit
+provider credentials. Hermes does not inherit mailbox secrets. Coach and email Q&A share the gateway,
+its Farq tools and memory; mail access is enforced by the API, not the prompt.
 
-Token caches and OAuth flow payloads are Fernet-encrypted with a server-only key.
-Session/state tokens are stored hashed. Secrets are never returned in source records
-or public APIs. Native runners exclude the Microsoft secret and encryption key from
-Hermes child environments; Docker supplies them only to the API container.
-Do not log callback query strings, request cookies, Graph responses or MSAL caches.
-Callback codes still traverse Microsoft and the local reverse proxy; disable access
-logs or redact that route at every proxy layer. The provided API container disables
-Uvicorn access logs.
+Origin checks protect all writes. Native servers bind to loopback. The default
+HTTP/localhost deployment assumes a trusted local OS user. Same-user malware,
+local administrators and same-origin XSS are outside these defenses. Remote Graph
+deployments require HTTPS and proper host/proxy/session hardening.
 
-Graph requests only accept HTTPS graph.microsoft.com paths under the connected
-account's mailFolders boundary. Redirects, other accounts and arbitrary URLs are
-rejected. Timeouts, 8 MB response caps, bounded pages, server-side cursors and
-Retry-After scheduling prevent unbounded network operations. No mail link is fetched.
+## Read-only adapter and sync
 
-## Untrusted content and retention
+Classic Outlook uses COM initialized/released on each worker thread. It pins the
+default StoreID and only reads mail folders/items; it never calls Send, Save, Move,
+Delete, extracts attachments or suppresses Outlook security prompts. COM itself
+has broader capabilities: read-only behavior is enforced by the adapter.
 
-Mail can contain phishing and prompt injection. HTML is reduced to text without
-fetching images; React escapes all displayed excerpts. Outlook links are HTTPS and
-restricted to Microsoft Outlook hosts. Script/style text is removed. Attachments
-are neither downloaded nor executed. Redaction minimizes common identifiers but
-is not complete anonymization. The database contains private normalized content.
+Graph requests accept fixed HTTPS graph.microsoft.com paths for the connected
+account's mailFolders. Redirects, other accounts and arbitrary URLs are refused.
+Requests have timeouts and an 8 MB cap; pages and retry/backoff are bounded. Tokens
+are temporary and cannot refresh; expiration/rejection requires reconnecting.
 
-The model only emits bounded labels/probabilities, validated by the existing local
-classifier. Unsupported languages and long/uncertain messages remain reviewable.
-No output invokes tools, changes a roadmap, creates StudentFact, or grants retention.
-No raw message text goes into model logs or error messages. Cached records expire
-after 30 days and are excluded from reads immediately after expiry.
+Database leases and generation checks guard every worker write after external I/O
+or inference. Pause, reconnect and disconnect invalidate old work, preventing erased
+messages or credentials from being restored. Resumable cursors and content hashes
+avoid reclassifying unchanged text. Reads exclude expired records immediately.
 
-Each worker holds an expiring database lease. Every write rechecks the connection's
-generation and lease after external calls/inference. Pause, disconnect and reconnect
-invalidate old workers. A worker cannot restore erased messages or token material.
-Delta pages are committed only after processing; duplicate deliveries are deduped by
-message ID and normalized content hash. Full resync reconciles records absent from
-the new baseline. Mail moves use immutable IDs, with tombstones hidden from views.
+## Untrusted content and Q&A
 
-## Remaining limits
+HTML becomes plain text, React escapes it, and the app never fetches mail links,
+remote images or attachments. Cleaning removes known banners and tracking noise.
+Redaction is best-effort, not anonymization. Full cleaned bodies remain private in
+SQLite for 30 days. Classification is local; model labels never grant tools,
+retention, student facts, team events or roadmap authority.
 
-This is a local pilot, not a completed production account system. No automatic demo
-profile migration or Hermes mailbox tool is provided. Protect the host and database,
-back up the encryption key separately, use a production credential lifecycle, and
-add reverse-proxy rate limits before exposing OAuth publicly. Sync leases recover
-after at most ten minutes; requests are bounded but model time depends on hardware.
-Tests use synthetic Microsoft responses; live university consent and deployment on
-macOS/Linux remain to be verified on the target machines.
-# Classic Outlook desktop provider
+Selected-email Q&A sends only the explicitly consented selection. Coach mailbox
+search requires a separate opt-in on the private mailbox session. Each Coach run
+gets an unpredictable expiring capability, stored hashed, bound to its running
+AgentRun, live mailbox session, connection and generation. Tools also require the
+internal service credential; a student ID or item ID alone cannot retrieve mail.
+Search returns bounded snippets; reads paginate full cleaned bodies. Expired,
+removed and foreign rows are excluded. Revocation deletes pending grants and is
+checked on every read; it cannot recall text already sent to the model.
 
-`OUTLOOK_PROVIDER=desktop` opts into native Windows COM automation. It requires
-loopback requests, an exact localhost Origin on writes, a random local pairing
-code and explicit browser consent before inspecting the default Outlook store.
-The pairing code is not an API response and is not committed. This mode is for a
-single trusted Windows user; do not expose its dev servers over a LAN or tunnel.
-Same-user malware and local administrators are outside this boundary.
+Email Q&A now uses Coach's gateway and runtime home, with its available tools and
+memory. Prompt instructions label mail untrusted and prohibit following mail's
+instructions or turning it into facts; these instructions are not a sandbox.
+Shared memory/tool prompt-injection risk is higher than an isolated gateway.
+Existing proposal acceptance and fact-source rules still apply. No generic web,
+terminal or file access is enabled by this integration. Only cached mail is read.
+This remains a trusted single-user local demo: Coach thread endpoints are not yet
+production-authenticated, and email-derived Coach replies persist in chat history.
+Deployments with multiple untrusted users need proper Coach authentication before
+exposing mailbox search. Teams are never granted mail capabilities.
 
-Each worker invocation initializes/releases COM on its own thread. The store ID
-is pinned at connection time; switching the default mailbox fails closed. The
-adapter only calls read APIs: no Send, Save, Move, Delete, attachment extraction,
-security-setting changes, or programmatic-access prompt suppression. Outlook's
-Object Model Guard and university policy still apply. COM grants broader powers
-than the adapter uses; this is application-enforced read-only behavior.
-
-Snapshot cursors contain EntryIDs, never message bodies. Unprocessed bodies exist
-only during local normalization/classification; complete cleaned and redacted text
-is cached for 30 days at the user's request, with no 1,800-character truncation.
-Metadata scans reconcile deletions and
-process at most 20 IDs per page. Durable worker leases and disconnect generation
-checks apply equally to both providers. Desktop access has no Entra token cache.
-The existing controls and limitations below describe the Graph provider unless
-explicitly shared; desktop ownership comes from pairing, not Microsoft OAuth.
-
-## Integrated public-client sign-in and optional Q&A
-
-Public device flows use a random HttpOnly browser cookie, hashed lookup keys,
-encrypted device codes with expiry, server-side polling intervals and one-time
-consumption. Graph `/me` supplies the private mailbox identity; browser student IDs
-never authorize mail. Temporary access tokens use the same encrypted cache and
-fail closed after expiry. Public-client refresh tokens rotate inside the existing
-sync lease/generation boundary. Old demo-student token rows are not adopted.
-Mailbox sessions are resolved by `current_user()` only for `/api/outlook/*`, so
-team/Coach demo identity remains unchanged and cannot claim a private mailbox.
-
-Only an explicit `/api/outlook/chat` request sends selected, owned, unexpired mail
-to AI. Context above the fixed bound is rejected, not silently cut. The browser
-shows provider disclosure and requires consent. All mail is labeled untrusted.
-A fresh Q&A session is insufficient isolation on its own: the separate email
-Hermes runtime has an empty API toolset, disabled memory, no Farq plugin or skills,
-no Farq internal token, and no Coach state mounted. Supplied runners provision that
-runtime; deployments must preserve these boundaries. No generic tools are enabled.
-Q&A answers are displayed as text and do not become StudentFacts or proposals.
-
-The email gateway can retain session transcripts and the chosen/fallback cloud
-providers can retain requests under their policies. They are outside the 30-day
-SQLite mail cache and are not erased by Farq disconnect. Protect or remove the
-separate runtime's history according to the deployment's retention policy.
+Gateway/provider transcripts can outlive Farq's cache and are not erased by
+mailbox disconnect. Protect those stores under the deployment's retention policy.
+Tests use synthetic mail and mocked Microsoft responses. Live Outlook approval,
+organization restrictions and native macOS setup still require target-device checks.

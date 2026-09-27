@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Farq one-command dev runner (macOS/Linux).
+"""Farq one-command dev runner (macOS).
 
-Starts FastAPI (:8000) + Hermes gateway (:8642) + Vite (:5173).
+Starts FastAPI (:8000), Coach/email Q&A (:8642), and Vite (:5173).
 Press Ctrl+C once and everything shuts down.
 
 Usage:
-    python3 scripts/run.py
+    bash run.sh
 """
 from __future__ import annotations
 
 import os
-import secrets
 import shutil
 import signal
 import subprocess
@@ -21,7 +20,6 @@ import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(REPO, ".env")
-ENV_EXAMPLE = os.path.join(REPO, ".env.example")
 RUNTIME = os.path.join(REPO, ".hermes-runtime")
 
 API_PORT = 8000
@@ -33,105 +31,30 @@ def log(msg: str) -> None:
     print(f"[farq] {msg}", flush=True)
 
 
-def read_dotenv_values() -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not os.path.exists(ENV_FILE):
-        return values
-    with open(ENV_FILE) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                values[k.strip()] = v.strip()
-    return values
+sys.path.insert(0, REPO)
+from scripts.local_env import configure_env, read_env
+from scripts.runtime import build_env, child_env, executable, provision, require_python
+from pathlib import Path
 
 
-def load_env() -> None:
-    if not os.path.exists(ENV_FILE):
-        if os.path.exists(ENV_EXAMPLE):
-            shutil.copy(ENV_EXAMPLE, ENV_FILE)
-            log("created .env from .env.example")
-        else:
-            open(ENV_FILE, "a").close()
-    values: dict[str, str] = read_dotenv_values()
-    if len(values.get("HERMES_API_KEY", "")) < 32:
-        values["HERMES_API_KEY"] = secrets.token_hex(32)
-        log("generated HERMES_API_KEY")
-    values.setdefault("GEMINI_API_KEY", "")
-    values.setdefault("HERMES_MODEL", "gemini-2.5-flash")
-    values.setdefault("HERMES_PROVIDER", "gemini")
-    values.setdefault("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
-    with open(ENV_FILE, "w") as f:
-        for k, v in values.items():
-            f.write(f"{k}={v}\n")
-    os.environ.update(values)
-    if not os.environ["GEMINI_API_KEY"]:
-        log("WARNING: GEMINI_API_KEY is empty — chat will fail until you set it in .env")
+def read_dotenv_values():
+    return read_env(Path(ENV_FILE))
 
 
-def ensure_venv() -> str:
-    venv = os.path.join(REPO, ".venv")
-    py = os.path.join(venv, "bin", "python")
-    if not os.path.exists(py):
-        log("creating .venv ...")
-        subprocess.run([sys.executable, "-m", "venv", venv], check=True, cwd=REPO)
-    marker = os.path.join(venv, ".farq-deps")
-    req = os.path.join(REPO, "services", "api", "requirements.txt")
-    if not os.path.exists(marker) or os.path.getmtime(req) > os.path.getmtime(marker):
-        log("installing backend deps ...")
-        subprocess.run([py, "-m", "pip", "install", "-q", "-r", req], check=True, cwd=REPO)
-        open(marker, "w").close()
-    return py
+def load_env():
+    os.environ.update(configure_env(Path(REPO)))
 
 
-def ensure_runtime() -> None:
-    def sync(src: str, dst: str) -> None:
-        if os.path.isdir(src):
-            shutil.rmtree(dst, ignore_errors=True)
-            shutil.copytree(src, dst)
-        else:
-            shutil.copy2(src, dst)
-
-    os.makedirs(os.path.join(RUNTIME, "plugins", "farq"), exist_ok=True)
-    sync(os.path.join(REPO, "services", "hermes", "config.yaml"), os.path.join(RUNTIME, "config.yaml"))
-    sync(os.path.join(REPO, "services", "hermes", "SOUL.md"), os.path.join(RUNTIME, "SOUL.md"))
-    sync(os.path.join(REPO, ".hermes", "plugins", "farq"), os.path.join(RUNTIME, "plugins", "farq"))
-    for skill in os.scandir(os.path.join(REPO, ".hermes", "skills")):
-        if skill.is_dir():
-            sync(skill.path, os.path.join(RUNTIME, "skills", skill.name))
+def ensure_venv():
+    return require_python(Path(REPO))
 
 
-def email_env(env: dict[str, str]) -> dict[str, str]:
-    env = dict(env)
-    runtime = os.path.join(REPO, ".hermes-email-runtime")
-    os.makedirs(runtime, exist_ok=True)
-    shutil.copy2(os.path.join(REPO, "services", "hermes", "email-config.yaml"), os.path.join(runtime, "config.yaml"))
-    env.update(HERMES_HOME=runtime, HERMES_ENABLE_PROJECT_PLUGINS="0", API_SERVER_PORT="8643")
-    for key in ("FARQ_INTERNAL_TOKEN", "FARQ_API_INTERNAL_URL", "MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY", "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME"):
-        env.pop(key, None)
-    return env
+def ensure_runtime():
+    provision(Path(REPO), Path(RUNTIME))
 
 
-def build_child_env(values: dict[str, str]) -> dict[str, str]:
-    """Fresh child env from .env values so Apply-in-Settings restarts pick up new keys."""
-    env = dict(os.environ)
-    env.update(values)
-    env.update({
-        "HERMES_API_KEY": values["HERMES_API_KEY"],
-        "HERMES_MODEL": values.get("HERMES_MODEL", "gemini-2.5-flash"),
-        "HERMES_PROVIDER": values.get("HERMES_PROVIDER", "gemini"),
-        "HERMES_URL": f"http://127.0.0.1:{HERMES_PORT}",
-        "CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
-        "HERMES_ENABLE_PROJECT_PLUGINS": "1",
-        "HERMES_HOME": RUNTIME,
-        "API_SERVER_ENABLED": "true",
-        "API_SERVER_HOST": "127.0.0.1",
-        "API_SERVER_PORT": str(HERMES_PORT),
-        "FARQ_API_INTERNAL_URL": f"http://127.0.0.1:{API_PORT}",
-        "FARQ_INTERNAL_TOKEN": values.get("FARQ_INTERNAL_TOKEN", "farq-internal-dev"),
-        "API_SERVER_KEY": values["HERMES_API_KEY"],
-    })
-    return env
+def build_child_env(values):
+    return build_env(values, Path(REPO), Path(RUNTIME))
 
 
 def stream(name: str, proc: subprocess.Popen) -> None:
@@ -141,12 +64,9 @@ def stream(name: str, proc: subprocess.Popen) -> None:
 
 
 def start(name: str, cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
-    if name != "api":
-        env = {key: value for key, value in env.items() if key not in {"MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY"}}
-    if name == "email":
-        env = email_env(env)
+    env = child_env(name, env, Path(REPO))
     proc = subprocess.Popen(
-        cmd, cwd=env["HERMES_HOME"] if name == "email" else REPO, env=env,
+        cmd, cwd=REPO, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
     threading.Thread(target=stream, args=(name, proc), daemon=True).start()
@@ -169,7 +89,6 @@ def main() -> int:
     for name, url in (
         ("api", f"http://127.0.0.1:{API_PORT}/api/health"),
         ("hermes", f"http://127.0.0.1:{HERMES_PORT}/health"),
-        ("email", "http://127.0.0.1:8643/health"),
         ("web", f"http://127.0.0.1:{WEB_PORT}/"),
     ):
         try:
@@ -184,12 +103,12 @@ def main() -> int:
     if not shutil.which("npm"):
         log("ERROR: npm not found — install Node.js first.")
         return 1
-    if not shutil.which("hermes"):
+    if not executable("hermes"):
         log("ERROR: hermes binary not found on PATH.")
         return 1
     if not os.path.isdir(os.path.join(REPO, "node_modules")):
-        log("running npm install ...")
-        subprocess.run(["npm", "install"], check=True, cwd=REPO)
+        log("Run setup.bat (Windows) or bash setup.sh (macOS) first.")
+        return 1
     py = ensure_venv()
     ensure_runtime()
 
@@ -199,14 +118,13 @@ def main() -> int:
         # NOTE: `gateway run` stays in the foreground as our child, tied to
         # HERMES_HOME above. Bare `hermes gateway` would daemonize and escape
         # shutdown, so never use it here.
-        "hermes": ["hermes", "gateway", "run"],
-        "email": ["hermes", "gateway", "run"],
+        "hermes": [executable("hermes"), "gateway", "run"],
         "web": ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", str(WEB_PORT)],
     }
     # Only Farq's own children are ever restarted here. The daily-use base
     # Hermes profile is never touched: different HERMES_HOME, no stop/restart
     # commands against it.
-    RESTARTABLE = ("api", "hermes", "email")
+    RESTARTABLE = ("api", "hermes")
     children: dict[str, subprocess.Popen] = {}
     pending_restart: set[str] = set()
     lock = threading.Lock()

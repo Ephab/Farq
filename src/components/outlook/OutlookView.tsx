@@ -1,13 +1,11 @@
-import { PersonalConnection } from "./PersonalConnection"
+import { TokenConnection } from "./TokenConnection"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { ExternalLink, LoaderCircle, Mail, RefreshCw, ShieldCheck, Star } from "lucide-react"
+import { ExternalLink, Mail, RefreshCw, ShieldCheck, Star } from "lucide-react"
 
 import { localDay, outlookApi, type MailItem, type OutlookStatus } from "@/lib/outlook-api"
 
 import { MailWorkspace, type MailFilters } from "./MailWorkspace"
-
-
 
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -16,8 +14,6 @@ const views = ["important", "today", "review", "followup", "all", "dismissed"] a
 type View = typeof views[number]
 
 const labels: Record<View, string> = { important: "Important", today: "Today", review: "Needs review", followup: "Follow-ups", all: "All mail", dismissed: "Dismissed" }
-
-
 
 export function OutlookView({ compact = false, onOpen }: { compact?: boolean; onOpen?: () => void }) {
 
@@ -37,23 +33,11 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
   const [busy, setBusy] = useState(false)
 
-  const [connecting, setConnecting] = useState(false)
-
-  const [desktopConsent, setDesktopConsent] = useState(false)
-
-  const [pairingCode, setPairingCode] = useState("")
-
-  const [accepted, setAccepted] = useState(false)
-
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
-
-  const popup = useRef<Window | null>(null)
 
   const generation = useRef(0)
 
   const pageSize = compact ? 3 : 25
-
-
 
   const load = useCallback(async () => {
 
@@ -89,8 +73,6 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
   }, [view, offset, pageSize, filters])
 
-
-
   useEffect(() => {
 
     void load()
@@ -101,99 +83,15 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
   }, [load])
 
-
-
-  useEffect(() => {
-
-    const receive = (event: MessageEvent) => {
-
-      if (event.origin !== window.location.origin || event.source !== popup.current || event.data?.type !== "farq-outlook") return
-
-      setConnecting(false)
-
-      if (event.data.status === "failed") setError("Microsoft sign-in was cancelled or failed. Your university may require administrator approval.")
-
-      void load()
-
-    }
-
-    window.addEventListener("message", receive)
-
-    return () => window.removeEventListener("message", receive)
-
-  }, [load])
-
-
-
-  useEffect(() => {
-
-    if (!connecting) return
-
-    const start = Date.now()
-
-    const timer = window.setInterval(() => {
-
-      if (popup.current?.closed || Date.now() - start > 600000) {
-
-        setConnecting(false); void load()
-
-      }
-
-    }, 1000)
-
-    return () => window.clearInterval(timer)
-
-  }, [connecting, load])
-
-
-
-  async function connect() {
-
-    if (status?.provider === "desktop") { setDesktopConsent(true); return }
-
-    setError(""); setConnecting(true)
-
-    popup.current = window.open("about:blank", "farq-outlook", "width=560,height=720")
-
-    try {
-
-      const result = await outlookApi<{ url: string }>("/authorize", { method: "POST" })
-
-      if (popup.current && !popup.current.closed) popup.current.location.href = result.url
-
-      else window.location.assign(result.url)
-
-    } catch (reason) {
-
-      popup.current?.close(); setConnecting(false)
-
-      setError(reason instanceof Error ? reason.message : "Could not start sign-in")
-
-    }
-
-  }
-
-
-
   async function connectDesktop() {
-
     setBusy(true); setError("")
-
     try {
-
-      await outlookApi("/desktop/connect", { method: "POST", body: JSON.stringify({ pairing_code: pairingCode, accepted }) })
-
-      setPairingCode(""); setDesktopConsent(false); setAccepted(false)
-
+      await outlookApi("/desktop/consent", { method: "POST" })
+      await outlookApi("/desktop/connect", { method: "POST", body: JSON.stringify({ accepted: true }) })
       await load()
-
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not connect classic Outlook") }
-
     finally { setBusy(false) }
-
   }
-
-
 
   async function action(path: string, method: string, body?: object) {
 
@@ -210,8 +108,6 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
     finally { setBusy(false) }
 
   }
-
-
 
   if (compact && onOpen) return <section aria-label="Today in your mail" className="rounded-3xl border border-border bg-background p-5 shadow-sm">
     <div className="flex items-center gap-3"><Mail className="size-5 shrink-0 text-muted-foreground" /><h2 className="text-base font-semibold">Today in your mail</h2>{status?.connected && <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs">{total}</span>}</div>
@@ -244,45 +140,27 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
     </div>
 
-    {!compact && status && !status.connected && <PersonalConnection onConnected={load} />}
-
     {error && <p role="alert" className="my-3 rounded-xl bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">{error}</p>}
 
-    {desktopConsent && <div role="dialog" aria-modal="false" aria-label="Connect classic Outlook" className="my-4 space-y-3 rounded-2xl border border-border p-5">
-
-      <h2 className="font-semibold">Connect classic Outlook on this computer</h2>
-
-      <p className="text-sm">Farq will read mail folders in Outlook's default mailbox while the app runs. Check that your university mailbox is the default in classic Outlook. No Entra registration is needed. New Outlook, macOS and Docker are not supported by this connection.</p>
-
-      <p className="text-sm">Laya classifies locally. Farq keeps the complete cleaned, redacted email text for 30 days and does not send, edit or delete Outlook messages. Outlook may ask you to approve access.</p>
-
-      <label className="block text-sm">Local pairing code<input type="password" autoComplete="off" value={pairingCode} onChange={event => setPairingCode(event.target.value)} className="mt-1 block w-full rounded-lg border border-border bg-background p-2" /></label>
-
-      <p className="text-xs text-muted-foreground">Use the code printed in the terminal when Farq starts.</p>
-
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />I allow Farq to read and locally classify this Outlook mailbox.</label>
-
-      <div className="flex gap-2"><button className={button} disabled={busy || !accepted || !pairingCode.trim()} onClick={() => void connectDesktop()}>{busy ? "Connecting…" : "Allow and connect"}</button><button className={button} disabled={busy} onClick={() => { setDesktopConsent(false); setPairingCode(""); setAccepted(false) }}>Cancel</button></div>
-
-    </div>}
-
-    {!status ? <p className="py-6 text-sm text-muted-foreground">Loading Outlook connection…</p> : !status.connected ? <div className="mt-5 rounded-2xl bg-muted/50 p-5">
-
-      <div className="flex gap-2"><ShieldCheck className="mt-0.5 size-5 shrink-0" /><p className="max-w-2xl text-sm leading-6">{status.provider === "desktop" ? "Connect the default mailbox already signed in to classic Outlook on this Windows computer. No Entra registration is needed." : "Connect through Microsoft's sign-in window."} Farq reads mail and classifies text locally with Laya. It stores complete cleaned, redacted email text for 30 days. This integration does not send or change your emails.</p></div>
-
-      {!compact && <p className="mt-3 text-sm text-muted-foreground">Mailbox access belongs to your private connection session, independently of the demo profile switcher. Automatic sync stays local. Email Q&A shares only the messages you explicitly select and approve; nothing is shared with teammates.</p>}
-
-      {!status.configured && <p className="mt-3 text-sm text-muted-foreground">{status.error}</p>}
-
-      <button className={`${button} mt-4 bg-primary text-primary-foreground hover:bg-primary/90`} disabled={!status.configured || connecting} onClick={() => void connect()}>{connecting ? <LoaderCircle className="size-4 animate-spin" /> : <Mail className="size-4" />}{connecting ? "Waiting for Microsoft…" : "Connect Outlook"}</button>
-
+    {!status ? <p className="py-6 text-sm text-muted-foreground">Loading Outlook connection…</p> : !status.connected ? <div className="mt-5 space-y-4">
+      <div className="rounded-2xl border border-border p-5">
+        <h2 className="flex items-center gap-2 font-semibold"><ShieldCheck className="size-5" />Classic Outlook on this computer</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Read the default mailbox signed in to classic Outlook on Windows. Farq classifies emails locally with Laya and keeps cleaned text for 30 days. It does not send, edit or delete Outlook messages.</p>
+        {status.desktop_available ? <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-muted/50 p-4 text-sm"><input type="checkbox" aria-label="Allow classic Outlook mailbox access" checked={busy} disabled={busy} onChange={event => { if (event.target.checked) void connectDesktop() }} /><span>{busy ? "Connecting to classic Outlook…" : "I allow Farq to read and locally classify my classic Outlook mailbox."}</span></label> : <p className="mt-3 text-sm text-muted-foreground">Requires classic Outlook installed on Windows and Farq setup completed. This method is unavailable on macOS, in Docker, and with new Outlook.</p>}
+      </div>
+      <TokenConnection available={!!status.token_available} onConnected={load} />
+      <p className="text-sm text-muted-foreground">Mailbox access belongs to your private connection, independently of the demo profile. Email Q&A sends only messages you explicitly select and approve. Mail is never shared with teammates.</p>
     </div> : <>
 
       <p aria-live="polite" className="mt-4 text-xs text-muted-foreground">{status.status === "running" || status.status === "queued" ? `Sync ${status.status} · ${status.processed ?? 0} messages classified` : status.last_sync ? `Last completed sync ${new Date(status.last_sync * 1000).toLocaleString()}` : "First sync has not completed"} · {status.auto_sync ? "Automatic sync every 15 minutes while Farq runs" : "Automatic sync paused"}</p>
 
+      <label className="mt-4 flex items-start gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" className="mt-1" checked={!!status.coach_access} disabled={busy} onChange={event => void action("/coach-access", "PATCH", { accepted: event.target.checked })} /><span>Allow Coach to search and read my synced emails in this browser's Coach chats.<span className="mt-1 block text-xs text-muted-foreground">Matching email text may be sent to configured AI providers, including fallbacks. Coach and provider history may retain it. Uncheck to stop future access; disconnect also revokes access.</span></span></label>
+
       {status.worker_enabled === false && <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">Sync worker is disabled. Enable OUTLOOK_SYNC_ENABLED on the API server and restart it.</p>}
 
-      {status.error && <div role="status" className="mt-3 rounded-xl bg-amber-500/10 p-3 text-sm">{status.error}{status.status === "reconnect" && <button className={`${button} ml-3`} onClick={() => void connect()}>Sign in again</button>}</div>}
+      {status.error && <div role="status" className="mt-3 rounded-xl bg-amber-500/10 p-3 text-sm">{status.error}</div>}
+
+      {status.status === "reconnect" && status.provider === "token" && <TokenConnection available={!!status.token_available} onConnected={load} />}
 
       {confirmDisconnect && <div role="alert" className="my-4 rounded-xl border border-border p-4"><p className="text-sm">Disconnect and delete cached mail, labels and saved dates from Farq? Your Outlook mailbox is unchanged. Microsoft consent can also be revoked in your Microsoft account.</p><div className="mt-3 flex gap-2"><button className={button} disabled={busy} onClick={() => { setConfirmDisconnect(false); void action("/connection", "DELETE") }}>Disconnect and delete</button><button className={button} onClick={() => setConfirmDisconnect(false)}>Cancel</button></div></div>}
 

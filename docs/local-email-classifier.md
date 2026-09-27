@@ -13,7 +13,7 @@ Clone the repository, then run from its root:
 setup.bat
 ```
 
-On macOS/Linux:
+On macOS:
 
 ```sh
 bash setup.sh
@@ -27,18 +27,16 @@ are large). Subsequent runs reuse package/model caches. Failures return a nonzer
 exit status; rerun after restoring connectivity or freeing resources.
 
 An existing uv must be at least 0.12.0. Installers use Astral's pinned official
-installer when uv is absent. Linux needs curl or wget and a platform supported by
-uv's managed Python and PyTorch wheels. NVIDIA drivers are system prerequisites;
+installer when uv is absent. Native setup targets Windows and macOS. NVIDIA drivers are system prerequisites;
 the scripts do not install or change drivers. They detect CUDA 12.8-compatible
 drivers for the pinned CUDA build, otherwise install CPU wheels. On macOS the
 native wheel supports MPS on Apple Silicon; Intel Macs use the last supported
 PyTorch 2.2.2 CPU wheel. Runtime selection is CUDA, then MPS, then CPU.
 
-All new and existing API Python dependencies are declared in `pyproject.toml`;
-pytest is in its development group. Existing `services/api/requirements.txt` and
-legacy app launchers remain available for API-only installations. The new scripts
-set up the Python API/classifier environment, not Node.js or the separate Hermes
-installation. Follow the main README for launching the complete app.
+All API dependencies are declared in `pyproject.toml`; pytest is in its development
+group. The same Windows/macOS setup also installs frontend packages, checks/installs
+Hermes and generates missing local credentials. Use `run.bat` or `bash run.sh` to
+start the app. The duplicate pip/requirements setup paths have been removed.
 
 The model is cached in Hugging Face's user cache, outside the checkout by default.
 Set `HF_HOME` before setup and inference to use another location. `.venv`, local

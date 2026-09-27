@@ -1,100 +1,131 @@
 # Farq
 
-Farq is a student learning platform with an adaptive roadmap, quizzes, and a persistent
-Hermes Agent coach. Hermes runs locally as an agent service; Gemini supplies its current
-reasoning model. FastAPI and SQLite keep the auditable product state.
+Farq is a React/Vite student app with a FastAPI/SQLite backend, a local Hermes
+Agent gateway, and local Laya email classification. It includes learning roadmaps,
+quizzes, slides, reviewed evidence, group projects and a private email workspace.
+SQLite owns product state; AI suggestions never silently become student facts or
+accepted roadmap changes.
 
-For the fully local Laya email classifier, run `setup.bat` on Windows or
-`bash setup.sh` on macOS/Linux. These bootstrap uv, Python, locked Python dependencies
-and the model cache. See [local classifier setup and usage](docs/local-email-classifier.md).
-For Microsoft consent, mailbox sync and the unified Emails interface, follow
-[Outlook setup](docs/outlook-setup.md). Native Windows can read classic Outlook via
-COM without Entra registration. Public-client/device sign-in and temporary Graph
-tokens feed the same inbox. Optional selected-email Q&A uses an isolated Hermes
-gateway; Home shows today’s mail in the right-hand column.
+## Windows
 
-## What works
+Install [Node.js LTS](https://nodejs.org/) and Git, clone the repository, then run:
 
-- Onboarding for new students in any field: sign in, basics, optional sources (transcript, CV,
-  LinkedIn export or PDF, GitHub, a local folder, portfolio page, ORCID), a review screen, a short
-  Hermes chat, then a generated first roadmap you preview and accept.
+```bat
+setup.bat
+run.bat
+```
 
-- Existing Computer Vision roadmap and quiz experience.
-- Persistent roadmap progress and immutable structural versions.
-- Dedicated Hermes Coach with persistent chat and live run status.
-- Student memory learned from explicit chat statements and branch choices.
-- Hermes tools for reading context, reading the roadmap, recording facts, and proposing revisions.
-- Reviewable roadmap diffs with accept/reject controls.
-- Validation that protects completed/in-progress work and prevents invalid dependency graphs.
-- A pre-indexed, read-only Blackboard demo snapshot that Hermes can search and read through
-  bounded course-content tools. It does not contain Blackboard credentials or perform live login.
+## macOS
 
-## Start with Docker
+Install Node.js LTS and Git, clone the repository, then run:
 
-1. Copy `.env.example` to `.env` and add `GEMINI_API_KEY`.
-2. Ensure Docker Desktop is running.
-3. Run:
+```sh
+bash setup.sh
+bash run.sh
+```
 
-```powershell
+Open **http://localhost:5173**. Stop the native runner with Ctrl+C to stop its own
+API, web server and shared Coach/email gateway. Do not run both platform
+runners or another Farq instance on the same ports.
+
+## What setup does
+
+- Installs uv if missing and manages Python 3.12.
+- Installs the locked dependencies from `pyproject.toml` and `uv.lock`, plus frontend
+  packages from `package-lock.json`.
+- Checks Hermes, uses its [official installer](https://hermes-agent.nousresearch.com/docs/getting-started/installation)
+  if missing, and verifies the CLI. It preserves your existing Hermes installation.
+- Downloads/caches the pinned Laya model and runs a synthetic classification check.
+  Runtime selects CUDA → MPS → CPU; no training or manual model download is needed.
+- Creates/updates `.env`, generating missing `HERMES_API_KEY`, `FARQ_INTERNAL_TOKEN`
+  and `FARQ_TOKEN_ENCRYPTION_KEY`. Existing valid secrets/provider keys are preserved.
+- Detects classic Outlook without opening it and generates `OUTLOOK_LOCAL_TOKEN`
+  only on supported Windows devices. No email is read during setup.
+- Provisions Farq's `.hermes-runtime` profile for Coach and email Q&A.
+
+First setup needs internet and several GB of disk/RAM; later runs reuse package and
+model caches. Node.js, Git, GPU drivers and any OS-level installer prerequisites
+must be available. Hermes installer failures stop setup with their error. Laya
+supports Intel Mac CPU inference, but Hermes support must also pass on that machine.
+
+For Hermes answers, add your own `GEMINI_API_KEY`, `NVIDIA_API_KEY` or `HF_TOKEN` to
+`.env` and choose the matching provider in Settings. Setup generates **local service
+secrets**, not third-party AI credentials or Microsoft access tokens. Laya email
+classification works locally without an AI-provider key. Model weights, `.venv`,
+`.env` and runtime state are ignored by Git.
+
+## Email: two methods only
+
+**Classic Outlook (Windows):** open classic Outlook with the desired default mailbox.
+In **Emails**, check **I allow Farq to read and locally classify my classic Outlook
+mailbox**. No pairing code, copied token or app registration is required. Outlook's
+own security prompts and organizational policy still apply. New Outlook, Outlook
+for Mac and Docker do not support this COM method.
+
+**Temporary Microsoft Graph token (Windows/macOS/Docker):** paste an already-issued
+token with User.Read and Mail.Read consent, then accept access. Farq encrypts it on
+the server. It cannot refresh; reconnect with a new token when it expires. Setup
+cannot mint this token or bypass Microsoft consent. Entra popup and device-code
+sign-in methods have been removed.
+
+Both methods feed one inbox: Important, Today, Needs review, Follow-ups, search,
+full cleaned message text and batch tools. Home shows today's email in a side
+column. Mail is read-only; no sending, deleting, mark-as-read, calendars or attachments.
+Laya labels are suggestions, and Arabic messages require manual review. Cache
+retention is 30 days; disconnect clears Farq's cached mail.
+
+Selected-email Q&A requires explicit consent to send those messages to the configured
+AI providers (including fallback providers). It runs through the same Hermes gateway as Coach at port 8642, sharing its tools
+and memory. Enable **Allow Coach to search and read my synced emails** in Emails
+to also use mailbox search from Coach chat. This consent is per browser session;
+turn it off or disconnect to revoke future access. Gateway/provider transcripts
+may outlive the local cache. See [Outlook setup](docs/outlook-setup.md),
+[privacy boundaries](docs/outlook-threat-model.md), and [Laya details](docs/local-email-classifier.md).
+
+## Docker
+
+After native setup has generated `.env`, Docker users can run:
+
+```sh
 docker compose up --build
 ```
 
-To evaluate roadmap projects from GitHub, ZIP files, or local directories, keep Docker running and
-start the host-side sandbox worker in a second PowerShell window:
+Docker supports the temporary-token mailbox method, not Windows COM. It uses its
+own SQLite/model-cache volume. Open the same localhost URL. API docs are at
+`http://127.0.0.1:8000/docs`; Coach and email Q&A both use port 8642.
+
+## Project evaluation and Blackboard demo
+
+For sandboxed project evaluation, keep Docker running and start the host worker:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/evaluator.ps1
 ```
 
-The worker runs fixed framework recipes in disposable Docker containers. Hermes itself never receives
-host terminal or Docker access.
-
-Open `http://127.0.0.1:5173`. FastAPI docs are at `http://127.0.0.1:8000/docs`
-and Hermes health is at `http://127.0.0.1:8642/health`.
-
-### Load the Blackboard demo snapshot
-
-With Docker running, import only the five approved lecture folders from the local university archive:
+The worker uses fixed recipes in disposable containers; Hermes receives no terminal
+or Docker access. To import the existing read-only Blackboard demo, run the host
+importer with the explicit local course-folder path:
 
 ```powershell
-.venv\Scripts\python.exe scripts\import_blackboard_demo.py --root "D:\mmahf\Downloads\University\University"
+.venv\Scripts\python.exe scripts\import_blackboard_demo.py --root "PATH_TO_APPROVED_COURSE_FOLDERS"
 .venv\Scripts\python.exe scripts\smoke_blackboard_tools.py
 ```
 
-The importer extracts text from PDF/PPTX lectures, creates clearly marked synthetic syllabi,
-announcements and assignments, and writes the normalized snapshot into Farq's local SQLite volume.
-It never uploads source binaries and never contacts Blackboard. Re-importing replaces stale snapshot
-records. The smoke command exercises all five read-only operations used by Hermes.
+It extracts only allowlisted content and labels synthetic demo material. It never
+logs into Blackboard or uploads source binaries. Folder scans performed by Hermes
+see only host paths (native) or paths explicitly mounted into its Docker container.
 
-## Start natively on Windows
+## Checks
 
-Install Node.js, Python 3.12+, and Hermes Agent, then run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
-# Add GEMINI_API_KEY to .env
-powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
-```
-
-The script runs FastAPI and Hermes in the background and Vite in the foreground. Hermes
-uses `.hermes-runtime` as its isolated local profile and loads the checked-in Farq plugin.
-Press Ctrl+C to stop Vite and clean up the FastAPI and Hermes process trees started by
-that script. Allow cleanup to finish before closing the terminal; forcibly ending the
-PowerShell process bypasses its cleanup.
-
-Folder scans run inside Hermes, so in Docker Hermes only sees folders you mount into its
-container (see the commented example in `docker-compose.yml`). Natively it can read any path you
-type. Set `GITHUB_TOKEN` on the API if you hit GitHub's anonymous rate limit.
-
-## Verify
-
-```powershell
+```sh
 npm run build
-.venv\Scripts\python.exe -m pytest services\api\tests
+npm test
+# Windows
+.venv/Scripts/python -m pytest services/api/tests
+# macOS
+.venv/bin/python -m pytest services/api/tests
 ```
 
-If Hermes or Gemini is unavailable, the roadmap remains usable and chat displays the actual
-failure. There is intentionally no canned AI fallback.
-
-See [the Hermes architecture](docs/hermes-architecture.md) and
-[future work](docs/future-work.md) before extending the agent.
+If an AI provider is unavailable, Farq reports the failure; it does not substitute
+canned answers. Read [the handoff](docs/handoff.md), [Hermes architecture](docs/hermes-architecture.md)
+and [future work](docs/future-work.md) before extending agent access.

@@ -19,6 +19,10 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   Hermes runs on the student's machine and reads only paths the student typed. Its secret and
   identity-document denylist is enforced in `.hermes/plugins/farq/scanner.py`, not only the prompt.
   A full threat model for it is still owed (see `docs/future-work.md`).
+- Coach mail tools (`farq_search_mail`, `farq_read_mail`) read only the synced cache, and only with
+  a per-run capability from `services/api/app/outlook/coach.py` (opt-in mailbox session, running
+  AgentRun, unchanged connection generation). Enforce that in the API, never only in the prompt.
+  Email text is untrusted and never becomes a `StudentFact`. See `docs/outlook-threat-model.md`.
 - Uploaded files are never stored; only redacted, extracted evidence is.
 - Keep Gemini and Hermes keys server-side.
 - Group Projects: every team write emits a `team_events` row in the same transaction; the SSE
@@ -35,8 +39,8 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 
 ## Commands
 
-- Native setup: `powershell -ExecutionPolicy Bypass -File scripts/setup.ps1`
-- Native run: `powershell -ExecutionPolicy Bypass -File scripts/dev.ps1`
+- Native setup: `setup.bat` (Windows), `bash setup.sh` (macOS)
+- Native run: `run.bat` (Windows), `bash run.sh` (macOS)
 - Reproducible run: `docker compose up --build`
 - Frontend check: `npm run build`
 - Backend tests: `.venv/Scripts/python -m pytest services/api/tests` (also covers the plugin scanner)

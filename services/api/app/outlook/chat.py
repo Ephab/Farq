@@ -1,4 +1,3 @@
-import os
 import uuid
 
 import httpx
@@ -64,9 +63,6 @@ def run_email_chat(
             status=401,
         )
     prompt = build_email_prompt(emails, cleaned)
-    url = os.getenv("HERMES_EMAIL_URL", "http://127.0.0.1:8643").rstrip("/")
-    if url == HERMES_URL:
-        raise EmailChatError("Email Q&A requires its separate, tool-free Hermes gateway", status=503)
     try:
         resolve_hermes_selection(provider, model)
     except ValueError as error:
@@ -78,7 +74,7 @@ def run_email_chat(
         with httpx.Client(timeout=20, follow_redirects=False) as client:
             output, used_model, used_provider = execute_with_fallback(
                 client, headers, {"input": prompt, "session_id": session_id, "instructions": EMAIL_INSTRUCTIONS},
-                provider, model, 180, hermes_api_key=hermes_api_key, gateway_url=url)
+                provider, model, 180, hermes_api_key=hermes_api_key, gateway_url=HERMES_URL)
     except (httpx.HTTPError, RuntimeError, TimeoutError):
-        raise EmailChatError("Email Q&A is unavailable. Check the separate email gateway and provider settings.", status=502) from None
+        raise EmailChatError("Email Q&A is unavailable. Check the Coach gateway and provider settings.", status=502) from None
     return {"answer": output.strip(), "model": used_model, "provider": used_provider}

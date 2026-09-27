@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 """Farq one-command dev runner (Windows).
 
-Starts FastAPI (:8000) + Hermes gateway (:8642) + Vite (:5173).
+Starts FastAPI (:8000), Coach/email Q&A (:8642), and Vite (:5173).
 Press Ctrl+C once and everything shuts down.
 
 Usage:
-    py scripts\\run_windows.py
+    run.bat
 
-Windows port of firas_run_mac.py. Differences that matter:
+Windows port of run_mac.py. Differences that matter:
 - Each service runs in its own Job Object with KILL_ON_JOB_CLOSE, so stopping a
   service (or this runner dying for any reason, window close included) takes its
   whole process tree with it: npm -> cmd -> node, hermes.exe -> python.
 - Services get their own process group, so only this runner sees Ctrl+C and
   npm never asks "Terminate batch job (Y/N)?".
-- Hermes starts without the Farq venv's Python variables (see scripts/dev.ps1).
+- Hermes starts without the Farq venv's Python variables (see the shared runtime).
 """
 from __future__ import annotations
 
 import ctypes
 import os
-import secrets
 import shutil
 import signal
 import socket
@@ -31,16 +30,11 @@ import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(REPO, ".env")
-ENV_EXAMPLE = os.path.join(REPO, ".env.example")
 RUNTIME = os.path.join(REPO, ".hermes-runtime")
 
 API_PORT = 8000
 HERMES_PORT = 8642
 WEB_PORT = 5173
-
-# Hermes has its own Python runtime. Inheriting these from the Farq venv can make
-# its launcher load the wrong interpreter's extensions.
-HERMES_STRIPPED_VARS = ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "__PYVENV_LAUNCHER__")
 
 STOP = threading.Event()
 # Health probes must never go through a system proxy from the Windows registry.
@@ -51,108 +45,30 @@ def log(msg: str) -> None:
     print(f"[farq] {msg}", flush=True)
 
 
-def read_dotenv_values() -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not os.path.exists(ENV_FILE):
-        return values
-    # utf-8-sig: tolerate a BOM left by PowerShell's Out-File.
-    with open(ENV_FILE, encoding="utf-8-sig") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                values[k.strip()] = v.strip()
-    return values
+sys.path.insert(0, REPO)
+from scripts.local_env import configure_env, read_env
+from scripts.runtime import build_env, child_env, executable, provision, require_python
+from pathlib import Path
 
 
-def load_env() -> None:
-    if not os.path.exists(ENV_FILE):
-        if os.path.exists(ENV_EXAMPLE):
-            shutil.copy(ENV_EXAMPLE, ENV_FILE)
-            log("created .env from .env.example")
-        else:
-            open(ENV_FILE, "a").close()
-    values: dict[str, str] = read_dotenv_values()
-    if len(values.get("HERMES_API_KEY", "")) < 32:
-        values["HERMES_API_KEY"] = secrets.token_hex(32)
-        log("generated HERMES_API_KEY")
-    values.setdefault("GEMINI_API_KEY", "")
-    values.setdefault("HERMES_MODEL", "gemini-2.5-flash")
-    values.setdefault("HERMES_PROVIDER", "gemini")
-    values.setdefault("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
-    with open(ENV_FILE, "w", encoding="utf-8") as f:
-        for k, v in values.items():
-            f.write(f"{k}={v}\n")
-    os.environ.update(values)
-    if not os.environ["GEMINI_API_KEY"]:
-        log("WARNING: GEMINI_API_KEY is empty — chat will fail until you set it in .env")
+def read_dotenv_values():
+    return read_env(Path(ENV_FILE))
 
 
-def ensure_venv() -> str:
-    venv = os.path.join(REPO, ".venv")
-    py = os.path.join(venv, "Scripts", "python.exe")
-    if not os.path.exists(py):
-        log("creating .venv ...")
-        subprocess.run([sys.executable, "-m", "venv", venv], check=True, cwd=REPO)
-    marker = os.path.join(venv, ".farq-deps")
-    req = os.path.join(REPO, "services", "api", "requirements.txt")
-    if not os.path.exists(marker) or os.path.getmtime(req) > os.path.getmtime(marker):
-        log("installing backend deps ...")
-        subprocess.run([py, "-m", "pip", "install", "-q", "-r", req], check=True, cwd=REPO)
-        open(marker, "w").close()
-    return py
+def load_env():
+    os.environ.update(configure_env(Path(REPO)))
 
 
-def ensure_runtime() -> None:
-    def sync(src: str, dst: str) -> None:
-        if os.path.isdir(src):
-            shutil.rmtree(dst, ignore_errors=True)
-            shutil.copytree(src, dst, dirs_exist_ok=True)
-        else:
-            shutil.copy2(src, dst)
-
-    os.makedirs(os.path.join(RUNTIME, "plugins", "farq"), exist_ok=True)
-    sync(os.path.join(REPO, "services", "hermes", "config.yaml"), os.path.join(RUNTIME, "config.yaml"))
-    sync(os.path.join(REPO, "services", "hermes", "SOUL.md"), os.path.join(RUNTIME, "SOUL.md"))
-    sync(os.path.join(REPO, ".hermes", "plugins", "farq"), os.path.join(RUNTIME, "plugins", "farq"))
-    for skill in os.scandir(os.path.join(REPO, ".hermes", "skills")):
-        if skill.is_dir():
-            sync(skill.path, os.path.join(RUNTIME, "skills", skill.name))
+def ensure_venv():
+    return require_python(Path(REPO))
 
 
-def email_env(env: dict[str, str]) -> dict[str, str]:
-    env = dict(env)
-    runtime = os.path.join(REPO, ".hermes-email-runtime")
-    os.makedirs(runtime, exist_ok=True)
-    shutil.copy2(os.path.join(REPO, "services", "hermes", "email-config.yaml"), os.path.join(runtime, "config.yaml"))
-    env.update(HERMES_HOME=runtime, HERMES_ENABLE_PROJECT_PLUGINS="0", API_SERVER_PORT="8643")
-    for key in ("FARQ_INTERNAL_TOKEN", "FARQ_API_INTERNAL_URL", "MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY", "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME"):
-        env.pop(key, None)
-    return env
+def ensure_runtime():
+    provision(Path(REPO), Path(RUNTIME))
 
 
-def build_child_env(values: dict[str, str]) -> dict[str, str]:
-    """Fresh child env from .env values so Apply-in-Settings restarts pick up new keys."""
-    env = dict(os.environ)
-    env.update(values)
-    env.update({
-        "HERMES_API_KEY": values["HERMES_API_KEY"],
-        "HERMES_MODEL": values.get("HERMES_MODEL", "gemini-2.5-flash"),
-        "HERMES_PROVIDER": values.get("HERMES_PROVIDER", "gemini"),
-        "HERMES_URL": f"http://127.0.0.1:{HERMES_PORT}",
-        "CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
-        "HERMES_ENABLE_PROJECT_PLUGINS": "1",
-        "HERMES_HOME": RUNTIME,
-        "API_SERVER_ENABLED": "true",
-        "API_SERVER_HOST": "127.0.0.1",
-        "API_SERVER_PORT": str(HERMES_PORT),
-        "FARQ_API_INTERNAL_URL": f"http://127.0.0.1:{API_PORT}",
-        "FARQ_INTERNAL_TOKEN": values.get("FARQ_INTERNAL_TOKEN", "farq-internal-dev"),
-        "API_SERVER_KEY": values["HERMES_API_KEY"],
-        # Python children otherwise write the ANSI code page into our pipes.
-        "PYTHONIOENCODING": "utf-8",
-    })
-    return env
+def build_child_env(values):
+    return build_env(values, Path(REPO), Path(RUNTIME))
 
 
 class _IoCounters(ctypes.Structure):
@@ -231,7 +147,7 @@ class Service:
 
     def __init__(self, name: str, cmd: list[str], env: dict[str, str]) -> None:
         self.proc = subprocess.Popen(
-            cmd, cwd=env["HERMES_HOME"] if name == "email" else REPO, env=env,
+            cmd, cwd=REPO, env=env,
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             encoding="utf-8", errors="replace",
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
@@ -303,12 +219,12 @@ def enable_console_colors() -> None:
 
 def main() -> int:
     if os.name != "nt":
-        log("ERROR: this runner is for Windows — use scripts/firas_run_mac.py instead.")
+        log("ERROR: this runner is for Windows — use scripts/run_mac.py instead.")
         return 1
     sys.stdout.reconfigure(errors="replace")
     enable_console_colors()
 
-    for name, port in (("api", API_PORT), ("hermes", HERMES_PORT), ("email", 8643), ("web", WEB_PORT)):
+    for name, port in (("api", API_PORT), ("hermes", HERMES_PORT), ("web", WEB_PORT)):
         if port_in_use(port):
             log(f"ERROR: {name} port {port} is already in use — stop it first, then re-run.")
             return 1
@@ -318,13 +234,13 @@ def main() -> int:
     if not npm:
         log("ERROR: npm not found — install Node.js first.")
         return 1
-    hermes = shutil.which("hermes")
+    hermes = executable("hermes")
     if not hermes:
         log("ERROR: hermes binary not found on PATH.")
         return 1
     if not os.path.isdir(os.path.join(REPO, "node_modules")):
-        log("running npm install ...")
-        subprocess.run([npm, "install"], check=True, cwd=REPO)
+        log("Run setup.bat (Windows) or bash setup.sh (macOS) first.")
+        return 1
     py = ensure_venv()
     ensure_runtime()
 
@@ -335,28 +251,20 @@ def main() -> int:
         # HERMES_HOME above. Bare `hermes gateway` would daemonize and escape
         # shutdown, so never use it here.
         "hermes": [hermes, "gateway", "run"],
-        "email": [hermes, "gateway", "run"],
         # npm resolves to npm.cmd; Popen needs its full path to run it.
         "web": [npm, "run", "dev", "--", "--host", "127.0.0.1", "--port", str(WEB_PORT)],
     }
     # Only Farq's own children are ever restarted here. The daily-use base
     # Hermes profile is never touched: different HERMES_HOME, no stop/restart
     # commands against it.
-    RESTARTABLE = ("api", "hermes", "email")
+    RESTARTABLE = ("api", "hermes")
     children: dict[str, Service] = {}
     pending_restart: set[str] = set()
     lock = threading.Lock()
 
     def spawn(name: str) -> None:
         env = build_child_env(read_dotenv_values())
-        if name != "api":
-            for var in ("MICROSOFT_CLIENT_SECRET", "FARQ_TOKEN_ENCRYPTION_KEY"):
-                env.pop(var, None)
-        if name == "email":
-            env = email_env(env)
-        if name in {"hermes", "email"}:
-            for var in HERMES_STRIPPED_VARS:
-                env.pop(var, None)
+        env = child_env(name, env, Path(REPO))
         children[name] = Service(name, commands[name], env)
 
     def watch_env() -> None:

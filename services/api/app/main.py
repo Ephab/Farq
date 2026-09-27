@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Annotated
 
 import httpx
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, func, select
@@ -942,6 +942,7 @@ def interaction_message(thread_id: str, body: ChatInput, db: Session) -> tuple[s
 def send_message(
     thread_id: str,
     body: ChatInput,
+    request: Request,
     background: BackgroundTasks,
     db: Db,
     x_hermes_api_key: Annotated[str | None, Header()] = None,
@@ -964,8 +965,10 @@ def send_message(
     db.add(run)
     db.flush()
     message.agent_run_id = run.id
+    from .outlook.coach import issue_grant
+    mailbox_access = issue_grant(request, db, run.id)
     db.commit()
-    background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key)
+    background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key, **({"mailbox_access": mailbox_access} if mailbox_access else {}))
     return {"run_id": run.id, "message_id": message.id, "status": run.status}
 
 
@@ -1368,3 +1371,16 @@ def create_proposal(body: ProposalCreate, db: Db) -> dict:
     db.add(item)
     db.commit()
     return {"success": True, "proposal_id": item.id, "status": item.status}
+
+
+from .outlook.coach import MailSearch, MailRead, search_mail, read_mail
+
+
+@app.post("/internal/hermes/mail/search", dependencies=[Depends(require_internal)])
+def coach_search_mail(body: MailSearch, db: Db):
+    return search_mail(body, db)
+
+
+@app.post("/internal/hermes/mail/read", dependencies=[Depends(require_internal)])
+def coach_read_mail(body: MailRead, db: Db):
+    return read_mail(body, db)

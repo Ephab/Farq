@@ -327,7 +327,7 @@ export async function generateQuiz(
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     const detail = e instanceof Error ? e.message : "network error";
     throw new QuizAIError(
-      `Couldn't reach the Farq backend (${detail}). Is the stack running (scripts/firas_run_mac.py)?`,
+      `Couldn't reach the Farq backend (${detail}). Is the stack running (run.bat or run.sh)?`,
     );
   }
   if (!res.ok) {

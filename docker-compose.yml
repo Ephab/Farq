@@ -14,19 +14,13 @@ services:
     environment:
       DATABASE_URL: sqlite:////data/farq.db
       HERMES_URL: http://hermes:8642
-      HERMES_EMAIL_URL: http://hermes-email:8643
-      HERMES_API_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
+      HERMES_EMAIL_URL: http://hermes:8642
+      HERMES_API_KEY: ${HERMES_API_KEY:?Run setup.bat or setup.sh first}
       HERMES_MODEL: ${HERMES_MODEL:-gemini-3.8-flash}
       HERMES_PROVIDER: ${HERMES_PROVIDER:-gemini}
-      FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
+      FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:?Run setup.bat or setup.sh first}
       OPPORTUNITY_SYNC_ENABLED: ${OPPORTUNITY_SYNC_ENABLED:-true}
-      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
-      OUTLOOK_CLIENT_ID: ${OUTLOOK_CLIENT_ID:-}
-      OUTLOOK_TENANT: ${OUTLOOK_TENANT:-consumers}
-      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
-      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
       OUTLOOK_APP_ORIGIN: ${OUTLOOK_APP_ORIGIN:-http://localhost:5173}
-      MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI:-http://localhost:5173/api/outlook/callback}
       FARQ_TOKEN_ENCRYPTION_KEY: ${FARQ_TOKEN_ENCRYPTION_KEY:-}
       OUTLOOK_SYNC_ENABLED: ${OUTLOOK_SYNC_ENABLED:-false}
       HF_HOME: /data/model-cache
@@ -52,11 +46,11 @@ services:
       API_SERVER_ENABLED: "true"
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: 8642
-      API_SERVER_KEY: ${HERMES_API_KEY:?Run scripts/setup.ps1 or set a strong HERMES_API_KEY in .env}
+      API_SERVER_KEY: ${HERMES_API_KEY:?Run setup.bat or setup.sh first}
       HERMES_ENABLE_PROJECT_PLUGINS: "1"
       HERMES_MODEL: ${HERMES_MODEL:-gemini-3.8-flash}
       FARQ_API_INTERNAL_URL: http://api:8000
-      FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:-farq-internal-dev}
+      FARQ_INTERNAL_TOKEN: ${FARQ_INTERNAL_TOKEN:?Run setup.bat or setup.sh first}
     volumes:
       - hermes-data:/opt/data
       - ./services/hermes/config.yaml:/opt/data/config.yaml:ro
@@ -77,24 +71,7 @@ services:
       api:
         condition: service_started
 
-  hermes-email:
-    image: nousresearch/hermes-agent:v2026.9.14
-    command: gateway
-    working_dir: /opt/data
-    environment:
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
-      HF_TOKEN: ${HF_TOKEN:-}
-      API_SERVER_ENABLED: "true"
-      API_SERVER_HOST: 0.0.0.0
-      API_SERVER_PORT: 8643
-      API_SERVER_KEY: ${HERMES_API_KEY:?Set HERMES_API_KEY}
-      HERMES_ENABLE_PROJECT_PLUGINS: "0"
-    volumes:
-      - hermes-email-data:/opt/data
-      - ./services/hermes/email-config.yaml:/opt/data/config.yaml:ro
 
 volumes:
   farq-data:
   hermes-data:
-  hermes-email-data:

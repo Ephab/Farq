@@ -11,5 +11,5 @@ if (Test-Path -LiteralPath $envFile) {
   }
 }
 $python = Join-Path $repo ".venv\Scripts\python.exe"
-if (-not (Test-Path -LiteralPath $python)) { throw "Run scripts/setup.ps1 first." }
+if (-not (Test-Path -LiteralPath $python)) { throw "Run setup.bat or setup.sh first." }
 & $python (Join-Path $repo "scripts\evaluator_worker.py")

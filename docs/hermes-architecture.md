@@ -225,11 +225,24 @@ Risks (`app/teams/notices.py`) are computed without a model: deadline pace, task
 3+ days, members inactive for 7+ days (private). They are posted as notices when a member's
 stream connects, at most 3 team notices per team per UTC day.
 
-## Integrated email Q&A
+## Integrated email Q&A and Coach tools
 
-`POST /api/outlook/chat` reads an explicitly selected, consented set of private
-cached emails, validates mailbox ownership and expiry, and sends at most 24,000
-context characters to a separate tool-free email gateway. It shares the model
-fallback implementation, not the Coach process/home or memory. See
-`outlook-threat-model.md` and `outlook-setup.md` for runtime isolation and retention.
-Desktop Outlook and public-client Graph sign-in share the local Laya/cache path.
+Email Q&A and Coach use `HERMES_URL` (port 8642), one process and one runtime home.
+The legacy `HERMES_EMAIL_URL` alias is kept equal by setup; routing uses HERMES_URL.
+Selected-email Q&A keeps a fresh conversation and a 24,000-character bound, but
+shares the gateway's tools and memory. No process-level isolation is claimed.
+
+In Emails, the student may enable Coach mailbox search for their private browser
+mailbox session. On a Coach message, `current_user()` authenticates that cookie;
+a random, hashed, ten-minute capability binds the run to that session, connection
+and connection generation. Only the capability enters the agent prompt. Internal
+`farq_search_mail` / `farq_read_mail` endpoints require the internal service token,
+a running personal run, an active consented session and the unchanged connection.
+They query only owned, unexpired, nonremoved cache rows. Reads are paginated; no
+Graph/COM credentials or write operations are exposed to Hermes. Student IDs and
+team runs cannot authorize mailbox access. Revoking consent deletes the grants;
+disconnecting or reconnecting invalidates them. Email content stays untrusted and
+must not become StudentFacts or accepted roadmap changes.
+
+Classic Outlook and temporary Graph tokens share the local Laya/cache path.
+Native entrypoints are setup.bat/run.bat (Windows), setup.sh/run.sh (macOS).

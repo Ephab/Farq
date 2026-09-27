@@ -1,5 +1,9 @@
 #!/bin/sh
 set -eu
+if [ "$(uname -s)" != "Darwin" ]; then
+    echo "This installer is for macOS. Use setup.bat on Windows or Docker elsewhere." >&2
+    exit 1
+fi
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 if command -v uv >/dev/null 2>&1; then
     UV=$(command -v uv)

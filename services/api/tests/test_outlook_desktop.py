@@ -118,8 +118,9 @@ def test_desktop_worker_uses_local_adapter_and_deduplicates(world, monkeypatch):
                            "desktopRevision": "desktop:revision"}], "@odata.deltaLink": "desktop:complete"}
     monkeypatch.setattr(desktop, "page", page)
     monkeypatch.setattr(sync, "token_for", lambda _: pytest.fail("Desktop must not request Microsoft tokens"))
-    sync.tick()
-    sync.tick()
+    sync.tick()  # folders
+    sync.tick()  # messages
+    sync.tick()  # classification, after every folder is scanned
     with factory() as db:
         item = db.scalar(select(MailItem).where(MailItem.connection_id == "alice"))
         assert item.subject == "Class"

@@ -19,6 +19,8 @@ class MailConnection(Base):
     # Email classifier chosen by the student: laya (local, default), span or jev. A cloud choice is
     # consent to send redacted mail text to that provider and to later ones in the fallback chain.
     classifier: Mapped[str] = mapped_column(String, default="laya")
+    # Classify only the N most recent emails; None = no cutoff. Older mail is stored unclassified.
+    classify_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     generation: Mapped[int] = mapped_column(Integer, default=1)
     next_sync: Mapped[float] = mapped_column(Float, default=0)
     lease_until: Mapped[float] = mapped_column(Float, default=0)
@@ -86,5 +88,7 @@ class MailItem(Base):
     dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     removed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # New or changed text awaiting classification (done newest-first once folders are scanned).
+    pending: Mapped[bool] = mapped_column(Boolean, default=False)
     due_date: Mapped[str | None] = mapped_column(String, nullable=True)
     expires: Mapped[float] = mapped_column(Float)

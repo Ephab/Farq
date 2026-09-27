@@ -10,6 +10,7 @@ export interface OutlookStatus {
   status?: string; last_sync?: number; processed?: number; error?: string
   coach_access?: boolean; worker_enabled?: boolean
   classifier?: EngineId; classifiers?: DecisionEngine[]
+  classify_limit?: number | null; pending?: number
   provider?: "desktop" | "token"
   desktop_available?: boolean; token_available?: boolean
 }

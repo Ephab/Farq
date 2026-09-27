@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, or_, and_
+from sqlalchemy import delete, func, select, or_, and_, update
 from sqlalchemy.orm import Session
 
 from .. import decision_engines
@@ -57,6 +57,8 @@ def status(request: Request, response: Response, db: Db):
             "worker_enabled": os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true",
             "coach_access": db.get(MailSession, auth.digest(request.cookies[auth.COOKIE])).coach_access,
             "classifier": connection.classifier, "classifiers": decision_engines.engines_status(),
+            "classify_limit": connection.classify_limit,
+            "pending": db.scalar(select(func.count()).select_from(MailItem).where(MailItem.connection_id == connection.id, MailItem.pending.is_(True), MailItem.removed.is_(False))),
             "auto_sync": connection.auto_sync, "status": connection.status,
             "last_sync": connection.last_sync, "processed": connection.processed, "error": connection.error}
 
@@ -169,6 +171,31 @@ def classifier(body: Classifier, request: Request, user: CurrentUser, db: Db):
     return {"classifier": connection.classifier}
 
 
+CLASSIFY_LIMITS = {25, 50, 100, 250, 500, 1000}
+
+
+class ClassifyLimit(BaseModel):
+    limit: int | None  # None = no cutoff
+
+
+@router.patch("/classify-limit")
+def classify_limit(body: ClassifyLimit, request: Request, user: CurrentUser, db: Db):
+    auth.require_origin(request)
+    if body.limit is not None and body.limit not in CLASSIFY_LIMITS:
+        raise HTTPException(422, "Choose one of the offered cutoffs.")
+    connection = connection_for(user, db)
+    raised = body.limit is None or (connection.classify_limit is not None and body.limit > connection.classify_limit)
+    connection.classify_limit = body.limit
+    if raised:
+        # Mail skipped by the old cutoff gets another chance; already-labelled mail keeps its labels.
+        db.execute(update(MailItem).where(MailItem.connection_id == connection.id, MailItem.removed.is_(False),
+                                          MailItem.classification.contains('"beyond_cutoff"')).values(pending=True))
+        if connection.auto_sync and connection.status not in {"running", "reconnect"}:
+            connection.status, connection.next_sync = "queued", 0
+    db.commit()
+    return {"classify_limit": connection.classify_limit}
+
+
 class Preferences(BaseModel):
     auto_sync: bool
 
@@ -197,6 +224,7 @@ def disconnect(request: Request, response: Response, user: CurrentUser, db: Db):
     connection.folder_scan_url, connection.folders_json = "", "[]"
     connection.label = ""
     connection.classifier = "laya"
+    connection.classify_limit = None
     db.execute(delete(MailItem).where(MailItem.connection_id == connection.id))
     db.execute(delete(MailFolder).where(MailFolder.connection_id == connection.id))
     db.execute(delete(MailCoachGrant).where(MailCoachGrant.connection_id == connection.id))
@@ -235,7 +263,9 @@ def messages(response: Response, user: CurrentUser, db: Db, offset: int = 0, lim
     if view == "important":
         where.append(or_(MailItem.pinned.is_(True), func.json_extract(MailItem.classification, "$.important_probability") >= 0.6))
     elif view == "review":
+        # Mail skipped by the cutoff is old by definition; keep it out of the review queue.
         where.append(MailItem.reviewed.is_(False))
+        where.append(~MailItem.classification.contains('"beyond_cutoff"'))
     elif view == "followup":
         where.append(MailItem.due_date.is_not(None))
     elif view == "today":

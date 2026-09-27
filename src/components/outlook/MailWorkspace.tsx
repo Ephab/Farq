@@ -7,6 +7,10 @@ export type MailFilters = { q: string; category: string; sort: string }
 type Changes = { pinned?: boolean; reviewed?: boolean; dismissed?: boolean; due_date?: string | null }
 const control = "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 const categories: Record<string, string> = { coursework: "Coursework", administration: "University admin", opportunity: "Opportunities", other: "Other", unclassified: "Unclassified" }
+const chip = "inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[11px] font-medium hover:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+const iconChip = "grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+const categoryLabel = (item: MailItem) => item.classification.review_reasons?.includes("beyond_cutoff") ? "Not classified"
+  : categories[item.classification.category || "unclassified"] || "Other"
 const dateLabel = (value: string) => value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "No date"
 
 export function MailWorkspace({ items, total, busy, filters, onFilters, offset, pageSize, onPage, onAction, dismissed, classifier }: {
@@ -86,25 +90,44 @@ export function MailWorkspace({ items, total, busy, filters, onFilters, offset, 
             <div className="flex items-center gap-2"><span className="truncate text-xs font-medium">{item.sender}</span><span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{dateLabel(item.received)}</span></div>
             <div className="mt-1.5 flex items-start gap-2"><h2 className={`line-clamp-2 text-sm leading-5 ${item.reviewed ? "font-medium" : "font-semibold"}`}>{item.subject}</h2>{item.pinned && <Star className="mt-0.5 size-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="Pinned" />}</div>
             <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground" dir="auto">{item.excerpt || "No message text"}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]"><span className="rounded-md bg-muted px-2 py-0.5">{categories[item.classification.category || "unclassified"] || "Other"}</span>{!item.reviewed && <span className="text-blue-600 dark:text-blue-400">Needs review</span>}{item.due_date && <span className={item.due_date < localDay() ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>Follow up {item.due_date}</span>}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]"><span className="rounded-md bg-muted px-2 py-0.5">{categoryLabel(item)}</span>{!item.reviewed && <span className="text-blue-600 dark:text-blue-400">Needs review</span>}{item.due_date && <span className={item.due_date < localDay() ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>Follow up {item.due_date}</span>}</div>
           </button>
         </div>)}</div>
         <div className="flex items-center justify-between gap-2 border-t border-border p-3"><button className={control} aria-label="Previous email page" disabled={offset === 0 || busy} onClick={() => { setSelected([]); onPage(Math.max(0, offset - pageSize)) }}><ChevronLeft className="size-4" /></button><span className="text-xs text-muted-foreground">{offset + 1}–{Math.min(offset + items.length, total)} of {total}</span><button className={control} aria-label="Next email page" disabled={offset + pageSize >= total || busy} onClick={() => { setSelected([]); onPage(offset + pageSize) }}><ChevronRight className="size-4" /></button></div>
       </div>
       {active && <article className={`${mobileReader ? "flex" : "hidden lg:flex"} min-h-0 min-w-0 flex-col`} aria-label="Email reader">
-        <div className="border-b border-border p-4 sm:p-6">
-          <button className={`${control} mb-4 lg:hidden`} onClick={() => setMobileReader(false)}><ArrowLeft className="size-4" />Back to inbox</button>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="rounded-md bg-muted px-2 py-1">{categories[active.classification.category || "unclassified"] || "Other"}</span><span>{active.reviewed ? "Reviewed" : "Needs your review"}</span></div>
-          <h2 className="mt-3 break-words text-xl font-semibold leading-7 tracking-tight" dir="auto">{active.subject}</h2>
-          <p className="mt-2 text-sm font-medium">{active.sender}</p><p className="mt-1 text-xs text-muted-foreground">{active.received ? new Date(active.received).toLocaleString() : "Received date unavailable"}</p>
-          <div className="mt-4 flex flex-wrap gap-2"><button className={control} disabled={busy} aria-pressed={active.pinned} onClick={() => patch({ pinned: !active.pinned })}><Star className={`size-3.5 ${active.pinned ? "fill-amber-400 text-amber-500" : ""}`} />{active.pinned ? "Pinned" : "Pin"}</button><button className={control} disabled={busy} onClick={() => patch({ reviewed: !active.reviewed })}><Check className="size-3.5" />{active.reviewed ? "Review again" : "Mark reviewed"}</button><button className={control} disabled={busy} onClick={() => patch({ dismissed: !active.dismissed })}><Archive className="size-3.5" />{active.dismissed ? "Restore" : "Dismiss"}</button>{active.web_url && <a className={control} href={active.web_url} target="_blank" rel="noopener noreferrer">Outlook<ExternalLink className="size-3.5" /></a>}</div>
+        <div className="border-b border-border px-4 py-3 sm:px-5">
+          <button className={`${control} mb-3 lg:hidden`} onClick={() => setMobileReader(false)}><ArrowLeft className="size-4" />Back to inbox</button>
+          <h2 className="break-words text-base font-semibold leading-6 tracking-tight" dir="auto">{active.subject}</h2>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{active.sender}</span>
+            <span>{active.received ? new Date(active.received).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground">{categoryLabel(active)}</span>
+            {!active.reviewed && <span className="text-[10px] text-blue-600 dark:text-blue-400">Needs review</span>}
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <button className={chip} disabled={busy} aria-pressed={active.pinned} onClick={() => patch({ pinned: !active.pinned })}><Star className={`size-3 ${active.pinned ? "fill-amber-400 text-amber-500" : ""}`} />{active.pinned ? "Pinned" : "Pin"}</button>
+            <button className={chip} disabled={busy} onClick={() => patch({ reviewed: !active.reviewed })}><Check className="size-3" />{active.reviewed ? "Review again" : "Mark reviewed"}</button>
+            <button className={chip} disabled={busy} onClick={() => patch({ dismissed: !active.dismissed })}><Archive className="size-3" />{active.dismissed ? "Restore" : "Dismiss"}</button>
+            {active.web_url && <a className={chip} href={active.web_url} target="_blank" rel="noopener noreferrer">Outlook<ExternalLink className="size-3" /></a>}
+            <span className="ml-auto flex gap-1">
+              <button className={iconChip} aria-label="Copy email text" title="Copy email text" disabled={!full} onClick={() => void copy()}><Copy className="size-3.5" /></button>
+              <button className={iconChip} aria-label="Save email as text" title="Save email as text" disabled={!full} onClick={download}><Download className="size-3.5" /></button>
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs" title="Shows in Follow-ups, and in Today when due. No notification is sent.">
+            <CalendarClock aria-hidden="true" className="size-3.5 text-muted-foreground" />
+            <span className="text-muted-foreground">Follow up</span>
+            <input aria-label="Follow-up date" type="date" value={active.due_date || ""} disabled={busy} className="h-7 rounded-md border border-border bg-background px-1.5 text-xs" onChange={event => patch({ due_date: event.target.value || null })} />
+            <button className={chip} disabled={busy} onClick={() => patch({ due_date: localDay() })}>Today</button>
+            <button className={chip} disabled={busy} onClick={() => patch({ due_date: tomorrow() })}>Tomorrow</button>
+            {active.due_date && <button className={chip} disabled={busy} onClick={() => patch({ due_date: null })}>Clear</button>}
+          </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-          <div className="mb-5 rounded-xl border border-border bg-muted/25 p-3"><div className="flex items-center gap-2 text-xs font-semibold"><CalendarClock className="size-4" />Your follow-up date</div><div className="mt-2 flex flex-wrap items-center gap-2"><input aria-label="Follow-up date" type="date" value={active.due_date || ""} disabled={busy} className={control} onChange={event => patch({ due_date: event.target.value || null })} /><button className={control} disabled={busy} onClick={() => patch({ due_date: localDay() })}>Today</button><button className={control} disabled={busy} onClick={() => patch({ due_date: tomorrow() })}>Tomorrow</button>{active.due_date && <button className={control} disabled={busy} onClick={() => patch({ due_date: null })}>Clear date</button>}</div><p className="mt-2 text-[11px] text-muted-foreground">Appears in Follow-ups and in Today when due. No notification is scheduled.</p></div>
-          <div className="mb-4 flex flex-wrap items-center gap-2"><span className="mr-auto text-xs font-medium text-muted-foreground">Complete cleaned message</span><button className={control} disabled={!full} onClick={() => void copy()}><Copy className="size-3.5" />Copy</button><button className={control} disabled={!full} onClick={download}><Download className="size-3.5" />Save text</button></div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           {notice && <p role="status" className="mb-3 text-xs text-emerald-700 dark:text-emerald-300">{notice}</p>}
           {detailError ? <p role="alert" className="text-sm text-red-600">{detailError}</p> : !full ? <p role="status" className="animate-pulse text-sm text-muted-foreground">Loading full message…</p> : <p dir="auto" className="whitespace-pre-wrap break-words text-sm leading-7 [overflow-wrap:anywhere]">{full.excerpt || "This email has no readable text. Attachments are not imported."}</p>}
-          <p className="mt-8 border-t border-border pt-4 text-[11px] leading-5 text-muted-foreground">{active.classification.review_reasons?.includes("engine_span") ? "Span-01 Lite" : active.classification.review_reasons?.includes("engine_jev") ? "Jev" : "Laya"} categories are suggestions, not confirmed facts. {active.classification.review_reasons?.includes("unsupported_language") ? "This language needs manual review. " : ""}Actions here affect your Waypoint cache only. Cleaned text is retained for 30 days.</p>
+          <p className="mt-8 border-t border-border pt-4 text-[11px] leading-5 text-muted-foreground">{active.classification.review_reasons?.includes("beyond_cutoff") ? "Not classified: older than your classifier cutoff. " : `${active.classification.review_reasons?.includes("engine_span") ? "Span-01 Lite" : active.classification.review_reasons?.includes("engine_jev") ? "Jev" : "Laya"} categories are suggestions, not confirmed facts. `}{active.classification.review_reasons?.includes("unsupported_language") ? "This language needs manual review. " : ""}Actions here affect your Waypoint cache only. Cleaned text is retained for 30 days.</p>
         </div>
         <EmailQuestion key={(selection.length ? selection : [active.id]).join(",")} ids={selection.length ? selection : [active.id]} />
       </article>}

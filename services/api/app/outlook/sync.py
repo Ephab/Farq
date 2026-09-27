@@ -10,7 +10,7 @@ from urllib.parse import quote, unquote, urlparse
 import uuid
 
 import httpx
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 
 from ..database import SessionLocal
 from ..decision_engines import classify_email, shared_laya
@@ -109,8 +109,48 @@ def lease_valid(db, connection_id, generation, lease):
     ).values(lease_until=time.time() + 600)).rowcount == 1
 
 
-def work_one_page(connection_id: str, lease: str) -> None:
+CLASSIFY_BATCH = 10
+BEYOND_CUTOFF = {"category": None, "category_probabilities": {}, "important_probability": None,
+                 "review_reasons": ["beyond_cutoff"]}
+
+
+def classify_pending(db, connection: MailConnection, generation: int, lease: str) -> bool:
+    """Classify up to CLASSIFY_BATCH pending emails, newest first. Returns True if it did work.
+
+    Runs only after every folder is scanned, so "the N most recent" is known. Emails ranked beyond
+    the student's cutoff never reach any classifier; they are marked `beyond_cutoff` instead.
+    """
     global _classifier
+    live = [MailItem.connection_id == connection.id, MailItem.removed.is_(False)]
+    batch = db.scalars(select(MailItem).where(*live, MailItem.pending.is_(True))
+                       .order_by(MailItem.received.desc(), MailItem.id).limit(CLASSIFY_BATCH)).all()
+    if not batch:
+        return False
+    for item in batch:
+        # Re-read per message: switching engine or cutoff takes effect immediately.
+        preferred, limit = db.execute(select(MailConnection.classifier, MailConnection.classify_limit)
+                                      .where(MailConnection.id == connection.id)).one()
+        newer = db.scalar(select(func.count()).select_from(MailItem).where(*live, MailItem.received > item.received))
+        if limit is not None and newer >= limit:
+            result = BEYOND_CUTOFF
+        else:
+            if _classifier is None:
+                _classifier = shared_laya()
+            result = asdict(classify_email(EmailInput(item.subject, item.excerpt), preferred or "laya", _classifier))
+        if not lease_valid(db, connection.id, generation, lease):
+            return True
+        item.classification = json.dumps(result)
+        item.pending = False
+        if result is not BEYOND_CUTOFF:
+            connection.processed += 1
+        db.commit()
+    if lease_valid(db, connection.id, generation, lease):
+        connection.lease_until, connection.lease_id, connection.next_sync = 0, "", time.time()
+        db.commit()
+    return True
+
+
+def work_one_page(connection_id: str, lease: str) -> None:
     with SessionLocal() as db:
         connection = db.get(MailConnection, connection_id)
         if not connection or connection.lease_id != lease or not connection.connected:
@@ -152,6 +192,8 @@ def work_one_page(connection_id: str, lease: str) -> None:
             else:
                 folder = db.scalar(select(MailFolder).where(MailFolder.connection_id == connection_id, MailFolder.completed.is_(False)).order_by(MailFolder.id))
                 if folder is None:
+                    if classify_pending(db, connection, generation, lease):
+                        return
                     if lease_valid(db, connection_id, generation, lease):
                         connection.status = "idle"
                         connection.last_sync = time.time()
@@ -198,13 +240,7 @@ def work_one_page(connection_id: str, lease: str) -> None:
                         continue
                     subject, body = normalize(message)
                     fingerprint = message.get("desktopRevision") if local else digest(subject + "\n" + body)
-                    result = None
-                    if item is None or item.content_hash != fingerprint:
-                        if _classifier is None:
-                            _classifier = shared_laya()
-                        # Re-read per message so switching back to Laya stops cloud sends immediately.
-                        preferred = db.scalar(select(MailConnection.classifier).where(MailConnection.id == connection_id)) or "laya"
-                        result = asdict(classify_email(EmailInput(subject, body), preferred, _classifier))
+                    changed = item is None or item.content_hash != fingerprint
                     if not lease_valid(db, connection_id, generation, lease):
                         return
                     if item is None:
@@ -222,11 +258,12 @@ def work_one_page(connection_id: str, lease: str) -> None:
                     item.received = datetime.fromisoformat(received.replace("Z", "+00:00")).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if received else ""
                     item.web_url = source_url(str(message.get("webLink") or ""))
                     item.content_hash = fingerprint
-                    if result is not None:
-                        item.classification = json.dumps(result)
+                    if changed:
+                        # Classified later, newest first, once every folder is scanned (see classify_pending).
+                        item.classification = "{}"
+                        item.pending = True
                         item.reviewed = False
                         item.expires = time.time() + 30 * 86400
-                        connection.processed += 1
                     db.commit()
                 if not lease_valid(db, connection_id, generation, lease):
                     return

@@ -56,6 +56,18 @@ def world(monkeypatch):
     engine.dispose()
 
 
+def run_worker(factory, ticks=3, connection="alice"):
+    """Page fetch, then classification: each worker call releases the lease, so re-grant it per tick."""
+    for _ in range(ticks):
+        with factory() as db:
+            row = db.get(MailConnection, connection)
+            if not row.connected:
+                return
+            row.status, row.lease_id = "running", "lease"
+            db.commit()
+        sync.work_one_page(connection, "lease")
+
+
 def insert_item(factory, connection="alice", **kwargs):
     with factory() as db:
         item = MailItem(connection_id=connection, remote_id=str(uuid.uuid4()), folder_id="inbox", subject="Private mail",
@@ -167,7 +179,7 @@ def test_disconnect_during_classification_cannot_restore_data(world, monkeypatch
         assert client.delete("/api/outlook/connection").status_code == 200
         return EmailClassification(None, {}, None, None, None, None, ("test",))
     monkeypatch.setattr(sync, "_classifier", SimpleNamespace(classify=classify))
-    sync.work_one_page("alice", "lease")
+    run_worker(factory)
     with factory() as db:
         assert not db.scalars(select(MailItem)).all()
 
@@ -184,8 +196,10 @@ def test_complete_long_cleaned_body_reaches_classifier_storage_and_api(world, mo
     def classify(email):
         assert email.body == body
         return EmailClassification(None, {}, None, None, None, None, ("test",))
-    monkeypatch.setattr(sync, "_classifier", SimpleNamespace(classify=classify))
-    sync.work_one_page("alice", "lease")
+    seen = []
+    monkeypatch.setattr(sync, "_classifier", SimpleNamespace(classify=lambda email: seen.append(email) or classify(email)))
+    run_worker(factory)
+    assert len(seen) == 1  # the complete body reached the classifier
     assert client.get("/api/outlook/messages").json()["items"][0]["excerpt"] == body
 
 
@@ -296,7 +310,7 @@ def sync_one(factory, monkeypatch, message_id="m1", subject="Exam"):
         db.commit()
     monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [{"id": message_id, "subject": subject, "body": {"content": "Due Friday"}}],
                                                         "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta"})
-    sync.work_one_page("alice", "lease")
+    run_worker(factory)
     with factory() as db:
         return json.loads(db.scalar(select(MailItem).where(MailItem.remote_id == message_id)).classification)
 
@@ -343,3 +357,34 @@ def test_mail_reaches_cloud_only_when_chosen_and_falls_back_to_laya(world, monke
     answer["fail"] = True
     result = sync_one(factory, monkeypatch, "m3")
     assert result["category"] == "coursework" and "fallback_from_span" in result["review_reasons"]
+
+
+def test_cutoff_classifies_only_newest_and_can_be_lifted(world, monkeypatch):
+    client, factory, _ = world
+    with factory() as db:
+        db.add(MailFolder(connection_id="alice", remote_id="inbox")); db.commit()
+    messages = [{"id": f"m{day}", "subject": f"Day {day}", "body": {"content": "Text"}, "receivedDateTime": f"2026-09-{day:02d}T08:00:00Z"}
+                for day in (3, 25, 10, 20)]  # delta order is not date order
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": messages, "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta"})
+    seen = []
+    classification = EmailClassification("coursework", {}, .8, .8, .8, .2, ("test",))
+    monkeypatch.setattr(sync, "_classifier", SimpleNamespace(classify=lambda email: seen.append(email.subject) or classification))
+
+    assert client.patch("/api/outlook/classify-limit", json={"limit": 7}).status_code == 422
+    assert client.patch("/api/outlook/classify-limit", json={"limit": 25}).json() == {"classify_limit": 25}
+    with factory() as db:  # the test world is tiny, so shrink the offered cutoff directly
+        db.get(MailConnection, "alice").classify_limit = 2; db.commit()
+    run_worker(factory)
+
+    assert sorted(seen) == ["Day 20", "Day 25"]
+    labels = {item["subject"]: item["classification"] for item in client.get("/api/outlook/messages?view=all").json()["items"]}
+    assert labels["Day 3"]["review_reasons"] == ["beyond_cutoff"] and labels["Day 25"]["category"] == "coursework"
+    assert {item["subject"] for item in client.get("/api/outlook/messages?view=review").json()["items"]} == {"Day 20", "Day 25"}
+    status = client.get("/api/outlook/status").json()
+    assert status["classify_limit"] == 2 and status["pending"] == 0 and status["processed"] == 2
+
+    assert client.patch("/api/outlook/classify-limit", json={"limit": None}).json() == {"classify_limit": None}
+    assert client.get("/api/outlook/status").json()["pending"] == 2
+    run_worker(factory, ticks=2)
+    assert sorted(seen) == ["Day 10", "Day 20", "Day 25", "Day 3"]
+    assert all(item["classification"]["category"] == "coursework" for item in client.get("/api/outlook/messages?view=all").json()["items"])

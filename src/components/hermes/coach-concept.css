@@ -48,9 +48,10 @@
 }
 
 html[data-theme="vercel-dark"] .fq,
+html[data-theme="nocturne"] .fq,
 html[data-theme="catppuccin-mocha"] .fq,
 html[data-theme="tokyo-night"] .fq,
-html[data-theme="nord"] .fq,
+html[data-theme="velvet"] .fq,
 html[data-theme="dracula"] .fq {
   color-scheme: dark;
   --fq-bg: var(--background);

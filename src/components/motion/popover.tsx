@@ -33,6 +33,7 @@ import {
 } from "@/lib/hooks/use-hover-gesture";
 import { useTapGesture } from "@/lib/hooks/use-tap-gesture";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 
 type Side = "top" | "bottom";
 type Align = "start" | "center" | "end";
@@ -509,7 +510,6 @@ export function PopoverContent({ children, className }: PopoverContentProps) {
   const [portalReady, setPortalReady] = useState(false);
   const {
     side,
-    align,
     gap,
     panelRadius,
     gooStrength,
@@ -524,6 +524,9 @@ export function PopoverContent({ children, className }: PopoverContentProps) {
     openHover,
     scheduleClose,
   } = ctx;
+  // Geometry below is physical pixels; "start"/"end" alignment follows reading direction.
+  const { dir } = useI18n();
+  const align: Align = dir === "rtl" && ctx.align !== "center" ? (ctx.align === "start" ? "end" : "start") : ctx.align;
 
   const measureRef = contentRef;
   const panelHover = useHoverGesture();

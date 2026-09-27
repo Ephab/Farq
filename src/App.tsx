@@ -36,8 +36,25 @@ import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type S
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
 import { cn } from "@/lib/utils"
 import { ThemeProvider } from "@/lib/theme-context"
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
+
+// View ids stay English (other views navigate by them); only their labels are translated.
+const VIEW_LABELS: Record<string, MessageKey> = {
+  "Home": "nav.items.home",
+  "Hermes Coach": "nav.items.coach",
+  "Roadmap": "nav.items.roadmap",
+  "Projects": "nav.items.projects",
+  "Quizzes": "nav.items.quizzes",
+  "Group Projects": "nav.items.teams",
+  "Emails": "nav.items.emails",
+  "Co-op": "nav.items.coop",
+  "Slides": "nav.items.slides",
+  "My data": "nav.items.myData",
+}
 
 export default function App() {
+  const { t, fmt } = useI18n()
+  const viewLabel = (id: string) => (VIEW_LABELS[id] ? t(VIEW_LABELS[id]) : id)
   const [active, setActive] = useState("Home")
   const [coachDraft, setCoachDraft] = useState("")
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
@@ -74,7 +91,7 @@ export default function App() {
     <AnimatePresence>
       {appIntro !== "done" ? (
         <div className="fixed inset-0 z-[70]">
-          <CoachPortalIntro phase={appIntro} speed={0.65} word="Waypoint" tone="gentle" onSkip={dismissAppIntro} />
+          <CoachPortalIntro phase={appIntro} speed={0.65} word={t("common.appName")} tone="gentle" onSkip={dismissAppIntro} />
         </div>
       ) : null}
     </AnimatePresence>
@@ -120,73 +137,75 @@ export default function App() {
     <ThemeProvider>
       <div className="min-h-screen bg-background text-foreground">
         <AnimatedSidebarProvider className="min-h-screen bg-background">
-          <AnimatedSidebar collapsible="icon" ariaLabel="Waypoint navigation">
+          <AnimatedSidebar collapsible="icon" ariaLabel={t("nav.ariaLabel")}>
             <AnimatedSidebarHeader>
               <div className="flex min-h-11 items-center gap-3 overflow-hidden px-2">
                 <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
                   <Command aria-hidden="true" className="size-4" />
                 </div>
                 <span className="truncate text-sm font-semibold group-data-[state=collapsed]/sidebar:hidden">
-                  Waypoint
+                  {t("common.appName")}
                 </span>
               </div>
             </AnimatedSidebarHeader>
 
             <AnimatedSidebarContent className="gap-0">
               <NavSection>
-                <NavItem label="Home" icon={<Home className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="Home" text={t("nav.items.home")} icon={<Home className="size-4" />} active={active} onSelect={setActive} />
                 <NavItem
                   label="Hermes Coach"
+                  text={t("nav.items.coach")}
                   active={active}
                   onSelect={setActive}
                   icon={(
                     <span className="relative grid place-items-center">
                       <Bot className="size-4" />
                       {activeRun ? (
-                        <span className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-amber-500 ring-2 ring-background" aria-hidden="true" />
+                        <span className="absolute -end-1 -top-1 size-2 animate-pulse rounded-full bg-amber-500 ring-2 ring-background" aria-hidden="true" />
                       ) : null}
                     </span>
                   )}
                   badge={activeRun ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
                       <span className="size-1.5 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
-                      working
+                      {t("nav.working")}
                     </span>
                   ) : undefined}
                 />
               </NavSection>
-              <NavSection label="Learn">
-                <NavItem label="Roadmap" icon={<Route className="size-4" />} active={active} onSelect={setActive} />
-                <NavItem label="Projects" icon={<FolderKanban className="size-4" />} active={active} onSelect={setActive} />
-                <NavItem label="Quizzes" icon={<ListChecks className="size-4" />} active={active} onSelect={setActive} />
+              <NavSection label={t("nav.sections.learn")}>
+                <NavItem label="Roadmap" text={t("nav.items.roadmap")} icon={<Route className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="Projects" text={t("nav.items.projects")} icon={<FolderKanban className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="Quizzes" text={t("nav.items.quizzes")} icon={<ListChecks className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
-              <NavSection label="Collaborate">
+              <NavSection label={t("nav.sections.collaborate")}>
                 <NavItem
                   label="Group Projects"
+                  text={t("nav.items.teams")}
                   active={active}
                   onSelect={setActive}
                   icon={(
                     <span className="relative grid place-items-center">
                       <Users className="size-4" />
-                      {teamUnread > 0 ? <span className="absolute -right-1 -top-1 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true" /> : null}
+                      {teamUnread > 0 ? <span className="absolute -end-1 -top-1 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true" /> : null}
                     </span>
                   )}
                   badge={teamUnread > 0 ? (
-                    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary-foreground" aria-label={`${teamUnread} unread team messages`}>
-                      {teamUnread > 99 ? "99+" : teamUnread}
+                    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary-foreground" aria-label={t("nav.unreadTeamMessages", { count: teamUnread })}>
+                      {teamUnread > 99 ? `${fmt.number(99)}+` : fmt.number(teamUnread)}
                     </span>
                   ) : undefined}
                 />
-                <NavItem label="Emails" icon={<Mail className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="Emails" text={t("nav.items.emails")} icon={<Mail className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
-              <NavSection label="Career">
-                <NavItem label="Co-op" icon={<BriefcaseBusiness className="size-4" />} active={active} onSelect={setActive} />
+              <NavSection label={t("nav.sections.career")}>
+                <NavItem label="Co-op" text={t("nav.items.coop")} icon={<BriefcaseBusiness className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
-              <NavSection label="Create">
-                <NavItem label="Slides" icon={<Presentation className="size-4" />} active={active} onSelect={setActive} />
+              <NavSection label={t("nav.sections.create")}>
+                <NavItem label="Slides" text={t("nav.items.slides")} icon={<Presentation className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
-              <NavSection label="Account" className="mt-auto">
-                <NavItem label="My data" icon={<Database className="size-4" />} active={active} onSelect={setActive} />
+              <NavSection label={t("nav.sections.account")} className="mt-auto">
+                <NavItem label="My data" text={t("nav.items.myData")} icon={<Database className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
             </AnimatedSidebarContent>
 
@@ -195,9 +214,9 @@ export default function App() {
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-foreground">
                   {(profile?.display_name ?? "S").slice(0, 1).toUpperCase()}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium group-data-[state=collapsed]/sidebar:hidden">
-                  {profile?.display_name ?? "User"}
-                </span>
+                <bdi dir="auto" className="min-w-0 flex-1 truncate text-sm font-medium group-data-[state=collapsed]/sidebar:hidden">
+                  {profile?.display_name ?? t("common.user")}
+                </bdi>
                 <FooterSettings />
               </div>
             </AnimatedSidebarFooter>
@@ -208,35 +227,39 @@ export default function App() {
           <AnimatedSidebarInset className="bg-background">
             <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
               <AnimatedSidebarTrigger className="text-muted-foreground hover:bg-muted hover:text-foreground">
-                <PanelLeft aria-hidden="true" className="size-4" />
+                <PanelLeft aria-hidden="true" className="size-4 rtl:-scale-x-100" />
               </AnimatedSidebarTrigger>
               <div className="h-5 w-px bg-border" />
-              <p className="text-sm font-medium">{active}</p>
+              <h1 className="text-sm font-medium">{viewLabel(active)}</h1>
               {jev ? (
                 <span
-                  title={`${jev.engines.map((e) => `${e.label}: ${e.available ? "available" : "not available"}`).join(" · ")}${jev.last_success_at ? ` · last decision ${new Date(jev.last_success_at).toLocaleTimeString()}` : ""}${jev.last_error ? ` · fallback: ${jev.last_error}` : ""}`}
+                  title={[
+                    ...jev.engines.map((e) => t(e.available ? "header.engineAvailable" : "header.engineUnavailable", { engine: e.label })),
+                    ...(jev.last_success_at ? [t("header.lastDecision", { time: fmt.time(jev.last_success_at) })] : []),
+                    ...(jev.last_error ? [t("header.fallback", { error: jev.last_error })] : []),
+                  ].join(" · ")}
                   className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${jev.state === "degraded" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : jev.state === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
                 >
                   <span className={`size-1.5 rounded-full ${jev.state === "degraded" ? "bg-amber-500" : jev.state === "active" ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                  {jev.engine_label ?? "Decisions"} · {jev.state}
+                  <bdi>{jev.engine_label ?? t("header.decisions")}</bdi> · {t(`header.decisionState.${jev.state}` as MessageKey)}
                 </span>
               ) : null}
               {activeRun ? (
-                <div className="ml-auto flex min-w-0 items-center gap-1.5" role="status" aria-live="polite" aria-label={`Hermes is generating: ${activeRun.stage || "working"}`}>
+                <div className="ms-auto flex min-w-0 items-center gap-1.5" role="status" aria-live="polite" aria-label={t("header.hermesGenerating", { stage: activeRun.stage || t("nav.working") })}>
                   <button
                     type="button"
                     onClick={() => setActive("Hermes Coach")}
-                    title={activeRun.stage ? `View Hermes run — ${activeRun.stage}` : "View Hermes run"}
+                    title={activeRun.stage ? t("header.viewRunStage", { stage: activeRun.stage }) : t("header.viewRun")}
                     className="inline-flex min-w-0 max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
                   >
                     <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
-                    <span className="truncate">Hermes working{activeRun.stage ? ` · ${activeRun.stage}` : ""}</span>
+                    <span className="truncate">{t("header.hermesWorking")}{activeRun.stage ? <> · <bdi>{activeRun.stage}</bdi></> : null}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => void stopBackgroundRun()}
-                    title="Stop Hermes run"
-                    aria-label="Stop Hermes run"
+                    title={t("header.stopRun")}
+                    aria-label={t("header.stopRun")}
                     className="grid size-7 shrink-0 place-items-center rounded-full border border-amber-500/30 text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
                   >
                     <Square className="size-3" aria-hidden="true" />
@@ -269,16 +292,16 @@ export default function App() {
               ) : (
                 <div className="grid flex-1 place-items-center p-8">
                   <div className="text-center">
-                    <p className="text-sm font-semibold">{active}</p>
+                    <p className="text-sm font-semibold">{viewLabel(active)}</p>
                     <p className="mt-1 text-[13px] text-muted-foreground">
-                      This section is coming soon — check out the Roadmap tab.
+                      {t("common.comingSoon")}
                     </p>
                     <button
                       type="button"
                       onClick={() => setActive("Roadmap")}
                       className="mt-3 h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      Open Roadmap
+                      {t("common.openRoadmap")}
                     </button>
                   </div>
                 </div>
@@ -312,13 +335,13 @@ function NavSection({ label, className, children }: { label?: string; className?
   )
 }
 
-interface NavItemProps { label: string; icon: ReactNode; active: string; onSelect: (label: string) => void; badge?: ReactNode }
+interface NavItemProps { label: string; text: string; icon: ReactNode; active: string; onSelect: (label: string) => void; badge?: ReactNode }
 
-function NavItem({ label, icon, active, onSelect, badge }: NavItemProps) {
+function NavItem({ label, text, icon, active, onSelect, badge }: NavItemProps) {
   return (
     <AnimatedSidebarMenuItem>
       <AnimatedSidebarMenuButton icon={icon} badge={badge} isActive={active === label} onSelect={() => onSelect(label)}>
-        {label}
+        {text}
       </AnimatedSidebarMenuButton>
     </AnimatedSidebarMenuItem>
   )

@@ -28,9 +28,15 @@ import { getActingUserId } from "@/lib/teams-api"
 import { useTheme } from "@/lib/theme-context"
 import { THEMES } from "@/lib/themes"
 import { cn } from "@/lib/utils"
+import { useI18n, type MessageKey } from "@/lib/i18n/context"
+import { LOCALES, type Locale } from "@/lib/i18n/core"
+
+// Each language is named in itself, so a reader can find theirs whatever the UI language is.
+const LOCALE_NAMES: Record<Locale, string> = { en: "English", ar: "العربية" }
 
 export function FooterSettings() {
   const { themeId, setThemeId } = useTheme()
+  const { t, locale, setLocale } = useI18n()
   const { open: sidebarOpen } = useAnimatedSidebar()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [hermesProvider, setHermesProvider] = useState<HermesProvider>("gemini")
@@ -60,7 +66,7 @@ export function FooterSettings() {
     const key = hermesApiKey.trim()
     if (key.length < 32) {
       setApplyState("error")
-      setApplyError("Key must be at least 32 characters.")
+      setApplyError(t("settings.keyTooShort"))
       return
     }
     setApplyState("saving")
@@ -79,7 +85,7 @@ export function FooterSettings() {
       })
     } catch (reason) {
       setApplyState("error")
-      setApplyError(reason instanceof Error ? reason.message : "Could not save settings")
+      setApplyError(reason instanceof Error ? reason.message : t("settings.saveFailed"))
       return
     }
     // The server is authoritative now; drop the tab-only override.
@@ -102,14 +108,14 @@ export function FooterSettings() {
     }
     if (sawDown) {
       setApplyState("error")
-      setApplyError("Saved, but the backend did not come back — check the runner terminal.")
+      setApplyError(t("settings.backendDidNotReturn"))
     } else {
       setApplyState("saved")
     }
   }
 
   const resetDemoTeam = async () => {
-    if (resettingTeam || !window.confirm("Rebuild the Group 1 demo team from scratch? Its chat, tasks, documents and activity return to the demo starting point.")) return
+    if (resettingTeam || !window.confirm(t("settings.resetTeamConfirm"))) return
     setResettingTeam(true)
     setResetError(null)
     try {
@@ -121,11 +127,11 @@ export function FooterSettings() {
       window.location.reload()
     } catch (reason) {
       setResettingTeam(false)
-      setResetError(reason instanceof Error ? reason.message : "Could not reset the demo team")
+      setResetError(reason instanceof Error ? reason.message : t("settings.resetTeamFailed"))
     }
   }
 
-  const restoreFreshWaypoint = async () => {    if (resetting || !window.confirm("Erase your Waypoint chat, learned facts, roadmap changes, proposals, and local app data? This cannot be undone.")) return
+  const restoreFreshWaypoint = async () => {    if (resetting || !window.confirm(t("settings.restoreConfirm"))) return
     setResetting(true)
     setResetError(null)
     try {
@@ -134,7 +140,7 @@ export function FooterSettings() {
       window.location.reload()
     } catch (reason) {
       setResetting(false)
-      setResetError(reason instanceof Error ? reason.message : "Could not restore Waypoint")
+      setResetError(reason instanceof Error ? reason.message : t("settings.restoreFailed"))
     }
   }
 
@@ -157,7 +163,7 @@ export function FooterSettings() {
       <PopoverTrigger>
         <button
           type="button"
-          aria-label="Open settings"
+          aria-label={t("settings.open")}
           className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring group-data-[state=collapsed]/sidebar:hidden [&[data-state=open]_svg]:rotate-90 [&_svg]:transition-transform"
         >
           <Settings className="size-4" aria-hidden="true" />
@@ -168,11 +174,34 @@ export function FooterSettings() {
           panel clips off-screen. */}
       <PopoverContent key={String(popoverOpen)} className="w-56 border border-border p-3">
         <p className="px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          Settings
+          {t("settings.title")}
         </p>
 
+        <p id="settings-language" className="mt-3 px-1 text-xs font-medium text-foreground">
+          {t("settings.language")}
+        </p>
+        <div role="radiogroup" aria-labelledby="settings-language" className="mt-2 grid grid-cols-2 gap-1 rounded-lg border border-border p-0.5">
+          {LOCALES.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={locale === option}
+              lang={option}
+              dir={option === "ar" ? "rtl" : "ltr"}
+              onClick={() => setLocale(option)}
+              className={cn(
+                "rounded-md px-2 py-1.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                locale === option ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {LOCALE_NAMES[option]}
+            </button>
+          ))}
+        </div>
+
         <p className="mt-3 px-1 text-xs font-medium text-foreground">
-          Appearance
+          {t("settings.appearance")}
         </p>
         <div className="mt-2 flex flex-wrap gap-2 px-1">
           {THEMES.map((theme) => {
@@ -182,7 +211,7 @@ export function FooterSettings() {
                 key={theme.id}
                 type="button"
                 title={theme.name}
-                aria-label={`Use ${theme.name} theme`}
+                aria-label={t("settings.useTheme", { name: theme.name })}
                 aria-pressed={selected}
                 onClick={() => setThemeId(theme.id)}
                 style={{ background: theme.tokens.background }}
@@ -203,12 +232,12 @@ export function FooterSettings() {
           })}
         </div>
         <p className="mt-2 px-1 text-xs text-muted-foreground">
-          {activeTheme.name} — {activeTheme.description}
+          <bdi>{activeTheme.name}</bdi> — {t(`settings.themeDescriptions.${activeTheme.id}` as MessageKey)}
         </p>
 
         <div className="mt-3 border-t border-border pt-3">
           <label htmlFor="hermes-provider" className="block px-1 text-xs font-medium text-foreground">
-            Hermes model
+            {t("settings.hermesModel")}
           </label>
           <select
             id="hermes-provider"
@@ -228,7 +257,7 @@ export function FooterSettings() {
           </select>
 
           <label htmlFor="hermes-model" className="mt-3 block px-1 text-xs font-medium text-foreground">
-            Model
+            {t("settings.model")}
           </label>
           <select
             id="hermes-model"
@@ -247,7 +276,7 @@ export function FooterSettings() {
           </select>
 
           <label htmlFor="hermes-api-key" className="mt-3 block px-1 text-xs font-medium text-foreground">
-            Hermes API key
+            {t("settings.apiKey")}
           </label>
           <div className="mt-2 flex items-center gap-1 rounded-lg border border-border bg-background px-2 focus-within:ring-2 focus-within:ring-ring">
             <KeyRound className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -259,7 +288,9 @@ export function FooterSettings() {
                 setHermesApiKey(event.target.value)
                 saveHermesApiKey(event.target.value)
               }}
-              placeholder={hermesProvider === "nim" ? "Waypoint Hermes key (nvapi-… lives server-side)" : "Waypoint Hermes key"}
+              placeholder={t(hermesProvider === "nim" ? "settings.apiKeyPlaceholderNim" : "settings.apiKeyPlaceholder")}
+              // Keys are Latin machine values: type them LTR, but let an Arabic placeholder read RTL.
+              dir={hermesApiKey ? "ltr" : undefined}
               autoComplete="off"
               spellCheck={false}
               className="h-9 w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
@@ -271,7 +302,7 @@ export function FooterSettings() {
                   setHermesApiKey("")
                   saveHermesApiKey("")
                 }}
-                aria-label="Clear Hermes API key"
+                aria-label={t("settings.clearKey")}
                 className="grid size-7 shrink-0 place-items-center rounded-md text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 ✕
@@ -280,7 +311,7 @@ export function FooterSettings() {
             <button
               type="button"
               onClick={() => setShowKey((v) => !v)}
-              aria-label={showKey ? "Hide Hermes API key" : "Show Hermes API key"}
+              aria-label={t(showKey ? "settings.hideKey" : "settings.showKey")}
               aria-pressed={showKey}
               className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -289,15 +320,15 @@ export function FooterSettings() {
           </div>
           {hermesProvider === "hf" ? (
             <p className="mt-2 px-1 text-[11px] leading-4 text-muted-foreground">
-              Active model default: {DEFAULT_HERMES_HF_MODEL}. Billed to the HF_TOKEN in Waypoint&apos;s server .env.
+              {t("settings.defaultHf", { model: DEFAULT_HERMES_HF_MODEL })}
             </p>
           ) : hermesProvider === "nim" ? (
             <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-              Active model default: {DEFAULT_HERMES_NIM_MODEL}. The NVIDIA provider key stays in Waypoint&apos;s server env.
+              {t("settings.defaultNim", { model: DEFAULT_HERMES_NIM_MODEL })}
             </p>
           ) : (
             <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-              Active model default: {DEFAULT_HERMES_GEMINI_MODEL}. The Google provider key stays in Waypoint&apos;s server env.
+              {t("settings.defaultGemini", { model: DEFAULT_HERMES_GEMINI_MODEL })}
             </p>
           )}
           <button
@@ -307,18 +338,18 @@ export function FooterSettings() {
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
             <KeyRound className="size-3.5" aria-hidden="true" />
-            {applyState === "saving" ? "Saving…" : applyState === "waiting" ? "Restarting gateway…" : applyState === "live" ? "Live — key applied" : "Apply key + model to server"}
+            {t(applyState === "saving" ? "settings.saving" : applyState === "waiting" ? "settings.restartingGateway" : applyState === "live" ? "settings.live" : "settings.apply")}
           </button>
-          {applyState === "saved" ? <p className="mt-2 px-1 text-[11px] leading-4 text-amber-700">Saved to .env — restart the Waypoint stack to apply.</p> : null}
+          {applyState === "saved" ? <p className="mt-2 px-1 text-[11px] leading-4 text-amber-700">{t("settings.savedRestart")}</p> : null}
           {applyError ? <p role="alert" className="mt-2 px-1 text-[11px] leading-4 text-destructive">{applyError}</p> : null}
         </div>
 
         <div className="mt-3 border-t border-border pt-3">
           <p className="px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Reset
+            {t("settings.reset")}
           </p>
           <p className="mt-1 px-1 text-[11px] leading-4 text-muted-foreground">
-            Erase your coach memory, chat, roadmap changes, proposals, and local app data.
+            {t("settings.resetHelp")}
           </p>
           <button
             type="button"
@@ -326,7 +357,7 @@ export function FooterSettings() {
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           >
             <UserPlus className="size-3.5" aria-hidden="true" />
-            Switch or add student
+            {t("settings.switchStudent")}
           </button>
           <button
             type="button"
@@ -335,7 +366,7 @@ export function FooterSettings() {
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 px-2 py-2 text-xs font-medium text-destructive outline-none transition-colors hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
             {resetting ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <RotateCcw className="size-3.5" aria-hidden="true" />}
-            {resetting ? "Restoring…" : "Restore fresh Waypoint"}
+            {t(resetting ? "settings.restoring" : "settings.restoreFresh")}
           </button>
           <button
             type="button"
@@ -344,7 +375,7 @@ export function FooterSettings() {
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
             {resettingTeam ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <Users className="size-3.5" aria-hidden="true" />}
-            {resettingTeam ? "Resetting…" : "Reset demo team (Group 1)"}
+            {t(resettingTeam ? "settings.resetting" : "settings.resetTeam")}
           </button>
           {resetError ? <p role="alert" className="mt-2 px-1 text-[11px] leading-4 text-destructive">{resetError}</p> : null}
         </div>

@@ -144,6 +144,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Arabic needs a face with real joining forms and 500/600/700 weights, plus room for
+   diacritics above and below; Latin runs inside Arabic text still use the Latin face. */
+:lang(ar) body,
+body:lang(ar) {
+  font-family: "IBM Plex Sans Arabic", "Noto Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+  line-height: 1.6;
+}
+
+/* Isolate machine values (emails, URLs, IDs, file names) so they keep LTR order in RTL text. */
+.ltr-value {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 body,
 header,
 aside,

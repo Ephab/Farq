@@ -5,6 +5,29 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Waypoint</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Set lang/dir before first paint so Arabic users never see an LTR flash.
+      // Keep in sync with resolveInitialLocale in src/lib/i18n/core.ts.
+      (function () {
+        var locale = "en"
+        try {
+          var saved = localStorage.getItem("waypoint-locale")
+          if (saved === "en" || saved === "ar") locale = saved
+          else {
+            var langs = navigator.languages || [navigator.language]
+            for (var i = 0; i < langs.length; i++) {
+              var base = String(langs[i]).toLowerCase().split("-")[0]
+              if (base === "en" || base === "ar") { locale = base; break }
+            }
+          }
+        } catch (e) {}
+        document.documentElement.lang = locale
+        document.documentElement.dir = locale === "ar" ? "rtl" : "ltr"
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

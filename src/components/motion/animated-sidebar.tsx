@@ -33,9 +33,17 @@ import {
   SPRING_PRESS,
 } from "@/lib/ease";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/context";
 
 type SidebarState = "expanded" | "collapsed";
+// "left"/"right" mean the inline start/end edge, so the sidebar follows the page direction.
 type SidebarSide = "left" | "right";
+
+/** Motion's x is physical, so the slide-out offset flips sign in RTL. */
+function offscreenX(side: SidebarSide, dir: "ltr" | "rtl") {
+  const towardStart = side === "left";
+  return (towardStart === (dir === "ltr")) ? "-100%" : "100%";
+}
 type SidebarVariant = "sidebar" | "floating" | "inset";
 type SidebarCollapsible = "offcanvas" | "icon" | "none";
 
@@ -314,6 +322,7 @@ function MobileSidebar({
   side: SidebarSide;
 }) {
   const context = useAnimatedSidebar();
+  const { dir, t } = useI18n();
   const panelRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   // The sheet is mounted for as long as the viewport is mobile, so it hides
@@ -381,13 +390,13 @@ function MobileSidebar({
   return createPortal(
     <div
       className={cn(
-        "pointer-events-none fixed left-0 top-0 z-50 size-0 md:hidden",
+        "pointer-events-none fixed start-0 top-0 z-50 size-0 md:hidden",
         hidden && !context.openMobile ? "invisible" : "visible",
       )}
     >
       <motion.button
         type="button"
-        aria-label="Close sidebar"
+        aria-label={t("nav.closeSidebar")}
         tabIndex={context.openMobile ? 0 : -1}
         initial={false}
         animate={{ opacity: context.openMobile ? 1 : 0 }}
@@ -425,9 +434,7 @@ function MobileSidebar({
             ? 0
             : context.openMobile
               ? "0%"
-              : side === "left"
-                ? "-100%"
-                : "100%",
+              : offscreenX(side, dir),
         }}
         transition={
           context.reduce ? REDUCED_TRANSITION : PANEL_TRANSITION
@@ -470,7 +477,7 @@ function MobileSidebar({
         className={cn(
           "pointer-events-auto fixed inset-y-0 flex h-dvh w-(--sidebar-width-mobile) max-w-[88vw] flex-col overflow-hidden",
           "border-border bg-background shadow-2xl will-change-transform",
-          side === "left" ? "left-0 border-r" : "right-0 border-l",
+          side === "left" ? "start-0 border-e" : "end-0 border-s",
           !context.openMobile && "pointer-events-none",
           className,
         )}
@@ -512,6 +519,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
     forwardedRef,
   ) {
     const context = useAnimatedSidebar();
+    const { dir } = useI18n();
     const collapsed = collapsible !== "none" && !context.open;
     const offcanvas = collapsed && collapsible === "offcanvas";
     const width = offcanvas
@@ -559,7 +567,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
           initial={false}
           animate={{
             opacity: offcanvas ? 0 : 1,
-            x: offcanvas ? (side === "left" ? "-100%" : "100%") : "0%",
+            x: offcanvas ? offscreenX(side, dir) : "0%",
           }}
           transition={
             context.reduce ? REDUCED_TRANSITION : PANEL_TRANSITION
@@ -568,7 +576,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
             "sticky top-0 flex h-svh w-full flex-col overflow-hidden bg-background",
             collapsible === "offcanvas" && "w-[var(--sidebar-width)]",
             variant === "sidebar" &&
-              (side === "left" ? "border-border border-r" : "border-border border-l"),
+              (side === "left" ? "border-border border-e" : "border-border border-s"),
             variant === "floating" &&
               "m-2 h-[calc(100svh-1rem)] rounded-2xl border border-border shadow-sm",
             variant === "inset" && "m-2 h-[calc(100svh-1rem)] rounded-2xl",
@@ -597,6 +605,7 @@ export const AnimatedSidebarTrigger = forwardRef<
   forwardedRef,
 ) {
   const context = useAnimatedSidebar();
+  const { t } = useI18n();
   const expanded = context.isMobile ? context.openMobile : context.open;
 
   return (
@@ -608,7 +617,7 @@ export const AnimatedSidebarTrigger = forwardRef<
         else if (forwardedRef) forwardedRef.current = node;
       }}
       type={type}
-      aria-label={props["aria-label"] ?? "Toggle sidebar"}
+      aria-label={props["aria-label"] ?? t("nav.toggleSidebar")}
       aria-expanded={expanded}
       data-slot="sidebar-trigger"
       data-state={expanded ? "expanded" : "collapsed"}
@@ -636,13 +645,14 @@ export const AnimatedSidebarClose = forwardRef<
   forwardedRef,
 ) {
   const context = useAnimatedSidebar();
+  const { t } = useI18n();
 
   return (
     <button
       {...props}
       ref={forwardedRef}
       type={type}
-      aria-label={props["aria-label"] ?? "Close sidebar"}
+      aria-label={props["aria-label"] ?? t("nav.closeSidebar")}
       onClick={(event) => {
         onClick?.(event);
         if (event.defaultPrevented) return;
@@ -669,6 +679,7 @@ export const AnimatedSidebarRail = forwardRef<
   forwardedRef,
 ) {
   const context = useAnimatedSidebar();
+  const { t } = useI18n();
   const panel = useAnimatedSidebarPanel();
 
   return (
@@ -677,17 +688,17 @@ export const AnimatedSidebarRail = forwardRef<
       ref={forwardedRef}
       type={type}
       data-side={panel.side}
-      aria-label={props["aria-label"] ?? "Toggle sidebar"}
-      title="Toggle sidebar"
+      aria-label={props["aria-label"] ?? t("nav.toggleSidebar")}
+      title={t("nav.toggleSidebar")}
       tabIndex={-1}
       onClick={(event) => {
         onClick?.(event);
         if (!event.defaultPrevented) context.toggleSidebar();
       }}
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 outline-none md:block",
+        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 rtl:translate-x-1/2 outline-none md:block",
         "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-transparent after:transition-colors hover:after:bg-border",
-        "data-[side=right]:right-0 data-[side=right]:translate-x-1/2 data-[side=left]:left-full",
+        "data-[side=right]:end-0 data-[side=right]:translate-x-1/2 data-[side=right]:rtl:-translate-x-1/2 data-[side=left]:start-full",
         className,
       )}
     />
@@ -1040,6 +1051,7 @@ export function AnimatedSidebarMenuButton({
   className,
 }: AnimatedSidebarMenuButtonProps) {
   const context = useAnimatedSidebar();
+  const { dir } = useI18n();
   const panel = useAnimatedSidebarPanel();
   const textLabel = typeof children === "string" ? children : undefined;
 
@@ -1115,13 +1127,14 @@ export function AnimatedSidebarMenuButton({
           initial={false}
           animate={{
             opacity: panel.collapsed ? 0 : 1,
-            rotate: ariaExpanded ? 90 : 0,
-            x: panel.collapsed ? 4 : 0,
+            // Points toward the inline end when closed, down when open, in either direction.
+            rotate: ariaExpanded ? (dir === "rtl" ? -90 : 90) : 0,
+            x: panel.collapsed ? (dir === "rtl" ? -4 : 4) : 0,
           }}
           transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
           className="relative z-10 grid size-4 shrink-0 place-items-center text-muted-foreground"
         >
-          <ChevronRight className="size-3.5" />
+          <ChevronRight className="size-3.5 rtl:-scale-x-100" />
         </motion.span>
       ) : null}
     </>

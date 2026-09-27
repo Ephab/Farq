@@ -5,6 +5,23 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 
 ## What was built
 
+### Personalized Saudi co-op discovery
+- Sidebar **Co-op** ranks a checked-in catalog of Saudi organizations from verified student facts,
+  completed/in-progress roadmap skills and projects. It separates stable company fit from current
+  postings and supports save/dismiss, official-source links and a responsive detail sheet.
+- Official public career/program pages, the public `nobthacv1` Telegram archive, and an optional
+  Apify LinkedIn Jobs actor feed a canonical posting cache. Cross-source duplicates merge while
+  retaining every provenance link. Telegram refreshes every 30 minutes; official and LinkedIn
+  sources refresh every six hours. Failures preserve the last good cache.
+- Telegram is read through its public archive without a bot. LinkedIn runs only when
+  `APIFY_API_KEY` exists and is bounded by `APIFY_MAX_TOTAL_CHARGE_USD`. External text is treated
+  as untrusted data; only normalized SQLite records reach Hermes.
+- Hermes has three read-only tools: `farq_find_coop_companies`, `farq_find_coop_postings` and
+  `farq_get_coop_target`. "Build preparation plan" hands Coach the canonical target id; Hermes
+  may submit a future-only roadmap proposal, but cannot apply or change the roadmap itself.
+- This slice does not submit applications, access authenticated Jadarat/LinkedIn accounts, send
+  emails or track interviews. Those remain future work.
+
 ### Group Projects (course teams with Hermes as a teammate)
 - Spec: `docs/superpowers/specs/2026-09-25-group-projects-design.md`; plans 1-3 in
   `docs/superpowers/plans/`. Backend in `services/api/app/teams/`, UI in `src/components/teams/`.
@@ -136,8 +153,10 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
-- Automated: 238 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
+- Automated: 248 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
   `npm run build` pass.
+- Verified live: the Telegram public archive returned and parsed 18 current co-op posts on
+  2026-09-27. The Apify actor was separately smoke-tested with real Saudi internship results.
 - Verified live: sign-in, basics, GitHub import (37 repos), transcript/CV/LinkedIn PDF/portfolio
   extraction, scanner on real folders, Gemini Flash-Lite through the gateway.
 - **Not yet verified live end to end:** folder indexing via `farq_index_folder` after the

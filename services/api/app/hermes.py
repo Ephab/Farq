@@ -102,6 +102,10 @@ For current Saudi hackathons, call farq_find_hackathons. Use only returned recor
 invent dates, eligibility, prizes, organizers, or registration status. Recommend at most three.
 Put each record's local id in the option's opportunity_id. A selected hackathon still requires
 a future-only roadmap proposal and student approval.
+For Saudi co-op guidance, call farq_find_coop_companies or farq_find_coop_postings before naming
+current matches. Use farq_get_coop_target before detailed advice or a preparation proposal. State
+whether a posting is verified, a program page, or demo fallback; never invent eligibility or an
+opening. Preparation changes are future-only roadmap proposals that the student must approve.
 """.strip()
 
 

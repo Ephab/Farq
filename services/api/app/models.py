@@ -288,6 +288,80 @@ class OpportunitySyncRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class CoopCompany(Base):
+    __tablename__ = "coop_companies"
+    slug: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(180))
+    overview: Mapped[str] = mapped_column(Text, default="")
+    sectors_json: Mapped[str] = mapped_column(Text, default="[]")
+    skills_json: Mapped[str] = mapped_column(Text, default="[]")
+    tracks_json: Mapped[str] = mapped_column(Text, default="[]")
+    locations_json: Mapped[str] = mapped_column(Text, default="[]")
+    orientation: Mapped[str] = mapped_column(String(24), default="industry", index=True)
+    company_url: Mapped[str] = mapped_column(String(800), default="")
+    careers_url: Mapped[str] = mapped_column(String(1200), default="")
+    source_url: Mapped[str] = mapped_column(String(1200), default="")
+    source_status: Mapped[str] = mapped_column(String(24), default="program_page", index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CoopPosting(Base):
+    __tablename__ = "coop_postings"
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_coop_posting_source_external"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    company_slug: Mapped[str] = mapped_column(ForeignKey("coop_companies.slug"), index=True)
+    source: Mapped[str] = mapped_column(String(64), index=True)
+    external_id: Mapped[str] = mapped_column(String(180))
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    location: Mapped[str] = mapped_column(String(180), default="")
+    skills_json: Mapped[str] = mapped_column(Text, default="[]")
+    requirements_json: Mapped[str] = mapped_column(Text, default="[]")
+    opens_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    closes_at: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    detail_url: Mapped[str] = mapped_column(String(1200), default="")
+    apply_url: Mapped[str] = mapped_column(String(1200), default="")
+    status: Mapped[str] = mapped_column(String(24), default="unknown", index=True)
+    source_status: Mapped[str] = mapped_column(String(24), default="program_page")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    raw_hash: Mapped[str] = mapped_column(String(64), default="")
+    canonical_key: Mapped[str] = mapped_column(String(64), default="", index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CoopPostingSource(Base):
+    __tablename__ = "coop_posting_sources"
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_coop_source_external"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    posting_id: Mapped[str] = mapped_column(ForeignKey("coop_postings.id"), index=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    external_id: Mapped[str] = mapped_column(String(220))
+    detail_url: Mapped[str] = mapped_column(String(1200), default="")
+    apply_url: Mapped[str] = mapped_column(String(1200), default="")
+    source_status: Mapped[str] = mapped_column(String(24), default="listed")
+    raw_hash: Mapped[str] = mapped_column(String(64), default="")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class StudentCoopState(Base):
+    __tablename__ = "student_coop_states"
+    __table_args__ = (UniqueConstraint("student_id", "target_type", "target_id", name="uq_student_coop_target"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    target_type: Mapped[str] = mapped_column(String(16), index=True)
+    target_id: Mapped[str] = mapped_column(String(180), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="saved", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class OutlookAccount(Base):
     """Per-student Outlook connection. Tokens stay server-side and are never serialized."""
 

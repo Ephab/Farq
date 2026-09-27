@@ -273,9 +273,7 @@ export default function App() {
                 <TodayView onNavigate={(tab) => setActive(tab)} />
               ) : active === "Roadmap" ? (
                 <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} />
-              ) : active === "Hermes Coach" ? (
-                <HermesCoach initialDraft={coachDraft} onConsumeDraft={clearCoachDraft} />
-              ) : active === "My data" ? (
+              ) : active === "Hermes Coach" ? null : active === "My data" ? (
                 <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Emails" ? (
                 <EmailsView />
@@ -306,6 +304,11 @@ export default function App() {
                   </div>
                 </div>
               )}
+              {/* Hermes Coach stays mounted while hidden so an in-progress
+                  reply survives tab switches instead of unmounting mid-stream. */}
+              <div className={active === "Hermes Coach" ? "contents" : "hidden"}>
+                <HermesCoach initialDraft={coachDraft} onConsumeDraft={clearCoachDraft} visible={active === "Hermes Coach"} />
+              </div>
             </main>
           </AnimatedSidebarInset>
         </AnimatedSidebarProvider>

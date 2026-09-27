@@ -256,7 +256,7 @@ html[data-theme="deep-ocean"] .fq {
 }
 
 .fq .message-meta {
-  margin: 0 0 5px;
+  margin: 0 0 2px;
   color: var(--fq-faint);
   font-size: 11px;
   font-weight: 650;
@@ -507,22 +507,38 @@ html[data-theme="deep-ocean"] .fq {
   color: var(--fq-muted);
 }
 
-/* Follow-ups + Options chips: concept secondary buttons in a row. */
+/* Copy/edit/regenerate sit under the bubble with the timestamp: left-aligned
+ * under Hermes replies, right-aligned under the student's own bubbles. */
 .fq .message-tools {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
   gap: 2px;
-  margin-top: 8px;
+  margin-top: -2px;
+}
+
+.fq .message-tools-user {
+  justify-content: flex-end;
+}
+
+.fq .message-time {
+  margin-inline-end: 6px;
+  color: var(--fq-faint);
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .fq .message-tools button {
   display: inline-flex;
-  min-height: 30px;
+  min-height: 28px;
+  min-width: 28px;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   border-radius: var(--fq-r-pill);
   background: transparent;
-  padding: 0 9px;
+  padding: 0 8px;
   color: var(--fq-faint);
   font-size: 12px;
   font-weight: 600;
@@ -538,16 +554,6 @@ html[data-theme="deep-ocean"] .fq {
 .fq .message-tools button:disabled {
   cursor: default;
   opacity: 0.45;
-}
-
-/* Tools on the dark user bubble: light text and hover wash for contrast. */
-.fq .message.user .message-tools button {
-  color: color-mix(in srgb, var(--fq-on-accent) 72%, transparent);
-}
-
-.fq .message.user .message-tools button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fq-on-accent) 16%, transparent);
-  color: var(--fq-on-accent);
 }
 
 /* Typing indicator inside an assistant bubble. */
@@ -914,7 +920,7 @@ html[data-theme="deep-ocean"] .fq {
   gap: 10px;
 }
 
-.fq .button {
+.fq button.button {
   display: inline-flex;
   min-height: 46px;
   align-items: center;
@@ -925,6 +931,7 @@ html[data-theme="deep-ocean"] .fq {
   padding: 0 18px;
   background: var(--fq-accent);
   color: var(--fq-on-accent);
+  font: inherit;
   font-size: 14px;
   font-weight: 680;
   letter-spacing: -0.01em;
@@ -933,52 +940,52 @@ html[data-theme="deep-ocean"] .fq {
   transition: transform 170ms var(--fq-ease-out), background 170ms ease, box-shadow 170ms ease, opacity 170ms ease;
 }
 
-.fq .button:hover:not(:disabled) {
+.fq button.button:hover:not(:disabled) {
   background: var(--fq-accent-hover);
   box-shadow: 0 12px 28px color-mix(in srgb, var(--fq-accent) 27%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transform: translateY(-1px);
 }
 
-.fq .button:active:not(:disabled) {
+.fq button.button:active:not(:disabled) {
   transform: translateY(1px) scale(0.985);
 }
 
-.fq .button.secondary {
+.fq button.button.secondary {
   border-color: var(--fq-line);
   background: var(--fq-surface);
   color: var(--fq-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--fq-shadow-sm);
 }
 
-.fq .button.secondary:hover:not(:disabled) {
+.fq button.button.secondary:hover:not(:disabled) {
   background: var(--fq-surface-solid);
   box-shadow: var(--fq-shadow-sm);
 }
 
-.fq .button.quiet {
+.fq button.button.quiet {
   background: transparent;
   color: var(--fq-text-soft);
   box-shadow: none;
 }
 
-.fq .button.quiet:hover:not(:disabled) {
+.fq button.button.quiet:hover:not(:disabled) {
   background: var(--fq-surface-muted);
   box-shadow: none;
 }
 
-.fq .button.small {
+.fq button.button.small {
   min-height: 44px;
   padding: 0 14px;
   font-size: 13px;
 }
 
-.fq .button:disabled {
+.fq button.button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
   transform: none;
 }
 
-.fq .button.wide {
+.fq button.button.wide {
   width: 100%;
 }
 

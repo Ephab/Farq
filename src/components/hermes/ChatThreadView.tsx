@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, LoaderCircle, MapPin, Mic, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
@@ -242,14 +242,14 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
             const controlsEnabled = isLast(message) && !answer && !busy && !disabled
             const time = formatTime(message.created_at)
             return (
+              <Fragment key={message.id}>
               <article
-                key={message.id}
                 className={cn("message", message.role === "user" ? "user" : "assistant")}
                 aria-label={message.role === "user" ? t("coach.thread.yourMessage") : t("coach.thread.hermesReply")}
               >
-                <p className="message-meta">
-                  {message.role === "user" ? t("coach.thread.you") : t("coach.thread.hermes")}{time ? " · " : ""}{time ? <bdi>{time}</bdi> : null}
-                </p>
+                {message.role === "assistant" ? (
+                  <p className="message-meta">{t("coach.thread.hermes")}</p>
+                ) : null}
                 {message.role === "user" && editingId === message.id ? (
                   <div className="edit-box">
                     <textarea
@@ -343,21 +343,23 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                     ))}
                   </div>
                 ) : null}
-                <div className="message-tools">
-                  <button type="button" aria-label={message.role === "user" ? t("coach.thread.copyPrompt") : t("coach.thread.copyOutput")} onClick={() => void copyText(message.id, text)}>
-                    {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? t("coach.thread.copied") : t("coach.thread.copy")}
-                  </button>
-                  {message.role === "user" ? (
-                    <button type="button" aria-label={t("coach.thread.editResendLabel")} disabled={busy || disabled || editingId !== null} onClick={() => editPrompt(message)}>
-                      <PencilLine size={12} />{t("coach.thread.editResend")}
-                    </button>
-                  ) : prompt ? (
-                    <button type="button" aria-label={t("coach.thread.regenerateLabel")} disabled={busy || disabled} onClick={() => submit(prompt)}>
-                      <RotateCcw size={12} />{t("coach.thread.regenerate")}
-                    </button>
-                  ) : null}
-                </div>
               </article>
+              <div className={`message-tools${message.role === "user" ? " message-tools-user" : ""}`}>
+                {time ? <span className="message-time"><bdi>{time}</bdi></span> : null}
+                <button type="button" aria-label={message.role === "user" ? t("coach.thread.copyPrompt") : t("coach.thread.copyOutput")} title={copied ? t("coach.thread.copied") : (message.role === "user" ? t("coach.thread.copyPrompt") : t("coach.thread.copyOutput"))} onClick={() => void copyText(message.id, text)}>
+                  {copied ? <Check size={12} /> : <Copy size={12} />}
+                </button>
+                {message.role === "user" ? (
+                  <button type="button" aria-label={t("coach.thread.editResendLabel")} title={t("coach.thread.editResend")} disabled={busy || disabled || editingId !== null} onClick={() => editPrompt(message)}>
+                    <PencilLine size={12} />
+                  </button>
+                ) : prompt ? (
+                  <button type="button" aria-label={t("coach.thread.regenerateLabel")} title={t("coach.thread.regenerate")} disabled={busy || disabled} onClick={() => submit(prompt)}>
+                    <RotateCcw size={12} />
+                  </button>
+                ) : null}
+              </div>
+              </Fragment>
             )
           })}
         </AnimatePresence>

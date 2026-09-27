@@ -63,9 +63,10 @@ const TOPIC_STATUS_KEYS: Record<string, MessageKey> = {
   done: "coach.context.status.done",
 }
 
-// Session flag: the portal intro plays on the first Coach visit only.
-// HermesCoach remounts on every tab switch, so per-mount state would replay
-// (and re-block) the intro each time the student returns to the tab.
+// Session flag: the portal intro plays on the first Coach visit only. The
+// coach stays mounted across tab switches (App hides it instead of
+// unmounting), so this guards the once-per-session veil; per-visit replays
+// honor the opt-in below.
 let portalPlayed = false
 
 const INTRO_EVERY_VISIT_KEY = "waypoint.coach-intro-every-visit"
@@ -78,7 +79,7 @@ function readIntroEveryVisit(): boolean {
   }
 }
 
-export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraft?: string; onConsumeDraft?: () => void }) {
+export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true }: { initialDraft?: string; onConsumeDraft?: () => void; visible?: boolean }) {
   const { t, fmt } = useI18n()
   const studentId = getCurrentStudentId()
   const [threadId, setThreadId] = useState<string | null>(null)
@@ -208,6 +209,19 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
   const onRunFinished = useCallback(() => { refreshSide().catch(() => undefined) }, [refreshSide])
   const chat = useHermesChat(threadId, onRunFinished)
   const { setError } = chat
+  const refreshChat = chat.refresh
+  // Mounted once and hidden on other tabs: refresh the thread and side
+  // panel when the coach becomes visible again, and replay the intro veil
+  // for students who opted into it every visit.
+  const wasVisible = useRef(visible)
+  useEffect(() => {
+    if (visible && !wasVisible.current) {
+      refreshChat().catch(() => undefined)
+      refreshSide().catch(() => undefined)
+      if (introEveryVisit && !reduce) setPortal("loading")
+    }
+    wasVisible.current = visible
+  }, [visible, refreshChat, refreshSide, introEveryVisit, reduce])
 
   useEffect(() => {
     api<StudentProfile>(`/api/students/${studentId}/profile`)

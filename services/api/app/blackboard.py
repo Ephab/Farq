@@ -12,6 +12,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -30,6 +31,7 @@ INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 MAX_BODY_CHARS = 120_000
 READ_CHUNK_CHARS = 12_000
 CONTENT_TYPES = {"announcement", "syllabus", "lecture", "document", "assignment"}
+DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blackboard-demo.json"
 
 
 def _require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
@@ -202,6 +204,20 @@ def import_snapshot(body: BlackboardImportPayload, db: Db) -> dict:
     observe_items(db, observations, purpose="blackboard_ingestion")
     db.commit()
     return {"status": "ready", "student_id": body.student_id, "courses": len(body.courses), "items": imported}
+
+
+def seed_demo_snapshot(db: Session, fixture_path: Path = DEMO_FIXTURE_PATH) -> bool:
+    """Seed a fresh demo database without replacing locally imported courses."""
+    existing = db.scalar(select(BlackboardCourse.id).where(BlackboardCourse.student_id == "demo-student").limit(1))
+    if existing is not None:
+        return False
+    payload = BlackboardImportPayload.model_validate_json(fixture_path.read_text(encoding="utf-8"))
+    if payload.student_id != "demo-student":
+        raise ValueError("Blackboard demo fixture must target demo-student")
+    if any(item.origin != "synthetic" for course in payload.courses for item in course.items):
+        raise ValueError("Blackboard demo fixture may contain synthetic records only")
+    import_snapshot(payload, db)
+    return True
 
 
 @router.get("/api/students/{student_id}/blackboard/status")

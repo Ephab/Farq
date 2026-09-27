@@ -15,7 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from .blackboard import router as blackboard_router
+from .blackboard import router as blackboard_router, seed_demo_snapshot
 from .coop import router as coop_router, seed_coop_catalog, sync_all_coop_sources, sync_coop_source
 from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
@@ -202,6 +202,7 @@ async def startup() -> None:
         if db.scalar(select(func.count()).select_from(ChatThread).where(ChatThread.student_id == DEMO_STUDENT_ID)) == 0:
             db.add(ChatThread(student_id=DEMO_STUDENT_ID, title="My Hermes Coach"))
         db.commit()
+        seed_demo_snapshot(db)
         seed_teams(db)
         seed_teammate_roadmaps(db)
         seed_coop_catalog(db)

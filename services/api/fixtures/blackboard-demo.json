@@ -1,0 +1,141 @@
+{
+  "student_id": "demo-student",
+  "courses": [
+    {
+      "external_id": "CMPE-320-DEMO",
+      "code": "CMPE 320",
+      "title": "Object-Oriented Programming and Data Structures",
+      "term": "Fall 2026",
+      "description": "Synthetic course covering maintainable software design and core data structures.",
+      "items": [
+        {
+          "external_id": "cmpe320-syllabus",
+          "content_type": "syllabus",
+          "title": "Course syllabus (demo)",
+          "body_text": "This synthetic syllabus covers object-oriented design, interfaces, testing, complexity, lists, stacks, queues, trees, and graphs. Assessment includes weekly exercises, two quizzes, and a final team project. Office hours are Sundays at 13:00 in the demo lab.",
+          "source_ref": "bb://CMPE-320-DEMO/syllabus",
+          "origin": "synthetic",
+          "posted_at": "2026-09-01T08:00:00Z",
+          "modified_at": "2026-09-01T08:00:00Z"
+        },
+        {
+          "external_id": "cmpe320-lecture-solid",
+          "content_type": "lecture",
+          "title": "SOLID design principles",
+          "body_text": "SOLID is a set of design principles for maintainable object-oriented programs. Single responsibility keeps a class focused on one reason to change. Open-closed favors extension without editing stable code. Liskov substitution requires subtypes to preserve expected behavior. Interface segregation favors small client-specific interfaces. Dependency inversion makes high-level policy depend on abstractions rather than concrete details.",
+          "filename": "Week 5 - SOLID.pdf",
+          "mime_type": "application/pdf",
+          "source_ref": "bb://CMPE-320-DEMO/content/solid",
+          "origin": "synthetic",
+          "posted_at": "2026-09-21T08:00:00Z",
+          "modified_at": "2026-09-21T08:00:00Z"
+        },
+        {
+          "external_id": "cmpe320-assignment-index",
+          "content_type": "assignment",
+          "title": "Assignment: searchable course index",
+          "body_text": "Build a small searchable course index using at least two data structures. Explain the trade-offs, include automated tests, and submit a short complexity analysis. This is synthetic demo work and is not a real university assignment.",
+          "source_ref": "bb://CMPE-320-DEMO/assignments/search-index",
+          "origin": "synthetic",
+          "posted_at": "2026-09-24T10:00:00Z",
+          "due_at": "2026-10-08T20:00:00Z",
+          "modified_at": "2026-09-24T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "external_id": "MATH-241-DEMO",
+      "code": "MATH 241",
+      "title": "Linear Algebra and Probability for Computing",
+      "term": "Fall 2026",
+      "description": "Synthetic mathematical foundations for computer science and machine learning.",
+      "items": [
+        {
+          "external_id": "math241-syllabus",
+          "content_type": "syllabus",
+          "title": "Course syllabus (demo)",
+          "body_text": "This synthetic course studies vectors, matrices, linear transformations, eigenvalues, probability distributions, conditional probability, expectation, and variance. Examples connect the mathematics to graphics, data analysis, and machine learning.",
+          "source_ref": "bb://MATH-241-DEMO/syllabus",
+          "origin": "synthetic",
+          "posted_at": "2026-09-01T08:00:00Z",
+          "modified_at": "2026-09-01T08:00:00Z"
+        },
+        {
+          "external_id": "math241-lecture-transformations",
+          "content_type": "lecture",
+          "title": "Matrix transformations",
+          "body_text": "A matrix represents a linear transformation between vector spaces. Matrix multiplication composes transformations. In computer vision, translation, rotation, scaling, and projection help relate points across coordinate systems. Rank describes the number of independent output directions, while the null space contains inputs mapped to zero.",
+          "filename": "Week 4 - Matrix Transformations.pdf",
+          "mime_type": "application/pdf",
+          "source_ref": "bb://MATH-241-DEMO/content/matrix-transformations",
+          "origin": "synthetic",
+          "posted_at": "2026-09-18T08:00:00Z",
+          "modified_at": "2026-09-18T08:00:00Z"
+        },
+        {
+          "external_id": "math241-announcement-review",
+          "content_type": "announcement",
+          "title": "Probability review session (demo)",
+          "body_text": "A synthetic review session covering conditional probability, Bayes' rule, expectation, and variance is scheduled for Monday at 16:00. Bring one question from the practice set.",
+          "source_ref": "bb://MATH-241-DEMO/announcements/review",
+          "origin": "synthetic",
+          "posted_at": "2026-09-26T09:00:00Z",
+          "modified_at": "2026-09-26T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "external_id": "ARTI-404-DEMO",
+      "code": "ARTI 404",
+      "title": "Machine Learning",
+      "term": "Fall 2026",
+      "description": "Synthetic introduction to supervised learning, evaluation, and responsible experimentation.",
+      "items": [
+        {
+          "external_id": "arti404-syllabus",
+          "content_type": "syllabus",
+          "title": "Course syllabus (demo)",
+          "body_text": "This synthetic machine-learning course covers data preparation, regression, classification, model evaluation, neural-network foundations, and responsible experimentation. Students complete short laboratories and a final applied project.",
+          "source_ref": "bb://ARTI-404-DEMO/syllabus",
+          "origin": "synthetic",
+          "posted_at": "2026-09-01T08:00:00Z",
+          "modified_at": "2026-09-01T08:00:00Z"
+        },
+        {
+          "external_id": "arti404-lecture-logistic",
+          "content_type": "lecture",
+          "title": "Logistic regression and classification",
+          "body_text": "Logistic regression models the probability of a binary outcome. A weighted sum of features is passed through the sigmoid function, producing a value between zero and one. Training minimizes log loss. Accuracy alone can mislead on imbalanced data, so evaluation may also use precision, recall, F1 score, and a confusion matrix.",
+          "filename": "Week 6 - Logistic Regression.pdf",
+          "mime_type": "application/pdf",
+          "source_ref": "bb://ARTI-404-DEMO/content/logistic-regression",
+          "origin": "synthetic",
+          "posted_at": "2026-09-23T08:00:00Z",
+          "modified_at": "2026-09-23T08:00:00Z"
+        },
+        {
+          "external_id": "arti404-assignment-baseline",
+          "content_type": "assignment",
+          "title": "Lab: establish a classification baseline",
+          "body_text": "Using the provided synthetic tabular dataset, create a reproducible train-validation split, train a simple baseline classifier, report at least three evaluation metrics, and discuss one likely source of bias. This is demonstration content, not a real university assignment.",
+          "source_ref": "bb://ARTI-404-DEMO/assignments/baseline",
+          "origin": "synthetic",
+          "posted_at": "2026-09-25T10:00:00Z",
+          "due_at": "2026-10-12T20:00:00Z",
+          "modified_at": "2026-09-25T10:00:00Z"
+        },
+        {
+          "external_id": "arti404-announcement-project",
+          "content_type": "announcement",
+          "title": "Project proposal reminder (demo)",
+          "body_text": "Submit a one-paragraph synthetic project proposal describing the user, problem, dataset, success metric, and one ethical risk. Teams may discuss their idea with Hermes, but each student must understand and defend the submitted plan.",
+          "source_ref": "bb://ARTI-404-DEMO/announcements/project-proposal",
+          "origin": "synthetic",
+          "posted_at": "2026-09-27T09:00:00Z",
+          "due_at": "2026-10-05T20:00:00Z",
+          "modified_at": "2026-09-27T09:00:00Z"
+        }
+      ]
+    }
+  ]
+}

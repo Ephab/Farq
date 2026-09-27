@@ -62,6 +62,16 @@ def snapshot_payload() -> dict:
     }
 
 
+def test_repository_fixture_is_seeded_on_startup(client: TestClient):
+    status = client.get("/api/students/demo-student/blackboard/status").json()
+    assert status["connected"] is True
+    assert status["read_only"] is True
+    assert status["courses"] >= 3
+
+    courses = client.get("/internal/hermes/students/demo-student/blackboard/courses", headers=INTERNAL).json()["courses"]
+    assert any(course["code"] == "ARTI 404" for course in courses)
+
+
 def test_blackboard_import_requires_internal_token(client: TestClient):
     assert client.post("/internal/demo/blackboard/import", json=snapshot_payload()).status_code == 401
 

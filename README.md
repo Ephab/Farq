@@ -103,17 +103,22 @@ powershell -ExecutionPolicy Bypass -File scripts/evaluator.ps1
 ```
 
 The worker uses fixed recipes in disposable containers; Hermes receives no terminal
-or Docker access. To import the existing read-only Blackboard demo, run the host
-importer with the explicit local course-folder path:
+or Docker access. Fresh databases automatically load the fully synthetic, shared
+`services/api/fixtures/blackboard-demo.json` snapshot. It contains no credentials,
+student information, or university-owned course files.
+
+To replace it locally with approved read-only material, run the host importer with
+an explicit course-folder path:
 
 ```powershell
 .venv\Scripts\python.exe scripts\import_blackboard_demo.py --root "PATH_TO_APPROVED_COURSE_FOLDERS"
 .venv\Scripts\python.exe scripts\smoke_blackboard_tools.py
 ```
 
-It extracts only allowlisted content and labels synthetic demo material. It never
-logs into Blackboard or uploads source binaries. Folder scans performed by Hermes
-see only host paths (native) or paths explicitly mounted into its Docker container.
+The importer extracts only allowlisted content and labels synthetic demo material. It
+never logs into Blackboard or uploads source binaries. Existing imported courses are
+never overwritten by the startup fixture. Folder scans performed by Hermes see only
+host paths (native) or paths explicitly mounted into its Docker container.
 
 ## Checks
 

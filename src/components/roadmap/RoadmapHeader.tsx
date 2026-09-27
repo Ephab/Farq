@@ -138,7 +138,7 @@ export function RoadmapHeader({
         <span className="flex items-center gap-1.5">
           <span className="size-2 rounded-full bg-emerald-500" /> Done
         </span>
-        <span className="hidden sm:inline">Drag the canvas to pan · scroll to move · use controls to zoom</span>
+        <span>Drag the canvas to pan · scroll to move · use controls to zoom</span>
       </div>
     </div>
   );

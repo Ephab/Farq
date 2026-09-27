@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, BriefcaseBusiness, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
+import { Bot, BriefcaseBusiness, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Sparkles, Square, Users } from "lucide-react"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
   AnimatedSidebar,
@@ -29,6 +29,7 @@ import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
+import { AnimationView } from "@/components/animation/AnimationView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type StudentProfile } from "@/lib/farq-api"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
@@ -39,6 +40,12 @@ export default function App() {
   const [active, setActive] = useState("Home")
   const [coachDraft, setCoachDraft] = useState("")
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const [animationRunId, setAnimationRunId] = useState(0)
+  // Re-selecting Animation remounts the view so the Coach portal replays.
+  const handleSelect = useCallback((label: string) => {
+    if (label === "Animation") setAnimationRunId((id) => id + 1)
+    setActive(label)
+  }, [])
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [onboarding, setOnboarding] = useState(!hasChosenStudent())
@@ -87,14 +94,14 @@ export default function App() {
     <ThemeProvider>
       <div className="min-h-screen bg-background text-foreground">
         <AnimatedSidebarProvider className="min-h-screen bg-background">
-          <AnimatedSidebar collapsible="icon" ariaLabel="SmartLearn navigation">
+          <AnimatedSidebar collapsible="icon" ariaLabel="Farq navigation">
             <AnimatedSidebarHeader>
               <div className="flex min-h-11 items-center gap-3 overflow-hidden px-2">
                 <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
                   <Command aria-hidden="true" className="size-4" />
                 </div>
                 <span className="truncate text-sm font-semibold group-data-[state=collapsed]/sidebar:hidden">
-                  SmartLearn
+                  Farq
                 </span>
               </div>
             </AnimatedSidebarHeader>
@@ -126,6 +133,7 @@ export default function App() {
                 <NavItem label="Roadmap" icon={<Route className="size-4" />} active={active} onSelect={setActive} />
                 <NavItem label="Projects" icon={<FolderKanban className="size-4" />} active={active} onSelect={setActive} />
                 <NavItem label="Quizzes" icon={<ListChecks className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="Animation" icon={<Sparkles className="size-4" />} active={active} onSelect={handleSelect} />
               </NavSection>
               <NavSection label="Collaborate">
                 <NavItem
@@ -233,6 +241,8 @@ export default function App() {
                 <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
+              ) : active === "Animation" ? (
+                <AnimationView key={animationRunId} />
               ) : (
                 <div className="grid flex-1 place-items-center p-8">
                   <div className="text-center">

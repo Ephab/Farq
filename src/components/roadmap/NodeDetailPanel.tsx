@@ -58,8 +58,13 @@ export function NodeDetailPanel({
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 32 }}
           transition={{ type: "spring", stiffness: 380, damping: 34 }}
+          role="dialog"
+          aria-modal="false"
           aria-label={`Details for ${node.title}`}
-          className="absolute bottom-4 right-4 top-4 z-20 flex w-[min(340px,calc(100%-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-xl"
+          tabIndex={-1}
+          onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose() } }}
+          ref={(el) => { el?.focus({ preventScroll: true }) }}
+          className="absolute bottom-4 right-4 top-4 z-20 flex w-[min(340px,calc(100%-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-xl outline-none"
         >
           <DetailBody
             node={node}

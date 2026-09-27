@@ -213,6 +213,10 @@ export function RoadmapCanvas({
         </div>
       </div>
 
+      {/* Edge fades hint that the canvas scrolls beyond the visible area */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 z-[5] w-6 bg-gradient-to-r from-background to-transparent" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 z-[5] w-6 bg-gradient-to-l from-background to-transparent" />
+
       {/* Zoom controls */}
       <div className="absolute bottom-4 left-4 z-10 flex items-center gap-1 rounded-xl border border-border bg-background/95 p-1 shadow-md backdrop-blur">
         <button

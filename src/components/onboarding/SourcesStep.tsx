@@ -22,7 +22,7 @@ const SOURCE_META: Record<SourceKind, SourceMeta> = {
   linkedin_zip: { title: "LinkedIn data export", description: "LinkedIn → Settings → Data privacy → Get a copy of your data. Upload the ZIP; it's parsed here without a model.", icon: Briefcase, input: "file", accept: ".zip,application/zip" },
   linkedin_pdf: { title: "LinkedIn profile PDF", description: "Profile and work history. On your LinkedIn profile: More → Save to PDF.", icon: UserRound, input: "file", accept: "application/pdf" },
   github: { title: "GitHub", description: "Projects and repositories can add concrete evidence to roadmap topics.", icon: Link2, input: "text", placeholder: "username or github.com/username" },
-  folder: { title: "Project folder", description: "Read only a path you type on this computer.", icon: FolderSearch, input: "text", placeholder: "Full path, e.g. D:\\Projects or D:\\University" },
+  folder: { title: "Project folder", description: "Read only a path you type on this computer.", icon: FolderSearch, input: "text", placeholder: typeof navigator !== "undefined" && /Win/i.test(navigator.platform ?? "") ? "Full path, e.g. D:\\Projects" : "Full path, e.g. ~/Projects" },
   portfolio_url: { title: "Portfolio", description: "One public page describing your work.", icon: Globe, input: "text", placeholder: "https://…" },
   orcid: { title: "ORCID", description: "Publications and affiliations.", icon: BookOpen, input: "text", placeholder: "0000-0000-0000-0000" },
 }
@@ -264,7 +264,7 @@ function SourceAction({ kind, studentId, active, onChange, featured = false, com
     return (
       <div>
         <div className="flex items-center gap-2">
-          <input value={value} onChange={(event) => setValue(event.target.value)} placeholder={meta.placeholder} aria-label={meta.title} onKeyDown={(event) => { if (event.key === "Enter" && value.trim() && !working) void run() }} className="h-9 w-28 rounded-xl border border-border bg-background px-3 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:w-36" />
+          <input value={value} onChange={(event) => setValue(event.target.value)} placeholder={meta.placeholder} title={meta.placeholder} aria-label={meta.title} onKeyDown={(event) => { if (event.key === "Enter" && value.trim() && !working) void run() }} className="h-9 w-40 rounded-xl border border-border bg-background px-3 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:w-48" />
           <button type="button" disabled={!value.trim() || working} onClick={() => void run()} className="inline-flex h-9 shrink-0 items-center rounded-full border border-border bg-card px-3.5 text-xs font-semibold outline-none transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">{working ? "…" : "Add"}</button>
         </div>
         {error ? <p className="mt-1.5 text-xs text-destructive">{error}</p> : null}

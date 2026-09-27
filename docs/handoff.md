@@ -7,6 +7,15 @@
 - Diagnostics live at `/api/decisions/status` and `/api/decisions/recent`; source bodies are never persisted there.
 - The browser shows only a global observing/active/degraded badge. The TypeSafe key stays in FastAPI.
 - Jev cannot create facts, write Hermes memory, delete records, or modify roadmap state.
+- `app/decision_engines.py` is the engine chain behind the gate: Jev (TypeSafe) -> Span-01 Lite
+  (`respan/span-01-lite` on OpenRouter's `/api/v1/systemone`, `OPENROUTER_API_KEY`) -> local Laya.
+  Unconfigured engines are skipped; `DecisionRecord.model` shows which engine answered and
+  `error_category` lists failed legs (e.g. `jev:timeout`). Span answers only `noul`, so choice and
+  score questions are rewritten per option/level and folded back. With Laya installed and no keys,
+  the gate now observes locally; the first call cold-loads the model (~6 s), including in rerank
+  request paths.
+- Emails: the student picks the classifier (default Laya) in the Emails panel; cloud engines fall
+  back down the same chain. See `outlook-threat-model.md`.
 
 State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.md` and
 `docs/future-work.md` before changing this area.

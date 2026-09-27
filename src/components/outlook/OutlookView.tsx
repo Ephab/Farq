@@ -6,6 +6,7 @@ import { ExternalLink, Mail, RefreshCw, ShieldCheck, Star } from "lucide-react"
 import { localDay, outlookApi, type MailItem, type OutlookStatus } from "@/lib/outlook-api"
 
 import { MailWorkspace, type MailFilters } from "./MailWorkspace"
+import { ClassifierPicker } from "./ClassifierPicker"
 
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -145,7 +146,7 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
     {!status ? <p className="py-6 text-sm text-muted-foreground">Loading Outlook connection…</p> : !status.connected ? <div className="mt-5 space-y-4">
       <div className="rounded-2xl border border-border p-5">
         <h2 className="flex items-center gap-2 font-semibold"><ShieldCheck className="size-5" />Classic Outlook on this computer</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Read the default mailbox signed in to classic Outlook on Windows. Farq classifies emails locally with Laya and keeps cleaned text for 30 days. It does not send, edit or delete Outlook messages.</p>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Read the default mailbox signed in to classic Outlook on Windows. Farq classifies emails locally with Laya by default (you can pick a cloud classifier after connecting) and keeps cleaned text for 30 days. It does not send, edit or delete Outlook messages.</p>
         {status.desktop_available ? <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-muted/50 p-4 text-sm"><input type="checkbox" aria-label="Allow classic Outlook mailbox access" checked={busy} disabled={busy} onChange={event => { if (event.target.checked) void connectDesktop() }} /><span>{busy ? "Connecting to classic Outlook…" : "I allow Farq to read and locally classify my classic Outlook mailbox."}</span></label> : <p className="mt-3 text-sm text-muted-foreground">Requires classic Outlook installed on Windows and Farq setup completed. This method is unavailable on macOS, in Docker, and with new Outlook.</p>}
       </div>
       <TokenConnection available={!!status.token_available} onConnected={load} />
@@ -155,7 +156,7 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
       <p aria-live="polite" className="mt-4 text-xs text-muted-foreground">{status.status === "running" || status.status === "queued" ? `Sync ${status.status} · ${status.processed ?? 0} messages classified` : status.last_sync ? `Last completed sync ${new Date(status.last_sync * 1000).toLocaleString()}` : "First sync has not completed"} · {status.auto_sync ? "Automatic sync every 15 minutes while Farq runs" : "Automatic sync paused"}</p>
 
       <label className="mt-4 flex items-start gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" className="mt-1" checked={!!status.coach_access} disabled={busy} onChange={event => void action("/coach-access", "PATCH", { accepted: event.target.checked })} /><span>Allow Coach to search and read my synced emails in this browser's Coach chats.<span className="mt-1 block text-xs text-muted-foreground">Matching email text may be sent to configured AI providers, including fallbacks. Coach and provider history may retain it. Uncheck to stop future access; disconnect also revokes access.</span></span></label>
-      {status.jev_available ? <label className="mt-3 flex items-start gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" className="mt-1" checked={!!status.jev_access} disabled={busy} onChange={event => void action("/jev-access", "PATCH", { accepted: event.target.checked })} /><span>Let the Jev decision layer review newly synced emails.<span className="mt-1 block text-xs text-muted-foreground">Each new or changed email's subject and cleaned text is sent to TypeSafe (Jev) after best-effort redaction. Only its answers are stored in Farq, not the email text. The provider may retain what it receives. Uncheck to stop future sends; disconnect also turns this off.</span></span></label> : null}
+      {status.classifiers ? <ClassifierPicker engines={status.classifiers} selected={status.classifier ?? "laya"} busy={busy} onSelect={engine => void action("/classifier", "PATCH", { engine })} /> : null}
 
       {status.worker_enabled === false && <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">Sync worker is disabled. Enable OUTLOOK_SYNC_ENABLED on the API server and restart it.</p>}
 
@@ -167,7 +168,7 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
       {!compact && <><nav aria-label="Mail views" className="mt-5 flex flex-wrap gap-2">{views.map(tab => <button key={tab} className={`${button} ${view === tab ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{labels[tab]}</button>)}</nav>
 
-        <p className="mt-3 text-sm text-muted-foreground">Laya labels are suggestions. Important includes your pinned messages and model suggestions. Today includes mail received today in your timezone, plus dates you set. Arabic and uncertain messages stay available under Needs review.</p></>}
+        <p className="mt-3 text-sm text-muted-foreground">Classifier labels are suggestions. Important includes your pinned messages and model suggestions. Today includes mail received today in your timezone, plus dates you set. Arabic and uncertain messages stay available under Needs review.</p></>}
 
       {!compact ? <MailWorkspace key={view} items={items} total={total} busy={busy} filters={filters} onFilters={next => { setFilters(next); setOffset(0) }} offset={offset} pageSize={pageSize} onPage={setOffset} onAction={action} dismissed={view === "dismissed"} /> : <div className="mt-4 space-y-3">{items.map(item => <article key={item.id} className="rounded-2xl border border-border p-4">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-muted-foreground">{item.sender} · {item.received ? new Date(item.received).toLocaleDateString() : "Unknown date"}</p><h2 className="mt-1 break-words font-semibold">{item.subject}</h2></div>{item.pinned && <Star aria-label="Pinned" className="size-4 shrink-0 fill-amber-500 text-amber-500" />}</div>

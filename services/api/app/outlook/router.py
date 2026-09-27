@@ -5,14 +5,14 @@ import secrets
 import os
 import time
 from datetime import date, datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, or_, and_
 from sqlalchemy.orm import Session
 
-from .. import decisions
+from .. import decision_engines
 from ..database import get_db
 from ..identity import CurrentUser, User
 from ..models import uid
@@ -56,7 +56,7 @@ def status(request: Request, response: Response, db: Db):
             "provider": "desktop" if connection.tenant == desktop.TENANT else "token",
             "worker_enabled": os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true",
             "coach_access": db.get(MailSession, auth.digest(request.cookies[auth.COOKIE])).coach_access,
-            "jev_available": decisions.enabled() and decisions.mode() != "off", "jev_access": connection.jev_access,
+            "classifier": connection.classifier, "classifiers": decision_engines.engines_status(),
             "auto_sync": connection.auto_sync, "status": connection.status,
             "last_sync": connection.last_sync, "processed": connection.processed, "error": connection.error}
 
@@ -153,17 +153,20 @@ def coach_access(body: CoachAccess, request: Request, user: CurrentUser, db: Db)
     return {"coach_access": session.coach_access}
 
 
-class JevAccess(BaseModel):
-    accepted: bool
+class Classifier(BaseModel):
+    engine: Literal["laya", "span", "jev"]
 
 
-@router.patch("/jev-access")
-def jev_access(body: JevAccess, request: Request, user: CurrentUser, db: Db):
+@router.patch("/classifier")
+def classifier(body: Classifier, request: Request, user: CurrentUser, db: Db):
     auth.require_origin(request)
     connection = connection_for(user, db)
-    connection.jev_access = body.accepted
+    # Laya is always selectable: choosing it withdraws cloud consent even when Laya isn't installed yet.
+    if body.engine != "laya" and not decision_engines.INFO[body.engine]().available:
+        raise HTTPException(409, "That classifier isn't set up on this server.")
+    connection.classifier = body.engine
     db.commit()
-    return {"jev_access": connection.jev_access}
+    return {"classifier": connection.classifier}
 
 
 class Preferences(BaseModel):
@@ -193,7 +196,7 @@ def disconnect(request: Request, response: Response, user: CurrentUser, db: Db):
     connection.token_cache, connection.lease_id, connection.status = "", "", "disconnected"
     connection.folder_scan_url, connection.folders_json = "", "[]"
     connection.label = ""
-    connection.jev_access = False
+    connection.classifier = "laya"
     db.execute(delete(MailItem).where(MailItem.connection_id == connection.id))
     db.execute(delete(MailFolder).where(MailFolder.connection_id == connection.id))
     db.execute(delete(MailCoachGrant).where(MailCoachGrant.connection_id == connection.id))

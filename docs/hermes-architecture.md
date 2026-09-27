@@ -27,7 +27,8 @@ SQLite retrieval and Hermes context. It receives bounded, redacted snippets and 
 classification, actionability, urgency and roadmap-relevance decisions. In the default `shadow`
 mode, decisions are audited in `decision_records` but cannot change ingestion, facts, rankings or
 roadmaps. Failures are always fail-open. SQLite remains authoritative; Jev is not a memory store,
-and Hermes never calls TypeSafe directly.
+and Hermes never calls TypeSafe directly. When Jev is unavailable or fails, the same questions go
+to Respan Span-01 Lite via OpenRouter, then to the local Laya checkpoint (`decision_engines.py`).
 
 The observed ingestion purposes are co-op, Hackathonat, Blackboard, Outlook and onboarding
 evidence. Coach messages are intent-routed in shadow mode. Existing deterministic shortlists for

@@ -147,7 +147,10 @@ export interface DecisionStatus {
   state: "disabled" | "observing" | "active" | "degraded"
   enabled: boolean
   mode: "off" | "shadow" | "active"
-  model: string
+  engine: "jev" | "span" | "laya" | null
+  engine_label: string | null
+  model: string | null
+  engines: { id: string; label: string; available: boolean; reason: string }[]
   active_purposes: string[]
   last_success_at: string | null
   last_failure_at: string | null

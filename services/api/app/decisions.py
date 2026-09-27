@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Fail-open TypeSafe/Jev decision layer.
+"""Fail-open decision gate: Jev, then Span-01 Lite, then local Laya (see decision_engines).
 
 Jev observes narrow, redacted states. It never writes product state, creates a
 StudentFact, or talks to Hermes directly. Callers keep their deterministic
@@ -15,14 +15,13 @@ import time
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import decision_engines
 from .database import SessionLocal
 from .models import DecisionRecord
 
-API_URL = "https://api.typesafe.ai/v1/systemone"
 QUESTION_SET_VERSION = "farq-v1"
 MAX_ITEMS = 8
 MAX_TEXT_CHARS = 1600
@@ -54,7 +53,8 @@ INTENT_CRITERIA = {
 
 
 def enabled() -> bool:
-    return bool(os.getenv("TYPESAFE_AI_API_KEY", "").strip()) and os.getenv("JEV_ENABLED", "true").lower() in {"1", "true", "yes"}
+    """The gate runs when any engine in the chain is configured."""
+    return any(engine["available"] for engine in decision_engines.engines_status())
 
 
 def mode() -> str:
@@ -66,8 +66,8 @@ def active_purposes() -> set[str]:
     return {part.strip() for part in os.getenv("JEV_ACTIVE_PURPOSES", "").split(",") if part.strip()}
 
 
-def redact_text(value: object) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()[:MAX_TEXT_CHARS]
+def redact_text(value: object, limit: int = MAX_TEXT_CHARS) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()[:limit]
     text = _EMAIL.sub("[email]", text)
     text = _PHONE.sub("[phone]", text)
     text = _LONG_ID.sub("[id]", text)
@@ -105,13 +105,6 @@ def _questions(count: int, purpose: str) -> dict[str, dict]:
     return questions
 
 
-def _error_category(exc: Exception) -> str:
-    if isinstance(exc, httpx.TimeoutException): return "timeout"
-    if isinstance(exc, httpx.HTTPStatusError): return f"http_{exc.response.status_code}"
-    if isinstance(exc, httpx.HTTPError): return "network"
-    return "invalid_response"
-
-
 def _store(db: Session, items: list[DecisionItem], purpose: str, fingerprint: str, payload: dict | None, latency: int | None, error: str | None) -> list[DecisionRecord]:
     answers = payload.get("answers", {}) if payload else {}
     usage = payload.get("usage", {}) if payload else {}
@@ -147,21 +140,13 @@ def observe_items(db: Session, items: Iterable[DecisionItem], purpose: str = "in
         if all(ordered):
             return [record for record in ordered if record is not None]
     state = {"items": [{"id": index, "title": redact_text(item.title), "content": redact_text(item.text)} for index, item in enumerate(batch)]}
-    body = {"state": json.dumps(state, ensure_ascii=False), "model": os.getenv("JEV_MODEL", "jev-latest"), "questions": _questions(len(batch), purpose)}
-    timeout = float(os.getenv("JEV_TIMEOUT_SECONDS", "5"))
     started = time.perf_counter()
     error = None; payload = None
     try:
-        response = httpx.post(API_URL, headers={"Authorization": f"Bearer {os.environ['TYPESAFE_AI_API_KEY']}"}, json=body, timeout=timeout)
-        response.raise_for_status(); payload = response.json()
-        if not isinstance(payload.get("answers"), dict): raise ValueError("missing answers")
-    except Exception as exc:
-        error = _error_category(exc)
-        if error in {"timeout", "network", "http_429", "http_500", "http_502", "http_503", "http_504"}:
-            try:
-                response = httpx.post(API_URL, headers={"Authorization": f"Bearer {os.environ['TYPESAFE_AI_API_KEY']}"}, json=body, timeout=timeout)
-                response.raise_for_status(); payload = response.json(); error = None
-            except Exception as retry_exc: error = _error_category(retry_exc)
+        result = decision_engines.ask_chain(json.dumps(state, ensure_ascii=False), _questions(len(batch), purpose))
+        payload = result.payload
+    except decision_engines.EngineUnavailable as exc:
+        error = str(exc)[:40]  # e.g. "jev:timeout,span:http_429"
     latency = round((time.perf_counter() - started) * 1000)
     return _store(db, batch, purpose, fingerprint, payload, latency, error)
 
@@ -216,10 +201,14 @@ def status(db: Session) -> dict:
     latest = db.scalar(select(DecisionRecord).order_by(DecisionRecord.created_at.desc()))
     success = db.scalar(select(DecisionRecord).where(DecisionRecord.status != "error").order_by(DecisionRecord.created_at.desc()))
     failure = db.scalar(select(DecisionRecord).where(DecisionRecord.status == "error").order_by(DecisionRecord.created_at.desc()))
-    configured = enabled()
+    engines = decision_engines.engines_status()
+    lead = next((engine for engine in engines if engine["available"]), None)
+    configured = lead is not None
     state = "disabled" if not configured or mode() == "off" else "degraded" if latest and latest.status == "error" else "active" if mode() == "active" else "observing"
     return {
-        "state": state, "enabled": configured, "mode": mode(), "model": os.getenv("JEV_MODEL", "jev-latest"),
+        "state": state, "enabled": configured, "mode": mode(),
+        "engine": lead["id"] if lead else None, "engine_label": lead["label"] if lead else None,
+        "model": lead["model"] if lead else None, "engines": engines,
         "active_purposes": sorted(active_purposes()),
         "last_success_at": success.created_at.isoformat() if success else None,
         "last_failure_at": failure.created_at.isoformat() if failure else None,

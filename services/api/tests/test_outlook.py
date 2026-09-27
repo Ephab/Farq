@@ -4,6 +4,7 @@ import uuid
 from dataclasses import asdict
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from cryptography.fernet import Fernet
 from fastapi import FastAPI
@@ -284,46 +285,61 @@ def test_nested_folder_discovery_is_durable(world, monkeypatch):
         assert db.get(MailConnection, "alice").folder_scan_url == ""
 
 
-def test_jev_sees_synced_mail_only_after_opt_in(world, monkeypatch):
-    client, factory, _ = world
-    monkeypatch.setenv("TYPESAFE_AI_API_KEY", "test-jev-key")
-    sent = []
-    monkeypatch.setattr(sync, "observe_independently", lambda items, purpose: sent.append((list(items), purpose)))
-    def page(message_id, subject):
-        return {"value": [{"id": message_id, "subject": subject, "body": {"content": "Due Friday"}}],
-                "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta"}
-    def run(message_id, subject):
-        with factory() as db:
-            connection = db.get(MailConnection, "alice")
-            connection.status, connection.lease_id = "running", "lease"
-            if not db.scalars(select(MailFolder)).first():
-                db.add(MailFolder(connection_id="alice", remote_id="inbox"))
-            db.execute(MailFolder.__table__.update().values(completed=False, cursor="", next_page=""))
-            db.commit()
-        monkeypatch.setattr(sync, "graph_get", lambda *a: page(message_id, subject))
-        sync.work_one_page("alice", "lease")
 
-    status = client.get("/api/outlook/status").json()
-    assert status["jev_available"] is True and status["jev_access"] is False
-    run("m1", "Exam")
-    assert sent == []  # off by default
-
-    assert client.patch("/api/outlook/jev-access", json={"accepted": True}).json() == {"jev_access": True}
-    run("m2", "Lab report")
-    assert len(sent) == 1
-    items, purpose = sent[0]
-    assert purpose == "outlook_ingestion" and [(i.entity_id, i.title) for i in items] == [("m2", "Lab report")]
-    assert "Due Friday" in items[0].text
-
-    run("m2", "Lab report")  # unchanged content is not re-sent
-    assert len(sent) == 1
-
-    assert client.delete("/api/outlook/connection").status_code == 200
+def sync_one(factory, monkeypatch, message_id="m1", subject="Exam"):
     with factory() as db:
-        assert db.get(MailConnection, "alice").jev_access is False
+        connection = db.get(MailConnection, "alice")
+        connection.status, connection.lease_id = "running", "lease"
+        if not db.scalars(select(MailFolder)).first():
+            db.add(MailFolder(connection_id="alice", remote_id="inbox"))
+        db.execute(MailFolder.__table__.update().values(completed=False, cursor="", next_page=""))
+        db.commit()
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [{"id": message_id, "subject": subject, "body": {"content": "Due Friday"}}],
+                                                        "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta"})
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        return json.loads(db.scalar(select(MailItem).where(MailItem.remote_id == message_id)).classification)
 
 
-def test_jev_opt_in_hidden_without_key(world, monkeypatch):
+def test_classifier_selector_lists_engines_and_defaults_to_laya(world, monkeypatch):
     client, _, _ = world
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
-    assert client.get("/api/outlook/status").json()["jev_available"] is False
+    status = client.get("/api/outlook/status").json()
+    assert status["classifier"] == "laya"
+    assert [(e["id"], e["available"]) for e in status["classifiers"]][:2] == [("jev", False), ("span", False)]
+    assert client.patch("/api/outlook/classifier", json={"engine": "span"}).status_code == 409
+    assert client.patch("/api/outlook/classifier", json={"engine": "gpt"}).status_code == 422
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+    assert client.patch("/api/outlook/classifier", json={"engine": "span"}).json() == {"classifier": "span"}
+    assert client.delete("/api/outlook/connection").status_code == 200
+    with world[1]() as db:
+        assert db.get(MailConnection, "alice").classifier == "laya"
+
+
+def test_mail_reaches_cloud_only_when_chosen_and_falls_back_to_laya(world, monkeypatch):
+    client, factory, _ = world
+    from app import decision_engines
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+    sent = []
+    answer = {"fail": False}
+    def post(url, headers=None, json=None, timeout=None):
+        sent.append(url)
+        if answer["fail"]:
+            return httpx.Response(429, json={}, request=httpx.Request("POST", url))
+        answers = {k: {"type": "noul", "noul": .9 if k == "category::administration" else .2} for k in json["questions"]}
+        return httpx.Response(200, json={"answers": answers}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(decision_engines.httpx, "post", post)
+
+    assert sync_one(factory, monkeypatch, "m1")["category"] == "coursework"  # Laya (fixture) by default
+    assert sent == []
+
+    client.patch("/api/outlook/classifier", json={"engine": "span"})
+    result = sync_one(factory, monkeypatch, "m2")
+    assert result["category"] == "administration" and "engine_span" in result["review_reasons"]
+    assert sent == [decision_engines.OPENROUTER_URL]
+
+    answer["fail"] = True
+    result = sync_one(factory, monkeypatch, "m3")
+    assert result["category"] == "coursework" and "fallback_from_span" in result["review_reasons"]

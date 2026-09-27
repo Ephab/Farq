@@ -3,9 +3,18 @@ import json
 import httpx
 import pytest
 
+from app import decision_engines
 from app.database import Base, SessionLocal, engine
 from app.decisions import DecisionItem, observe_items, redact_text, rerank, status
 from app.models import DecisionRecord
+
+
+@pytest.fixture(autouse=True)
+def jev_only(monkeypatch):
+    """These tests exercise the Jev leg; later engines are covered in test_decision_engines."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    off = decision_engines.EngineInfo("laya", "Laya", "local", "local", "laya", False, "off in tests")
+    monkeypatch.setitem(decision_engines.INFO, "laya", lambda: off)
 
 
 @pytest.fixture()
@@ -61,7 +70,7 @@ def test_timeout_is_recorded_and_does_not_raise(db, monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: (_ for _ in ()).throw(httpx.ReadTimeout("slow")))
     records = observe_items(db, [DecisionItem("outlook", "m1", "Subject", "Body")], "outlook_ingestion")
     assert records[0].status == "error"
-    assert records[0].error_category == "timeout"
+    assert records[0].error_category == "jev:timeout"
     assert status(db)["state"] == "degraded"
 
 

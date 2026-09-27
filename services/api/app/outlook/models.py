@@ -16,8 +16,9 @@ class MailConnection(Base):
     token_cache: Mapped[str] = mapped_column(Text, default="")
     connected: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_sync: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Opt-in: newly synced mail is sent to the external Jev decision layer. Off by default.
-    jev_access: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Email classifier chosen by the student: laya (local, default), span or jev. A cloud choice is
+    # consent to send redacted mail text to that provider and to later ones in the fallback chain.
+    classifier: Mapped[str] = mapped_column(String, default="laya")
     generation: Mapped[int] = mapped_column(Integer, default=1)
     next_sync: Mapped[float] = mapped_column(Float, default=0)
     lease_until: Mapped[float] = mapped_column(Float, default=0)

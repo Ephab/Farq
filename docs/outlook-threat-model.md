@@ -60,8 +60,13 @@ avoid reclassifying unchanged text. Reads exclude expired records immediately.
 HTML becomes plain text, React escapes it, and the app never fetches mail links,
 remote images or attachments. Cleaning removes known banners and tracking noise.
 Redaction is best-effort, not anonymization. Full cleaned bodies remain private in
-SQLite for 30 days. Classification is local; model labels never grant tools,
-retention, student facts, team events or roadmap authority.
+SQLite for 30 days. Classification is local (Laya) unless the student picks a cloud
+classifier in the Emails panel. Picking Jev or Span-01 Lite is consent to send each new
+or changed email's redacted, capped (8,000 chars) subject and cleaned text to that
+provider and to later cloud engines in the fallback chain (Jev -> Span-01 Lite); Laya is
+always the last resort. The choice is re-read per message, defaults to Laya and resets on
+disconnect. Span-01 Lite's free OpenRouter tier is not zero-retention. Model labels never
+grant tools, retention, student facts, team events or roadmap authority.
 
 Selected-email Q&A sends only the explicitly consented selection. Coach mailbox
 search requires a separate opt-in on the private mailbox session. Each Coach run

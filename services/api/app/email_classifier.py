@@ -177,6 +177,15 @@ class EmailClassifier:
             self._load()
         return self.device
 
+    def system_one(self, state: str, questions: dict) -> dict:
+        """Generic typed decisions for the decision gate's local fallback."""
+        with self._lock:
+            self._load()
+            try:
+                return self._agent.system_one(state, questions)
+            except Exception:
+                raise ClassifierUnavailable("Local decision failed.") from None
+
     def classify(self, email: EmailInput) -> EmailClassification:
         if not isinstance(email.subject, str) or not isinstance(email.body, str):
             raise TypeError("Email subject and body must be strings")

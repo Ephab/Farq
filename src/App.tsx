@@ -189,11 +189,11 @@ export default function App() {
               <p className="text-sm font-medium">{active}</p>
               {jev ? (
                 <span
-                  title={`${jev.model}${jev.last_success_at ? ` · last decision ${new Date(jev.last_success_at).toLocaleTimeString()}` : ""}${jev.last_error ? ` · fallback: ${jev.last_error}` : ""}`}
+                  title={`${jev.engines.map((e) => `${e.label}: ${e.available ? "available" : "not available"}`).join(" · ")}${jev.last_success_at ? ` · last decision ${new Date(jev.last_success_at).toLocaleTimeString()}` : ""}${jev.last_error ? ` · fallback: ${jev.last_error}` : ""}`}
                   className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${jev.state === "degraded" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : jev.state === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
                 >
                   <span className={`size-1.5 rounded-full ${jev.state === "degraded" ? "bg-amber-500" : jev.state === "active" ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                  Jev · {jev.state}
+                  {jev.engine_label ?? "Decisions"} · {jev.state}
                 </span>
               ) : null}
               {activeRun ? (

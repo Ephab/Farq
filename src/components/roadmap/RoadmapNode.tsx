@@ -76,7 +76,7 @@ export const RoadmapNode = memo(function RoadmapNode({
       aria-label={`${node.title} — ${status.replace("-", " ")}. ${node.nodeType === "project" ? "Double-click or right-click to open the project workspace." : `Double-click or right-click to ${isDone ? "mark not started" : "mark done"}.`}`}
       aria-pressed={selected}
       className={cn(
-        "group absolute flex flex-col rounded-xl border p-3 text-left outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md",
+        "group absolute flex flex-col rounded-xl border p-3 text-start outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md",
         "focus-visible:ring-2 focus-visible:ring-ring",
         isDone
           ? "border-foreground bg-foreground text-background shadow-md"

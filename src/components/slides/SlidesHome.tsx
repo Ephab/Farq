@@ -410,7 +410,7 @@ export function SlidesHome(props: SlidesHomeProps) {
                         aria-checked={active}
                         aria-label={`${topic.title}${roadmapLinked ? " (for your roadmap)" : ""}`}
                         className={cn(
-                          "flex w-full items-start gap-3 rounded-xl border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]",
+                          "flex w-full items-start gap-3 rounded-xl border p-3 text-start outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]",
                           active
                             ? "border-primary bg-muted"
                             : "border-border hover:bg-muted/50",

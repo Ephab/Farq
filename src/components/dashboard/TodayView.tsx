@@ -812,7 +812,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
               </div>
               <div className="flex flex-col items-center gap-4 lg:items-end">
                 <StageRing percent={stageProgress.percent} done={stageProgress.done} total={stageProgress.total} />
-                <p className="max-w-[32ch] text-center text-[13px] leading-relaxed opacity-75 lg:text-right">
+                <p className="max-w-[32ch] text-center text-[13px] leading-relaxed opacity-75 lg:text-end">
                   {currentStage?.title ?? "Current stage"}
                 </p>
               </div>

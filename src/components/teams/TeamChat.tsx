@@ -1,5 +1,6 @@
 "use client"
 
+import { matchesSearch } from "@/lib/i18n/core"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ArrowUp, BarChart3, CornerUpLeft, Flag, ListPlus, Pencil, Pin, Search, Sparkles, Trash2, X } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
@@ -41,7 +42,7 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
 
   const [flash, setFlash] = useState<string | null>(null)
   const needle = query.trim().toLowerCase()
-  const visible = needle ? messages.filter((message) => !message.deleted && message.content.toLowerCase().includes(needle)) : messages
+  const visible = needle ? messages.filter((message) => !message.deleted && matchesSearch(message.content, needle)) : messages
   const pinned = new Set(Object.values(store.decisions).map((decision) => decision.source_message_id))
   const typers = store.presence
     .filter((entry) => entry.typing && entry.user_id !== me)

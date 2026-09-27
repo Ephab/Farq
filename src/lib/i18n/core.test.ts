@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { en } from "@/locales/en"
 import { ar } from "@/locales/ar"
-import { createFormatters, createTranslator, dirOf, resolveInitialLocale, type Catalog, type Locale } from "./core"
+import { createFormatters, createTranslator, dirOf, matchesSearch, resolveInitialLocale, type Catalog, type Locale } from "./core"
 
 const catalogs = { en, ar } as unknown as Record<Locale, Catalog>
 
@@ -56,5 +56,17 @@ describe("formatters", () => {
     const now = Date.parse("2026-09-27T12:00:00Z")
     expect(createFormatters("en").relative(now - 3 * 60_000, now)).toBe("3 minutes ago")
     expect(createFormatters("ar").relative(now - 3 * 60_000, now)).toMatch(/3/)
+  })
+})
+
+describe("search matching", () => {
+  it("folds Arabic spelling variants without touching the source", () => {
+    const stored = "مَدْرَسَة إدارة الأعمال"
+    expect(matchesSearch(stored, "مدرسه")).toBe(true)
+    expect(matchesSearch(stored, "  ادارة ")).toBe(true)
+    expect(matchesSearch("مستوى ٣", "مستوي 3")).toBe(true)
+    expect(matchesSearch("Report محمد GPT-5.6", "gpt-5.6")).toBe(true)
+    expect(matchesSearch("Ahmed", "محمد")).toBe(false)
+    expect(stored).toBe("مَدْرَسَة إدارة الأعمال")
   })
 })

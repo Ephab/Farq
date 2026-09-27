@@ -980,7 +980,7 @@ export function AnimatedSidebarMenuSubButton({
   );
 
   const interactiveClassName = cn(
-    "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left text-xs outline-none",
+    "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-start text-xs outline-none",
     "text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
     "focus-visible:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring",
     isActive && "bg-muted/70 text-foreground",
@@ -1084,7 +1084,7 @@ export function AnimatedSidebarMenuButton({
           layoutId={context.layoutId}
           transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
           // The active page takes the theme accent: a soft tint plus a short bar on the leading edge.
-          className="absolute inset-0 rounded-xl bg-primary/10 before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
+          className="absolute inset-0 rounded-xl bg-primary/10 before:absolute before:inset-y-2 before:start-0 before:w-[3px] before:rounded-full before:bg-primary"
         />
       ) : null}
       {icon ? (
@@ -1099,7 +1099,7 @@ export function AnimatedSidebarMenuButton({
         initial={false}
         animate={{
           opacity: panel.collapsed ? 0 : 1,
-          x: panel.collapsed ? -4 : 0,
+          x: panel.collapsed ? (dir === "rtl" ? 4 : -4) : 0,
         }}
         transition={
           context.reduce
@@ -1141,7 +1141,7 @@ export function AnimatedSidebarMenuButton({
   );
 
   const interactiveClassName = cn(
-    "relative flex min-h-9 w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-xl px-3 text-left text-sm font-medium outline-none",
+    "relative flex min-h-9 w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-xl px-3 text-start text-sm font-medium outline-none",
     "text-muted-foreground transition-colors hover:text-foreground",
     "focus-visible:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring",
     isActive && "text-foreground",

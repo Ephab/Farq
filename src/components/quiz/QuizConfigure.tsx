@@ -153,7 +153,7 @@ export function QuizConfigure({
                 onClick={() => toggleType(t.id)}
                 aria-pressed={active}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-start outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   active
                     ? "border-primary/40 bg-muted"
                     : "border-border hover:bg-muted/50",

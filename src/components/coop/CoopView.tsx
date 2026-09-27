@@ -1,5 +1,6 @@
 "use client"
 
+import { matchesSearch } from "@/lib/i18n/core"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bookmark, BriefcaseBusiness, Building2, ExternalLink, FlaskConical, MapPin, Search, Sparkles, X } from "lucide-react"
 import { api, getCurrentStudentId } from "@/lib/waypoint-api"
@@ -113,7 +114,7 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
     return data.companies.filter((item) => {
       if (tab === "saved" && item.state !== "saved") return false
       if (tab === "openings") return false
-      return !needle || [item.name, item.overview, ...item.sectors, ...item.tracks].join(" ").toLowerCase().includes(needle)
+      return !needle || matchesSearch([item.name, item.overview, ...item.sectors, ...item.tracks].join(" "), needle)
     })
   }, [data, query, tab])
 
@@ -123,7 +124,7 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
     return data.postings.filter((item) => {
       if (tab === "matches") return false
       if (tab === "saved" && item.state !== "saved") return false
-      return !needle || [item.title, item.company_name, item.location, ...item.skills].join(" ").toLowerCase().includes(needle)
+      return !needle || matchesSearch([item.title, item.company_name, item.location, ...item.skills].join(" "), needle)
     })
   }, [data, query, tab])
 

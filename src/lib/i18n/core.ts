@@ -114,3 +114,27 @@ export function createFormatters(locale: Locale) {
     list: (items: string[]) => new Intl.ListFormat(tag, { style: "long", type: "conjunction" }).format(items),
   }
 }
+
+/**
+ * Match key for search only; never store or display the result. Folds case, diacritics
+ * (harakat, tatweel), Alef forms (أ إ آ ٱ → ا), ة → ه, ى → ي and Arabic-Indic digits,
+ * so "مدرسة", "مدرسه" and "مَدْرَسَة" all find each other.
+ */
+export function normalizeForSearch(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[ً-ٰٟۖ-ۭـ]/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+export function matchesSearch(haystack: string, query: string): boolean {
+  const q = normalizeForSearch(query)
+  return q === "" || normalizeForSearch(haystack).includes(q)
+}

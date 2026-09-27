@@ -1,5 +1,6 @@
 "use client";
 
+import { matchesSearch } from "@/lib/i18n/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NODES, STAGES, type NodeStatus, type RoadmapNodeData, type RoadmapStage } from "@/data/computer-vision-roadmap";
 import type { RoadmapOrientation } from "@/lib/roadmap-layout";
@@ -47,7 +48,7 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
     const dimmed = new Set<string>();
     for (const node of nodes) {
       if (level !== "All" && node.level !== level) { dimmed.add(node.id); continue; }
-      if (q && !`${node.title} ${node.tagline} ${node.description} ${node.subtopics.join(" ")}`.toLowerCase().includes(q)) dimmed.add(node.id);
+      if (q && !matchesSearch(`${node.title} ${node.tagline} ${node.description} ${node.subtopics.join(" ")}`, q)) dimmed.add(node.id);
     }
     return dimmed;
   }, [nodes, query, level]);
@@ -71,7 +72,7 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
   return (
     <div className="flex h-[calc(100dvh-4rem)] min-h-0 flex-none flex-col overflow-hidden bg-background">
       <RoadmapHeader title={title} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} view={view} onView={setView} onReset={reset} />
-      {version ? <div className="border-b border-border px-6 py-1.5 text-right text-[11px] text-muted-foreground">Personal roadmap · version {version}</div> : null}
+      {version ? <div className="border-b border-border px-6 py-1.5 text-end text-[11px] text-muted-foreground">Personal roadmap · version {version}</div> : null}
       {loadError ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">Backend unavailable: showing the bundled roadmap. {loadError}</div> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <RoadmapCanvas

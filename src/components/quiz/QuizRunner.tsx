@@ -288,7 +288,7 @@ export function QuizRunner({
                     whileTap={revealed || reduce ? undefined : { scale: 0.985 }}
                     transition={SPRING_PRESS}
                     className={cn(
-                      "flex items-center gap-4 rounded-2xl border-2 px-5 py-4 text-left text-base outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring sm:py-5 sm:text-lg",
+                      "flex items-center gap-4 rounded-2xl border-2 px-5 py-4 text-start text-base outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring sm:py-5 sm:text-lg",
                       revealed && isCorrectOpt
                         ? "border-emerald-500/70 bg-emerald-500/10"
                         : revealed && selected && !isCorrectOpt

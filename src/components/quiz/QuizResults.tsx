@@ -50,7 +50,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
   return (
     <div className="w-full px-4 py-8 sm:px-8 lg:px-10">
       <div className="grid w-full items-start gap-8 lg:grid-cols-[360px_minmax(0,1fr)]">
-      <div className="min-w-0 text-center lg:sticky lg:top-6 lg:text-left">
+      <div className="min-w-0 text-center lg:sticky lg:top-6 lg:text-start">
         <motion.div
           initial={reduce ? false : { scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -148,7 +148,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                   type="button"
                   onClick={() => setOpenId(open ? null : q.id)}
                   aria-expanded={open}
-                  className="block w-full px-5 py-5 text-left outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 sm:py-6"
+                  className="block w-full px-5 py-5 text-start outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 sm:py-6"
                 >
                   <span className="flex items-center gap-3">
                     <span

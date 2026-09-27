@@ -45,7 +45,8 @@ def ensure_hermes() -> str:
             with urllib.request.urlopen(url, timeout=60) as response:
                 installer.write_bytes(response.read())
             command_line = (["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(installer),
-                             "-NonInteractive", "-SkipSetup", "-SkipComputerUse"] if os.name == "nt" else
+                             # -NonInteractive also skips the setup/gateway-service stages.
+                             "-NonInteractive", "-SkipBrowser"] if os.name == "nt" else
                             ["bash", str(installer), "--non-interactive", "--skip-setup", "--skip-browser"])
             subprocess.run(command_line, env=clean_env, check=True)
         command = executable("hermes")

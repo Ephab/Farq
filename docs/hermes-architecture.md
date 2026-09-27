@@ -187,6 +187,24 @@ and shows originals + extension as one unified deck styled with the deck's own
 theme. Decks and saved extensions persist in the shared localStorage quiz
 library; original files stay in memory only.
 
+## Voice dictation
+
+Coach and onboarding composers share a mic button (`ChatThreadView.tsx` +
+`use-voice-input.ts`). The browser records with MediaRecorder and POSTs the
+finished clip to `POST /api/transcribe`; FastAPI forwards the bytes to
+`gemini-3.5-transcribe` (`SMART` mode, auto language detect) with the
+server's `GEMINI_API_KEY` — the same provider key the Hermes gateway uses
+for generation — and returns `{"text": ...}`. The transcript fills the
+composer as an editable draft and is never auto-sent.
+
+Boundaries: the browser never calls Google directly and never sees the key;
+clips are capped (~10 MB, ~3 minutes), held in memory only, and never
+written to disk, SQLite, or Hermes memory. A transcript becomes a message
+(and possibly a StudentFact) only after the student presses Send through
+the normal chat path. Mic access is per-press `getUserMedia`; denial and
+missing-key states show actionable errors. True live streaming
+(`gemini-3.5-transcribe-live` interim captions) is deferred future work.
+
 ## Tool contracts
 
 - `waypoint_get_student_context(user_id)` reads active verified facts.

@@ -29,6 +29,8 @@
   --fq-warning-soft: rgba(154, 97, 0, 0.11);
   --fq-danger: #bf3f53;
   --fq-danger-soft: rgba(191, 63, 83, 0.1);
+  /* Icon/text drawn on the danger fill: white keeps 5.2:1 on #bf3f53. */
+  --fq-on-danger: #ffffff;
   --fq-shadow-sm: 0 8px 24px rgba(38, 52, 84, 0.08);
   --fq-shadow-lg: 0 28px 80px rgba(34, 48, 82, 0.16);
   --fq-shadow-accent: 0 12px 30px color-mix(in srgb, var(--primary) 22%, transparent);
@@ -78,6 +80,8 @@ html[data-theme="deep-ocean"] .fq {
   --fq-warning-soft: rgba(241, 183, 91, 0.12);
   --fq-danger: #ff8497;
   --fq-danger-soft: rgba(255, 132, 151, 0.12);
+  /* White is 2.3:1 on #ff8497 — a dark plum keeps 7.8:1. */
+  --fq-on-danger: #241016;
   --fq-shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.24);
   --fq-shadow-lg: 0 32px 90px rgba(0, 0, 0, 0.45);
   --fq-shadow-accent: 0 14px 36px color-mix(in srgb, var(--primary) 24%, transparent);
@@ -615,7 +619,7 @@ html[data-theme="deep-ocean"] .fq {
 
 .fq .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 10px;
   border: 1px solid var(--fq-line-strong);
@@ -677,6 +681,137 @@ html[data-theme="deep-ocean"] .fq {
 .fq button.send-button[data-stop] {
   background: var(--fq-danger);
   color: #fff;
+}
+
+/* Voice dictation: mic button beside the composer + recording status row. */
+.fq .mic-button {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 15px;
+  border: 1px solid var(--fq-line-strong);
+  background: transparent;
+  color: var(--fq-muted);
+  cursor: pointer;
+  transition: transform 170ms var(--fq-ease-out), color 170ms ease, border-color 170ms ease, background 170ms ease, opacity 170ms ease;
+}
+
+.fq .mic-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  color: var(--fq-accent);
+  border-color: var(--fq-accent);
+}
+
+.fq .mic-button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.fq .mic-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.fq .mic-button.recording {
+  background: var(--fq-danger);
+  border-color: transparent;
+  color: var(--fq-on-danger);
+  animation: fq-voice-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes fq-voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.fq .voice-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  /* --fq-muted falls to 3.7:1 on tokyo-night; text-soft stays >= 5.2:1. */
+  color: var(--fq-text-soft);
+}
+
+.fq .voice-wave {
+  width: 120px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.fq .voice-skeleton {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--fq-accent);
+}
+
+.fq .voice-skeleton > span {
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: center;
+  animation: fq-voice-eq 0.9s ease-in-out infinite;
+}
+
+@keyframes fq-voice-eq {
+  0%, 100% { transform: scaleY(0.2); opacity: 0.5; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+.fq .voice-cancel {
+  margin-inline-start: auto;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 12.5px;
+  color: var(--fq-text-soft);
+  cursor: pointer;
+}
+
+.fq .voice-cancel:hover {
+  color: var(--fq-danger);
+}
+
+.fq .voice-transcribing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fq .voice-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  color: var(--fq-danger);
+}
+
+.fq .voice-error button {
+  margin-inline-start: auto;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.fq .voice-error button:hover {
+  background: var(--fq-danger-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fq .mic-button.recording,
+  .fq .voice-skeleton > span {
+    animation: none;
+  }
 }
 
 /* Context panel: plan context, knowledge, tools. */

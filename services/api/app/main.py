@@ -43,6 +43,7 @@ from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
 from .quiz import QuizRunError, run_quiz
 from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, decode_original_pptx, run_extend, run_suggest
+from .transcribe import TranscribeError, transcribe_audio
 
 
 STARTED_AT = time.time()
@@ -1185,6 +1186,25 @@ def export_slides(body: SlidesExportInput) -> Response:
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="extended-{safe or "slides"}.pptx"'},
     )
+
+
+@app.post("/api/transcribe")
+async def transcribe_voice(audio: UploadFile = File(...)) -> dict:
+    """Transcribe a short recorded voice clip with Gemini 3.5 Transcribe.
+
+    The browser records with MediaRecorder and posts the finished clip;
+    FastAPI forwards the bytes to Google with the server GEMINI_API_KEY
+    (the same key the Hermes gateway uses for generation) and returns
+    ``{"text": ...}``. Audio stays in memory and is never stored; the
+    transcript is a composer draft until the student presses Send through
+    the normal chat path.
+    """
+    data = await audio.read()
+    try:
+        text = await asyncio.to_thread(transcribe_audio, data, audio.content_type, audio.filename)
+    except TranscribeError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    return {"text": text}
 
 
 @app.get("/api/agent-runs/{run_id}")

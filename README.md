@@ -6,6 +6,19 @@ quizzes, slides, reviewed evidence, group projects and a private email workspace
 SQLite owns product state; AI suggestions never silently become student facts or
 accepted roadmap changes.
 
+## The education problems Waypoint addresses
+
+- **Students feel lost:** an adaptive roadmap turns their courses, goals, progress, and available
+  time into a clear next step while keeping future branches flexible.
+- **Curricula fall behind industry:** academic foundations are connected to current tools, projects,
+  soft skills, hackathons, and co-op opportunities.
+- **Students become dependent on AI:** Hermes acts as a coach and group teammate that teaches,
+  proposes, and asks for approval instead of silently doing the student's work.
+- **Career preparation starts too late:** project evidence and demonstrated skills feed personalized
+  Saudi company matches and preparation-gap guidance.
+
+See [the complete problem–solution overview](docs/problem-solution.md).
+
 ## Windows
 
 Install [Node.js LTS](https://nodejs.org/) and Git, clone the repository, then run:

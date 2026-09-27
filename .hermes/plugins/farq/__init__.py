@@ -174,6 +174,48 @@ def register(ctx):
             lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/hackathons?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
         ),
         (
+            "farq_find_coop_companies",
+            "Find Saudi co-op company matches ranked from the student's verified Farq profile, roadmap and projects.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header"},
+                    "query": {"type": "string", "description": "Optional domain such as govtech, AI, research, energy or cybersecurity"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 8, "default": 5},
+                },
+                "required": ["user_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/coop/companies?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
+        ),
+        (
+            "farq_find_coop_postings",
+            "Find cached Saudi co-op postings matched to the student, with official, Telegram, LinkedIn, freshness, and demo provenance.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string", "description": "The Farq user_id UUID from the run message header"},
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 8, "default": 5},
+                },
+                "required": ["user_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/coop/postings?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
+        ),
+        (
+            "farq_get_coop_target",
+            "Read one authoritative co-op company or posting, including fit reasons, gaps, source status and official links.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "target_type": {"type": "string", "enum": ["company", "posting"]},
+                    "target_id": {"type": "string"},
+                },
+                "required": ["user_id", "target_type", "target_id"],
+            },
+            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/coop/{p['target_type']}/{quote(p['target_id'], safe='')}"),
+        ),
+        (
             "farq_blackboard_list_courses",
             "List the student's courses in Farq's read-only, pre-indexed Blackboard demo snapshot.",
             {

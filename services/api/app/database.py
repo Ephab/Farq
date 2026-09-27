@@ -38,6 +38,11 @@ ADDED_COLUMNS = {
     "teams": {
         "size_limit": "INTEGER",
     },
+    "coop_postings": {
+        "canonical_key": "VARCHAR(64) NOT NULL DEFAULT ''",
+        "published_at": "DATETIME",
+        "last_seen_at": "DATETIME",
+    },
 }
 
 

@@ -42,6 +42,19 @@ SQLite values before storing it. The feed's `date` is labelled "Date shown by Ha
 the public endpoint does not define it as a registration deadline. A future Outlook connector
 will write into the same normalized opportunity boundary.
 
+## Co-op discovery
+
+Company fit and current openings are intentionally separate. FastAPI owns a curated Saudi company
+catalog and bounded official-page refreshers, then deterministically ranks each company from explicit
+facts, demonstrated roadmap skills and projects. Unknown eligibility stays unknown. Official
+pages, the public `nobthacv1` Telegram archive and optional Apify LinkedIn results are normalized,
+deduplicated and cached in SQLite. Source text is treated as untrusted data.
+
+Hermes can only read normalized results through `farq_find_coop_companies`,
+`farq_find_coop_postings` and `farq_get_coop_target`. It has no generic career-site browser and
+cannot apply for the student. A preparation request may become an ordinary future-only roadmap
+proposal; the existing validation and student acceptance boundary remains authoritative.
+
 ## Blackboard demo snapshot
 
 For the hackathon, Farq treats Blackboard as already indexed. A host-side importer reads only an

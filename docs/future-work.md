@@ -52,7 +52,9 @@ connector contract and merge duplicate registration URLs while preserving both s
 
 - Scheduled trend refresh and stale-course-material detection.
 - Updated lesson/slide generation with provenance.
-- Co-op matching, portfolio-gap analysis, and company research.
+- Extend co-op discovery with generic web search, authenticated Jadarat/Outlook ingestion,
+  official integration agreements, deadline notifications, portfolio-gap evidence and an
+  application/interview tracker.
 - Group-project agents with bounded task assignment and student ownership.
 - Add Playwright interaction/screenshot capture and richer headless CAD/KiCad adapters to the project
   evaluator. The current worker deeply runs common Python/Node recipes and performs bounded structural

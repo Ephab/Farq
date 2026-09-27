@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
+import { Bot, BriefcaseBusiness, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import {
   AnimatedSidebar,
@@ -28,6 +28,7 @@ import { HermesCoach } from "@/components/hermes/HermesCoach"
 import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
+import { CoopView } from "@/components/coop/CoopView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/farq-api"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -184,6 +185,16 @@ export default function App() {
                     </AnimatedSidebarMenuItem>
                     <AnimatedSidebarMenuItem>
                       <AnimatedSidebarMenuButton
+                        icon={<BriefcaseBusiness className="size-4" />}
+                        isActive={active === "Co-op"}
+                        onSelect={() => setActive("Co-op")}
+                        className="text-[15px]"
+                      >
+                        Co-op
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
+                    <AnimatedSidebarMenuItem>
+                      <AnimatedSidebarMenuButton
                         icon={<ListChecks className="size-4" />}
                         isActive={active === "Quizzes"}
                         onSelect={() => setActive("Quizzes")}
@@ -260,6 +271,8 @@ export default function App() {
                 <SlidesView />
               ) : active === "Group Projects" ? (
                 <TeamsView />
+              ) : active === "Co-op" ? (
+                <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
               ) : (

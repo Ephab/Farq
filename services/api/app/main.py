@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from . import outlook as outlook_api
 from .blackboard import router as blackboard_router
+from .coop import router as coop_router, seed_coop_catalog, sync_all_coop_sources, sync_coop_source
 from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
 from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
@@ -44,7 +45,7 @@ from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, dec
 
 STARTED_AT = time.time()
 OPPORTUNITY_SYNC_ENABLED = os.getenv("OPPORTUNITY_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}
-OPPORTUNITY_SYNC_SECONDS = 6 * 60 * 60
+OPPORTUNITY_SYNC_SECONDS = 30 * 60
 _opportunity_sync_task: asyncio.Task | None = None
 
 
@@ -57,6 +58,7 @@ app.include_router(projects_router)
 app.include_router(identity_router)
 app.include_router(teams_router)
 app.include_router(blackboard_router)
+app.include_router(coop_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")],
@@ -198,6 +200,7 @@ async def startup() -> None:
         db.commit()
         seed_teams(db)
         seed_teammate_roadmaps(db)
+        seed_coop_catalog(db)
     finally:
         db.close()
     global _opportunity_sync_task
@@ -206,15 +209,27 @@ async def startup() -> None:
 
 
 async def _opportunity_sync_loop() -> None:
+    cycle = 0
     while True:
         db = SessionLocal()
         try:
-            await asyncio.to_thread(sync_hackathonat, db)
+            try:
+                await asyncio.to_thread(sync_hackathonat, db)
+            except Exception:
+                pass
+            try:
+                if cycle == 0:
+                    await asyncio.to_thread(sync_all_coop_sources, db)
+                else:
+                    await asyncio.to_thread(sync_coop_source, db, "telegram")
+            except Exception:
+                pass
         except Exception:
             # A failed run is persisted and the previous cache remains usable.
             pass
         finally:
             db.close()
+        cycle = (cycle + 1) % 12
         await asyncio.sleep(OPPORTUNITY_SYNC_SECONDS)
 
 

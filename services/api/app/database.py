@@ -24,6 +24,7 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 # Columns added after the first release. create_all() never alters existing
 # tables, so older local SQLite databases get them here (no migration tool yet).
 ADDED_COLUMNS = {
+    "outlook_sessions": {"coach_access": "BOOLEAN NOT NULL DEFAULT 0"},
     "student_facts": {
         "source_kind": "VARCHAR(24) NOT NULL DEFAULT 'chat'",
         "evidence_id": "VARCHAR(36)",

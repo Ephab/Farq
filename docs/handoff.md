@@ -13,6 +13,25 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 
 ## What was built
 
+### Outlook and local setup (2026-09-27)
+- Exactly two mailbox methods: native Windows classic Outlook and a temporary
+  Microsoft Graph access token. Entra/OAuth/device-code routes and MSAL are removed.
+- Classic Outlook asks only for a browser consent checkbox. Setup generates its
+  server-only local token after a passive capability probe; browser consent is
+  protected by same-origin/localhost checks and expiring one-time cookies.
+- Both methods share full cleaned-text caching, local Laya suggestions and one
+  Emails workspace. Home's email widget is in the right column. Cache retention
+  is 30 days; classifications never become StudentFacts or team events.
+- Windows: `setup.bat`, `run.bat`. macOS: `bash setup.sh`, `bash run.sh`.
+  Shared setup manages uv/Python/locked dependencies, verifies Hermes and Laya,
+  installs frontend packages and generates missing `.env` secrets without rotating
+  valid existing credentials. Duplicate pip and platform setup paths are removed.
+- Coach and selected-email Q&A share the gateway at port 8642. Opt-in Coach mail
+  search uses expiring run capabilities and read-only cached-mail tools. Explicit
+  consent is required before sending email text to configured AI providers.
+- See `outlook-setup.md` and `outlook-threat-model.md` for setup, privacy and upgrades.
+  Tests mock Microsoft; live tenant policy and macOS setup require target-device checks.
+
 ### Personalized Saudi co-op discovery
 - Sidebar **Co-op** ranks a checked-in catalog of Saudi organizations from verified student facts,
   completed/in-progress roadmap skills and projects. It separates stable company fit from current
@@ -151,8 +170,8 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 
 ### 6. Smaller fixes
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.
-- `scripts/dev.ps1` re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start.
-  `scripts/firas_run_mac.py` and its Windows port `scripts/run_windows.py` copy the same set
+- `scripts/runtime.py`, shared by `scripts/run_mac.py` and `scripts/run_windows.py`,
+  re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start
   (every dir under `.hermes/skills`); Docker mounts each
   skill into `/opt/data/skills`. `tests/test_hermes_packaging.py` fails if a checked-in skill is not
   provisioned on every launch path.
@@ -186,7 +205,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
 - No visual diff for proposals; quiz results do not feed the roadmap yet.
 
 ## Next steps (in order)
-1. Restart (`scripts/dev.ps1`) and run the full onboarding live with a real model; fix what breaks.
+1. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.
 2. Dry-run a non-CS student (e.g. Medicine with only a CV) and check discipline cards + roadmap shape.
 3. Put `HF_TOKEN` in `.env`, restart, confirm a Hugging Face run through the gateway.
 4. Replace placeholders (Home/Dashboard) with roadmap progress + recent proposals for the demo.

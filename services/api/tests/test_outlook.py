@@ -1,115 +1,284 @@
+import json
+import time
+import uuid
+from dataclasses import asdict
+from types import SimpleNamespace
+
 import pytest
-from sqlalchemy import create_engine
+from cryptography.fernet import Fernet
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app import outlook as outlook_api
-from app.models import Base, OutlookAccount
+from app.database import Base, get_db
+from app.email_classifier import EmailClassification
+from app.identity import User
+from app.outlook import auth, sync
+from app.outlook.models import MailConnection, MailFolder, MailItem, MailSession
+from app.outlook.router import router
 
-
-@pytest.fixture()
-def db():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine, tables=[OutlookAccount.__table__])
-    session = sessionmaker(bind=engine, expire_on_commit=False)()
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
+ORIGIN = "http://localhost:5173"
 
 
-def test_email_count_limits_are_enforced():
-    with pytest.raises(outlook_api.OutlookError):
-        outlook_api.check_limit(0)
-    with pytest.raises(outlook_api.OutlookError):
-        outlook_api.check_limit(26)
-    assert outlook_api.check_limit(7) == 7
+@pytest.fixture
+def world(monkeypatch):
+    values = {"OUTLOOK_APP_ORIGIN": ORIGIN, "OUTLOOK_LOCAL_TOKEN": "test-local-token-" * 4,
+              "FARQ_TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(), "OUTLOOK_SYNC_ENABLED": "true"}
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = FastAPI()
+    app.include_router(router)
+    def database():
+        with factory() as db:
+            yield db
+    app.dependency_overrides[get_db] = database
+    monkeypatch.setattr(sync, "SessionLocal", factory)
+    monkeypatch.setattr(sync, "token_for", lambda connection: ("test-token", auth.seal("cache")))
+    classification = EmailClassification("coursework", {}, .8, .8, .8, .2, ("uncalibrated_email_domain",))
+    monkeypatch.setattr(sync, "_classifier", SimpleNamespace(classify=lambda email: classification))
+    with factory() as db:
+        for user_id in ("alice", "bob"):
+            db.add(User(id=user_id, display_name=user_id, source="microsoft"))
+            db.flush()
+            db.add(MailConnection(id=user_id, user_id=user_id, account_id=user_id, tenant=auth.TOKEN_TENANT, label=user_id + "@uni.edu", token_cache=auth.seal("cache")))
+            db.add(MailSession(token_hash=auth.digest(user_id + "-cookie"), user_id=user_id, expires=time.time() + 600))
+        db.commit()
+    with TestClient(app, base_url=ORIGIN) as client:
+        client.cookies.set(auth.COOKIE, "alice-cookie")
+        client.headers["Origin"] = ORIGIN
+        yield client, factory, values
+    engine.dispose()
 
 
-def test_html_bodies_become_plain_text_and_ids_are_redacted():
-    item = {
-        "id": "m1",
-        "subject": "Midterm schedule",
-        "from": {"emailAddress": {"name": "Registrar", "address": "reg@univ.edu"}},
-        "receivedDateTime": "2026-09-20T10:00:00Z",
-        "bodyPreview": "Midterm on Oct 5",
-        "body": {"contentType": "html", "content": "<p>Call +1 (555) 123-4567 ref 987654</p><script>evil()</script>"},
-        "isRead": False,
-    }
-    email = outlook_api.normalize_message(item)
-    assert email["subject"] == "Midterm schedule"
-    assert "evil" not in email["body"]
-    assert "+1 (555)" not in email["body"]
-    assert "987654" not in email["body"]
-    assert "[phone]" in email["body"]
+def insert_item(factory, connection="alice", **kwargs):
+    with factory() as db:
+        item = MailItem(connection_id=connection, remote_id=str(uuid.uuid4()), folder_id="inbox", subject="Private mail",
+                        sender="University", excerpt="Private excerpt", received="2026-09-26T10:00:00Z", web_url="", content_hash="hash",
+                        expires=time.time() + 1000, **kwargs)
+        db.add(item); db.commit()
+        return item.id
 
 
-def test_email_prompt_labels_untrusted_data_and_cites_source():
-    emails = [{
-        "id": "m1", "subject": "Lab deadline", "sender": {"name": "TA", "address": "ta@univ.edu"},
-        "received": "2026-09-20", "preview": "Lab due Friday", "body": "Lab due Friday at 5pm", "is_read": True,
-    }]
-    prompt = outlook_api.build_email_prompt(emails, "When is the lab due?")
-    assert "UNTRUSTED EMAIL DATA" in prompt
-    assert "Lab deadline" in prompt
-    assert "When is the lab due?" in prompt
+def test_mailbox_requires_session_not_demo_header(world):
+    client, factory, _ = world
+    insert_item(factory, "alice")
+    client.cookies.clear()
+    assert client.get("/api/outlook/messages", headers={"X-Farq-User": "alice"}).status_code == 401
+    assert client.get("/api/outlook/status").json()["connected"] is False
 
 
-def test_email_instructions_forbid_tools_and_following_body_instructions():
-    assert "Do not call any tools" in outlook_api.EMAIL_INSTRUCTIONS
-    assert "never instructions" in outlook_api.EMAIL_INSTRUCTIONS
+def test_owner_isolation_and_filters(world):
+    client, factory, _ = world
+    alice = insert_item(factory, pinned=True, due_date="2026-09-25")
+    bob = insert_item(factory, "bob")
+    result = client.get("/api/outlook/messages?view=important").json()
+    assert [row["id"] for row in result["items"]] == [alice]
+    assert client.patch(f"/api/outlook/messages/{bob}", json={"reviewed": True}).status_code == 404
+    assert client.patch(f"/api/outlook/messages/{alice}", json={"due_date": "2026-09-27", "reviewed": True}).status_code == 200
+    assert client.get("/api/outlook/messages?view=review").json()["total"] == 0
+    assert client.get("/api/outlook/messages?view=today&day=2026-09-25").json()["total"] == 0
 
 
-def test_status_never_exposes_tokens(db):
-    status = outlook_api.status_for(db, "nobody")
-    assert status["connected"] is False
-    assert "refresh_token" not in status
-    assert "access_token" not in status
+def test_csrf_disconnect_and_late_worker(world):
+    client, factory, _ = world
+    insert_item(factory)
+    assert client.delete("/api/outlook/connection", headers={"Origin": "https://evil.test"}).status_code == 403
+    assert client.delete("/api/outlook/connection").status_code == 200
+    with factory() as db:
+        assert db.get(MailConnection, "alice").token_cache == ""
+        assert not db.scalars(select(MailItem).where(MailItem.connection_id == "alice")).all()
+        assert not sync.lease_valid(db, "alice", 1, "")
+    assert client.get("/api/outlook/messages").status_code == 401
 
 
-def test_emails_require_connection(db):
-    with pytest.raises(outlook_api.OutlookError) as exc:
-        outlook_api.fetch_latest_emails(db, "nobody", 5)
-    assert exc.value.status == 409
+def test_today_uses_local_midnight_and_excludes_next_day(world):
+    client, factory, _ = world
+    ids = [insert_item(factory) for _ in range(3)]
+    with factory() as db:
+        for item_id, received in zip(ids, ["2026-09-25T20:59:59Z", "2026-09-25T21:00:00Z", "2026-09-26T21:00:00Z"]):
+            db.get(MailItem, item_id).received = received
+        db.commit()
+    result = client.get("/api/outlook/messages?view=today&day=2026-09-26&timezone_offset=-180").json()
+    assert [item["id"] for item in result["items"]] == [ids[1]]
 
 
-def test_chat_rejects_empty_question():
-    with pytest.raises(outlook_api.EmailChatError) as exc:
-        outlook_api.run_email_chat([], "   ")
-    assert exc.value.status == 422
 
 
-def test_disconnect_clears_account(db):
-    db.add(OutlookAccount(student_id="s1", email="a@outlook.com", access_token="x", refresh_token="y"))
-    db.commit()
-    assert outlook_api.status_for(db, "s1")["connected"] is True
-    outlook_api.disconnect(db, "s1")
-    assert outlook_api.status_for(db, "s1")["connected"] is False
+@pytest.mark.parametrize("url", ["http://graph.microsoft.com/v1.0/me/mailFolders", "https://evil.test/v1.0/me/mailFolders", "https://graph.microsoft.com/v1.0/users/bob/mailFolders", "https://graph.microsoft.com/v1.0/me/mailFolders/../sendMail", "https://graph.microsoft.com/v1.0/me/messages"])
+def test_graph_url_allowlist(url):
+    assert not sync.valid_graph_url(url, "alice")
 
 
-def test_access_only_token_connects_until_expiry(db):
-    from datetime import timedelta
-
-    from app.models import now
-
-    db.add(OutlookAccount(student_id="s2", email="a@outlook.com", access_token="x" * 32, expires_at=now() + timedelta(minutes=10)))
-    db.commit()
-    assert outlook_api.status_for(db, "s2")["connected"] is True
-    assert outlook_api._valid_access_token(db, "s2") == "x" * 32
-    account = db.get(OutlookAccount, "s2")
-    assert account is not None
-    account.expires_at = now() - timedelta(minutes=1)
-    db.commit()
-    with pytest.raises(outlook_api.OutlookError) as exc:
-        outlook_api._valid_access_token(db, "s2")
-    assert exc.value.status == 401
+def test_normalization_does_not_render_html_or_store_identifiers():
+    subject, body = sync.normalize({"subject": "Student 123456789", "body": {"contentType": "html", "content": '<script>secret()</script><p>Email me a@uni.edu<img src="https://evil.test/pixel"></p>'}})
+    assert "123456789" not in subject and "a@uni.edu" not in body and "secret" not in body and "evil.test" not in body
+    assert sync.source_url("javascript:alert(1)") == ""
 
 
-def test_pasted_token_rejects_short_or_rejected_tokens(db, monkeypatch):
-    with pytest.raises(outlook_api.OutlookError) as exc:
-        outlook_api.store_pasted_token(db, "s3", "short")
-    assert exc.value.status == 422
-    monkeypatch.setattr(outlook_api, "_profile_email", lambda token: "")
-    with pytest.raises(outlook_api.OutlookError) as exc:
-        outlook_api.store_pasted_token(db, "s3", "y" * 32)
-    assert exc.value.status == 401
+
+
+def test_sync_pagination_dedup_and_removed_message(world, monkeypatch):
+    _, factory, _ = world
+    with factory() as db:
+        connection = db.get(MailConnection, "alice")
+        connection.status, connection.lease_id, connection.lease_until = "running", "lease", time.time() + 600
+        db.add(MailFolder(connection_id="alice", remote_id="inbox"))
+        db.commit()
+    message = {"id": "m1", "subject": "Exam", "body": {"contentType": "text", "content": "The exam is tomorrow."}}
+    next_link = sync.GRAPH + "/me/mailFolders/inbox/messages/delta?$skiptoken=one"
+    delta_link = sync.GRAPH + "/me/mailFolders/inbox/messages/delta?$deltatoken=two"
+    pages = [{"value": [message, message], "@odata.nextLink": next_link}, {"value": [], "@odata.deltaLink": delta_link}]
+    monkeypatch.setattr(sync, "graph_get", lambda *a: pages.pop(0))
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        assert len(db.scalars(select(MailItem)).all()) == 1
+        folder = db.scalar(select(MailFolder))
+        assert folder.next_page == next_link and not folder.completed
+        db.get(MailConnection, "alice").lease_id = "lease"
+        db.commit()
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        folder = db.scalar(select(MailFolder))
+        assert folder.completed and folder.cursor == delta_link
+        folder.completed = False
+        db.get(MailConnection, "alice").lease_id = "lease"
+        db.commit()
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [{"id": "m1", "@removed": {"reason": "deleted"}}], "@odata.deltaLink": delta_link})
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        item = db.scalar(select(MailItem))
+        assert item.removed and not item.excerpt
+
+
+def test_disconnect_during_classification_cannot_restore_data(world, monkeypatch):
+    client, factory, _ = world
+    with factory() as db:
+        connection = db.get(MailConnection, "alice")
+        connection.status, connection.lease_id = "running", "lease"
+        db.add(MailFolder(connection_id="alice", remote_id="inbox")); db.commit()
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [{"id": "m1", "subject": "Exam", "body": {"content": "Friday"}}], "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta"})
+    def classify(email):
+        assert client.delete("/api/outlook/connection").status_code == 200
+        return EmailClassification(None, {}, None, None, None, None, ("test",))
+    monkeypatch.setattr(sync, "_classifier", SimpleNamespace(classify=classify))
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        assert not db.scalars(select(MailItem)).all()
+
+
+def test_complete_long_cleaned_body_reaches_classifier_storage_and_api(world, monkeypatch):
+    client, factory, _ = world
+    body = "Course reference material. " * 2000 + "FINAL DEADLINE: Friday."
+    with factory() as db:
+        connection = db.get(MailConnection, "alice")
+        connection.status, connection.lease_id = "running", "lease"
+        db.add(MailFolder(connection_id="alice", remote_id="inbox"))
+        db.commit()
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [{"id": "long", "subject": "Course", "body": {"content": body}}], "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta"})
+    def classify(email):
+        assert email.body == body
+        return EmailClassification(None, {}, None, None, None, None, ("test",))
+    monkeypatch.setattr(sync, "_classifier", SimpleNamespace(classify=classify))
+    sync.work_one_page("alice", "lease")
+    assert client.get("/api/outlook/messages").json()["items"][0]["excerpt"] == body
+
+
+def test_search_sort_followup_preview_and_private_detail(world):
+    client, factory, _ = world
+    first = insert_item(factory, due_date="2026-10-02", classification=json.dumps({"category": "coursework"}))
+    second = insert_item(factory, due_date="2026-10-01")
+    other = insert_item(factory, "bob")
+    with factory() as db:
+        db.get(MailItem, first).excerpt = "Course material. " * 100 + "unique tail 100%"
+        db.commit()
+    page = client.get("/api/outlook/messages", params={"q": "unique tail", "category": "coursework", "preview": True}).json()
+    assert [item["id"] for item in page["items"]] == [first]
+    assert len(page["items"][0]["excerpt"]) == 240
+    assert client.get(f"/api/outlook/messages/{first}").json()["excerpt"].endswith("unique tail 100%")
+    assert client.get(f"/api/outlook/messages/{other}").status_code == 404
+    assert client.get("/api/outlook/messages", params={"q": "%"}).json()["total"] == 1
+    assert [item["id"] for item in client.get("/api/outlook/messages?view=followup&sort=due").json()["items"]] == [second, first]
+
+
+def test_bulk_edits_are_atomic_and_account_scoped(world):
+    client, factory, _ = world
+    first, second, other = insert_item(factory), insert_item(factory), insert_item(factory, "bob")
+    path = "/api/outlook/messages/bulk"
+    assert client.post(path, json={"ids": [first, other], "changes": {"pinned": True}}).status_code == 404
+    with factory() as db:
+        assert not db.get(MailItem, first).pinned
+    assert client.post(path, headers={"Origin": "https://evil.test"}, json={"ids": [first], "changes": {"dismissed": True}}).status_code == 403
+    assert client.post(path, json={"ids": [first, second], "changes": {"reviewed": True, "dismissed": True}}).json() == {"updated": 2}
+    assert client.get("/api/outlook/messages?view=dismissed").json()["total"] == 2
+    assert client.post(path, json={"ids": [first, second], "changes": {"dismissed": False}}).status_code == 200
+    assert client.get("/api/outlook/messages?view=review").json()["total"] == 0
+
+
+
+
+def test_expired_session_rejected(world):
+    client, factory, _ = world
+    with factory() as db:
+        db.get(MailSession, auth.digest("alice-cookie")).expires = 0
+        db.commit()
+    assert client.get("/api/outlook/messages").status_code == 401
+
+
+def test_429_keeps_cursor_and_respects_retry_after(world, monkeypatch):
+    _, factory, _ = world
+    cursor = sync.GRAPH + "/me/mailFolders/inbox/messages/delta?$deltatoken=old"
+    with factory() as db:
+        row = db.get(MailConnection, "alice")
+        row.status, row.lease_id = "running", "lease"
+        db.add(MailFolder(connection_id="alice", remote_id="inbox", cursor=cursor)); db.commit()
+    def throttled(*args): raise sync.GraphError(429, 180)
+    monkeypatch.setattr(sync, "graph_get", throttled)
+    start = time.time()
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        row = db.get(MailConnection, "alice")
+        assert row.status == "error" and row.next_sync >= start + 180
+        assert db.scalar(select(MailFolder)).cursor == cursor
+
+
+def test_410_rebuild_removes_stale_baseline(world, monkeypatch):
+    _, factory, _ = world
+    insert_item(factory)
+    with factory() as db:
+        row = db.get(MailConnection, "alice")
+        row.status, row.lease_id = "running", "lease"
+        db.add(MailFolder(connection_id="alice", remote_id="inbox", cursor=sync.GRAPH + "/me/mailFolders/inbox/messages/delta")); db.commit()
+    def reset(*args): raise sync.GraphError(410)
+    monkeypatch.setattr(sync, "graph_get", reset)
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        assert db.scalar(select(MailFolder)).cursor == ""
+        db.get(MailConnection, "alice").lease_id = "lease"; db.commit()
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [], "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta?$deltatoken=new"})
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        assert not db.scalars(select(MailItem)).all()
+
+
+def test_nested_folder_discovery_is_durable(world, monkeypatch):
+    _, factory, _ = world
+    with factory() as db:
+        row = db.get(MailConnection, "alice")
+        row.status, row.lease_id, row.folder_scan_url = "running", "lease", sync.ROOT_FOLDERS
+        db.commit()
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [{"id": "parent", "childFolderCount": 1}]})
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        row = db.get(MailConnection, "alice")
+        assert "/parent/childFolders" in row.folder_scan_url
+        row.lease_id = "lease"; db.commit()
+    monkeypatch.setattr(sync, "graph_get", lambda *a: {"value": [{"id": "nested", "childFolderCount": 0}]})
+    sync.work_one_page("alice", "lease")
+    with factory() as db:
+        assert {folder.remote_id for folder in db.scalars(select(MailFolder)).all()} == {"parent", "nested"}
+        assert db.get(MailConnection, "alice").folder_scan_url == ""

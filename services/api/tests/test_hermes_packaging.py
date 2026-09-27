@@ -6,7 +6,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[3]
 SKILLS = REPO / ".hermes" / "skills"
-RUNNERS = ("firas_run_mac", "run_windows")
+RUNNERS = ("run_mac", "run_windows")
 
 
 def skill_names() -> set[str]:
@@ -68,3 +68,5 @@ def test_prompts_only_reference_provisioned_skills() -> None:
         assert referenced, f"prompt references no provisioned skill: {instructions[:200]}"
         for name in referenced:
             assert (SKILLS / name / "SKILL.md").is_file()
+
+

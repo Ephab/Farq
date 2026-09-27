@@ -1,5 +1,7 @@
 "use client"
 
+import { OutlookView } from "@/components/outlook/OutlookView"
+
 import { useCallback, useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import { AlertCircle, ArrowRight, BookOpen, Briefcase, CheckCircle2, FileText, FolderSearch, Globe, GraduationCap, Link2, LoaderCircle, Trash2, UserRound, type LucideIcon } from "lucide-react"
@@ -93,6 +95,10 @@ export function SourcesStep({ profile, onBack, onNext, title = "Add records to y
           </motion.button>
         </div>
 
+        <details className="mt-6 rounded-2xl border border-border p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Connect university Outlook (optional)</summary>
+          <OutlookView />
+        </details>
         <div className="mt-7 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px] lg:grid-cols-[minmax(0,1fr)_340px]">
           <section className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
             {featuredKind ? (

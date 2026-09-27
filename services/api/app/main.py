@@ -9,13 +9,12 @@ from pathlib import Path
 from typing import Annotated
 
 import httpx
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from . import outlook as outlook_api
 from .blackboard import router as blackboard_router
 from .coop import router as coop_router, seed_coop_catalog, sync_all_coop_sources, sync_coop_source
 from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
@@ -34,9 +33,11 @@ from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
 from .projects import router as projects_router
 from .identity import router as identity_router
+from .outlook.router import router as outlook_router
+from .outlook.sync import sync_loop as outlook_sync_loop
 from .teams import router as teams_router
 from .teams.seed import seed_teammate_roadmaps, seed_teams
-from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, OutlookChatInput, OutlookTokenInput, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
+from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
@@ -48,6 +49,7 @@ STARTED_AT = time.time()
 OPPORTUNITY_SYNC_ENABLED = os.getenv("OPPORTUNITY_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}
 OPPORTUNITY_SYNC_SECONDS = 30 * 60
 _opportunity_sync_task: asyncio.Task | None = None
+_outlook_sync_task: asyncio.Task | None = None
 
 
 DEMO_STUDENT_ID = "demo-student"
@@ -57,6 +59,7 @@ Db = Annotated[Session, Depends(get_db)]
 app = FastAPI(title="Farq Hermes Backbone", version="0.1.0")
 app.include_router(projects_router)
 app.include_router(identity_router)
+app.include_router(outlook_router)
 app.include_router(teams_router)
 app.include_router(blackboard_router)
 app.include_router(coop_router)
@@ -205,6 +208,9 @@ async def startup() -> None:
     finally:
         db.close()
     global _opportunity_sync_task
+    global _outlook_sync_task
+    if os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true" and (_outlook_sync_task is None or _outlook_sync_task.done()):
+        _outlook_sync_task = asyncio.create_task(outlook_sync_loop())
     if OPPORTUNITY_SYNC_ENABLED and (_opportunity_sync_task is None or _opportunity_sync_task.done()):
         _opportunity_sync_task = asyncio.create_task(_opportunity_sync_loop())
 
@@ -236,6 +242,14 @@ async def _opportunity_sync_loop() -> None:
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    global _outlook_sync_task
+    if _outlook_sync_task is not None:
+        _outlook_sync_task.cancel()
+        try:
+            await _outlook_sync_task
+        except asyncio.CancelledError:
+            pass
+        _outlook_sync_task = None
     global _opportunity_sync_task
     if _opportunity_sync_task is not None:
         _opportunity_sync_task.cancel()
@@ -963,6 +977,7 @@ def interaction_message(thread_id: str, body: ChatInput, db: Session) -> tuple[s
 def send_message(
     thread_id: str,
     body: ChatInput,
+    request: Request,
     background: BackgroundTasks,
     db: Db,
     x_hermes_api_key: Annotated[str | None, Header()] = None,
@@ -985,11 +1000,13 @@ def send_message(
     db.add(run)
     db.flush()
     message.agent_run_id = run.id
+    from .outlook.coach import issue_grant
+    mailbox_access = issue_grant(request, db, run.id)
     db.commit()
     background.add_task(observe_independently, [DecisionItem(
         entity_type="chat_message", entity_id=message.id, title="Student coach request", text=content, student_id=thread.student_id,
     )], "chat_intent")
-    background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key)
+    background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key, **({"mailbox_access": mailbox_access} if mailbox_access else {}))
     return {"run_id": run.id, "message_id": message.id, "status": run.status}
 
 
@@ -1167,109 +1184,6 @@ def export_slides(body: SlidesExportInput) -> Response:
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="extended-{safe or "slides"}.pptx"'},
     )
-
-
-@app.get("/api/outlook/config")
-def outlook_config() -> dict:
-    """Public config probe: tells the UI whether sign-in is available. No secrets."""
-    return {"configured": outlook_api.is_configured()}
-
-
-@app.get("/api/students/{student_id}/outlook/status")
-def outlook_status(student_id: str, db: Db) -> dict:
-    """Connection status. Tokens are never serialized."""
-    require_student(db, student_id)
-    return outlook_api.status_for(db, student_id)
-
-
-@app.post("/api/students/{student_id}/outlook/device/start")
-def outlook_device_start(student_id: str, db: Db) -> dict:
-    require_student(db, student_id)
-    try:
-        return outlook_api.device_start(student_id)
-    except outlook_api.OutlookError as exc:
-        raise HTTPException(exc.status, str(exc)) from exc
-
-
-@app.post("/api/students/{student_id}/outlook/device/poll")
-def outlook_device_poll(student_id: str, db: Db) -> dict:
-    require_student(db, student_id)
-    try:
-        return outlook_api.device_poll(student_id, db)
-    except outlook_api.OutlookError as exc:
-        raise HTTPException(exc.status, str(exc)) from exc
-
-
-@app.get("/api/students/{student_id}/outlook/emails")
-def outlook_emails(student_id: str, db: Db, limit: int = 10) -> dict:
-    """Read-only snapshot of the N latest emails. Nothing is stored as evidence or facts."""
-    require_student(db, student_id)
-    try:
-        emails = outlook_api.fetch_latest_emails(db, student_id, limit)
-    except outlook_api.OutlookError as exc:
-        raise HTTPException(exc.status, str(exc)) from exc
-    return {"emails": emails, "count": len(emails)}
-
-
-@app.post("/api/students/{student_id}/outlook/chat")
-async def outlook_chat(
-    student_id: str,
-    body: OutlookChatInput,
-    db: Db,
-    x_hermes_api_key: Annotated[str | None, Header()] = None,
-) -> dict:
-    """Answer one question over the N latest emails on a throwaway session.
-
-    Email text is prompt data for this answer only: it is never written to
-    chat threads, facts, evidence, proposals, or Hermes memory.
-    """
-    require_student(db, student_id)
-    # A fresh session holds the DB rows this thread reads; pass ids only.
-    ids = (student_id, body.question, body.limit, body.provider, body.model, x_hermes_api_key)
-    try:
-        result = await asyncio.to_thread(_outlook_chat_job, *ids)
-    except outlook_api.OutlookError as exc:
-        raise HTTPException(exc.status, str(exc)) from exc
-    except outlook_api.EmailChatError as exc:
-        raise HTTPException(exc.status, str(exc)) from exc
-    return result
-
-
-def _outlook_chat_job(
-    student_id: str,
-    question: str,
-    limit: int,
-    provider: str | None,
-    model: str | None,
-    key: str | None,
-) -> dict:
-    db = SessionLocal()
-    try:
-        emails = outlook_api.fetch_latest_emails(db, student_id, limit)
-        result = outlook_api.run_email_chat(emails, question, provider, model, key)
-        return {**result, "email_count": len(emails)}
-    finally:
-        db.close()
-
-
-@app.post("/api/students/{student_id}/outlook/token")
-def outlook_token(student_id: str, body: OutlookTokenInput, db: Db) -> dict:
-    """Zero-registration fallback: store a pasted temporary Graph token server-side.
-
-    No Entra app needed. Lasts ~1 hour, no refresh. The token itself is
-    never returned; only the connected address is.
-    """
-    require_student(db, student_id)
-    try:
-        return outlook_api.store_pasted_token(db, student_id, body.access_token)
-    except outlook_api.OutlookError as exc:
-        raise HTTPException(exc.status, str(exc)) from exc
-
-
-@app.post("/api/students/{student_id}/outlook/disconnect")
-def outlook_disconnect(student_id: str, db: Db) -> dict:
-    require_student(db, student_id)
-    return outlook_api.disconnect(db, student_id)
 
 
 @app.get("/api/agent-runs/{run_id}")
@@ -1495,3 +1409,16 @@ def create_proposal(body: ProposalCreate, db: Db) -> dict:
     db.add(item)
     db.commit()
     return {"success": True, "proposal_id": item.id, "status": item.status}
+
+
+from .outlook.coach import MailSearch, MailRead, search_mail, read_mail
+
+
+@app.post("/internal/hermes/mail/search", dependencies=[Depends(require_internal)])
+def coach_search_mail(body: MailSearch, db: Db):
+    return search_mail(body, db)
+
+
+@app.post("/internal/hermes/mail/read", dependencies=[Depends(require_internal)])
+def coach_read_mail(body: MailRead, db: Db):
+    return read_mail(body, db)

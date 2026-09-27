@@ -23,11 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Personal local runners (not for sharing). The macOS/Linux and Windows runners are
-# checked in because tests/test_hermes_packaging.py imports them to verify skill provisioning.
+# Personal local runners (not for sharing).
 scripts/firas_*.py
-!scripts/firas_run_mac.py
-!scripts/firas_run_windows.py
 
 # Environment and local runtime state
 .env
@@ -38,9 +35,15 @@ services/data/
 *.db-shm
 *.db-wal
 .hermes-runtime/
+.hermes-email-runtime/
 __pycache__/
 .pytest_cache/
 *.pyc
+.cache/
+.hf-cache/
+*.safetensors
 
 # Brainstorming companion mockups
 .superpowers/
+# Keep old pairing files ignored so upgrades cannot accidentally commit a secret.
+.local-outlook-key

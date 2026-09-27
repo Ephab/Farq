@@ -29,6 +29,7 @@ import {
 import { loadLibrary, type QuizLibrary } from "@/lib/quiz-store"
 import { EASE_OUT, SPRING_MOUSE } from "@/lib/ease"
 import { cn } from "@/lib/utils"
+import { OutlookView } from "@/components/outlook/OutlookView"
 
 // Shape rule for this page: hero 32px, panels 24px, buttons and pills full round.
 // Color rule: primary is the only accent. Emerald and amber appear only as
@@ -711,6 +712,9 @@ export function TodayView({ onNavigate }: TodayViewProps) {
             </MagneticButton>
           </div>
         </div>
+        <div className="mt-10 w-full max-w-md">
+          <OutlookView compact onOpen={() => onNavigate("Emails")} />
+        </div>
       </div>
     )
   }
@@ -876,42 +880,48 @@ export function TodayView({ onNavigate }: TodayViewProps) {
             </Panel>
           </Reveal>
 
-          <Reveal delay={0.1} className="h-full">
-            <Panel label="Roadmap momentum" className="h-full">
-              <PanelHead
-                title="Roadmap momentum"
-                sub={title || "Your plan"}
-                tone={stagePill.tone}
-                pill={stagePill.label}
-              />
-              <p className="mt-5 text-[34px] font-bold leading-none tracking-tight">
-                {stageProgress.percent}
-                <span className="text-lg font-semibold text-muted-foreground">%</span>
-              </p>
-              <div className="mt-3">
-                <ProgressTrack percent={stageProgress.percent} label={`${currentStage?.title ?? "Current stage"} progress`} />
-              </div>
-              <p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
-                {currentStage?.title ?? "Current stage"}, {stageProgress.done} of {stageProgress.total} done
-              </p>
-              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-muted/60 p-3">
-                <span
-                  aria-hidden="true"
-                  className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-background text-primary shadow-sm"
-                >
-                  {currentNode ? topicGlyph(currentNode.icon) : <Route className="size-[18px]" />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold" title={version ? `Plan version ${version}` : "Current plan"}>
-                    {version ? `Plan version ${version}` : "Current plan"}
+          <div className="space-y-5">
+            <Reveal delay={0.1}>
+              <Panel label="Roadmap momentum">
+                <PanelHead
+                  title="Roadmap momentum"
+                  sub={title || "Your plan"}
+                  tone={stagePill.tone}
+                  pill={stagePill.label}
+                />
+                <p className="mt-5 text-[34px] font-bold leading-none tracking-tight">
+                  {stageProgress.percent}
+                  <span className="text-lg font-semibold text-muted-foreground">%</span>
+                </p>
+                <div className="mt-3">
+                  <ProgressTrack percent={stageProgress.percent} label={`${currentStage?.title ?? "Current stage"} progress`} />
+                </div>
+                <p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
+                  {currentStage?.title ?? "Current stage"}, {stageProgress.done} of {stageProgress.total} done
+                </p>
+                <div className="mt-4 flex items-center gap-3 rounded-2xl bg-muted/60 p-3">
+                  <span
+                    aria-hidden="true"
+                    className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-background text-primary shadow-sm"
+                  >
+                    {currentNode ? topicGlyph(currentNode.icon) : <Route className="size-[18px]" />}
                   </span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {reason || `${stages.length} ${stages.length === 1 ? "stage" : "stages"}, ${summary.total} ${summary.total === 1 ? "topic" : "topics"}`}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold" title={version ? `Plan version ${version}` : "Current plan"}>
+                      {version ? `Plan version ${version}` : "Current plan"}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {reason || `${stages.length} ${stages.length === 1 ? "stage" : "stages"}, ${summary.total} ${summary.total === 1 ? "topic" : "topics"}`}
+                    </span>
                   </span>
-                </span>
-              </div>
-            </Panel>
-          </Reveal>
+                </div>
+              </Panel>
+            </Reveal>
+
+            <Reveal delay={0.12}>
+              <OutlookView compact onOpen={() => onNavigate("Emails")} />
+            </Reveal>
+          </div>
         </div>
 
         {/* What moved: simple feed, newest first. */}

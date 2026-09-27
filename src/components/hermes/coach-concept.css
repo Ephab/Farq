@@ -738,6 +738,30 @@ html[data-theme="dracula"] .fq {
   gap: 8px;
 }
 
+.fq .toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: var(--fq-r-md);
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fq-text-soft);
+  cursor: pointer;
+}
+
+.fq .toggle-row:hover {
+  background: var(--fq-surface-muted);
+}
+
+.fq .toggle-row input {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  accent-color: var(--fq-accent);
+  cursor: pointer;
+}
+
 /* Concept buttons + pills. */
 .fq .button-row {
   display: flex;

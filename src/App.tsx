@@ -1,7 +1,8 @@
 "use client"
 
-import { Bot, BriefcaseBusiness, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Sparkles, Square, Users } from "lucide-react"
+import { Bot, BriefcaseBusiness, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { AnimatePresence, useReducedMotion } from "motion/react"
 import {
   AnimatedSidebar,
   AnimatedSidebarContent,
@@ -25,11 +26,11 @@ import { QuizView } from "@/components/quiz/QuizView"
 import { SlidesView } from "@/components/slides/SlidesView"
 import { RoadmapView } from "@/components/roadmap/RoadmapView"
 import { HermesCoach } from "@/components/hermes/HermesCoach"
+import { CoachPortalIntro, type PortalPhase } from "@/components/animation/CoachPortalIntro"
 import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
-import { AnimationView } from "@/components/animation/AnimationView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type StudentProfile } from "@/lib/farq-api"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
@@ -40,12 +41,6 @@ export default function App() {
   const [active, setActive] = useState("Home")
   const [coachDraft, setCoachDraft] = useState("")
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
-  const [animationRunId, setAnimationRunId] = useState(0)
-  // Re-selecting Animation remounts the view so the Coach portal replays.
-  const handleSelect = useCallback((label: string) => {
-    if (label === "Animation") setAnimationRunId((id) => id + 1)
-    setActive(label)
-  }, [])
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [onboarding, setOnboarding] = useState(!hasChosenStudent())
@@ -54,6 +49,36 @@ export default function App() {
   // can show that Hermes is still generating after navigating away.
   const activeRun = useActiveRun(profile?.thread_id ?? null)
   const teamUnread = useTeamUnread(active)
+  const reduceMotion = useReducedMotion()
+  // Gentle app-wide startup veil — once per page load, slower and softer
+  // than the Coach intro: loading (1.2s) -> leave (1.7s) -> done.
+  const [appIntro, setAppIntro] = useState<PortalPhase | "done">(() => (reduceMotion ? "done" : "loading"))
+  const dismissAppIntro = useCallback(() => setAppIntro("done"), [])
+  useEffect(() => {
+    if (reduceMotion || appIntro === "done") return
+    const timer = window.setTimeout(
+      () => setAppIntro((previous) => (previous === "loading" ? "leave" : "done")),
+      appIntro === "loading" ? 1200 : 1700,
+    )
+    return () => window.clearTimeout(timer)
+  }, [appIntro, reduceMotion])
+  useEffect(() => {
+    if (appIntro === "done") return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismissAppIntro()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [appIntro, dismissAppIntro])
+  const appIntroOverlay = (
+    <AnimatePresence>
+      {appIntro !== "done" ? (
+        <div className="fixed inset-0 z-[70]">
+          <CoachPortalIntro phase={appIntro} speed={0.65} word="Farq" tone="gentle" onSkip={dismissAppIntro} />
+        </div>
+      ) : null}
+    </AnimatePresence>
+  )
 
   const stopBackgroundRun = useCallback(async () => {
     if (!activeRun) return
@@ -86,6 +111,7 @@ export default function App() {
     return (
       <ThemeProvider>
         <OnboardingView onDone={() => { setActive("Roadmap"); loadProfile() }} />
+        {appIntroOverlay}
       </ThemeProvider>
     )
   }
@@ -133,7 +159,6 @@ export default function App() {
                 <NavItem label="Roadmap" icon={<Route className="size-4" />} active={active} onSelect={setActive} />
                 <NavItem label="Projects" icon={<FolderKanban className="size-4" />} active={active} onSelect={setActive} />
                 <NavItem label="Quizzes" icon={<ListChecks className="size-4" />} active={active} onSelect={setActive} />
-                <NavItem label="Animation" icon={<Sparkles className="size-4" />} active={active} onSelect={handleSelect} />
               </NavSection>
               <NavSection label="Collaborate">
                 <NavItem
@@ -241,8 +266,6 @@ export default function App() {
                 <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
-              ) : active === "Animation" ? (
-                <AnimationView key={animationRunId} />
               ) : (
                 <div className="grid flex-1 place-items-center p-8">
                   <div className="text-center">
@@ -263,6 +286,7 @@ export default function App() {
             </main>
           </AnimatedSidebarInset>
         </AnimatedSidebarProvider>
+        {appIntroOverlay}
       </div>
     </ThemeProvider>
   )

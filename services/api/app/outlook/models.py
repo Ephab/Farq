@@ -16,6 +16,8 @@ class MailConnection(Base):
     token_cache: Mapped[str] = mapped_column(Text, default="")
     connected: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_sync: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Opt-in: newly synced mail is sent to the external Jev decision layer. Off by default.
+    jev_access: Mapped[bool] = mapped_column(Boolean, default=False)
     generation: Mapped[int] = mapped_column(Integer, default=1)
     next_sync: Mapped[float] = mapped_column(Float, default=0)
     lease_until: Mapped[float] = mapped_column(Float, default=0)

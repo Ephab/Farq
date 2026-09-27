@@ -282,3 +282,48 @@ def test_nested_folder_discovery_is_durable(world, monkeypatch):
     with factory() as db:
         assert {folder.remote_id for folder in db.scalars(select(MailFolder)).all()} == {"parent", "nested"}
         assert db.get(MailConnection, "alice").folder_scan_url == ""
+
+
+def test_jev_sees_synced_mail_only_after_opt_in(world, monkeypatch):
+    client, factory, _ = world
+    monkeypatch.setenv("TYPESAFE_AI_API_KEY", "test-jev-key")
+    sent = []
+    monkeypatch.setattr(sync, "observe_independently", lambda items, purpose: sent.append((list(items), purpose)))
+    def page(message_id, subject):
+        return {"value": [{"id": message_id, "subject": subject, "body": {"content": "Due Friday"}}],
+                "@odata.deltaLink": sync.GRAPH + "/me/mailFolders/inbox/messages/delta"}
+    def run(message_id, subject):
+        with factory() as db:
+            connection = db.get(MailConnection, "alice")
+            connection.status, connection.lease_id = "running", "lease"
+            if not db.scalars(select(MailFolder)).first():
+                db.add(MailFolder(connection_id="alice", remote_id="inbox"))
+            db.execute(MailFolder.__table__.update().values(completed=False, cursor="", next_page=""))
+            db.commit()
+        monkeypatch.setattr(sync, "graph_get", lambda *a: page(message_id, subject))
+        sync.work_one_page("alice", "lease")
+
+    status = client.get("/api/outlook/status").json()
+    assert status["jev_available"] is True and status["jev_access"] is False
+    run("m1", "Exam")
+    assert sent == []  # off by default
+
+    assert client.patch("/api/outlook/jev-access", json={"accepted": True}).json() == {"jev_access": True}
+    run("m2", "Lab report")
+    assert len(sent) == 1
+    items, purpose = sent[0]
+    assert purpose == "outlook_ingestion" and [(i.entity_id, i.title) for i in items] == [("m2", "Lab report")]
+    assert "Due Friday" in items[0].text
+
+    run("m2", "Lab report")  # unchanged content is not re-sent
+    assert len(sent) == 1
+
+    assert client.delete("/api/outlook/connection").status_code == 200
+    with factory() as db:
+        assert db.get(MailConnection, "alice").jev_access is False
+
+
+def test_jev_opt_in_hidden_without_key(world, monkeypatch):
+    client, _, _ = world
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+    assert client.get("/api/outlook/status").json()["jev_available"] is False

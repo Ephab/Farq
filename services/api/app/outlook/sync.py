@@ -13,6 +13,7 @@ import httpx
 from sqlalchemy import delete, or_, select, update
 
 from ..database import SessionLocal
+from ..decisions import DecisionItem, observe_independently
 from ..email_classifier import ClassifierUnavailable, EmailClassifier, EmailInput
 from ..email_cleaning import clean_email_body
 from ..sources.pdf_text import redact
@@ -178,6 +179,7 @@ def work_one_page(connection_id: str, lease: str) -> None:
                     raise
                 if not (page.get("@odata.nextLink") or page.get("@odata.deltaLink")):
                     raise GraphError(502)
+                observed: list[DecisionItem] = []
                 for message in page["value"]:
                     remote = str(message["id"])
                     item = db.scalar(select(MailItem).where(MailItem.connection_id == connection_id, MailItem.remote_id == remote))
@@ -224,6 +226,8 @@ def work_one_page(connection_id: str, lease: str) -> None:
                         item.reviewed = False
                         item.expires = time.time() + 30 * 86400
                         connection.processed += 1
+                        observed.append(DecisionItem(entity_type="outlook", entity_id=remote, title=subject,
+                                                     text=f"Received: {item.received}. {body}", student_id=connection.user_id))
                     db.commit()
                 if not lease_valid(db, connection_id, generation, lease):
                     return
@@ -235,6 +239,11 @@ def work_one_page(connection_id: str, lease: str) -> None:
                     folder.cursor = page["@odata.deltaLink"]
                     folder.completed = True
                 db.commit()
+                # Jev sees only new/changed mail, only while the student's opt-in is on (re-read so a
+                # revocation during this page wins). Best-effort, in its own session.
+                if observed and lease_valid(db, connection_id, generation, lease) and db.scalar(
+                        select(MailConnection.jev_access).where(MailConnection.id == connection_id)):
+                    observe_independently(observed, purpose="outlook_ingestion")
             if lease_valid(db, connection_id, generation, lease):
                 connection.lease_until = 0
                 connection.lease_id = ""

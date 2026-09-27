@@ -4,6 +4,7 @@ export interface OutlookStatus {
   configured: boolean; connected: boolean; account?: string; auto_sync?: boolean
   status?: string; last_sync?: number; processed?: number; error?: string
   coach_access?: boolean; worker_enabled?: boolean
+  jev_available?: boolean; jev_access?: boolean
   provider?: "desktop" | "token"
   desktop_available?: boolean; token_available?: boolean
 }

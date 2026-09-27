@@ -1,5 +1,5 @@
 import { TokenConnection } from "./TokenConnection"
-import { MailboxRail, syncLine } from "./MailboxRail"
+import { MailboxRail } from "./MailboxRail"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Mail, ShieldCheck } from "lucide-react"
@@ -116,13 +116,8 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
     <button className={`${button} mt-4 w-full`} onClick={onOpen}>{status?.connected ? "View all emails" : "Connect Outlook"}</button>
   </section>
 
-  const header = <header className="flex items-center gap-3">
-    <span className="rounded-2xl bg-primary/10 p-3 text-primary"><Mail className="size-5" /></span>
-    <div className="min-w-0">
-      <h1 className="text-xl font-semibold tracking-tight">Emails</h1>
-      <p className="mt-0.5 truncate text-sm text-muted-foreground">{status?.connected ? <>{status.account}<span className="text-muted-foreground/70"> · {syncLine(status)}</span></> : "Your university mail, sorted for you."}</p>
-    </div>
-  </header>
+  // The app bar already names the page and the rail shows the account, so the heading is for screen readers only.
+  const header = <h1 className="sr-only">Emails</h1>
 
   const errorBanner = error && <p role="alert" className="rounded-xl bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">{error}</p>
 
@@ -160,8 +155,8 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
     {errorBanner}
     <div className={layout}>
       <div className="min-w-0 space-y-3">
-        <nav aria-label="Mail views" className="flex flex-wrap gap-1 rounded-xl bg-muted/60 p-1">
-          {views.map(tab => <button key={tab} className={`min-h-9 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{labels[tab]}</button>)}
+        <nav aria-label="Mail views" className="flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-muted/60 p-0.5 [scrollbar-width:none] sm:w-fit">
+          {views.map(tab => <button key={tab} className={`h-7 shrink-0 whitespace-nowrap rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{labels[tab]}</button>)}
         </nav>
         <MailWorkspace key={view} items={items} total={total} busy={busy} filters={filters} onFilters={next => { setFilters(next); setOffset(0) }} offset={offset} pageSize={pageSize} onPage={setOffset} onAction={action} dismissed={view === "dismissed"} classifier={status.classifiers?.find(engine => engine.id === (status.classifier ?? "laya"))} />
       </div>

@@ -40,7 +40,12 @@ def provision(root: Path = ROOT, runtime: Path | None = None):
 
 def build_env(values, root: Path = ROOT, runtime: Path | None = None):
     env = dict(os.environ, **values)
-    env.update(HERMES_HOME=str(runtime or root / ".hermes-runtime"), HERMES_ENABLE_PROJECT_PLUGINS="1",
+    home = runtime or root / ".hermes-runtime"
+    # Hermes keeps ONE host-wide gateway per OS user, locked outside HERMES_HOME
+    # (~/.local/state/hermes/gateway-locks). Farq's own lock dir keeps its gateway from
+    # attaching to, or being refused by, the user's personal Hermes gateway.
+    env.update(HERMES_HOME=str(home), HERMES_GATEWAY_LOCK_DIR=str(home / "gateway-locks"),
+               HERMES_ENABLE_PROJECT_PLUGINS="1",
                HERMES_URL="http://127.0.0.1:8642", API_SERVER_ENABLED="true", API_SERVER_HOST="127.0.0.1",
                API_SERVER_PORT="8642", API_SERVER_KEY=values["HERMES_API_KEY"],
                FARQ_API_INTERNAL_URL="http://127.0.0.1:8000", PYTHONIOENCODING="utf-8")

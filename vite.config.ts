@@ -15,6 +15,12 @@ export default defineConfig({
     },
   },
   server: {
+    watch: {
+      // Hermes (HERMES_HOME=.hermes-runtime) unpacks its uv cache here while the dev server runs.
+      // Watching it floods page reloads, and on Windows the watcher's open handles make uv's
+      // cache renames fail ("Access is denied"), leaving Hermes half-updated.
+      ignored: ['**/.hermes-runtime/**', '**/.venv/**'],
+    },
     proxy: {
       // NVIDIA NIM sends no CORS headers, so browsers block direct calls.
       // Same-origin proxy keeps the prototype key-in-browser flow working

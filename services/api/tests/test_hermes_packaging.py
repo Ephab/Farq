@@ -55,6 +55,8 @@ def test_farq_gateway_keeps_a_repo_local_hermes_home(runner_name: str) -> None:
     assert env["HERMES_HOME"] == runner.RUNTIME
     assert Path(env["HERMES_HOME"]).is_relative_to(REPO)
     assert Path.home() / ".hermes" != Path(env["HERMES_HOME"])
+    # Host-wide gateway singleton lock must be project-scoped too, or the user's own gateway blocks ours.
+    assert Path(env["HERMES_GATEWAY_LOCK_DIR"]).is_relative_to(env["HERMES_HOME"])
 
 
 def test_prompts_only_reference_provisioned_skills() -> None:

@@ -172,7 +172,7 @@ export function FooterSettings() {
       {/* Remount on every open so the trigger position is measured fresh —
           otherwise a sidebar expand/collapse leaves stale coordinates and the
           panel clips off-screen. */}
-      <PopoverContent key={String(popoverOpen)} className="w-56 border border-border p-3">
+      <PopoverContent key={String(popoverOpen)} className="max-h-[calc(100dvh-6rem)] w-56 overflow-y-auto overscroll-contain border border-border p-3">
         <p className="px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
           {t("settings.title")}
         </p>

@@ -52,7 +52,8 @@ html[data-theme="nocturne"] .fq,
 html[data-theme="catppuccin-mocha"] .fq,
 html[data-theme="tokyo-night"] .fq,
 html[data-theme="velvet"] .fq,
-html[data-theme="dracula"] .fq {
+html[data-theme="dracula"] .fq,
+html[data-theme="deep-ocean"] .fq {
   color-scheme: dark;
   --fq-bg: var(--background);
   --fq-bg-elevated: color-mix(in srgb, var(--background) 94%, var(--foreground));
@@ -645,29 +646,37 @@ html[data-theme="dracula"] .fq {
   color: var(--fq-faint);
 }
 
-.fq .send-button {
+.fq button.send-button {
   display: grid;
   width: 46px;
   height: 46px;
   place-items: center;
-  border-radius: 15px;
+  padding: 0;
+  align-self: end;
+  border-radius: var(--fq-r-sm);
   background: var(--fq-accent);
   color: var(--fq-on-accent);
   cursor: pointer;
   transition: transform 170ms var(--fq-ease-out), background 170ms ease, opacity 170ms ease;
 }
 
-.fq .send-button:hover:not(:disabled) {
-  transform: translateY(-1px) rotate(-2deg);
+.fq button.send-button:hover:not(:disabled) {
+  background: var(--fq-accent-hover);
 }
 
-.fq .send-button:active:not(:disabled) {
+.fq button.send-button:active:not(:disabled) {
   transform: scale(0.94);
 }
 
-.fq .send-button:disabled {
+.fq button.send-button:disabled {
   cursor: not-allowed;
-  opacity: 0.4;
+  background: var(--fq-surface-strong);
+  color: var(--fq-muted);
+}
+
+.fq button.send-button[data-stop] {
+  background: var(--fq-danger);
+  color: #fff;
 }
 
 /* Context panel: plan context, knowledge, tools. */

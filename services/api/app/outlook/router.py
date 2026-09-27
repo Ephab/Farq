@@ -110,7 +110,8 @@ def connect_desktop(body: DesktopConsent, request: Request, response: Response, 
         connection = MailConnection(user_id=user.id, tenant=desktop.TENANT, account_id=store_id, label=label)
         db.add(connection)
         db.flush()
-    connection.connected, connection.status, connection.error = True, "queued", ""
+    connection.connected, connection.status, connection.error = True, "paused", ""
+    connection.auto_sync = False
     connection.label = label
     connection.generation += 1
     connection.next_sync, connection.lease_until, connection.lease_id = 0, 0, ""

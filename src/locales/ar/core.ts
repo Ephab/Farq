@@ -82,6 +82,10 @@ export const core: CatalogShape<typeof en> = {
     appearance: "المظهر",
     useTheme: "استخدام سمة {name}",
     themeDescriptions: {
+      "sage": "أخضر مريمي هادئ وأخضر الغابة",
+      "rose-quartz": "وردي حجري وحبر توتي",
+      "deep-ocean": "أزرق مخضر عميق ولمسات زجاج البحر",
+
       "white": "فاتح ومحايد — الافتراضي",
       "vercel-dark": "أبيض وأسود صافيان بأسلوب المطوّرين",
       "fjord": "ضباب جليدي وحبر بحري عميق",

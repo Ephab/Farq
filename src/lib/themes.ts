@@ -8,6 +8,9 @@ export type ThemeId =
   | "tokyo-night"
   | "velvet"
   | "dracula"
+  | "sage"
+  | "rose-quartz"
+  | "deep-ocean"
 
 export interface ThemeTokens {
   background: string
@@ -171,6 +174,54 @@ export const THEMES: Theme[] = [
       ring: "#bd93f9",
       primary: "#bd93f9",
       primaryForeground: "#282a36",
+    },
+  },
+  {
+    id: "sage",
+    name: "Sage",
+    description: "Soft sage + forest green",
+    dark: false,
+    tokens: {
+      background: "#f5f7f2",
+      foreground: "#182b21",
+      muted: "#e6ece1",
+      mutedForeground: "#536858",
+      border: "#cdd9c8",
+      ring: "#34704c",
+      primary: "#285c3e",
+      primaryForeground: "#ffffff",
+    },
+  },
+  {
+    id: "rose-quartz",
+    name: "Rose Quartz",
+    description: "Blush stone + berry ink",
+    dark: false,
+    tokens: {
+      background: "#fcf6f7",
+      foreground: "#38212d",
+      muted: "#f3e7eb",
+      mutedForeground: "#80606d",
+      border: "#e7ced8",
+      ring: "#a53f65",
+      primary: "#933657",
+      primaryForeground: "#ffffff",
+    },
+  },
+  {
+    id: "deep-ocean",
+    name: "Deep Ocean",
+    description: "Deep teal + sea-glass blue",
+    dark: true,
+    tokens: {
+      background: "#0c1c24",
+      foreground: "#e2f0f2",
+      muted: "#17323d",
+      mutedForeground: "#9bb8c2",
+      border: "#2a4855",
+      ring: "#72d2d8",
+      primary: "#72d2d8",
+      primaryForeground: "#0c1c24",
     },
   },
 ]

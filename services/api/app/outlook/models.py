@@ -15,7 +15,9 @@ class MailConnection(Base):
     label: Mapped[str] = mapped_column(String)
     token_cache: Mapped[str] = mapped_column(Text, default="")
     connected: Mapped[bool] = mapped_column(Boolean, default=True)
-    auto_sync: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Sync never starts on its own: every sign-in leaves the connection paused
+    # until the student presses Resume (PATCH /preferences auto_sync=true).
+    auto_sync: Mapped[bool] = mapped_column(Boolean, default=False)
     # Email classifier chosen by the student: laya (local, default), span or jev. A cloud choice is
     # consent to send redacted mail text to that provider and to later ones in the fallback chain.
     classifier: Mapped[str] = mapped_column(String, default="laya")

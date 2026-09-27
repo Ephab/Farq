@@ -73,6 +73,10 @@ export const core = {
     appearance: "Appearance",
     useTheme: "Use {name} theme",
     themeDescriptions: {
+      "sage": "Soft sage + forest green",
+      "rose-quartz": "Blush stone + berry ink",
+      "deep-ocean": "Deep teal + sea-glass blue",
+
       "white": "Clean neutral light — default",
       "vercel-dark": "Pure black / white developer monochrome",
       "fjord": "Glacial mist + deep sea ink",

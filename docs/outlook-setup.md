@@ -50,12 +50,14 @@ It is never stored in `.env`, returned to the browser, or sent to Hermes.
 
 Tokens cannot refresh in Waypoint. On expiry or provider rejection the worker stops
 and the Emails view offers the token form again. Reconnecting the same account
-retains its cached messages and resumes sync. Setup cannot generate this credential.
+retains its cached messages but stays paused until automatic sync is resumed.
 
 ## Sync, text, and privacy
 
 Sync processes bounded pages in the background, deduplicates unchanged messages,
-and checks for changes every 15 minutes while the API is running. Graph uses
+and checks for changes every 15 minutes while the API is running, once automatic
+sync is resumed after sign-in. New connections start paused: nothing syncs until
+the student presses Resume in the Emails view. Graph uses
 per-folder delta cursors. Classic Outlook snapshots EntryIDs and reads up to 20
 changed messages per page. Pause/resume and disconnect invalidate running work.
 No messages are sent, marked read, moved or deleted in Outlook; attachments and

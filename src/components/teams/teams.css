@@ -35,22 +35,31 @@
 .fq .tm-empty { display: grid; place-items: center; gap: 10px; min-height: 40vh; color: var(--fq-muted); text-align: center; }
 .fq .tm-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 8px 12px; border-radius: var(--fq-r-sm); background: var(--fq-danger-soft); color: var(--fq-danger); font-size: 13px; }
 
+/* Header and insights share the same columns in both reading directions. */
+.fq.tm-page-home { --tm-insights-width: 300px; --tm-column-gap: 40px; }
+.fq.tm-page-home .tm-topbar { display: grid; grid-template-columns: minmax(0, 1fr) var(--tm-insights-width); column-gap: var(--tm-column-gap); width: 100%; max-width: 1520px; margin-inline: auto; }
+.fq.tm-page-home .tm-viewas { width: 100%; min-width: 0; padding-inline: 12px 6px; }
+.fq.tm-page-home .tm-viewas select { flex: 1; min-width: 0; }
+
 /* Front page */
 .fq .tm-home { display: flex; flex-direction: column; gap: 26px; width: 100%; max-width: 1520px; margin: 0 auto; }
 .fq .tm-briefing { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--fq-accent) 28%, transparent); border-radius: var(--fq-r-md); background: linear-gradient(135deg, var(--fq-accent-soft), rgba(138, 92, 246, 0.08)); font-size: 14px; }
 .fq .tm-briefing ul { display: flex; flex: 1; flex-wrap: nowrap; gap: 4px 24px; min-width: 0; margin: 0; padding: 0; list-style: none; color: var(--fq-text-soft); }
 .fq .tm-briefing li { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* Hermes insights docked as a stacked panel on the inline-end side. */
-.fq .tm-home-split { flex-direction: row; align-items: start; gap: 20px; }
-.fq .tm-home-main { display: flex; flex: 1; flex-direction: column; gap: 26px; min-width: 0; }
-.fq .tm-briefing-side { position: sticky; top: 0; display: flex; flex: none; flex-direction: column; gap: 10px; width: 300px; }
+.fq .tm-home-split { display: grid; grid-template-columns: minmax(0, 1fr) var(--tm-insights-width); align-items: stretch; gap: var(--tm-column-gap); }
+.fq .tm-home-main { display: flex; flex: 1; flex-direction: column; gap: 26px; min-width: 0; position: relative; }
+.fq .tm-home-main::after { content: ""; position: absolute; inset-block: 0 -24px; inset-inline-end: calc(var(--tm-column-gap) / -2); width: 1px; background: var(--fq-line-strong); }
+.fq .tm-briefing-side { position: sticky; top: 0; align-self: start; display: flex; flex: none; flex-direction: column; gap: 10px; width: 300px; }
 .fq .tm-briefing-side .tm-briefing { flex-direction: column; }
 .fq .tm-briefing-side ul { flex: none; flex-direction: column; gap: 8px; }
 .fq .tm-briefing-side li { flex: none; overflow: visible; white-space: normal; }
 .fq .tm-briefing-side li + li { border-top: 1px solid var(--fq-line); padding-top: 8px; }
 @media (max-width: 960px) {
-  .fq .tm-home-split { flex-direction: column; }
-  .fq .tm-briefing-side { position: static; width: 100%; }
+  .fq.tm-page-home .tm-topbar, .fq .tm-home-split { grid-template-columns: minmax(0, 1fr); }
+  .fq.tm-page-home .tm-viewas { width: min(100%, var(--tm-insights-width)); }
+  .fq .tm-home-main::after { display: none; }
+  .fq .tm-briefing-side { position: static; width: 100%; border-top: 1px solid var(--fq-line-strong); padding-top: 20px; }
 }
 @media (max-width: 760px) { .fq .tm-briefing ul { flex-wrap: wrap; } .fq .tm-briefing li { flex: 1 1 220px; white-space: normal; } }
 .fq .tm-cover-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }

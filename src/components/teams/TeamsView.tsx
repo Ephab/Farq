@@ -37,7 +37,7 @@ export function TeamsView() {
 
   return (
     <TeamClientContext.Provider value={client}>
-    <div className="fq tm-page">
+    <div className={`fq tm-page${teamId ? "" : " tm-page-home"}`}>
       <div className="tm-topbar">
         <div>
           <h1 className="tm-title">{t("teams.page.title")}</h1>

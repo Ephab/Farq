@@ -93,6 +93,30 @@ def test_desktop_checkbox_consent_and_private_session(world, monkeypatch):
     assert client.get("/api/outlook/messages").status_code == 401
 
 
+def test_signin_stays_paused_until_auto_sync_resumed(world, monkeypatch):
+    client, factory, _ = world
+    monkeypatch.setattr(desktop, "enabled", lambda: True)
+    monkeypatch.setattr(desktop, "origin", lambda: "http://localhost:5173")
+    monkeypatch.setattr(desktop, "profile", lambda: ("store", "University"))
+    assert client.post("/api/outlook/desktop/consent").status_code == 200
+    assert client.post("/api/outlook/desktop/connect", json={"accepted": True}).status_code == 200
+    with factory() as db:
+        connection = db.scalar(select(MailConnection).where(MailConnection.tenant == desktop.TENANT))
+        assert connection.auto_sync is False
+        assert connection.status == "paused"
+        # Park the fixture connections so the worker has nothing else to pick up.
+        db.get(MailConnection, "alice").connected = False
+        db.get(MailConnection, "bob").connected = False
+        db.commit()
+    monkeypatch.setattr(sync, "work_one_page", lambda *args: pytest.fail("Must not sync before Resume"))
+    sync.tick()
+    assert client.patch("/api/outlook/preferences", json={"auto_sync": True}).json() == {"auto_sync": True}
+    with factory() as db:
+        connection = db.scalar(select(MailConnection).where(MailConnection.tenant == desktop.TENANT))
+        assert connection.auto_sync is True
+        assert connection.status == "queued"
+
+
 def test_desktop_does_not_allow_remote_or_non_windows(monkeypatch):
     monkeypatch.setattr(desktop.sys, "platform", "linux")
     with pytest.raises(Exception, match="native Windows"):

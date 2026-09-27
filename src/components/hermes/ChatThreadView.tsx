@@ -44,7 +44,7 @@ const isCoachKey = (value: string): value is MessageKey => /^coach\.[\w.]+$/.tes
 
 /** Message list + composer in the coach concept language (chat-shell interior). */
 export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [] }: ChatThreadViewProps) {
-  const { t, fmt, dir } = useI18n()
+  const { t, fmt } = useI18n()
   const display = (value: string) => (isCoachKey(value) ? t(value) : value)
   const formatTime = (iso: string) => (Number.isNaN(new Date(iso).getTime()) ? "" : fmt.time(iso))
   const [input, setInput] = useState("")
@@ -436,9 +436,9 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
               whileHover={reduce ? undefined : { y: -1 }}
               whileTap={reduce ? undefined : { scale: 0.94 }}
               className="send-button"
-              style={{ background: "var(--fq-danger, #bf3f53)" }}
+              data-stop=""
             >
-              <Square size={18} strokeWidth={2.5} />
+              <Square size={16} fill="currentColor" aria-hidden="true" />
             </motion.button>
           ) : (
             <motion.button
@@ -446,11 +446,11 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
               aria-label={t("coach.thread.send")}
               disabled={!input.trim() || busy || disabled}
               onClick={() => submit(input)}
-              whileHover={reduce ? undefined : { y: -1, rotate: dir === "rtl" ? 2 : -2 }}
+              whileHover={reduce || !input.trim() || disabled ? undefined : { y: -1 }}
               whileTap={reduce ? undefined : { scale: 0.94 }}
               className="send-button"
             >
-              <ArrowUp size={19} strokeWidth={2.5} className="rtl:-scale-x-100" />
+              <ArrowUp size={20} strokeWidth={2.5} aria-hidden="true" />
             </motion.button>
           )}
         </div>

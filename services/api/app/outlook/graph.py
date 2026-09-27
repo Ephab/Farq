@@ -38,7 +38,8 @@ def connect_tokens(payload, request, response, db):
         db.flush()
     connection.label = str(profile.get("mail") or profile.get("userPrincipalName") or "Outlook")[:200]
     connection.token_cache = auth.seal(json.dumps({"access_token": access, "expires": time.time() + max(0, int(payload.get("expires_in", 3000)) - 120)}))
-    connection.connected, connection.status, connection.error = True, "queued", ""
+    connection.connected, connection.status, connection.error = True, "paused", ""
+    connection.auto_sync = False
     connection.generation += 1
     connection.next_sync, connection.lease_until, connection.lease_id = 0, 0, ""
     token = secrets.token_urlsafe(32)

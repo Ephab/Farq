@@ -20,6 +20,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .database import get_db
+from .decisions import DecisionItem, observe_items, rerank
 from .models import BlackboardContentItem, BlackboardCourse, DataSource, Student, now
 
 
@@ -139,6 +140,7 @@ def import_snapshot(body: BlackboardImportPayload, db: Db) -> dict:
         )
         db.add(source)
     imported = 0
+    observations: list[DecisionItem] = []
     incoming_course_ids: set[str] = set()
     for incoming in body.courses:
         incoming_course_ids.add(incoming.external_id)
@@ -178,6 +180,11 @@ def import_snapshot(body: BlackboardImportPayload, db: Db) -> dict:
             item.posted_at = content.posted_at
             item.due_at = content.due_at
             item.modified_at = content.modified_at or now()
+            observations.append(DecisionItem(
+                entity_type="blackboard", entity_id=f"{incoming.external_id}:{content.external_id}",
+                title=content.title, text=f"Course: {incoming.code} {incoming.title}. Type: {content.content_type}. Due: {content.due_at or 'none'}. {content.body_text}",
+                student_id=body.student_id,
+            ))
             imported += 1
         db.execute(delete(BlackboardContentItem).where(
             BlackboardContentItem.course_id == course.id,
@@ -192,6 +199,7 @@ def import_snapshot(body: BlackboardImportPayload, db: Db) -> dict:
     source.status = "ready"
     source.error = None
     source.last_synced_at = now()
+    observe_items(db, observations, purpose="blackboard_ingestion")
     db.commit()
     return {"status": "ready", "student_id": body.student_id, "courses": len(body.courses), "items": imported}
 
@@ -274,13 +282,14 @@ def search_content(
         if score:
             ranked.append((score, item))
     ranked.sort(key=lambda pair: (-pair[0], pair[1].title.lower()))
+    results = [
+        {**_item_meta(item, course_map[item.course_id], _snippet(item.body_text, terms)), "score": score}
+        for score, item in ranked[:limit]
+    ]
     return {
         "query": query,
         "untrusted_content": True,
-        "results": [
-            {**_item_meta(item, course_map[item.course_id], _snippet(item.body_text, terms)), "score": score}
-            for score, item in ranked[:limit]
-        ],
+        "results": rerank(db, results, "blackboard_rerank", student_id=student_id),
     }
 
 

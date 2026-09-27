@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .database import get_db
+from .decisions import DecisionItem, observe_items, rerank
 from .coop_sources import CoopCandidate, fetch_linkedin_candidates, fetch_telegram_candidates
 from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySyncRun, Project, RoadmapVersion, Student, StudentCoopState, StudentFact, StudentProfile, now
 
@@ -289,6 +290,10 @@ def sync_coop_source(db: Session, source: Literal["telegram", "linkedin"], clien
     try:
         has_history = db.scalar(select(CoopPostingSource.id).where(CoopPostingSource.source == source).limit(1)) is not None
         candidates = fetch_telegram_candidates(client, pages=1 if has_history else 3) if source == "telegram" else fetch_linkedin_candidates(client)
+        observe_items(db, [DecisionItem(
+            entity_type=f"coop_{source}", entity_id=candidate.external_id, title=candidate.title,
+            text=f"{candidate.company}. {candidate.location}. {candidate.description}",
+        ) for candidate in candidates], purpose="coop_ingestion")
         for candidate in candidates:
             action, _ = _upsert_candidate(db, candidate)
             counts[action] += 1
@@ -567,7 +572,8 @@ def find_postings(db: Session, student_id: str, query: str = "", status: str = "
             continue
         results.append(result)
     freshness_order = {"today": 0, "recent": 1, "older": 2}
-    return sorted(results, key=lambda item: (item["is_demo"], -item["fit_score"], freshness_order[item["freshness"]], item["title"]))[: max(1, min(limit, 50))]
+    shortlist = sorted(results, key=lambda item: (item["is_demo"], -item["fit_score"], freshness_order[item["freshness"]], item["title"]))[: max(1, min(limit, 50))]
+    return rerank(db, shortlist, "coop_rerank", student_id=student_id)
 
 
 def require_student(db: Session, student_id: str) -> None:

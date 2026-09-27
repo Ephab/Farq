@@ -143,6 +143,17 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const DEMO_STUDENT_ID = "demo-student"
 
+export interface DecisionStatus {
+  state: "disabled" | "observing" | "active" | "degraded"
+  enabled: boolean
+  mode: "off" | "shadow" | "active"
+  model: string
+  active_purposes: string[]
+  last_success_at: string | null
+  last_failure_at: string | null
+  last_error: string | null
+}
+
 // The signed-in student. There is no auth yet, so the browser remembers which
 // student record it created (see docs/future-work.md). Falls back to the demo.
 const CURRENT_STUDENT_STORAGE_KEY = "farq.current-student"

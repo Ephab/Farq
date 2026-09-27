@@ -15,6 +15,7 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..decisions import DecisionItem, observe_items
 from ..models import EvidenceItem
 from ..schemas import EvidenceIn
 
@@ -100,4 +101,8 @@ def store_evidence(db: Session, student_id: str, source_id: str, items: list[Evi
         db.add(row)
         existing[fingerprint] = row
         added += 1
+    observe_items(db, [DecisionItem(
+        entity_type="onboarding_evidence", entity_id=fingerprint_for(item), title=item.title,
+        text=json.dumps(item.data, ensure_ascii=False), student_id=student_id,
+    ) for item in items], purpose="evidence_ingestion")
     return added

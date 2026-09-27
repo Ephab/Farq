@@ -20,6 +20,21 @@ HTTP is only the transport into Hermes. `POST /v1/runs` starts the full Hermes a
 including its session, instructions, memory, reasoning, and tool calls. Farq does not import
 Hermes internals because its documented gateway contract is a safer upgrade boundary.
 
+## Jev decision layer
+
+TypeSafe Jev is an optional FastAPI-owned System One layer between normalized source data,
+SQLite retrieval and Hermes context. It receives bounded, redacted snippets and returns typed
+classification, actionability, urgency and roadmap-relevance decisions. In the default `shadow`
+mode, decisions are audited in `decision_records` but cannot change ingestion, facts, rankings or
+roadmaps. Failures are always fail-open. SQLite remains authoritative; Jev is not a memory store,
+and Hermes never calls TypeSafe directly.
+
+The observed ingestion purposes are co-op, Hackathonat, Blackboard, Outlook and onboarding
+evidence. Coach messages are intent-routed in shadow mode. Existing deterministic shortlists for
+co-op, hackathons and Blackboard can be reranked only when `JEV_MODE=active` and their exact
+purpose (`coop_rerank`, `hackathon_rerank`, or `blackboard_rerank`) appears in
+`JEV_ACTIVE_PURPOSES`. Low-confidence results preserve their original relative order.
+
 ## One chat turn
 
 1. The UI saves a message through FastAPI.

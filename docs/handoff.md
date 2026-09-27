@@ -1,5 +1,13 @@
 # Handoff: onboarding, evidence, first roadmap, model fallback
 
+## Jev / TypeSafe decision layer
+
+- `app/decisions.py` owns TypeSafe calls, redaction, caching, audit records and fail-open behavior.
+- The default is `JEV_MODE=shadow`; do not activate a purpose without a labeled evaluation set.
+- Diagnostics live at `/api/decisions/status` and `/api/decisions/recent`; source bodies are never persisted there.
+- The browser shows only a global observing/active/degraded badge. The TypeSafe key stays in FastAPI.
+- Jev cannot create facts, write Hermes memory, delete records, or modify roadmap state.
+
 State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.md` and
 `docs/future-work.md` before changing this area.
 

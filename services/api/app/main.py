@@ -19,9 +19,10 @@ from . import outlook as outlook_api
 from .blackboard import router as blackboard_router
 from .coop import router as coop_router, seed_coop_catalog, sync_all_coop_sources, sync_coop_source
 from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
+from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
-from .models import AgentRun, ChatMessage, ChatThread, DataSource, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentOpportunity, StudentProfile, now, uid
+from .models import AgentRun, ChatMessage, ChatThread, DataSource, DecisionRecord, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentOpportunity, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
 from .opportunities import find_hackathons, mark_seen, normalize_opportunity_operations, opportunity_summary, recompute_student, sync_hackathonat
 from .pipeline.brief_step import readiness as readiness_for
@@ -258,7 +259,26 @@ def health() -> dict:
         agent = _hermes_agent_status(payload)
     except Exception:
         agent = "unavailable"
-    return {"status": "ok", "database": "ready", "agent": agent, "started_at": STARTED_AT, "model": HERMES_MODEL, "provider": HERMES_PROVIDER}
+    db = SessionLocal()
+    try: decisions = decision_status(db)
+    finally: db.close()
+    return {"status": "ok", "database": "ready", "agent": agent, "decisions": decisions, "started_at": STARTED_AT, "model": HERMES_MODEL, "provider": HERMES_PROVIDER}
+
+
+@app.get("/api/decisions/status")
+def decisions_status(db: Db) -> dict:
+    return decision_status(db)
+
+
+@app.get("/api/decisions/recent")
+def recent_decisions(db: Db, limit: int = 20) -> dict:
+    rows = db.scalars(select(DecisionRecord).order_by(DecisionRecord.created_at.desc()).limit(max(1, min(limit, 100)))).all()
+    return {"decisions": [{
+        "id": row.id, "purpose": row.purpose, "entity_type": row.entity_type, "entity_id": row.entity_id,
+        "model": row.model, "mode": row.mode, "status": row.status, "answers": json.loads(row.answers_json),
+        "latency_ms": row.latency_ms, "input_tokens": row.input_tokens, "output_tokens": row.output_tokens,
+        "error_category": row.error_category, "created_at": row.created_at.isoformat(),
+    } for row in rows]}
 
 
 def _hermes_agent_status(payload: dict) -> str:
@@ -966,6 +986,9 @@ def send_message(
     db.flush()
     message.agent_run_id = run.id
     db.commit()
+    background.add_task(observe_independently, [DecisionItem(
+        entity_type="chat_message", entity_id=message.id, title="Student coach request", text=content, student_id=thread.student_id,
+    )], "chat_intent")
     background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key)
     return {"run_id": run.id, "message_id": message.id, "status": run.status}
 

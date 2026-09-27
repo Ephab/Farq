@@ -33,6 +33,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
+from .decisions import DecisionItem, observe_independently
 from .hermes import LAST_JSON_MODEL, HermesJsonError, effective_hermes_key, run_json_prompt
 from .models import OutlookAccount, now
 
@@ -315,7 +316,12 @@ def fetch_latest_emails(db: Session, student_id: str, limit: int) -> list[dict]:
     items = payload.get("value", [])
     if not isinstance(items, list):
         raise OutlookError("Outlook returned an unexpected response", status=502)
-    return [normalize_message(item) for item in items if isinstance(item, dict)][:count]
+    normalized = [normalize_message(item) for item in items if isinstance(item, dict)][:count]
+    observe_independently([DecisionItem(
+        entity_type="outlook", entity_id=email["id"], title=email["subject"],
+        text=f"Received: {email['received']}. {email['preview']} {email['body']}", student_id=student_id,
+    ) for email in normalized], purpose="outlook_ingestion")
+    return normalized
 
 
 def build_email_prompt(emails: list[dict], question: str) -> str:

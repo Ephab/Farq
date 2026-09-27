@@ -30,7 +30,7 @@ import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
-import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/farq-api"
+import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type StudentProfile } from "@/lib/farq-api"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
 import { cn } from "@/lib/utils"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -42,6 +42,7 @@ export default function App() {
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [onboarding, setOnboarding] = useState(!hasChosenStudent())
+  const [jev, setJev] = useState<DecisionStatus | null>(null)
   // Live Hermes run for this student's coach thread — polled so any section
   // can show that Hermes is still generating after navigating away.
   const activeRun = useActiveRun(profile?.thread_id ?? null)
@@ -67,6 +68,12 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadProfile() }, [loadProfile])
+  useEffect(() => {
+    let stopped = false
+    const load = () => api<DecisionStatus>("/api/decisions/status").then((value) => { if (!stopped) setJev(value) }).catch(() => undefined)
+    load(); const timer = window.setInterval(load, 30_000)
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [])
 
   if (onboarding) {
     return (
@@ -172,6 +179,15 @@ export default function App() {
               </AnimatedSidebarTrigger>
               <div className="h-5 w-px bg-border" />
               <p className="text-sm font-medium">{active}</p>
+              {jev ? (
+                <span
+                  title={`${jev.model}${jev.last_success_at ? ` · last decision ${new Date(jev.last_success_at).toLocaleTimeString()}` : ""}${jev.last_error ? ` · fallback: ${jev.last_error}` : ""}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${jev.state === "degraded" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : jev.state === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
+                >
+                  <span className={`size-1.5 rounded-full ${jev.state === "degraded" ? "bg-amber-500" : jev.state === "active" ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                  Jev · {jev.state}
+                </span>
+              ) : null}
               {activeRun ? (
                 <div className="ml-auto flex min-w-0 items-center gap-1.5" role="status" aria-live="polite" aria-label={`Hermes is generating: ${activeRun.stage || "working"}`}>
                   <button

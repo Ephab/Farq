@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..decisions import DecisionItem, observe_items, rerank
 from ..models import Opportunity, OpportunitySyncRun, RoadmapVersion, Student, StudentFact, StudentOpportunity, StudentProfile, now
 from ..schemas import ChatMessageUi, RoadmapOperation, RoadmapOpportunity, RoadmapResource
 from .base import OpportunityConnector
@@ -48,6 +49,10 @@ def sync_hackathonat(db: Session, connector: OpportunityConnector | None = None)
     db.commit()
     try:
         records = connector.fetch()
+        observe_items(db, [DecisionItem(
+            entity_type="hackathon", entity_id=record.external_id, title=record.title,
+            text=f"{record.organizer}. {' '.join(record.locations)}. {' '.join(record.topics)}. Date: {record.source_date or 'unknown'}",
+        ) for record in records], purpose="hackathon_ingestion")
         seen: set[str] = set()
         changed = 0
         stamp = now()
@@ -222,7 +227,7 @@ def find_hackathons(db: Session, student_id: str, query: str = "", limit: int = 
         results.append(_result(rec, opp))
         if len(results) >= max(1, min(limit, 5)):
             break
-    return {**opportunity_summary(db, student_id), "results": results}
+    return {**opportunity_summary(db, student_id), "results": rerank(db, results, "hackathon_rerank", student_id=student_id)}
 
 
 def mark_seen(db: Session, student_id: str, ids: list[str]) -> int:

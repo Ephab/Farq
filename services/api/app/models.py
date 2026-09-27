@@ -179,6 +179,27 @@ class AgentRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DecisionRecord(Base):
+    """Auditable Jev observation. Source text is deliberately never persisted."""
+    __tablename__ = "decision_records"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(64), index=True)
+    question_set_version: Mapped[str] = mapped_column(String(32), default="v1")
+    entity_type: Mapped[str] = mapped_column(String(48), index=True)
+    entity_id: Mapped[str] = mapped_column(String(200), index=True)
+    model: Mapped[str] = mapped_column(String(80), default="jev-latest")
+    mode: Mapped[str] = mapped_column(String(16), default="shadow", index=True)
+    status: Mapped[str] = mapped_column(String(16), default="shadow", index=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    answers_json: Mapped[str] = mapped_column(Text, default="{}")
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
 class Project(Base):
     __tablename__ = "projects"
     __table_args__ = (UniqueConstraint("student_id", "roadmap_node_id", name="uq_project_roadmap_node"),)

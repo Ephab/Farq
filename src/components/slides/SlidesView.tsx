@@ -88,7 +88,8 @@ export function SlidesView() {
     api<{ model?: string }>("/api/health")
       .then((health) => {
         if (cancelled || !health.model) return;
-        setHermesModel({ id: health.model, label: health.model });
+        // Raw infra ids (nvidia/…) mean nothing to students: show a human label.
+        setHermesModel({ id: health.model, label: "Farq default" });
       })
       .catch(() => undefined);
     return () => {

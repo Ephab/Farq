@@ -177,8 +177,15 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
     refreshSide().catch(() => undefined)
   }
 
-  const agentLabel = agent === "ready" ? "Ready" : agent === "checking" ? "Checking" : agent === "degraded" ? "Degraded" : "Unavailable"
-  const agentTone = agent === "ready" ? "success" : agent === "unavailable" ? "danger" : "warning"
+  // Health probe (2s timeout) can flap while the chat path itself works, so a
+  // momentary "unavailable" must not present as a terminal red state.
+  const agentLabel = agent === "ready" ? "Ready" : agent === "checking" ? "Checking…" : agent === "degraded" ? "Degraded" : agent === "unavailable" ? "Reconnecting…" : "Checking…"
+  const agentTone = agent === "ready" ? "success" : "warning"
+  const agentTitle = agent === "unavailable"
+    ? "Farq is reconnecting to Hermes — your conversation is saved and sending still works"
+    : agent === "degraded"
+      ? "Hermes is degraded — chat works, some features may be slow"
+      : "Hermes connection status"
   const subtitle = roadmapTitle ? `Goal · ${roadmapTitle}` : "Goal · learns from your words and the paths you choose"
 
   const recentDecision = recentDecisions[0] ?? null
@@ -213,8 +220,8 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
                   <Trophy size={12} />{opportunities.unseen_count} new
                 </button>
               ) : null}
-              <span className={`status ${agentTone}`}>
-                <span className={`status-dot${agent === "checking" ? " pulse" : ""}`} aria-hidden="true" />
+              <span className={`status ${agentTone}`} title={agentTitle}>
+                <span className={`status-dot${agent === "checking" || agent === "unavailable" ? " pulse" : ""}`} aria-hidden="true" />
                 {agentLabel}
               </span>
             </div>

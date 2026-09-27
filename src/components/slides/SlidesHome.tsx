@@ -189,7 +189,7 @@ export function SlidesHome(props: SlidesHomeProps) {
           <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
             Hermes
           </span>
-          <span className="max-w-40 truncate text-[13px] font-medium sm:max-w-56">{modelLabel}</span>
+          <span className="max-w-40 truncate text-[13px] font-medium sm:max-w-56" title={modelLabel}>{modelLabel}</span>
         </div>
       </div>
 

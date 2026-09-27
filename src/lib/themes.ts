@@ -38,7 +38,7 @@ export const THEMES: Theme[] = [
       background: "#ffffff",
       foreground: "#09090b",
       muted: "#f4f4f5",
-      mutedForeground: "#71717a",
+      mutedForeground: "#65656f",
       border: "#e4e4e7",
       ring: "#a1a1aa",
       primary: "#09090b",

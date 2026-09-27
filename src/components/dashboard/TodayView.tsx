@@ -192,8 +192,8 @@ function ListRow({
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{title}</span>
-        <span className="block truncate text-xs text-muted-foreground">{detail}</span>
+        <span className="block truncate text-sm font-semibold" title={title}>{title}</span>
+        <span className="block truncate text-xs text-muted-foreground" title={typeof detail === "string" ? detail : undefined}>{detail}</span>
       </span>
       {trailing}
     </div>

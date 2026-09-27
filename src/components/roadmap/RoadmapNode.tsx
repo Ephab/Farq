@@ -19,9 +19,9 @@ const STATUS_DOT: Record<NodeStatus, string> = {
 };
 
 const LEVEL_BADGE: Record<string, string> = {
-  Beginner: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  Intermediate: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-  Advanced: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  Beginner: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  Intermediate: "bg-sky-500/10 text-sky-700 dark:text-sky-400",
+  Advanced: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
 };
 
 interface RoadmapNodeProps {

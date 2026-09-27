@@ -81,9 +81,16 @@ html[data-theme="dracula"] .fq {
   --fq-shadow-accent: 0 14px 36px color-mix(in srgb, var(--primary) 24%, transparent);
 }
 
-.fq button,
+.fq button:not([class*="text-"]),
 .fq textarea {
   color: inherit;
+  font: inherit;
+}
+
+/* Buttons carrying an explicit Tailwind text color (e.g. text-primary-foreground
+ * on bg-primary) keep it: .fq button (0,1,1) would otherwise beat the utility
+ * (0,1,0) and render dark-on-dark. This was the invisible "Start the chat". */
+.fq button[class*="text-"] {
   font: inherit;
 }
 

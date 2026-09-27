@@ -79,14 +79,14 @@ export default function App() {
     <ThemeProvider>
       <div className="min-h-screen bg-background text-foreground">
         <AnimatedSidebarProvider className="min-h-screen bg-background">
-          <AnimatedSidebar collapsible="icon" ariaLabel="SmartLearn navigation">
+          <AnimatedSidebar collapsible="icon" ariaLabel="Farq navigation">
             <AnimatedSidebarHeader>
               <div className="flex min-h-11 items-center gap-3 overflow-hidden px-2">
                 <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
                   <Command aria-hidden="true" className="size-4" />
                 </div>
                 <span className="truncate text-sm font-semibold group-data-[state=collapsed]/sidebar:hidden">
-                  SmartLearn
+                  Farq
                 </span>
               </div>
             </AnimatedSidebarHeader>

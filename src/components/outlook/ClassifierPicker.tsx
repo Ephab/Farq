@@ -16,10 +16,10 @@ interface ClassifierPickerProps {
 /** Email classifier choice. Picking a cloud engine is the student's consent to send mail text to it. */
 export function ClassifierPicker({ engines, selected, busy, onSelect }: ClassifierPickerProps) {
   return (
-    <fieldset className="mt-3 rounded-xl border border-border p-3 text-sm">
-      <legend className="px-1 font-medium">Email classifier</legend>
-      <p className="text-xs text-muted-foreground">
-        Fallback order: Jev, then Span-01 Lite, then Laya. Your choice sets where each email starts; unavailable engines are skipped.
+    <fieldset className="text-sm">
+      <legend className="sr-only">Email classifier</legend>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        Tries Jev, then Span-01 Lite, then Laya. Pick where each email starts.
       </p>
       <div role="radiogroup" className="mt-2 grid gap-2">
         {engines.map((engine) => {
@@ -28,7 +28,7 @@ export function ClassifierPicker({ engines, selected, busy, onSelect }: Classifi
           return (
             <label
               key={engine.id}
-              className={`flex items-start gap-3 rounded-lg border p-2.5 ${selected === engine.id ? "border-primary bg-primary/5" : "border-border"} ${disabled && selected !== engine.id ? "opacity-60" : "cursor-pointer"}`}
+              className={`flex items-start gap-2.5 rounded-lg border p-2.5 ${selected === engine.id ? "border-primary bg-primary/5" : "border-border"} ${disabled && selected !== engine.id ? "opacity-60" : "cursor-pointer"}`}
             >
               <input
                 type="radio"
@@ -41,14 +41,14 @@ export function ClassifierPicker({ engines, selected, busy, onSelect }: Classifi
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{engine.label}</span>
-                  <span className="text-xs text-muted-foreground">{engine.location === "local" ? "Local" : "Cloud"} · {engine.provider}</span>
+                  <span className="text-[11px] text-muted-foreground">{engine.location === "local" ? "On this computer" : engine.provider}</span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${engine.available ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
                   >
                     {engine.available ? "Available" : "Not available"}
                   </span>
                 </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
+                <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">
                   {engine.available ? DISCLOSURE[engine.id] : engine.reason}
                 </span>
               </span>

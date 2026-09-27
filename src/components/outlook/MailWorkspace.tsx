@@ -1,7 +1,7 @@
 import { EmailQuestion } from "./EmailQuestion"
 import { useEffect, useState } from "react"
 import { Archive, ArrowLeft, CalendarClock, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Inbox, Search, Star, X } from "lucide-react"
-import { localDay, outlookApi, type MailItem } from "@/lib/outlook-api"
+import { localDay, outlookApi, type DecisionEngine, type MailItem } from "@/lib/outlook-api"
 
 export type MailFilters = { q: string; category: string; sort: string }
 type Changes = { pinned?: boolean; reviewed?: boolean; dismissed?: boolean; due_date?: string | null }
@@ -9,9 +9,10 @@ const control = "inline-flex min-h-9 items-center justify-center gap-2 rounded-l
 const categories: Record<string, string> = { coursework: "Coursework", administration: "University admin", opportunity: "Opportunities", other: "Other", unclassified: "Unclassified" }
 const dateLabel = (value: string) => value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "No date"
 
-export function MailWorkspace({ items, total, busy, filters, onFilters, offset, pageSize, onPage, onAction, dismissed }: {
+export function MailWorkspace({ items, total, busy, filters, onFilters, offset, pageSize, onPage, onAction, dismissed, classifier }: {
   items: MailItem[]; total: number; busy: boolean; filters: MailFilters; onFilters: (next: MailFilters) => void
   offset: number; pageSize: number; onPage: (offset: number) => void; dismissed: boolean
+  classifier?: DecisionEngine
   onAction: (path: string, method: string, body?: object) => Promise<boolean>
 }) {
   const [search, setSearch] = useState(filters.q)
@@ -75,7 +76,7 @@ export function MailWorkspace({ items, total, busy, filters, onFilters, offset, 
     <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
       <label className="mr-2 flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" aria-label="Select all emails on this page" disabled={!items.length || busy} checked={items.length > 0 && selection.length === items.length} onChange={event => setSelected(event.target.checked ? items.map(item => item.id) : [])} />{selection.length ? `${selection.length} selected` : `${total} ${total === 1 ? "message" : "messages"}`}</label>
       {selection.length > 0 ? <><button className={control} disabled={busy} onClick={() => void bulk({ reviewed: true })}><CheckCheck className="size-3.5" />Mark reviewed</button><button className={control} disabled={busy} onClick={() => void bulk({ pinned: true })}><Star className="size-3.5" />Pin</button><button className={control} disabled={busy} onClick={() => void bulk({ dismissed: !dismissed })}><Archive className="size-3.5" />{dismissed ? "Restore" : "Dismiss"}</button><button className={control} onClick={() => setSelected([])}>Clear</button></> : <span className="text-xs text-muted-foreground">Select messages to review them together</span>}
-      <span className="ml-auto rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Local & private</span>
+      {!classifier || classifier.location === "local" ? <span className="ml-auto rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Classified on this computer</span> : <span className="ml-auto rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">Classified by {classifier.label}</span>}
     </div>
     {active && <EmailQuestion key={(selection.length ? selection : [active.id]).join(",")} ids={selection.length ? selection : [active.id]} />}
     {!items.length ? <div className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center"><Inbox className="size-10 text-muted-foreground/50" /><h2 className="font-semibold">Nothing here right now</h2><p className="max-w-sm text-sm text-muted-foreground">{filters.q || filters.category ? "Try another search or category. Search includes the complete cached message text." : "Messages will appear here as your mailbox syncs. Try All mail to see other updates."}</p>{(filters.q || filters.category) && <button className={control} onClick={() => { setSearch(""); onFilters({ q: "", category: "", sort: "newest" }) }}>Clear filters</button>}</div> : <div className="grid min-h-[36rem] lg:h-[min(75vh,58rem)] lg:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.55fr)]">

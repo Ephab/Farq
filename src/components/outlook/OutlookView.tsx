@@ -1,12 +1,12 @@
 import { TokenConnection } from "./TokenConnection"
+import { MailboxRail, syncLine } from "./MailboxRail"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { ExternalLink, Mail, RefreshCw, ShieldCheck, Star } from "lucide-react"
+import { Mail, ShieldCheck } from "lucide-react"
 
 import { localDay, outlookApi, type MailItem, type OutlookStatus } from "@/lib/outlook-api"
 
 import { MailWorkspace, type MailFilters } from "./MailWorkspace"
-import { ClassifierPicker } from "./ClassifierPicker"
 
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -34,7 +34,6 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
   const [busy, setBusy] = useState(false)
 
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
   const generation = useRef(0)
 
@@ -117,70 +116,56 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
     <button className={`${button} mt-4 w-full`} onClick={onOpen}>{status?.connected ? "View all emails" : "Connect Outlook"}</button>
   </section>
 
-  return <section className={compact ? "rounded-3xl border border-border bg-background p-5" : "mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-8"} aria-label="University Outlook">
-
-    <div className="flex flex-wrap items-center justify-between gap-4">
-
-      <div className="flex items-center gap-3"><span className="rounded-2xl bg-primary/10 p-3 text-primary"><Mail className="size-5" /></span><div>
-
-        <h1 className="text-xl font-semibold tracking-tight">{compact ? "Today in your mail" : "Emails"}</h1>
-
-        <p className="mt-1 text-sm text-muted-foreground">{status?.connected ? status.account : "Your university updates, in one place."}</p>
-
-      </div></div>
-
-      {compact && onOpen ? <button className={button} onClick={onOpen}>Open Outlook</button> : status?.connected ? <div className="flex flex-wrap gap-2">
-
-        <button className={button} disabled={busy || status.status === "running"} onClick={() => void action("/sync", "POST")}><RefreshCw className="size-4" />Sync now</button>
-
-        <button className={button} disabled={busy} onClick={() => void action("/preferences", "PATCH", { auto_sync: !status.auto_sync })}>{status.auto_sync ? "Pause sync" : "Resume sync"}</button>
-
-        <button className={button} onClick={() => setConfirmDisconnect(true)}>Disconnect</button>
-
-      </div> : null}
-
+  const header = <header className="flex items-center gap-3">
+    <span className="rounded-2xl bg-primary/10 p-3 text-primary"><Mail className="size-5" /></span>
+    <div className="min-w-0">
+      <h1 className="text-xl font-semibold tracking-tight">Emails</h1>
+      <p className="mt-0.5 truncate text-sm text-muted-foreground">{status?.connected ? <>{status.account}<span className="text-muted-foreground/70"> · {syncLine(status)}</span></> : "Your university mail, sorted for you."}</p>
     </div>
+  </header>
 
-    {error && <p role="alert" className="my-3 rounded-xl bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">{error}</p>}
+  const errorBanner = error && <p role="alert" className="rounded-xl bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">{error}</p>
 
-    {!status ? <p className="py-6 text-sm text-muted-foreground">Loading Outlook connection…</p> : !status.connected ? <div className="mt-5 space-y-4">
-      <div className="rounded-2xl border border-border p-5">
-        <h2 className="flex items-center gap-2 font-semibold"><ShieldCheck className="size-5" />Classic Outlook on this computer</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Read the default mailbox signed in to classic Outlook on Windows. Waypoint classifies emails locally with Laya by default (you can pick a cloud classifier after connecting) and keeps cleaned text for 30 days. It does not send, edit or delete Outlook messages.</p>
-        {status.desktop_available ? <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-muted/50 p-4 text-sm"><input type="checkbox" aria-label="Allow classic Outlook mailbox access" checked={busy} disabled={busy} onChange={event => { if (event.target.checked) void connectDesktop() }} /><span>{busy ? "Connecting to classic Outlook…" : "I allow Waypoint to read and locally classify my classic Outlook mailbox."}</span></label> : <p className="mt-3 text-sm text-muted-foreground">Requires classic Outlook installed on Windows and Waypoint setup completed. This method is unavailable on macOS, in Docker, and with new Outlook.</p>}
+  if (!status) return <section aria-label="University Outlook" className="mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-8">{header}<p className="text-sm text-muted-foreground">Loading Outlook connection…</p></section>
+
+  // Rail placement follows the section's own width (container query), so the view also fits when embedded in onboarding.
+  const layout = "grid items-start gap-5 @5xl:grid-cols-[minmax(0,1fr)_300px]"
+
+  if (!status.connected) return <section aria-label="University Outlook" className="@container mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-8">
+    {header}
+    {errorBanner}
+    <div className={layout}>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-border p-5">
+          <h2 className="flex items-center gap-2 font-semibold"><ShieldCheck className="size-5" />Classic Outlook on this computer</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Reads the mailbox signed in to classic Outlook on Windows. Waypoint never sends, edits or deletes your messages.</p>
+          {status.desktop_available ? <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-muted/50 p-4 text-sm"><input type="checkbox" aria-label="Allow classic Outlook mailbox access" checked={busy} disabled={busy} onChange={event => { if (event.target.checked) void connectDesktop() }} /><span>{busy ? "Connecting to classic Outlook…" : "I allow Waypoint to read and locally classify my classic Outlook mailbox."}</span></label> : <p className="mt-3 text-sm text-muted-foreground">Needs classic Outlook on Windows and a finished Waypoint setup. Not available on macOS, in Docker or with new Outlook. Use a Graph token instead.</p>}
+        </div>
+        <TokenConnection available={!!status.token_available} onConnected={load} />
       </div>
-      <TokenConnection available={!!status.token_available} onConnected={load} />
-      <p className="text-sm text-muted-foreground">Mailbox access belongs to your private connection, independently of the demo profile. Email Q&A sends only messages you explicitly select and approve. Mail is never shared with teammates.</p>
-    </div> : <>
-
-      <p aria-live="polite" className="mt-4 text-xs text-muted-foreground">{status.status === "running" || status.status === "queued" ? `Sync ${status.status} · ${status.processed ?? 0} messages classified` : status.last_sync ? `Last completed sync ${new Date(status.last_sync * 1000).toLocaleString()}` : "First sync has not completed"} · {status.auto_sync ? "Automatic sync every 15 minutes while Waypoint runs" : "Automatic sync paused"}</p>
-
-      <label className="mt-4 flex items-start gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" className="mt-1" checked={!!status.coach_access} disabled={busy} onChange={event => void action("/coach-access", "PATCH", { accepted: event.target.checked })} /><span>Allow Coach to search and read my synced emails in this browser's Coach chats.<span className="mt-1 block text-xs text-muted-foreground">Matching email text may be sent to configured AI providers, including fallbacks. Coach and provider history may retain it. Uncheck to stop future access; disconnect also revokes access.</span></span></label>
-      {status.classifiers ? <ClassifierPicker engines={status.classifiers} selected={status.classifier ?? "laya"} busy={busy} onSelect={engine => void action("/classifier", "PATCH", { engine })} /> : null}
-
-      {status.worker_enabled === false && <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">Sync worker is disabled. Enable OUTLOOK_SYNC_ENABLED on the API server and restart it.</p>}
-
-      {status.error && <div role="status" className="mt-3 rounded-xl bg-amber-500/10 p-3 text-sm">{status.error}</div>}
-
-      {status.status === "reconnect" && status.provider === "token" && <TokenConnection available={!!status.token_available} onConnected={load} />}
-
-      {confirmDisconnect && <div role="alert" className="my-4 rounded-xl border border-border p-4"><p className="text-sm">Disconnect and delete cached mail, labels and saved dates from Waypoint? Your Outlook mailbox is unchanged. Microsoft consent can also be revoked in your Microsoft account.</p><div className="mt-3 flex gap-2"><button className={button} disabled={busy} onClick={() => { setConfirmDisconnect(false); void action("/connection", "DELETE") }}>Disconnect and delete</button><button className={button} onClick={() => setConfirmDisconnect(false)}>Cancel</button></div></div>}
-
-      {!compact && <><nav aria-label="Mail views" className="mt-5 flex flex-wrap gap-2">{views.map(tab => <button key={tab} className={`${button} ${view === tab ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{labels[tab]}</button>)}</nav>
-
-        <p className="mt-3 text-sm text-muted-foreground">Classifier labels are suggestions. Important includes your pinned messages and model suggestions. Today includes mail received today in your timezone, plus dates you set. Arabic and uncertain messages stay available under Needs review.</p></>}
-
-      {!compact ? <MailWorkspace key={view} items={items} total={total} busy={busy} filters={filters} onFilters={next => { setFilters(next); setOffset(0) }} offset={offset} pageSize={pageSize} onPage={setOffset} onAction={action} dismissed={view === "dismissed"} /> : <div className="mt-4 space-y-3">{items.map(item => <article key={item.id} className="rounded-2xl border border-border p-4">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-muted-foreground">{item.sender} · {item.received ? new Date(item.received).toLocaleDateString() : "Unknown date"}</p><h2 className="mt-1 break-words font-semibold">{item.subject}</h2></div>{item.pinned && <Star aria-label="Pinned" className="size-4 shrink-0 fill-amber-500 text-amber-500" />}</div>
-
-        {item.due_date && <p className="mt-2 text-xs text-muted-foreground">Follow up {item.due_date}</p>}
-
-        <div className="mt-3 flex gap-2">{onOpen && <button className={button} onClick={onOpen}>Read in Emails</button>}{item.web_url && <a className={button} href={item.web_url} target="_blank" rel="noopener noreferrer">Outlook<ExternalLink className="size-3" /></a>}</div>
-
-      </article>)}{!items.length && <p className="py-6 text-center text-sm text-muted-foreground">No university mail for today yet.</p>}</div>}
-
-    </>}
-
+      <aside aria-label="What happens to your mail" className="rounded-2xl border border-border p-4 text-xs leading-5 text-muted-foreground @5xl:sticky @5xl:top-4">
+        <h2 className="text-sm font-semibold text-foreground">What happens to your mail</h2>
+        <ul className="mt-2 space-y-2">
+          <li>Laya classifies it on this computer. You can pick a cloud classifier after connecting.</li>
+          <li>Cleaned text stays in Waypoint for 30 days; attachments aren't imported.</li>
+          <li>Email Q&A only sends messages you select and approve.</li>
+          <li>The connection is yours alone. Teammates and the demo profile never see your mail.</li>
+        </ul>
+      </aside>
+    </div>
   </section>
 
+  return <section aria-label="University Outlook" className="@container mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-8">
+    {header}
+    {errorBanner}
+    <div className={layout}>
+      <div className="min-w-0 space-y-3">
+        <nav aria-label="Mail views" className="flex flex-wrap gap-1 rounded-xl bg-muted/60 p-1">
+          {views.map(tab => <button key={tab} className={`min-h-9 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{labels[tab]}</button>)}
+        </nav>
+        <MailWorkspace key={view} items={items} total={total} busy={busy} filters={filters} onFilters={next => { setFilters(next); setOffset(0) }} offset={offset} pageSize={pageSize} onPage={setOffset} onAction={action} dismissed={view === "dismissed"} classifier={status.classifiers?.find(engine => engine.id === (status.classifier ?? "laya"))} />
+      </div>
+      <MailboxRail status={status} busy={busy} onAction={action} onReconnected={load} />
+    </div>
+  </section>
 }

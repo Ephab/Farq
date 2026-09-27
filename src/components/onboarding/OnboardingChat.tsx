@@ -7,7 +7,7 @@ import { useHermesChat } from "@/components/hermes/use-hermes-chat"
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas"
 import { streamStagedRoadmap, type StagedPlan, type StagedSnapshot } from "@/hooks/use-staged-generation"
 import type { NodeStatus } from "@/data/computer-vision-roadmap"
-import { api, hermesRequestParts, type StudentProfile } from "@/lib/farq-api"
+import { api, hermesRequestParts, type StudentProfile } from "@/lib/waypoint-api"
 
 const KICKOFF = "Hi Hermes! I've connected my records. Ask me what you still need to know to build my roadmap."
 

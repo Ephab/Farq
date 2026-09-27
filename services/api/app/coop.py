@@ -23,7 +23,7 @@ from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySync
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-INTERNAL_TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 TOKEN = re.compile(r"[A-Za-z0-9+#.]+|[\u0600-\u06ff]+")
 SOURCE_LABELS = {"official": "Official", "telegram": "Telegram", "linkedin": "LinkedIn", "demo": "Demo"}
 ALLOWED_SOURCE_HOSTS = {
@@ -340,7 +340,7 @@ def sync_all_coop_sources(db: Session) -> dict:
 def sync_official_coop_sources(db: Session, client: httpx.Client | None = None) -> dict:
     """Refresh source availability without treating a program page as an open vacancy."""
     owned = client is None
-    session = client or httpx.Client(timeout=12, follow_redirects=True, headers={"User-Agent": "Farq/0.1 co-op discovery"})
+    session = client or httpx.Client(timeout=12, follow_redirects=True, headers={"User-Agent": "Waypoint/0.1 co-op discovery"})
     changed = 0
     failures: list[str] = []
     try:
@@ -581,8 +581,8 @@ def require_student(db: Session, student_id: str) -> None:
         raise HTTPException(404, "Student not found")
 
 
-def require_internal(x_farq_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_farq_internal_token != INTERNAL_TOKEN:
+def require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
+    if x_waypoint_internal_token != INTERNAL_TOKEN:
         raise HTTPException(401, "Invalid internal token")
 
 
@@ -662,13 +662,13 @@ def set_posting_state(student_id: str, posting_id: str, body: CoopStateInput, db
 @router.get("/internal/hermes/students/{student_id}/coop/companies", dependencies=[Depends(require_internal)])
 def internal_companies(student_id: str, db: Db, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
     require_student(db, student_id)
-    return {"results": find_companies(db, student_id, query, limit=limit), "provenance": "Farq cached co-op catalog"}
+    return {"results": find_companies(db, student_id, query, limit=limit), "provenance": "Waypoint cached co-op catalog"}
 
 
 @router.get("/internal/hermes/students/{student_id}/coop/postings", dependencies=[Depends(require_internal)])
 def internal_postings(student_id: str, db: Db, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
     require_student(db, student_id)
-    return {"results": find_postings(db, student_id, query, limit=limit), "provenance": "Farq cached official, Telegram, and LinkedIn sources"}
+    return {"results": find_postings(db, student_id, query, limit=limit), "provenance": "Waypoint cached official, Telegram, and LinkedIn sources"}
 
 
 @router.get("/internal/hermes/students/{student_id}/coop/{target_type}/{target_id}", dependencies=[Depends(require_internal)])

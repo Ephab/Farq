@@ -25,7 +25,7 @@ class HackathonatConnector:
 
     def fetch(self) -> list[OpportunityRecord]:
         owned = self.client is None
-        client = self.client or httpx.Client(timeout=15, follow_redirects=False, headers={"User-Agent": "Farq/0.1 hackathon discovery"})
+        client = self.client or httpx.Client(timeout=15, follow_redirects=False, headers={"User-Agent": "Waypoint/0.1 hackathon discovery"})
         try:
             response = client.get(self.list_url)
             response.raise_for_status()

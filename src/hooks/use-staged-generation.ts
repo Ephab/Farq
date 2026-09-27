@@ -1,7 +1,7 @@
 "use client"
 
 import type { RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap"
-import { API_BASE } from "@/lib/farq-api"
+import { API_BASE } from "@/lib/waypoint-api"
 
 export interface StagedPlanStage {
   id: string

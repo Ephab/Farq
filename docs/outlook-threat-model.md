@@ -31,7 +31,7 @@ secrets without printing them; preserves existing valid keys; and never commits
 `.env`. Temporary Graph access tokens are Fernet-encrypted in SQLite, never copied
 into `.env` or API responses. The frontend development server does not inherit
 provider credentials. Hermes does not inherit mailbox secrets. Coach and email Q&A share the gateway,
-its Farq tools and memory; mail access is enforced by the API, not the prompt.
+its Waypoint tools and memory; mail access is enforced by the API, not the prompt.
 
 Origin checks protect all writes. Native servers bind to loopback. The default
 HTTP/localhost deployment assumes a trusted local OS user. Same-user malware,
@@ -88,7 +88,7 @@ production-authenticated, and email-derived Coach replies persist in chat histor
 Deployments with multiple untrusted users need proper Coach authentication before
 exposing mailbox search. Teams are never granted mail capabilities.
 
-Gateway/provider transcripts can outlive Farq's cache and are not erased by
+Gateway/provider transcripts can outlive Waypoint's cache and are not erased by
 mailbox disconnect. Protect those stores under the deployment's retention policy.
 Tests use synthetic mail and mocked Microsoft responses. Live Outlook approval,
 organization restrictions and native macOS setup still require target-device checks.

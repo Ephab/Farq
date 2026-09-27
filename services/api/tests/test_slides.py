@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-slides-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-slides-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.database import SessionLocal, engine  # noqa: E402
@@ -88,7 +88,7 @@ def test_suggest_uses_gateway_and_writes_nothing(client: TestClient, monkeypatch
     assert body["output"] == CANNED_SUGGEST
     assert calls["auth"] == "Bearer " + "k" * 64
     assert str(calls["session"]).startswith("slides-suggest-")
-    assert str(calls["session_key"]).startswith("farq:slides:")
+    assert str(calls["session_key"]).startswith("waypoint:slides:")
     assert "extension topics" in calls["input"]
 
     db = SessionLocal()
@@ -328,13 +328,13 @@ def test_extend_design_hint_reaches_prompt(client: TestClient, monkeypatch: pyte
 def test_extend_instructions_load_slide_skill_and_layouts():
     from app.slides import EXTEND_INSTRUCTIONS
 
-    assert "farq-slides" in EXTEND_INSTRUCTIONS
+    assert "waypoint-slides" in EXTEND_INSTRUCTIONS
     for layout in ("two-column", "stats", "quote", "takeaway", "steps"):
         assert layout in EXTEND_INSTRUCTIONS
 
 
 def test_slide_skill_exists_and_covers_layouts():
-    skill = Path(__file__).resolve().parents[3] / ".hermes" / "skills" / "farq-slides" / "SKILL.md"
+    skill = Path(__file__).resolve().parents[3] / ".hermes" / "skills" / "waypoint-slides" / "SKILL.md"
     assert skill.is_file()
     text = skill.read_text(encoding="utf-8")
     for layout in ("two-column", "stats", "quote", "takeaway", "steps"):

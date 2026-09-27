@@ -22,7 +22,7 @@ from . import decision_engines
 from .database import SessionLocal
 from .models import DecisionRecord
 
-QUESTION_SET_VERSION = "farq-v1"
+QUESTION_SET_VERSION = "waypoint-v1"
 MAX_ITEMS = 8
 MAX_TEXT_CHARS = 1600
 RERANK_PURPOSES = {"coop_rerank", "hackathon_rerank", "blackboard_rerank"}
@@ -95,7 +95,7 @@ def _fingerprint(purpose: str, items: list[DecisionItem]) -> str:
 
 def _questions(count: int, purpose: str) -> dict[str, dict]:
     if purpose == "chat_intent":
-        return {"item_0_intent": {"type": "choice", "instructions": "Route this student request to one Farq capability", "criteria": INTENT_CRITERIA}}
+        return {"item_0_intent": {"type": "choice", "instructions": "Route this student request to one Waypoint capability", "criteria": INTENT_CRITERIA}}
     questions: dict[str, dict] = {}
     for index in range(count):
         questions[f"item_{index}_category"] = {"type": "choice", "instructions": f"Classify item {index}", "criteria": CATEGORY_CRITERIA}

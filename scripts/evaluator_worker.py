@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Farq's host-side project evaluator.
+"""Waypoint's host-side project evaluator.
 
 The worker is intentionally outside the Hermes container. It accepts only
 server-validated jobs, snapshots the source, and runs fixed framework recipes
@@ -20,8 +20,8 @@ import zipfile
 from pathlib import Path
 
 
-API = os.getenv("FARQ_API_URL", "http://127.0.0.1:8000").rstrip("/")
-TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+API = os.getenv("WAYPOINT_API_URL", "http://127.0.0.1:8000").rstrip("/")
+TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 MAX_FILES = 5000
 MAX_BYTES = 250 * 1024 * 1024
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__", ".next"}
@@ -30,13 +30,13 @@ SECRET_NAMES = {".env", ".env.local", ".npmrc", ".pypirc", "credentials", "secre
 
 def request(method: str, path: str, payload: dict | None = None) -> dict:
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers={"Content-Type": "application/json", "X-Farq-Internal-Token": TOKEN})
+    req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers={"Content-Type": "application/json", "X-Waypoint-Internal-Token": TOKEN})
     with urllib.request.urlopen(req, timeout=30) as response:
         return json.loads(response.read())
 
 
 def request_bytes(path: str) -> bytes:
-    req = urllib.request.Request(f"{API}{path}", headers={"X-Farq-Internal-Token": TOKEN})
+    req = urllib.request.Request(f"{API}{path}", headers={"X-Waypoint-Internal-Token": TOKEN})
     with urllib.request.urlopen(req, timeout=60) as response:
         return response.read(MAX_BYTES + 1)
 
@@ -147,7 +147,7 @@ def run_job(job: dict) -> None:
     job_id = job["id"]
     try:
         request("POST", f"/internal/evaluator/jobs/{job_id}/progress", {"lease_token": job["lease_token"], "stage": "Snapshotting project safely"})
-        with tempfile.TemporaryDirectory(prefix="farq-eval-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="waypoint-eval-") as temporary:
             root = Path(temporary) / "project"; root.mkdir()
             manifest = materialize(job, root)
             adapter, image, command = detect_adapter(root)
@@ -163,7 +163,7 @@ def run_job(job: dict) -> None:
 
 
 def main() -> None:
-    print(f"Farq evaluator connected to {API}. Ctrl+C to stop.")
+    print(f"Waypoint evaluator connected to {API}. Ctrl+C to stop.")
     while True:
         try:
             request("POST", "/internal/evaluator/heartbeat", {})

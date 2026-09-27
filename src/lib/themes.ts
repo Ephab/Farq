@@ -1,12 +1,12 @@
 export type ThemeId =
   | "white"
   | "vercel-dark"
-  | "linear"
-  | "supabase"
-  | "claude"
+  | "fjord"
+  | "porcelain"
+  | "nocturne"
   | "catppuccin-mocha"
   | "tokyo-night"
-  | "nord"
+  | "velvet"
   | "dracula"
 
 export interface ThemeTokens {
@@ -62,51 +62,51 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: "linear",
-    name: "Linear",
-    description: "Soft surfaces + indigo product polish",
+    id: "fjord",
+    name: "Fjord",
+    description: "Glacial mist + deep sea ink",
     dark: false,
     tokens: {
-      background: "#fafafb",
-      foreground: "#1c1c28",
-      muted: "#efeff4",
-      mutedForeground: "#67667a",
-      border: "#e3e3ec",
-      ring: "#6e78d5",
-      primary: "#5e6ad2",
-      primaryForeground: "#ffffff",
+      background: "#f3f6f8",
+      foreground: "#10222e",
+      muted: "#e3eaf0",
+      mutedForeground: "#5b6e7d",
+      border: "#d2dde6",
+      ring: "#2b7a99",
+      primary: "#10222e",
+      primaryForeground: "#f3f6f8",
     },
   },
   {
-    id: "supabase",
-    name: "Supabase",
-    description: "Emerald developer energy",
+    id: "porcelain",
+    name: "Porcelain",
+    description: "Warm ivory + espresso noir, champagne detail",
     dark: false,
     tokens: {
-      background: "#ffffff",
-      foreground: "#0c0c0c",
-      muted: "#ecfdf5",
-      mutedForeground: "#5f6b66",
-      border: "#d1fae5",
-      ring: "#10b981",
-      primary: "#059669",
-      primaryForeground: "#ffffff",
+      background: "#faf7f2",
+      foreground: "#1c1917",
+      muted: "#efe8dc",
+      mutedForeground: "#796f65",
+      border: "#e2d8c8",
+      ring: "#c19a5b",
+      primary: "#1c1917",
+      primaryForeground: "#faf7f2",
     },
   },
   {
-    id: "claude",
-    name: "Claude",
-    description: "Warm parchment + terracotta",
-    dark: false,
+    id: "nocturne",
+    name: "Nocturne",
+    description: "Midnight ink + champagne gold",
+    dark: true,
     tokens: {
-      background: "#faf9f5",
-      foreground: "#3d3a34",
-      muted: "#efece4",
-      mutedForeground: "#6f6a5e",
-      border: "#e5e0d5",
-      ring: "#d97757",
-      primary: "#c96442",
-      primaryForeground: "#fff7ed",
+      background: "#0f1220",
+      foreground: "#ede8db",
+      muted: "#1b1f33",
+      mutedForeground: "#9b97ad",
+      border: "#2b3048",
+      ring: "#c6a87c",
+      primary: "#d6b98c",
+      primaryForeground: "#0f1220",
     },
   },
   {
@@ -142,19 +142,19 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: "nord",
-    name: "Nord",
-    description: "Arctic calm, low saturation",
+    id: "velvet",
+    name: "Velvet Noir",
+    description: "Plum noir + dusty rose, 2026 editorial",
     dark: true,
     tokens: {
-      background: "#2e3440",
-      foreground: "#d8dee9",
-      muted: "#3b4252",
-      mutedForeground: "#8b9bb4",
-      border: "#4c566a",
-      ring: "#88c0d0",
-      primary: "#88c0d0",
-      primaryForeground: "#2e3440",
+      background: "#22141d",
+      foreground: "#f4e8e2",
+      muted: "#38222f",
+      mutedForeground: "#c2a0ae",
+      border: "#4f3145",
+      ring: "#d68ba0",
+      primary: "#d68ba0",
+      primaryForeground: "#22141d",
     },
   },
   {
@@ -178,5 +178,10 @@ export const THEMES: Theme[] = [
 export const DEFAULT_THEME_ID: ThemeId = "white"
 
 export function getTheme(id: string): Theme {
+  // Legacy ids removed Sep 2026 (green/orange) map to their premium replacements.
+  if (id === "supabase") return THEMES.find((t) => t.id === "porcelain") ?? THEMES[0]
+  if (id === "claude") return THEMES.find((t) => t.id === "nocturne") ?? THEMES[0]
+  if (id === "nord") return THEMES.find((t) => t.id === "velvet") ?? THEMES[0]
+  if (id === "linear") return THEMES.find((t) => t.id === "fjord") ?? THEMES[0]
   return THEMES.find((t) => t.id === id) ?? THEMES[0]
 }

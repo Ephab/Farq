@@ -4,7 +4,7 @@ from __future__ import annotations
 
 The browser never calls a model provider directly. This module sends a
 JSON-only quiz prompt to ``POST /v1/runs`` and polls the durable run, using a
-throwaway ``farq:quiz:*`` session so slide content never pollutes the coach's
+throwaway ``waypoint:quiz:*`` session so slide content never pollutes the coach's
 conversational memory. Nothing is written to SQLite: quiz source text is not
 an explicit student statement, so it must not become a StudentFact, message,
 or proposal.
@@ -20,7 +20,7 @@ RUN_TIMEOUT_SECONDS = 180
 
 QUIZ_INSTRUCTIONS = " ".join([
     "You generate study quizzes from lecture slides.",
-    "Load the farq-quiz skill and follow it.",
+    "Load the waypoint-quiz skill and follow it.",
     "Do not call any tools. Return ONLY a JSON object: {\"questions\": [...]}. No markdown, no prose.",
     "Each question: {\"id\":\"q1\",\"type\":\"mcq|true_false|short_answer\",\"question\":\"...\",\"options\":[...],\"answer\":\"...\",\"explanation\":\"one sentence\",\"source\":\"Slide N or Page N\"}.",
     "Rules: mcq has exactly 4 distinct options with answer matching one option verbatim.",
@@ -72,7 +72,7 @@ def run_quiz(
     gateway_key = effective_hermes_key(hermes_api_key)
     if len(gateway_key) < 16:
         raise QuizRunError(
-            "Farq Hermes key is missing or too short; press Apply in Settings "
+            "Waypoint Hermes key is missing or too short; press Apply in Settings "
             "or set HERMES_API_KEY in the server .env",
             status=401,
         )

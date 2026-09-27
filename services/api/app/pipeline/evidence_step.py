@@ -21,8 +21,8 @@ from ..sources.pdf_text import extract_pdf_text
 from ..sources.web import fetch_github, fetch_orcid, fetch_page_text
 
 FOLDER_INSTRUCTIONS = """
-You are Hermes indexing one folder on the student's own computer for Farq onboarding.
-Call farq_index_folder exactly once with the user_id, source_id, path and purpose given below.
+You are Hermes indexing one folder on the student's own computer for Waypoint onboarding.
+Call waypoint_index_folder exactly once with the user_id, source_id, path and purpose given below.
 It scans the folder and submits the evidence itself. Do not call any other tool, do not read
 files, and never try to open .env files, keys, credentials or secrets.
 Then reply with one short sentence stating how many items were submitted for review.
@@ -58,7 +58,7 @@ def run_folder_ingest(db: Session, source: DataSource, hermes: dict) -> int:
     config = json.loads(source.config_json)
     before = _evidence_count(db, source.id)
     prompt = (
-        f"Farq user_id={source.student_id}; source_id={source.id}.\n"
+        f"Waypoint user_id={source.student_id}; source_id={source.id}.\n"
         f"Scan this folder: path={json.dumps(config['path'])} purpose={config.get('purpose') or 'projects'}"
     )
     try:

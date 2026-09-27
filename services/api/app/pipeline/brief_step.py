@@ -16,7 +16,7 @@ from ..models import ChatMessage, ChatThread, EvidenceItem, Student, StudentFact
 
 
 def build_profile_brief(db: Session, student_id: str) -> dict:
-    """Deterministic, compact summary of everything Farq knows and the student confirmed."""
+    """Deterministic, compact summary of everything Waypoint knows and the student confirmed."""
     student = db.get(Student, student_id)
     profile = db.get(StudentProfile, student_id) or StudentProfile(student_id=student_id)
     evidence = db.scalars(select(EvidenceItem).where(EvidenceItem.student_id == student_id, EvidenceItem.status == "confirmed")).all()

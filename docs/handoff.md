@@ -52,8 +52,8 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 - Telegram is read through its public archive without a bot. LinkedIn runs only when
   `APIFY_API_KEY` exists and is bounded by `APIFY_MAX_TOTAL_CHARGE_USD`. External text is treated
   as untrusted data; only normalized SQLite records reach Hermes.
-- Hermes has three read-only tools: `farq_find_coop_companies`, `farq_find_coop_postings` and
-  `farq_get_coop_target`. "Build preparation plan" hands Coach the canonical target id; Hermes
+- Hermes has three read-only tools: `waypoint_find_coop_companies`, `waypoint_find_coop_postings` and
+  `waypoint_get_coop_target`. "Build preparation plan" hands Coach the canonical target id; Hermes
   may submit a future-only roadmap proposal, but cannot apply or change the roadmap itself.
 - This slice does not submit applications, access authenticated Jadarat/LinkedIn accounts, send
   emails or track interviews. Those remain future work.
@@ -86,8 +86,8 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
   acceptance, submissions, evaluation attempts, latest/best scores and completion history.
 - Firas's Projects view is extended into Brief, Refine, Submit and Evaluations workspaces. Project
   nodes open it on double-click/right-click; normal nodes keep their completion shortcut.
-- Hermes has bounded `farq_get_project` / `farq_submit_project_refinement` tools and a
-  `farq-project-coach` skill. Drafts never apply themselves.
+- Hermes has bounded `waypoint_get_project` / `waypoint_submit_project_refinement` tools and a
+  `waypoint-project-coach` skill. Drafts never apply themselves.
 - `scripts/evaluator.ps1` starts the authenticated host worker. It accepts public GitHub, ZIP and
   local-directory snapshots and runs only fixed recipes inside disposable limited Docker containers.
 - Evaluation progress is available through SSE. A successful evaluation marks the milestone done at
@@ -96,14 +96,14 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 ### Current Saudi hackathons
 - Hackathonat is the primary cached source. FastAPI refreshes its public JSON feed every six hours
   in Docker, preserves the last good cache on failure, and ranks matches without an LLM.
-- Hermes can only read matches through `farq_find_hackathons`; generic web/browser tools remain
+- Hermes can only read matches through `waypoint_find_hackathons`; generic web/browser tools remain
   disabled. Dates and links in assistant controls and proposals are resolved from SQLite.
 - Coach shows an unseen-opportunity badge and sourced cards. Accepted opportunity proposals become
   roadmap nodes with source date, location, registration link, and retrieval provenance.
 - The source's `date` is always labelled "Date shown by Hackathonat", never assumed to be a deadline.
 
 ### 0. Structured Hermes conversations
-- Hermes can append a validated `farq-ui` JSON block to a concise reply. The API removes the
+- Hermes can append a validated `waypoint-ui` JSON block to a concise reply. The API removes the
   block and persists it in `ChatMessage.metadata_json`; malformed blocks degrade to plain text.
 - Both Coach and onboarding render 2–3 rich single- or multi-select cards plus up to three
   gray **Explore next** actions. Single choices and follow-ups send immediately; multi-select
@@ -117,7 +117,7 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 A new student no longer gets the seeded Computer Vision roadmap. Flow (UI in `src/components/onboarding/`):
 
 1. **Sign in** (`OnboardingView.tsx`): `POST /api/students` creates a student with an empty v0
-   roadmap, a profile and a coach thread. The browser remembers the id (`farq.current-student`
+   roadmap, a profile and a coach thread. The browser remembers the id (`waypoint.current-student`
    in localStorage). No auth yet. "Explore the demo student" still works.
 2. **Basics** (`BasicsStep.tsx`): university, program, year, graduation. Program text is mapped
    to a discipline by `services/api/app/disciplines.py` (student can override).
@@ -127,7 +127,7 @@ A new student no longer gets the seeded Computer Vision roadmap. Flow (UI in `sr
 4. **Review** (`EvidenceReview.tsx`): all imported items are `EvidenceItem(status=suggested)`.
    Ticked items become `StudentFact(source_kind="confirmed_evidence")`; unticked are dismissed.
 5. **Chat** (`OnboardingChat.tsx`): Hermes runs with `ONBOARDING_INSTRUCTIONS` + the
-   `farq-onboarding` skill, asks ≤5 gap questions, ends choice questions with
+   `waypoint-onboarding` skill, asks ≤5 gap questions, ends choice questions with
    `Options: A | B | C` (rendered as buttons by `ChatThreadView.tsx`), records answers as
    `source_kind="onboarding"` facts.
 6. **Generate & preview** (`RoadmapPreview.tsx`): `POST /api/students/{id}/onboarding/generate`
@@ -138,18 +138,18 @@ A new student no longer gets the seeded Computer Vision roadmap. Flow (UI in `sr
 
 ### 2. Adding records later
 Sidebar **My data** (`MyDataView.tsx`) reuses Connect + Review (new items only), then hands a
-prefilled message to Hermes Coach, which reads `farq_get_student_profile` and submits a normal
+prefilled message to Hermes Coach, which reads `waypoint_get_student_profile` and submits a normal
 future-only proposal. Nothing regenerates from scratch; protected nodes stay protected.
 
 ### 3. Evidence sources (`services/api/app/sources/`)
 | Source | How | Model? |
 |---|---|---|
-| Transcript / CV / LinkedIn PDF | `pdf_text.py` (pypdf[crypto], redaction of IDs/emails/phones) → `extract.py` | yes (JSON-only `farq:ingest:*`) |
+| Transcript / CV / LinkedIn PDF | `pdf_text.py` (pypdf[crypto], redaction of IDs/emails/phones) → `extract.py` | yes (JSON-only `waypoint:ingest:*`) |
 | LinkedIn ZIP | `linkedin_zip.py` CSV parse | no |
 | GitHub | `web.py fetch_github` (public API, optional `GITHUB_TOKEN`) | no |
 | ORCID | `web.py fetch_orcid` (public API) | no |
 | Portfolio URL | `web.py fetch_page_text` (https only, private-IP/SSRF guard, 1 MB cap) → `extract.py` | yes |
-| Local folder | Hermes plugin tool `farq_index_folder` (`.hermes/plugins/farq/scanner.py`) | one tool call |
+| Local folder | Hermes plugin tool `waypoint_index_folder` (`.hermes/plugins/waypoint/scanner.py`) | one tool call |
 
 Uploaded files are never stored. Evidence is deduped by `fingerprint` (git remote, course code, DOI…).
 
@@ -157,8 +157,8 @@ Uploaded files are never stored. Evidence is deduped by `fingerprint` (git remot
 `scanner.py` walks a student-typed path, skips dependency trees (any dir with `pyvenv.cfg`,
 `node_modules`, `.git`, build dirs), never opens secret-like or identity files (denylist in code),
 and maps projects/coursework to evidence deterministically. Real run on a CS student's folders:
-34 projects + 29 courses in ~0.6 s. `farq_scan_folder` / `farq_read_project_file` still exist for
-deeper inspection but the onboarding prompt uses only `farq_index_folder`.
+34 projects + 29 courses in ~0.6 s. `waypoint_scan_folder` / `waypoint_read_project_file` still exist for
+deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 
 ### 5. Models and fallback (`services/api/app/hermes.py`)
 - Providers: Gemini, NVIDIA NIM, Hugging Face (`HF_TOKEN` in server `.env`, provider slug
@@ -169,8 +169,8 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
   (3.5, 3.1, 2.5) → Gemma 4 → Hugging Face (DeepSeek V4.1 Flash, Gemma 26B novita, gpt-oss-20b,
   Gemma 26B deepinfra, Llama 3.1 8B). Failing models cool down (30 s / 65 s / 30 min for daily quota).
 - A 429 on **run creation** is the gateway's own concurrency cap: we wait for a slot, we do not
-  skip models. Only a rejected Farq gateway key (401) stops immediately.
-- Hermes runtime config (`services/hermes/config.yaml`): `agent.api_max_retries: 1` (Farq does
+  skip models. Only a rejected Waypoint gateway key (401) stops immediately.
+- Hermes runtime config (`services/hermes/config.yaml`): `agent.api_max_retries: 1` (Waypoint does
   the fallback), `tools.tool_search.enabled: "off"` (no discovery round trip),
   `max_concurrent_runs: 8`.
 - HF smoke test (tool call + strict JSON, 2026-09-24): DeepSeek V4.1 Flash best (both, ~2 s);
@@ -185,7 +185,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
   skill into `/opt/data/skills`. `tests/test_hermes_packaging.py` fails if a checked-in skill is not
   provisioned on every launch path.
 - `database.ensure_added_columns()` adds new columns to existing SQLite DBs (no migration tool).
-- Roadmap header uses the snapshot title; `RoadmapView` refetches on `farq:roadmap-changed`.
+- Roadmap header uses the snapshot title; `RoadmapView` refetches on `waypoint:roadmap-changed`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
@@ -195,7 +195,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
   2026-09-27. The Apify actor was separately smoke-tested with real Saudi internship results.
 - Verified live: sign-in, basics, GitHub import (37 repos), transcript/CV/LinkedIn PDF/portfolio
   extraction, scanner on real folders, Gemini Flash-Lite through the gateway.
-- **Not yet verified live end to end:** folder indexing via `farq_index_folder` after the
+- **Not yet verified live end to end:** folder indexing via `waypoint_index_folder` after the
   restart, the onboarding chat, roadmap generation + preview + accept, My data → Hermes
   proposal, Hugging Face through the gateway (the running gateway lacked `HF_TOKEN`).
 
@@ -210,7 +210,7 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
   the student filters it on Review.
 - Gemma rungs on the Gemini API cannot call tools, so coach/folder runs that land there fail over.
 - Existing quiz/slides frontends still show their own model labels; fallback happens server-side.
-- UI brand says "SmartLearn"; product is "Farq". Home, Dashboard, Projects are placeholders.
+- UI brand says "SmartLearn"; product is "Waypoint". Home, Dashboard, Projects are placeholders.
 - No visual diff for proposals; quiz results do not feed the roadmap yet.
 
 ## Next steps (in order)
@@ -229,8 +229,8 @@ deeper inspection but the onboarding prompt uses only `farq_index_folder`.
   (plan → per-stage nodes → wiring check → stitch; sequential default, parallel-safe stage jobs),
   SSE via `GET /api/students/{id}/onboarding/generate/stream`, live canvas in `OnboardingChat.tsx`
   + `src/hooks/use-staged-generation.ts`
-- Hermes: `.hermes/plugins/farq/{__init__,scanner,tools}.py`,
-  `.hermes/skills/{farq-onboarding,farq-student-coach,farq-quiz,farq-slides}/SKILL.md`,
+- Hermes: `.hermes/plugins/waypoint/{__init__,scanner,tools}.py`,
+  `.hermes/skills/{waypoint-onboarding,waypoint-student-coach,waypoint-quiz,waypoint-slides}/SKILL.md`,
   `services/hermes/{SOUL.md,config.yaml}`
-- Frontend: `src/components/onboarding/*`, `src/components/hermes/*`, `src/lib/farq-api.ts`
+- Frontend: `src/components/onboarding/*`, `src/components/hermes/*`, `src/lib/waypoint-api.ts`
 - Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps,test_staged_roadmap}.py`

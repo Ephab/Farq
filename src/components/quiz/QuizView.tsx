@@ -16,7 +16,7 @@ import {
   type QuizQuestion,
   type QuizQuestionType,
 } from "@/lib/quiz-ai";
-import { api } from "@/lib/farq-api";
+import { api } from "@/lib/waypoint-api";
 import { extractSource } from "@/lib/quiz-extract";
 import {
   combineDeckTexts,

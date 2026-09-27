@@ -5,7 +5,6 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, MapPin, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
-import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 import "./coach-concept.css"
 
@@ -57,13 +56,45 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   // Stick to the bottom while new content arrives, but let go the moment the
   // student scrolls up to read history.
   const stickRef = useRef(true)
+  // Height already pinned to. Stage ticks and message polls re-render without
+  // adding content — pinning on every one of those yanked the viewport down
+  // repeatedly, which read as a super-fast scroll.
+  const pinnedHeightRef = useRef(0)
+  // Trailing pin timer. On a tab switch the history, proposals, and run
+  // status resolve in a staggered burst — without this each one yanked the
+  // viewport down in turn, reading as one super-fast scroll. The burst now
+  // settles into a single jump.
+  const pinTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     const container = messagesRef.current
-    if (container && stickRef.current) {
-      container.scrollTo({ top: container.scrollHeight, behavior: reduce ? "auto" : "smooth" })
+    if (!container || !stickRef.current) return
+    const target = container.scrollHeight
+    if (target <= pinnedHeightRef.current) {
+      // No growth (or the thread shrank after an edit/resend rewind) —
+      // re-baseline so future growth still follows.
+      pinnedHeightRef.current = target
+      return
     }
-  }, [messages, stage, reduce])
+    pinnedHeightRef.current = target
+    if (pinTimerRef.current !== null) window.clearTimeout(pinTimerRef.current)
+    pinTimerRef.current = window.setTimeout(() => {
+      pinTimerRef.current = null
+      const el = messagesRef.current
+      // The student may have scrolled up while the burst settled — never
+      // drag them back down. Direct assignment: always instant, never an
+      // animated scroll.
+      if (!el || !stickRef.current) return
+      el.scrollTop = el.scrollHeight
+      pinnedHeightRef.current = el.scrollHeight
+    }, 200)
+    return () => {
+      if (pinTimerRef.current !== null) {
+        window.clearTimeout(pinTimerRef.current)
+        pinTimerRef.current = null
+      }
+    }
+  }, [messages, stage, busy, afterMessages])
   useEffect(() => { if (draft) setInput(draft) }, [draft])
 
   // Auto-grow the composer like the concept's fluid textarea.
@@ -165,10 +196,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
         }}
       >
         {messages.length === 0 ? (
-          <motion.div
-            initial={reduce ? false : { opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: EASE_OUT }}
+          <div
             className="fq-empty"
           >
             {empty ?? (
@@ -187,7 +215,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                 ))}
               </div>
             ) : null}
-          </motion.div>
+          </div>
         ) : null}
         <AnimatePresence initial={false}>
           {messages.map((message, index) => {
@@ -201,12 +229,8 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
             const controlsEnabled = isLast(message) && !answer && !busy && !disabled
             const time = formatTime(message.created_at)
             return (
-              <motion.article
+              <article
                 key={message.id}
-                layout={reduce ? undefined : "position"}
-                initial={reduce ? false : { opacity: 0, y: 14, scale: 0.985 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.32, ease: EASE_OUT }}
                 className={cn("message", message.role === "user" ? "user" : "assistant")}
                 aria-label={message.role === "user" ? "Your message" : "Hermes reply"}
               >
@@ -240,15 +264,12 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                   <div>
                     <p className="choice-prompt">{group.prompt}</p>
                     <div className="choice-grid">
-                      {group.options.slice(0, 3).map((option, optionIndex) => {
+                      {group.options.slice(0, 3).map((option) => {
                         const selected = selectedIds.includes(option.id)
                         const opportunity = option.opportunity
                         return (
-                          <motion.div
+                          <div
                             key={option.id}
-                            initial={reduce ? false : { opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.28, delay: Math.min(optionIndex * 0.05, 0.15), ease: EASE_OUT }}
                           >
                             <button
                               type="button"
@@ -280,7 +301,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                                 ) : null}
                               </span>
                             </button>
-                          </motion.div>
+                          </div>
                         )
                       })}
                     </div>
@@ -322,19 +343,15 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                     </button>
                   ) : null}
                 </div>
-              </motion.article>
+              </article>
             )
           })}
         </AnimatePresence>
         {afterMessages}
         <AnimatePresence initial={false}>
           {busy ? (
-            <motion.div
+            <div
               key="typing"
-              initial={reduce ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25, ease: EASE_OUT }}
               aria-live="polite"
             >
               <div className="message assistant">
@@ -347,7 +364,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                   </button>
                 </div>
               </div>
-            </motion.div>
+            </div>
           ) : null}
         </AnimatePresence>
         {error ? (

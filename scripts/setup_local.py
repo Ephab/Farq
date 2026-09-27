@@ -40,7 +40,7 @@ def ensure_hermes() -> str:
         suffix = ".ps1" if os.name == "nt" else ".sh"
         url = "https://hermes-agent.nousresearch.com/install" + suffix
         print("Installing Hermes from its official installer...", flush=True)
-        with tempfile.TemporaryDirectory(prefix="farq-hermes-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="waypoint-hermes-") as temporary:
             installer = Path(temporary) / ("install" + suffix)
             with urllib.request.urlopen(url, timeout=60) as response:
                 installer.write_bytes(response.read())

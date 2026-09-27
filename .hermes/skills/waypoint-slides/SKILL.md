@@ -1,9 +1,9 @@
 ---
-name: farq-slides
+name: waypoint-slides
 description: Write new lecture slides that extend a deck - varied layouts, concise parallel text, and a concrete visual idea per slide.
 ---
 
-# Farq slide extension
+# Waypoint slide extension
 
 Use this skill whenever writing new slides that extend an existing deck
 (the run instructions say so). Return ONLY the JSON object the instructions

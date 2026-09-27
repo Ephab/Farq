@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Bot, LoaderCircle } from "lucide-react"
 import { EvidenceReview } from "@/components/onboarding/EvidenceReview"
 import { SourcesStep } from "@/components/onboarding/SourcesStep"
-import { api, getCurrentStudentId, type StudentProfile } from "@/lib/farq-api"
+import { api, getCurrentStudentId, type StudentProfile } from "@/lib/waypoint-api"
 
 interface MyDataViewProps {
   /** Hand a prefilled request to Hermes Coach; the student still presses send. */

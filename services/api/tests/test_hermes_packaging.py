@@ -47,8 +47,8 @@ def test_runner_syncs_every_skill(runner_name: str, tmp_path: Path, monkeypatch)
 
 
 @pytest.mark.parametrize("runner_name", RUNNERS)
-def test_farq_gateway_keeps_a_repo_local_hermes_home(runner_name: str) -> None:
-    """Farq's gateway must load skills in .hermes-runtime, never the daily-use ~/.hermes."""
+def test_waypoint_gateway_keeps_a_repo_local_hermes_home(runner_name: str) -> None:
+    """Waypoint's gateway must load skills in .hermes-runtime, never the daily-use ~/.hermes."""
     runner = load_runner(runner_name)
     env = runner.build_child_env({"HERMES_API_KEY": "k" * 64})
 
@@ -72,3 +72,16 @@ def test_prompts_only_reference_provisioned_skills() -> None:
             assert (SKILLS / name / "SKILL.md").is_file()
 
 
+
+
+def test_provision_drops_pre_rename_farq_copies(tmp_path: Path) -> None:
+    """A runtime from before the Waypoint rename must not keep loading the old plugin and skills."""
+    load_runner("run_windows")  # puts the repo root on sys.path for `scripts`
+    from scripts.runtime import provision
+    home = tmp_path / "runtime"
+    for stale in (home / "plugins/farq", home / "skills/farq-quiz", home / "skills/research"):
+        stale.mkdir(parents=True)
+    provision(REPO, home)
+    assert not (home / "plugins/farq").exists() and not (home / "skills/farq-quiz").exists()
+    assert (home / "skills/research").exists(), "Hermes-bundled skills are not ours to remove"
+    assert (home / "plugins/waypoint/plugin.yaml").is_file()

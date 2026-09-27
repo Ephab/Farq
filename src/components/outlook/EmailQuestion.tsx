@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { hermesRequestParts } from "@/lib/farq-api"
+import { hermesRequestParts } from "@/lib/waypoint-api"
 import { outlookApi } from "@/lib/outlook-api"
 
 export function EmailQuestion({ ids }: { ids: string[] }) {

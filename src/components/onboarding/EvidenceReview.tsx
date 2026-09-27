@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { LoaderCircle } from "lucide-react"
-import { api, type EvidenceItem, type StudentProfile } from "@/lib/farq-api"
+import { api, type EvidenceItem, type StudentProfile } from "@/lib/waypoint-api"
 
 const GROUPS: { kind: string; label: string }[] = [
   { kind: "education", label: "Education" },

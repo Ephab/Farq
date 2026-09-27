@@ -9,14 +9,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-projects-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-projects-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.database import engine  # noqa: E402
 from app.main import app  # noqa: E402
 
 
-INTERNAL = {"X-Farq-Internal-Token": "farq-internal-dev"}
+INTERNAL = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
 
 
 @pytest.fixture(scope="module")

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, getCurrentStudentId } from "@/lib/farq-api";
+import { api, getCurrentStudentId } from "@/lib/waypoint-api";
 import { extractSource } from "@/lib/quiz-extract";
 import {
   combineDeckTexts,
@@ -89,7 +89,7 @@ export function SlidesView() {
       .then((health) => {
         if (cancelled || !health.model) return;
         // Raw infra ids (nvidia/…) mean nothing to students: show a human label.
-        setHermesModel({ id: health.model, label: "Farq default" });
+        setHermesModel({ id: health.model, label: "Waypoint default" });
       })
       .catch(() => undefined);
     return () => {

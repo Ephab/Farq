@@ -31,7 +31,7 @@ export default defineConfig({
         rewrite: (p) => p.replace(/^\/api\/nim/, ''),
       },
       '/api': {
-        target: process.env.FARQ_DEV_API_TARGET || 'http://127.0.0.1:8000',
+        target: process.env.WAYPOINT_DEV_API_TARGET || 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },

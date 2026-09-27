@@ -25,7 +25,7 @@ import {
   type DataSourceItem,
   type EvidenceItem,
   type StudentProfile,
-} from "@/lib/farq-api"
+} from "@/lib/waypoint-api"
 import { loadLibrary, type QuizLibrary } from "@/lib/quiz-store"
 import { EASE_OUT, SPRING_MOUSE } from "@/lib/ease"
 import { cn } from "@/lib/utils"
@@ -593,7 +593,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
         id: `failed-${source.id}`,
         icon: <TriangleAlert className="size-[18px]" />,
         title: `${sourceName(source)} failed to sync`,
-        detail: source.error || "Farq could not read this source",
+        detail: source.error || "Waypoint could not read this source",
         tab: "My data",
         action: "Fix source",
       })

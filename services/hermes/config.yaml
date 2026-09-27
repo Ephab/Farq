@@ -5,29 +5,29 @@ model:
 
 platform_toolsets:
   api_server:
-    - farq
+    - waypoint
     - memory
     - skills
 
 plugins:
   enabled:
-    - farq
+    - waypoint
   disabled: []
   entries:
-    farq:
+    waypoint:
       allow_tool_override: false
 
 agent:
   disabled_toolsets:
     - bfl
-  # Fail fast: Farq's API already falls back to the next model (app.hermes.FALLBACK_CHAIN),
+  # Fail fast: Waypoint's API already falls back to the next model (app.hermes.FALLBACK_CHAIN),
   # so Hermes' own retries on an exhausted model only add minutes of waiting.
   api_max_retries: 1
 
 tools:
   tool_search:
-    # Farq exposes only a handful of tools; load them directly instead of spending a
-    # model round trip on tool_search before every Farq tool call.
+    # Waypoint exposes only a handful of tools; load them directly instead of spending a
+    # model round trip on tool_search before every Waypoint tool call.
     enabled: "off"
 
 gateway:
@@ -35,5 +35,5 @@ gateway:
     enabled: true
     host: 0.0.0.0
     port: 8642
-    model_name: farq-hermes
+    model_name: waypoint-hermes
     max_concurrent_runs: 8

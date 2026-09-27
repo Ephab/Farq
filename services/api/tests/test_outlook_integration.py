@@ -79,7 +79,7 @@ def test_qa_requires_owned_unexpired_mail_and_explicit_consent(world, monkeypatc
     assert calls[0][0]["body"] == "Private excerpt"
     assert response.headers["cache-control"] == "no-store"
     client.cookies.clear()
-    assert client.post("/api/outlook/chat", json=body, headers={"X-Farq-User": "alice"}).status_code == 401
+    assert client.post("/api/outlook/chat", json=body, headers={"X-Waypoint-User": "alice"}).status_code == 401
 
 
 def test_prompt_is_untrusted_and_oversize_is_rejected_not_truncated():
@@ -113,7 +113,7 @@ def test_mail_session_does_not_replace_team_demo_identity(world):
     with factory() as db:
         db.add(User(id="demo-member", display_name="Demo", source="demo")); db.commit()
         def request(path):
-            return Request({"type": "http", "path": path, "headers": [(b"cookie", b"farq_outlook_session=alice-cookie")]})
+            return Request({"type": "http", "path": path, "headers": [(b"cookie", b"waypoint_outlook_session=alice-cookie")]})
         assert current_user(request("/api/me"), db, "demo-member").id == "demo-member"
         assert current_user(request("/api/outlook/messages"), db, "demo-member").id == "alice"
         with pytest.raises(HTTPException):

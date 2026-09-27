@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { RefreshCw, Sparkles, Trophy } from "lucide-react"
+import { RotateCcw, Sparkles, Trophy } from "lucide-react"
 import { ChatThreadView, type SuggestedPrompt } from "@/components/hermes/ChatThreadView"
+import { CoachPortalIntro, type PortalPhase } from "@/components/animation/CoachPortalIntro"
 import { useHermesChat } from "@/components/hermes/use-hermes-chat"
-import { api, getCurrentStudentId, notifyRoadmapChanged, type OpportunitySummary, type StudentProfile } from "@/lib/farq-api"
+import { api, getCurrentStudentId, notifyRoadmapChanged, type OpportunitySummary, type StudentProfile } from "@/lib/waypoint-api"
 import { EASE_OUT } from "@/lib/ease"
 import "./coach-concept.css"
 
@@ -67,6 +68,21 @@ function factsSummary(facts: Fact[]): string {
   return parts.slice(0, 3).join(", ")
 }
 
+// Session flag: the portal intro plays on the first Coach visit only.
+// HermesCoach remounts on every tab switch, so per-mount state would replay
+// (and re-block) the intro each time the student returns to the tab.
+let portalPlayed = false
+
+const INTRO_EVERY_VISIT_KEY = "waypoint.coach-intro-every-visit"
+
+function readIntroEveryVisit(): boolean {
+  try {
+    return window.localStorage.getItem(INTRO_EVERY_VISIT_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
 export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraft?: string; onConsumeDraft?: () => void }) {
   const studentId = getCurrentStudentId()
   const [threadId, setThreadId] = useState<string | null>(null)
@@ -84,6 +100,59 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
   }, [initialDraft, onConsumeDraft])
   const markedSeen = useRef(new Set<string>())
   const reduce = useReducedMotion()
+  // Intro veil on the first Coach visit per session (or every visit when
+  // the student opts in below) — rise-and-dissolve, sped up 1.6x:
+  // loading (0.55s) -> leave (0.65s) -> done.
+  const [introEveryVisit, setIntroEveryVisit] = useState(readIntroEveryVisit)
+  const [portal, setPortal] = useState<PortalPhase | "done">(() => (reduce || (portalPlayed && !readIntroEveryVisit()) ? "done" : "loading"))
+  const dismissPortal = useCallback(() => {
+    portalPlayed = true
+    setPortal("done")
+  }, [])
+  useEffect(() => {
+    if (reduce || portal === "done") return
+    const timer = window.setTimeout(() => {
+      if (portal === "leave") {
+        portalPlayed = true
+        setPortal("done")
+      } else {
+        setPortal("leave")
+      }
+    }, portal === "loading" ? 550 : 650)
+    return () => window.clearTimeout(timer)
+  }, [portal, reduce])
+  // Hold the chat entrance while the veil covers it, so the handoff is a
+  // crossfade instead of a pop: the shell rises in as the veil dissolves.
+  // Marked entered once the veil starts leaving, so later replays never
+  // hide the already-visible chat.
+  const enteredRef = useRef(portal === "done")
+  useEffect(() => {
+    if (portal !== "loading") enteredRef.current = true
+  }, [portal])
+  const holdEntrance = !reduce && !enteredRef.current && portal === "loading"
+  // The intro advertises "press Esc to skip" — wire it while the overlay is
+  // up so keyboard users are never stuck behind it.
+  useEffect(() => {
+    if (portal === "done") return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismissPortal()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [portal, dismissPortal])
+  const toggleIntroEveryVisit = useCallback((value: boolean) => {
+    setIntroEveryVisit(value)
+    try {
+      if (value) window.localStorage.setItem(INTRO_EVERY_VISIT_KEY, "1")
+      else window.localStorage.removeItem(INTRO_EVERY_VISIT_KEY)
+    } catch {
+      // Storage blocked: the choice lasts for this page load only.
+    }
+  }, [])
+  const replayIntro = useCallback(() => {
+    if (reduce) return
+    setPortal("loading")
+  }, [reduce])
   const pendingProposals = useMemo(() => proposals.filter((proposal) => proposal.status === "pending"), [proposals])
   const recentDecisions = useMemo(() => proposals.filter((proposal) => proposal.status !== "pending").slice(0, 3), [proposals])
 
@@ -148,7 +217,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
     api<StudentProfile>(`/api/students/${studentId}/profile`)
       .then((profile) => setThreadId(profile.thread_id))
       .then(refreshSide)
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not reach Farq API"))
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not reach Waypoint API"))
   }, [studentId, refreshSide, setError])
 
   useEffect(() => {
@@ -182,7 +251,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
   const agentLabel = agent === "ready" ? "Ready" : agent === "checking" ? "Checking…" : agent === "degraded" ? "Degraded" : agent === "unavailable" ? "Reconnecting…" : "Checking…"
   const agentTone = agent === "ready" ? "success" : "warning"
   const agentTitle = agent === "unavailable"
-    ? "Farq is reconnecting to Hermes — your conversation is saved and sending still works"
+    ? "Waypoint is reconnecting to Hermes — your conversation is saved and sending still works"
     : agent === "degraded"
       ? "Hermes is degraded — chat works, some features may be slow"
       : "Hermes connection status"
@@ -193,12 +262,12 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
   const latestFact = facts[facts.length - 1] ?? null
 
   return (
-    <div className="fq fq-coach-page">
+    <div className="fq fq-coach-page relative">
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.52, ease: EASE_OUT }}
-        className="chat-shell reveal"
+        animate={holdEntrance ? { opacity: 0, y: 14 } : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.65, ease: EASE_OUT }}
+        className="chat-shell"
         style={{ "--fq-i": 0 } as CSSProperties}
       >
         {/* Chat column — the 10-coach concept: header, messages, composer */}
@@ -295,8 +364,8 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
         <aside className="context-panel" aria-label="Plan context">
           <motion.div
             initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.08, ease: EASE_OUT }}
+            animate={holdEntrance ? { opacity: 0, y: 10 } : { opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.12, ease: EASE_OUT }}
           >
             <div className="context-section">
               <h2>Plan context</h2>
@@ -357,14 +426,28 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft }: { initialDraf
             <div className="context-section">
               <h2>Conversation tools</h2>
               <div className="context-tools">
-                <button type="button" onClick={retryAll} className="button secondary small wide">
-                  <RefreshCw size={14} />Sync conversation
+                <label className="toggle-row" title="Play the Coach intro on every visit instead of once per session">
+                  <input
+                    type="checkbox"
+                    checked={introEveryVisit}
+                    onChange={(event) => toggleIntroEveryVisit(event.target.checked)}
+                  />
+                  <span>Intro on every visit</span>
+                </label>
+                <button type="button" onClick={replayIntro} disabled={reduce || portal !== "done"} className="button secondary small wide">
+                  <RotateCcw size={14} />Replay intro
                 </button>
               </div>
             </div>
           </motion.div>
         </aside>
       </motion.div>
+
+      <AnimatePresence>
+        {portal !== "done" ? (
+          <CoachPortalIntro phase={portal} speed={1.6} onSkip={dismissPortal} />
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }

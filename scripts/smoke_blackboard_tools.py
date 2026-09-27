@@ -26,14 +26,14 @@ def env_values() -> dict[str, str]:
 def get(path: str, token: str) -> dict:
     request = Request(
         f"http://127.0.0.1:8000{path}",
-        headers={"X-Farq-Internal-Token": token},
+        headers={"X-Waypoint-Internal-Token": token},
     )
     with urlopen(request, timeout=20) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def main() -> None:
-    token = os.getenv("FARQ_INTERNAL_TOKEN") or env_values().get("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+    token = os.getenv("WAYPOINT_INTERNAL_TOKEN") or env_values().get("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
     user = "demo-student"
     courses = get(f"/internal/hermes/students/{user}/blackboard/courses", token)
     assert courses["courses"], "import the Blackboard demo snapshot first"
@@ -49,11 +49,11 @@ def main() -> None:
     updates = get(f"/internal/hermes/students/{user}/blackboard/updates?since=1970-01-01T00:00:00Z&limit=10", token)
     assert updates["items"]
     print(json.dumps({
-        "farq_blackboard_list_courses": len(courses["courses"]),
-        "farq_blackboard_list_content": len(content["items"]),
-        "farq_blackboard_search": len(search["results"]),
-        "farq_blackboard_read_item": len(read["text"]),
-        "farq_blackboard_list_updates": len(updates["items"]),
+        "waypoint_blackboard_list_courses": len(courses["courses"]),
+        "waypoint_blackboard_list_content": len(content["items"]),
+        "waypoint_blackboard_search": len(search["results"]),
+        "waypoint_blackboard_read_item": len(read["text"]),
+        "waypoint_blackboard_list_updates": len(updates["items"]),
     }, indent=2))
 
 

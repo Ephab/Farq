@@ -5,7 +5,7 @@ import { Check, LoaderCircle, RotateCcw } from "lucide-react"
 import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap"
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas"
 import { NodeDetailPanel } from "@/components/roadmap/NodeDetailPanel"
-import { api, notifyRoadmapChanged, type EvidenceItem, type StudentProfile } from "@/lib/farq-api"
+import { api, notifyRoadmapChanged, type EvidenceItem, type StudentProfile } from "@/lib/waypoint-api"
 
 interface InitialProposal {
   id: string

@@ -9,13 +9,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-TEST_DB = Path(tempfile.gettempdir()) / f"farq-staged-{uuid.uuid4()}.db"
+TEST_DB = Path(tempfile.gettempdir()) / f"waypoint-staged-{uuid.uuid4()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 
 from app.schemas import RoadmapNode, RoadmapPlan, RoadmapSnapshot, validate_generated, validate_plan, validate_stage_nodes  # noqa: E402
 from app.roadmap_gen import stitch as roadmap_stitch  # noqa: E402
 
-INTERNAL = {"X-Farq-Internal-Token": "farq-internal-dev"}
+INTERNAL = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
 HERMES = {"X-Hermes-Api-Key": "test-gateway-key-0123456789"}
 
 
@@ -58,7 +58,7 @@ def staged_gateway(plan_output: str, stage_outputs: dict[str, str], prompts: lis
 
         def post(self, url, headers=None, json=None):
             prompts.append(json["input"])
-            assert headers["X-Hermes-Session-Key"].startswith("farq:roadmap:")
+            assert headers["X-Hermes-Session-Key"].startswith("waypoint:roadmap:")
             return _Response({"run_id": f"run-{len(prompts)}"})
 
         def get(self, url, headers=None):

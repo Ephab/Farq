@@ -7,7 +7,7 @@ import { useRoadmapProgress } from "@/hooks/use-roadmap-progress";
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas";
 import { RoadmapHeader, type LevelFilter } from "@/components/roadmap/RoadmapHeader";
 import { NodeDetailPanel } from "@/components/roadmap/NodeDetailPanel";
-import { api, getCurrentStudentId, ROADMAP_CHANGED_EVENT } from "@/lib/farq-api";
+import { api, getCurrentStudentId, ROADMAP_CHANGED_EVENT } from "@/lib/waypoint-api";
 
 interface RoadmapResponse {
   version: number;

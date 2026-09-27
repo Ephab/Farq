@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bookmark, BriefcaseBusiness, Building2, ExternalLink, FlaskConical, MapPin, Search, Sparkles, X } from "lucide-react"
-import { api, getCurrentStudentId } from "@/lib/farq-api"
+import { api, getCurrentStudentId } from "@/lib/waypoint-api"
 import { cn } from "@/lib/utils"
 
 type TargetState = "neutral" | "saved" | "dismissed"
@@ -144,7 +144,7 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
     const label = "name" in item ? item.name : `${item.title} at ${item.company_name}`
     const prompt = prepare
       ? `Build a practical co-op preparation plan for ${label}. Target type: ${target.type}; target id: ${item.id}. Read the authoritative co-op target and my active roadmap first, then propose only the future roadmap changes that close important gaps.`
-      : `Explain why ${label} matches me, what I still need to improve, and what I should verify before applying. Target type: ${target.type}; target id: ${item.id}. Use the authoritative Farq co-op target.`
+      : `Explain why ${label} matches me, what I still need to improve, and what I should verify before applying. Target type: ${target.type}; target id: ${item.id}. Use the authoritative Waypoint co-op target.`
     onAskHermes(prompt)
   }
 
@@ -156,7 +156,7 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Your path into work</p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">Find a co-op worth preparing for.</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">Farq matches your demonstrated skills and direction to Saudi organizations, then shows the gaps you can close before applying.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">Waypoint matches your demonstrated skills and direction to Saudi organizations, then shows the gaps you can close before applying.</p>
         </div>
         <div className="grid grid-cols-2 gap-2 text-center">
           <div className="rounded-2xl border border-border p-3"><strong className="block text-2xl">{data?.companies.length ?? 0}</strong><span className="text-xs text-muted-foreground">company matches</span></div>
@@ -222,8 +222,8 @@ function DetailSheet({ selected, onClose, onState, onAsk }: { selected: Selected
         <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{company ? "Company match" : posting?.company_name}</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">{title}</h2></div><button type="button" onClick={onClose} className="grid size-9 place-items-center rounded-full border border-border"><X className="size-4" /></button></div>
         <div className="mt-5 flex flex-wrap gap-2"><FitPill tier={item.fit_tier} />{posting && !posting.is_demo ? posting.sources.map((source) => <a key={`${source.name}-${source.detail_url}`} href={source.detail_url || undefined} target="_blank" rel="noreferrer" className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">{source.label}</a>) : <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", sourceTone(company?.source_status ?? posting?.status ?? "unknown", posting?.is_demo))}>{sourceLabel(company?.source_status ?? posting?.status ?? "unknown", posting?.is_demo)}</span>}</div>
         <p className="mt-6 text-sm leading-6 text-muted-foreground">{company?.overview ?? posting?.description}</p>
-        <section className="mt-7 border-t border-border pt-6"><h3 className="font-semibold">Why Farq matched you</h3><ul className="mt-3 grid gap-2">{item.reasons.map((reason) => <li key={reason} className="flex gap-2 text-sm"><Sparkles className="mt-0.5 size-4 shrink-0" />{reason}</li>)}</ul></section>
-        <section className="mt-7 border-t border-border pt-6"><h3 className="font-semibold">Preparation gaps</h3>{item.gaps.length ? <ul className="mt-3 grid gap-2">{item.gaps.map((gap) => <li key={gap} className="flex gap-2 text-sm text-muted-foreground"><FlaskConical className="mt-0.5 size-4 shrink-0" />{gap}</li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No major gap is visible from your confirmed Farq records.</p>}</section>
+        <section className="mt-7 border-t border-border pt-6"><h3 className="font-semibold">Why Waypoint matched you</h3><ul className="mt-3 grid gap-2">{item.reasons.map((reason) => <li key={reason} className="flex gap-2 text-sm"><Sparkles className="mt-0.5 size-4 shrink-0" />{reason}</li>)}</ul></section>
+        <section className="mt-7 border-t border-border pt-6"><h3 className="font-semibold">Preparation gaps</h3>{item.gaps.length ? <ul className="mt-3 grid gap-2">{item.gaps.map((gap) => <li key={gap} className="flex gap-2 text-sm text-muted-foreground"><FlaskConical className="mt-0.5 size-4 shrink-0" />{gap}</li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No major gap is visible from your confirmed Waypoint records.</p>}</section>
         {posting?.requirements.length ? <section className="mt-7 border-t border-border pt-6"><h3 className="font-semibold">Source requirements</h3><ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{posting.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul><p className="mt-3 text-xs text-muted-foreground">Unknown eligibility is not treated as eligible. Verify every requirement on the official page.</p></section> : null}
         <div className="mt-8 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => onAsk(selected, true)} className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">Build preparation plan</button><button type="button" onClick={() => onAsk(selected)} className="h-11 rounded-xl border border-border px-4 text-sm font-semibold">Ask Hermes</button><button type="button" onClick={() => void onState(selected.type, item.id, item.state === "saved" ? "neutral" : "saved")} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-semibold"><Bookmark className="size-4" />{item.state === "saved" ? "Remove saved" : "Save"}</button>{officialUrl ? <a href={officialUrl} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-semibold">Official source <ExternalLink className="size-4" /></a> : null}</div>
         <button type="button" onClick={() => void onState(selected.type, item.id, "dismissed")} className="mt-5 text-xs text-muted-foreground underline-offset-4 hover:underline">Not relevant to me</button>

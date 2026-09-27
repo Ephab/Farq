@@ -1,4 +1,4 @@
-import { API_BASE } from "./farq-api"
+import { API_BASE } from "./waypoint-api"
 
 export type EngineId = "jev" | "span" | "laya"
 export interface DecisionEngine {

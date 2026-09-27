@@ -29,7 +29,7 @@
 ## Global Constraints
 
 - Everything is a new file under `src/components/teams/` or `src/lib/`. The only existing files edited are `src/App.tsx` (the nav item), `package.json` (Vitest) and `services/api/app/teams/teams.py` (the classmates endpoint).
-- Team requests send `X-Farq-User: <acting user>`. The stream uses `?as=<acting user>&after=<last_seq>` (`EventSource` can't send headers). The acting user comes from localStorage `farq.current-user`, falling back to the current student id.
+- Team requests send `X-Waypoint-User: <acting user>`. The stream uses `?as=<acting user>&after=<last_seq>` (`EventSource` can't send headers). The acting user comes from localStorage `waypoint.current-user`, falling back to the current student id.
 - **Instructors never request or render the chat.** For them, `messages` is `null` and the dock renders `InstructorPanel`.
 - **The UI never claims Hermes did something it can't yet do.** Hermes slash commands and the "Find teammates" button are visible but disabled, labelled "next update" or "coming soon".
 - **Styling:** use the `tm-*` classes in `teams.css`, all under `.fq`. Tailwind utilities only go on elements without a `tm-` class, because `.fq .tm-*` specificity beats utilities. Colours come from `--fq-*` tokens, so every theme works.
@@ -103,10 +103,10 @@ In `package.json` `"scripts"`, add `"test": "vitest run"` after `"lint"`.
 `src/lib/teams-api.ts`:
 
 ```ts
-import { API_BASE, api, getCurrentStudentId } from "@/lib/farq-api"
+import { API_BASE, api, getCurrentStudentId } from "@/lib/waypoint-api"
 
-const ACTING_USER_STORAGE_KEY = "farq.current-user"
-export const ACTING_USER_EVENT = "farq:acting-user-changed"
+const ACTING_USER_STORAGE_KEY = "waypoint.current-user"
+export const ACTING_USER_EVENT = "waypoint:acting-user-changed"
 
 export type TeamRole = "lead" | "member" | "instructor"
 export type TaskStatus = "todo" | "doing" | "review" | "done"
@@ -199,7 +199,7 @@ export function errorMessage(reason: unknown): string {
 }
 
 function teamApi<T>(path: string, init?: RequestInit): Promise<T> {
-  return api<T>(path, { ...init, headers: { "X-Farq-User": getActingUserId(), ...(init?.headers as Record<string, string> | undefined) } })
+  return api<T>(path, { ...init, headers: { "X-Waypoint-User": getActingUserId(), ...(init?.headers as Record<string, string> | undefined) } })
 }
 
 function send(method: string, body?: unknown): RequestInit {
@@ -493,7 +493,7 @@ function hash(seed: string): number {
 export interface Cover { image: string; color: string; accents: [string, string, string] }
 
 export function coverFor(seed: string): Cover {
-  const h = hash(seed || "farq")
+  const h = hash(seed || "waypoint")
   const base = h % 360
   const second = (base + 40 + ((h >>> 9) % 70)) % 360
   const third = (base + 160 + ((h >>> 17) % 80)) % 360
@@ -3142,13 +3142,13 @@ Run: `npx vitest run`. Expected: 4 files, 29 tests passed.
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "farq-api",
+      "name": "waypoint-api",
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--app-dir", "services/api", "--port", "8000"],
       "port": 8000
     },
     {
-      "name": "farq-web",
+      "name": "waypoint-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
@@ -3159,7 +3159,7 @@ Run: `npx vitest run`. Expected: 4 files, 29 tests passed.
 
 If port 8000 or 5173 is already in use by a process not started in this session, **stop and ask the user** before stopping it. It may be their running copy from `main`. Then use the browser pane tools:
 
-1. `preview_start` `farq-api`, then `farq-web`. Open `http://localhost:5173`. If onboarding shows, run `localStorage.setItem("farq.current-student","demo-student")` and reload.
+1. `preview_start` `waypoint-api`, then `waypoint-web`. Open `http://localhost:5173`. If onboarding shows, run `localStorage.setItem("waypoint.current-student","demo-student")` and reload.
 2. Click **Group Projects**.
    - **Expected:** the front page shows the briefing strip with "3 new messages in Team Falcon", a **Team Falcon** cover card (SWE 363, 21%, "3 new") and a "CS 485 · Applied ML project" needs-a-team row. Take a screenshot.
 3. Open Team Falcon.

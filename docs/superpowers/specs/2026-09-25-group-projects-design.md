@@ -5,7 +5,7 @@ Scope: sub-projects 1–3 of the Group Projects programme, plus the first versio
 
 ## 1. Intent
 
-Farq is a university-student app whose Hermes agent knows each student through verified facts
+Waypoint is a university-student app whose Hermes agent knows each student through verified facts
 and a personal roadmap. Group Projects adds course team projects where Hermes acts as an **AI
 teammate**:
 
@@ -57,7 +57,7 @@ then switch to the instructor view and see progress and risk without the chat.
   not alter existing ones.
 - Hermes only proposes; FastAPI endpoints called by users accept. Completed and in-progress
   items are protected from proposals.
-- Hermes reaches Farq only through `/internal/hermes/*` with `FARQ_INTERNAL_TOKEN`, using narrowly
+- Hermes reaches Waypoint only through `/internal/hermes/*` with `WAYPOINT_INTERNAL_TOKEN`, using narrowly
   described plugin tools. No terminal, file, browser or web tools.
 - Every gateway run uses `execute_with_fallback` in `services/api/app/hermes.py`. Runs return a
   finished answer and do not stream tokens.
@@ -69,13 +69,13 @@ then switch to the instructor view and see progress and risk without the chat.
 
 - New table `users`: `id, display_name, role ('student'|'instructor'), student_id (FK students, nullable), source ('demo'|'microsoft'), created_at`.
   Every existing and new `Student` gets a matching `User` row, created lazily in
-  `current_user()` the first time an `X-Farq-User` header carries a student id. Instructors are
+  `current_user()` the first time an `X-Waypoint-User` header carries a student id. Instructors are
   `User` rows with no student record.
-- `current_user()` is a FastAPI dependency that reads the `X-Farq-User` header, and returns 401
+- `current_user()` is a FastAPI dependency that reads the `X-Waypoint-User` header, and returns 401
   if the header is missing or unknown. It is **the only function that changes** when Microsoft
   sign-in arrives.
-- The frontend sends `X-Farq-User` from `api()` in `src/lib/farq-api.ts`. The sidebar footer gets
-  a **View as** switcher (seeded students + instructor) that writes `farq.current-user` to
+- The frontend sends `X-Waypoint-User` from `api()` in `src/lib/waypoint-api.ts`. The sidebar footer gets
+  a **View as** switcher (seeded students + instructor) that writes `waypoint.current-user` to
   localStorage.
 
 ## 4. Data model (`services/api/app/teams/models.py`, imported by `models.py`)
@@ -193,24 +193,24 @@ Private messages (`visible_to_user_id`) are shown only to that user.
   command as a chat message from the member, so every action is visible in the chat.
 - There is one run at a time per team, in a FIFO queue. Presence shows "Hermes is thinking" and the stage.
 - The run goes through `execute_with_fallback`:
-  - with the header `X-Hermes-Session-Key: farq:team:<team_id>`
+  - with the header `X-Hermes-Session-Key: waypoint:team:<team_id>`
   - with instructions that name the person who invoked Hermes, their role and the command
-  - loading the `farq-team-coach` skill
+  - loading the `waypoint-team-coach` skill
 - **Output:** the reply is parsed with the existing `parse_chat_output`, so the structured
-  `farq-ui` controls are supported, and saved as a Hermes `team_messages` row.
+  `waypoint-ui` controls are supported, and saved as a Hermes `team_messages` row.
 - **On failure:** the failure is stored and a system message says so. No fake output is shown.
 
-**Plugin tools** (`.hermes/plugins/farq`) call `/internal/hermes/teams/*`. Each takes
+**Plugin tools** (`.hermes/plugins/waypoint`) call `/internal/hermes/teams/*`. Each takes
 `acting_user_id` and is checked with `authorize()`:
 
 | Tool | Behaviour |
 |---|---|
-| `farq_get_team_context(team_id, acting_user_id)` | Assignment brief and rubric, members' teammate cards, tasks, milestones, decisions and document outline. The last 50 team messages are included only when the acting user is a member. |
-| `farq_get_task(task_id, acting_user_id)` | Full task |
-| `farq_get_doc_section(section_id, acting_user_id)` | Section content and metadata |
-| `farq_propose_tasks(team_id, acting_user_id, kind, tasks[])` | `task_split` or `task_edit` proposal; each task carries a `rationale` |
-| `farq_propose_section(section_id, acting_user_id, content_md, requirement_ids[])` | Personal `doc_section` proposal to the section owner |
-| `farq_propose_team_change(team_id, acting_user_id, kind, payload)` | `charter`, `milestones` or `section_owners` proposal |
+| `waypoint_get_team_context(team_id, acting_user_id)` | Assignment brief and rubric, members' teammate cards, tasks, milestones, decisions and document outline. The last 50 team messages are included only when the acting user is a member. |
+| `waypoint_get_task(task_id, acting_user_id)` | Full task |
+| `waypoint_get_doc_section(section_id, acting_user_id)` | Section content and metadata |
+| `waypoint_propose_tasks(team_id, acting_user_id, kind, tasks[])` | `task_split` or `task_edit` proposal; each task carries a `rationale` |
+| `waypoint_propose_section(section_id, acting_user_id, content_md, requirement_ids[])` | Personal `doc_section` proposal to the section owner |
+| `waypoint_propose_team_change(team_id, acting_user_id, kind, payload)` | `charter`, `milestones` or `section_owners` proposal |
 
 - **Teammate card** for a member: display name, discipline, program and year, active
   `StudentFact` rows in the categories skills/goals/strengths, and the titles of the active and
@@ -218,7 +218,7 @@ Private messages (`visible_to_user_id`) are shown only to that user.
 - **Safety:** team chat content is untrusted data. Hermes has no tool that applies a change, so
   a malicious message can at worst produce a proposal that the team has to accept.
 
-**Skill** `.hermes/skills/farq-team-coach/SKILL.md`:
+**Skill** `.hermes/skills/waypoint-team-coach/SKILL.md`:
 - growth-aware splitting: balance points, and give each member at least one stretch task tied
   to their roadmap, with a `rationale`
 - document conventions: IEEE 29148 (SRS), IEEE 1016 (SDS), IEEE 1058 (SPMP); requirement IDs `FR-n` / `NFR-n`
@@ -227,7 +227,7 @@ Private messages (`visible_to_user_id`) are shown only to that user.
 
 **Documents:**
 - `/draft srs` first creates the outline as the document's sections, using a JSON-only prompt on
-  a throwaway `farq:teamdoc:*` session.
+  a throwaway `waypoint:teamdoc:*` session.
 - It then posts a `section_owners` team proposal.
 - After that it drafts each section in its own run, each producing a personal `doc_section`
   proposal to the owner.
@@ -273,7 +273,7 @@ without a model.
   - threads (reply-to), reactions, pin as decision, polls (`kind=poll`, votes in metadata)
   - `@` autocomplete for members and Hermes; a `/` command menu
   - "Make task" from any message
-  - inline task, proposal and vote cards; `farq-ui` choice cards reused from `ChatThreadView`
+  - inline task, proposal and vote cards; `waypoint-ui` choice cards reused from `ChatThreadView`
   - `dir="auto"` on each message for right-to-left text
   - search over loaded messages
 - **Signature moments** (with `motion`; each falls back to a fade under `prefers-reduced-motion`),
@@ -324,7 +324,7 @@ Backend (`services/api/tests/test_teams*.py`):
   - `stale` when a conflict appears between creation and applying
 - the rules for milestone completion
 - notice thresholds and the daily limit
-- `farq-team-coach` is set up on every launch path (extend `test_hermes_packaging.py`)
+- `waypoint-team-coach` is set up on every launch path (extend `test_hermes_packaging.py`)
 - the Hermes command parser and the run queue (with the gateway mocked)
 
 Frontend:

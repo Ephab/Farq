@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Farq one-command dev runner (macOS).
+"""Waypoint one-command dev runner (macOS).
 
 Starts FastAPI (:8000), Coach/email Q&A (:8642), and Vite (:5173).
 Press Ctrl+C once and everything shuts down.
@@ -28,7 +28,7 @@ WEB_PORT = 5173
 
 
 def log(msg: str) -> None:
-    print(f"[farq] {msg}", flush=True)
+    print(f"[waypoint] {msg}", flush=True)
 
 
 sys.path.insert(0, REPO)
@@ -121,7 +121,7 @@ def main() -> int:
         "hermes": [executable("hermes"), "gateway", "run"],
         "web": ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", str(WEB_PORT)],
     }
-    # Only Farq's own children are ever restarted here. The daily-use base
+    # Only Waypoint's own children are ever restarted here. The daily-use base
     # Hermes profile is never touched: different HERMES_HOME, no stop/restart
     # commands against it.
     RESTARTABLE = ("api", "hermes")

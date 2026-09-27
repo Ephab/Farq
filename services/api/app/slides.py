@@ -3,7 +3,7 @@ from __future__ import annotations
 """Slide extension through the local Hermes gateway.
 
 Mirrors ``app.quiz``: the browser never calls a model provider directly.
-Two JSON-only prompts run on throwaway ``farq:slides-*`` sessions so deck
+Two JSON-only prompts run on throwaway ``waypoint:slides-*`` sessions so deck
 content never pollutes the coach's conversational memory. Nothing is written
 to SQLite: slide source text is not an explicit student statement, so it must
 not become a StudentFact, message, or proposal.
@@ -57,7 +57,7 @@ SUGGEST_INSTRUCTIONS = " ".join([
 
 EXTEND_INSTRUCTIONS = " ".join([
     "You write new lecture slides that extend an existing deck.",
-    "Load the farq-slides skill and follow it.",
+    "Load the waypoint-slides skill and follow it.",
     "Do not call any tools. Return ONLY a JSON object: {\"slides\": [...]}. No markdown, no prose.",
     "Each slide: {\"title\":\"...\",\"kicker\":\"...\",\"layout\":\"bullets|steps|two-column|stats|quote|takeaway\","
     "\"bullets\":[\"...\",\"...\"],\"columns\":[{\"heading\":\"...\",\"bullets\":[\"...\"]}],"
@@ -96,7 +96,7 @@ def _gateway_key_or_raise(hermes_api_key: str | None) -> str:
     gateway_key = effective_hermes_key(hermes_api_key)
     if len(gateway_key) < 16:
         raise SlidesRunError(
-            "Farq Hermes key is missing or too short; press Apply in Settings "
+            "Waypoint Hermes key is missing or too short; press Apply in Settings "
             "or set HERMES_API_KEY in the server .env",
             status=401,
         )

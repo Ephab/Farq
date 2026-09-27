@@ -10,7 +10,7 @@ describe("teamClient", () => {
     const client = teamClient("demo-sara")
     await client.typing("team-falcon")
     const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>
-    expect(headers["X-Farq-User"]).toBe("demo-sara")
+    expect(headers["X-Waypoint-User"]).toBe("demo-sara")
     expect(client.userId).toBe("demo-sara")
     expect(client.eventsUrl("team-falcon", 5)).toBe("/api/teams/team-falcon/events?as=demo-sara&after=5")
   })

@@ -12,8 +12,8 @@ from .models import Student, now
 
 
 class User(Base):
-    """Someone who can act in Farq. Students reuse their student id as their
-    user id, so existing `farq.current-student` ids work as `X-Farq-User`."""
+    """Someone who can act in Waypoint. Students reuse their student id as their
+    user id, so existing `waypoint.current-student` ids work as `X-Waypoint-User`."""
 
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -44,7 +44,7 @@ def resolve_user(db: Session, user_id: str | None) -> User | None:
 def current_user(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-    x_farq_user: Annotated[str | None, Header()] = None,
+    x_waypoint_user: Annotated[str | None, Header()] = None,
 ) -> User:
     """The single identity seam. Microsoft sign-in replaces only this function."""
     from .outlook.auth import session_user
@@ -52,7 +52,7 @@ def current_user(
     signed_in = session_user(request, db) if mailbox_path else None
     if signed_in is not None:
         return signed_in
-    user = resolve_user(db, x_farq_user)
+    user = resolve_user(db, x_waypoint_user)
     if user is None or user.source != "demo":
         raise HTTPException(401, "Choose who you are with the View as switcher")
     return user

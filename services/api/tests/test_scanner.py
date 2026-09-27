@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-SCANNER_PATH = Path(__file__).resolve().parents[3] / ".hermes" / "plugins" / "farq" / "scanner.py"
-spec = importlib.util.spec_from_file_location("farq_scanner", SCANNER_PATH)
+SCANNER_PATH = Path(__file__).resolve().parents[3] / ".hermes" / "plugins" / "waypoint" / "scanner.py"
+spec = importlib.util.spec_from_file_location("waypoint_scanner", SCANNER_PATH)
 scanner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scanner)
 

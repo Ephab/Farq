@@ -26,14 +26,14 @@ from .models import BlackboardContentItem, BlackboardCourse, DataSource, Student
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-INTERNAL_TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 MAX_BODY_CHARS = 120_000
 READ_CHUNK_CHARS = 12_000
 CONTENT_TYPES = {"announcement", "syllabus", "lecture", "document", "assignment"}
 
 
-def _require_internal(x_farq_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_farq_internal_token != INTERNAL_TOKEN:
+def _require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
+    if x_waypoint_internal_token != INTERNAL_TOKEN:
         raise HTTPException(401, "Invalid internal token")
 
 

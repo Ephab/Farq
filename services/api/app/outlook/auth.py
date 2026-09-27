@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 
 from .models import MailSession
 
-COOKIE = "farq_outlook_session"
-CONSENT_COOKIE = "farq_outlook_consent"
+COOKIE = "waypoint_outlook_session"
+CONSENT_COOKIE = "waypoint_outlook_consent"
 TOKEN_TENANT = "public:temporary"
 
 
@@ -31,7 +31,7 @@ def origin() -> str:
 
 
 def encryption_key() -> bytes:
-    key = os.getenv("FARQ_TOKEN_ENCRYPTION_KEY", "").strip().encode()
+    key = os.getenv("WAYPOINT_TOKEN_ENCRYPTION_KEY", "").strip().encode()
     try:
         Fernet(key)
     except (ValueError, TypeError):
@@ -64,7 +64,7 @@ def session_user(request: Request, db: Session):
 
 def require_origin(request: Request) -> None:
     if request.headers.get("origin") != origin():
-        raise HTTPException(403, "Request origin does not match this Farq installation")
+        raise HTTPException(403, "Request origin does not match this Waypoint installation")
 
 
 def token_for(connection) -> tuple[str, str]:

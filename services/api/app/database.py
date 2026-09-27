@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
     pass
 
 
-default_db = Path(__file__).resolve().parents[2] / "data" / "farq.db"
+default_db = Path(__file__).resolve().parents[2] / "data" / "waypoint.db"
 default_db.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{default_db.as_posix()}")
 

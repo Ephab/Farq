@@ -54,9 +54,9 @@ _outlook_sync_task: asyncio.Task | None = None
 
 DEMO_STUDENT_ID = "demo-student"
 ROADMAP_SEED_PATH = Path(__file__).resolve().parents[1] / "seed-roadmap.json"
-INTERNAL_TOKEN = os.getenv("FARQ_INTERNAL_TOKEN", "farq-internal-dev")
+INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 Db = Annotated[Session, Depends(get_db)]
-app = FastAPI(title="Farq Hermes Backbone", version="0.1.0")
+app = FastAPI(title="Waypoint Hermes Backbone", version="0.1.0")
 app.include_router(projects_router)
 app.include_router(identity_router)
 app.include_router(outlook_router)
@@ -164,8 +164,8 @@ def evidence_dict(item: EvidenceItem) -> dict:
     }
 
 
-def require_internal(x_farq_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_farq_internal_token != INTERNAL_TOKEN:
+def require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
+    if x_waypoint_internal_token != INTERNAL_TOKEN:
         raise HTTPException(401, "Invalid internal token")
 
 
@@ -947,7 +947,7 @@ def interaction_message(thread_id: str, body: ChatInput, db: Session) -> tuple[s
         content = titles[0] if len(titles) == 1 else f"Selected: {', '.join(titles)}"
         details = "\n".join(
             f"- {item.title}: {item.description}"
-            + (f" [Farq opportunity_id={item.opportunity_id}]" if item.opportunity_id else "")
+            + (f" [Waypoint opportunity_id={item.opportunity_id}]" if item.opportunity_id else "")
             for item in selected
         )
         hermes_prompt = (
@@ -1098,7 +1098,7 @@ async def suggest_slide_topics(
 ) -> dict:
     """Suggest extension topics for a deck through the Hermes gateway.
 
-    Throwaway ``farq:slides:*`` session, no SQLite writes — same rule as
+    Throwaway ``waypoint:slides:*`` session, no SQLite writes — same rule as
     quizzes: slide text is not an explicit student statement. When
     ``student_id`` is supplied, verified profile + active roadmap data are
     read from SQLite and injected server-side as prompt data; the model

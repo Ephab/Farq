@@ -527,7 +527,7 @@ class SlidesExportSlide(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     bullets: list[str] = Field(min_length=1, max_length=8)
     speaker_notes: str = Field(default="", max_length=2000)
-    # Optional visual structure (mirrors the farq-slides skill schema).
+    # Optional visual structure (mirrors the waypoint-slides skill schema).
     # Unknown layouts fall back to plain bullets at export/preview.
     layout: str = Field(default="bullets", max_length=20)
     kicker: str = Field(default="", max_length=60)

@@ -26,43 +26,43 @@
   --popover-foreground: #fafafa;
 }
 
-[data-theme="linear"] {
-  --background: #fafafb;
-  --foreground: #1c1c28;
-  --muted: #efeff4;
-  --muted-foreground: #67667a;
-  --border: #e3e3ec;
-  --ring: #6e78d5;
-  --primary: #5e6ad2;
-  --primary-foreground: #ffffff;
-  --popover: #efeff4;
-  --popover-foreground: #1c1c28;
+[data-theme="fjord"] {
+  --background: #f3f6f8;
+  --foreground: #10222e;
+  --muted: #e3eaf0;
+  --muted-foreground: #5b6e7d;
+  --border: #d2dde6;
+  --ring: #2b7a99;
+  --primary: #10222e;
+  --primary-foreground: #f3f6f8;
+  --popover: #f3f6f8;
+  --popover-foreground: #10222e;
 }
 
-[data-theme="supabase"] {
-  --background: #ffffff;
-  --foreground: #0c0c0c;
-  --muted: #ecfdf5;
-  --muted-foreground: #5f6b66;
-  --border: #d1fae5;
-  --ring: #10b981;
-  --primary: #059669;
-  --primary-foreground: #ffffff;
-  --popover: #ecfdf5;
-  --popover-foreground: #0c0c0c;
+[data-theme="porcelain"] {
+  --background: #faf7f2;
+  --foreground: #1c1917;
+  --muted: #efe8dc;
+  --muted-foreground: #796f65;
+  --border: #e2d8c8;
+  --ring: #c19a5b;
+  --primary: #1c1917;
+  --primary-foreground: #faf7f2;
+  --popover: #faf7f2;
+  --popover-foreground: #1c1917;
 }
 
-[data-theme="claude"] {
-  --background: #faf9f5;
-  --foreground: #3d3a34;
-  --muted: #efece4;
-  --muted-foreground: #6f6a5e;
-  --border: #e5e0d5;
-  --ring: #d97757;
-  --primary: #c96442;
-  --primary-foreground: #fff7ed;
-  --popover: #ffffff;
-  --popover-foreground: #3d3a34;
+[data-theme="nocturne"] {
+  --background: #0f1220;
+  --foreground: #ede8db;
+  --muted: #1b1f33;
+  --muted-foreground: #9b97ad;
+  --border: #2b3048;
+  --ring: #c6a87c;
+  --primary: #d6b98c;
+  --primary-foreground: #0f1220;
+  --popover: #1b1f33;
+  --popover-foreground: #ede8db;
 }
 
 [data-theme="catppuccin-mocha"] {
@@ -91,17 +91,17 @@
   --popover-foreground: #a9b1d6;
 }
 
-[data-theme="nord"] {
-  --background: #2e3440;
-  --foreground: #d8dee9;
-  --muted: #3b4252;
-  --muted-foreground: #8b9bb4;
-  --border: #4c566a;
-  --ring: #88c0d0;
-  --primary: #88c0d0;
-  --primary-foreground: #2e3440;
-  --popover: #3b4252;
-  --popover-foreground: #d8dee9;
+[data-theme="velvet"] {
+  --background: #22141d;
+  --foreground: #f4e8e2;
+  --muted: #38222f;
+  --muted-foreground: #c2a0ae;
+  --border: #4f3145;
+  --ring: #d68ba0;
+  --primary: #d68ba0;
+  --primary-foreground: #22141d;
+  --popover: #38222f;
+  --popover-foreground: #f4e8e2;
 }
 
 [data-theme="dracula"] {

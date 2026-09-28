@@ -42,6 +42,11 @@ def loads(text: str | None, default: Any) -> Any:
         return default
 
 
+def project_dict(team: Team) -> dict:
+    """The team's own brief, deliverables and rubric; empty where the assignment's apply."""
+    return {"brief": loads(team.brief_json, {}), "deliverables": loads(team.deliverables_json, []), "rubric": loads(team.rubric_json, [])}
+
+
 def lock_for_write(db: Session) -> None:
     """Take SQLite's write lock before a read-check-write, so two requests can't
     both read the same state and both act on it (e.g. two votes applying twice)."""

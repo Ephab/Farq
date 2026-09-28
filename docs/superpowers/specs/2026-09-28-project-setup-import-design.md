@@ -42,8 +42,10 @@ confidence: stated|inferred}`.
 
 Deliverable and milestone rows whose date is missing or relative ("week 10") come back with
 `due=null` and are flagged in the UI; the API rejects proposing a deliverable or milestone without a
-real date. Hermes never invents a date. Milestones whose title already exists in the team are
-skipped when building the batch.
+real date. Hermes never invents a date. A picked date means the end of that day in the student's
+time zone: the review screen converts it with `fromDateInput` like every other date picker; a bare
+`YYYY-MM-DD` sent by another client falls back to 23:59 UTC. Milestones whose title already exists
+in the team are skipped when building the batch.
 
 Ticked rows become batch operations: `brief` (first brief row), `deliverables` (all deliverable
 rows), `milestones` (all milestone rows), `rubric` (all criterion rows). Empty groups are omitted.

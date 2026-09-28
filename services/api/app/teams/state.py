@@ -7,7 +7,8 @@ from ..identity import CurrentUser, User
 from .chat import decision_dict, message_dict, reactions_for, votes_for
 from .common import Db, require_team
 from .docs import document_dict
-from .models import Decision, DocSection, Milestone, Task, TeamDocument, TeamEvent, TeamMember, TeamMessage, TeamProposal
+from .imports import import_dict
+from .models import Decision, DocSection, Milestone, Task, TeamDocument, TeamEvent, TeamImport, TeamMember, TeamMessage, TeamProposal
 from .policy import authorize, is_member
 from .proposals import expire_stalled, proposal_dict
 from .tasks import milestone_dict, task_dict
@@ -47,10 +48,12 @@ def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
         messages = [message_dict(row, reactions.get(row.id), votes.get(row.id)) for row in rows]
         last_seen = db.scalar(select(TeamMember.last_seen_seq).where(TeamMember.team_id == team.id, TeamMember.user_id == user.id))
     proposals = db.scalars(select(TeamProposal).where(TeamProposal.team_id == team.id).order_by(TeamProposal.created_at.desc()).limit(50)).all()
+    imports = db.scalars(select(TeamImport).where(TeamImport.team_id == team.id, TeamImport.status == "review").order_by(TeamImport.created_at.desc()).limit(5)).all()
     return {
         "team": team_dict(db, team, role), "tasks": [task_dict(item) for item in tasks],
         "milestones": [milestone_dict(item) for item in milestones], "decisions": [decision_dict(item) for item in decisions],
-        "documents": documents, "messages": messages, "proposals": [proposal_dict(item) for item in proposals], "last_seq": last_seq, "last_seen_seq": last_seen,
+        "documents": documents, "messages": messages, "proposals": [proposal_dict(item) for item in proposals],
+        "imports": [import_dict(item) for item in imports], "last_seq": last_seq, "last_seen_seq": last_seen,
     }
 
 

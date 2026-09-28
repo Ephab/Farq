@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..identity import CurrentUser, User, user_dict
 from ..models import uid
-from .common import Db, iso, loads, require, require_team
+from .common import Db, iso, loads, project_dict, require, require_team
 from .events import emit
 from .models import Assignment, Course, CourseEnrollment, Task, Team, TeamEvent, TeamInvite, TeamMember
 from .notices import team_risk_line
@@ -70,7 +70,7 @@ def team_dict(db: Session, team: Team, viewer_role: str) -> dict:
     return {
         "id": team.id, "name": team.name, "cover_seed": team.cover_seed, "lead_user_id": team.lead_user_id,
         "charter": loads(team.charter_json, {}), "created_at": iso(team.created_at), "viewer_role": viewer_role,
-        "assignment": assignment_dict(assignment), "course": course_dict(db.get(Course, assignment.course_id)),
+        "assignment": assignment_dict(assignment), "project": project_dict(team), "course": course_dict(db.get(Course, assignment.course_id)),
         "members": member_dicts(db, team), "size_limit": team_capacity(team, assignment),
     }
 

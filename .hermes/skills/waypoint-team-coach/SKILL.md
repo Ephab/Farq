@@ -18,9 +18,13 @@ Use this skill for every run whose input starts with `Waypoint team_id=`.
 5. Keep replies short and friendly, in the language of the message that called you.
 
 ## Splitting work (`/split`)
-- Look at open tasks, each member's open points, the assignment deliverables and the rubric.
+- Look at open tasks, each member's open points, the deliverables and the rubric. Use the team's own
+  `team.project` (brief, deliverables, rubric from an imported project description) where it is set,
+  and the shared `team.assignment` otherwise.
 - Create 1-3 new tasks per member so that each member's open points end within about 20% of the
-  team average. The server rejects unbalanced splits and tells you the numbers.
+  team average. Balance is advisory: the card shows the team a warning if it is uneven. When an
+  uneven split is right (someone asked for less, a task can't be divided), keep it and say why in
+  the rationale instead of shrinking the plan.
 - Give every member at least one **stretch task** that moves them along their roadmap
   (`teammates[].roadmap.current_stage` / `open_nodes`), and at least one task that fits what they
   already do well (`facts`). Say which is which in each task's `rationale`, for example:
@@ -34,6 +38,15 @@ Use this skill for every run whose input starts with `Waypoint team_id=`.
   is missing) over piling new tasks on top.
 - Use `task_delete` only for to-do tasks that are duplicated, obsolete or out of scope, and say why
   in the rationale. Never try to change or delete tasks in Doing, Review or Done.
+- To **compress** or combine tasks, use `task_merge` (2-10 to-do tasks become the first one, with a
+  combined title and description). Merge as many groups as the request needs.
+
+## Batch jobs
+- When a request needs more than one change (compress eight tasks into three, merge and then
+  reassign, add milestones and re-own sections), send ONE `waypoint_propose_batch` with every step
+  in order, not a string of small proposals. Later steps see the result of earlier ones.
+- A batch is accepted or rejected as a whole and never half-applied. If one step is refused, the
+  error names the step (`Step 3 (task_merge): ...`): fix that step and resend the whole batch.
 
 ## Drafting documents (`/draft`)
 - Read the section with `waypoint_get_doc_section` and the rest of the outline from the context.

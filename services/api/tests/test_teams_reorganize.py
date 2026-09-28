@@ -76,13 +76,16 @@ def test_reorganize_reassigns_deletes_and_adds_in_one_vote(client):
     assert len(added) == 1 and added[0]["created_by"] == "hermes" and added[0]["assignee_id"] == s1
 
 
-def test_reorganize_must_stay_balanced(client):
+def test_unbalanced_reorganize_is_flagged_not_blocked(client):
     world = make_world()
     team, (s0, s1, s2) = world["team_id"], world["students"][:3]
     tasks = [_task(client, team, s0, f"T{n}", member, 2) for n, member in enumerate((s0, s1, s2))]
     everything_to_s0 = {"changes": [{"task_id": tasks[1]["id"], "assignee_id": s0}, {"task_id": tasks[2]["id"], "assignee_id": s0}], "rationale": "r"}
-    with pytest.raises(ProposalError, match="Unbalanced"):
-        _propose(team, "task_reorganize", everything_to_s0, s0)
+    proposal_id = _propose(team, "task_reorganize", everything_to_s0, s0)
+    card = next(item for item in client.get(f"/api/teams/{team}/state", headers=hdr(s0)).json()["proposals"] if item["id"] == proposal_id)
+    assert card["warnings"] and card["warnings"][0].startswith("Uneven workload")
+    # Simulating it did not move anything.
+    assert _tasks(client, team, s0)[tasks[1]["id"]]["assignee_id"] == s1
 
 
 def test_reorganize_goes_stale_if_a_task_starts_during_the_vote(client):

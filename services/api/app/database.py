@@ -40,6 +40,13 @@ ADDED_COLUMNS = {
     },
     "teams": {
         "size_limit": "INTEGER",
+        "brief_json": "TEXT NOT NULL DEFAULT '{}'",
+        "deliverables_json": "TEXT NOT NULL DEFAULT '[]'",
+        "rubric_json": "TEXT NOT NULL DEFAULT '[]'",
+    },
+    "team_proposals": {
+        "decided_via": "VARCHAR(16)",
+        "warnings_json": "TEXT NOT NULL DEFAULT '[]'",
     },
     "coop_postings": {
         "canonical_key": "VARCHAR(64) NOT NULL DEFAULT ''",

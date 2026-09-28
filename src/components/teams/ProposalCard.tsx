@@ -3,13 +3,15 @@
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
 
 import { useState } from "react"
-import { Check, Sparkles, ThumbsDown, ThumbsUp, X } from "lucide-react"
+import { AlertTriangle, Check, Crown, Sparkles, ThumbsDown, ThumbsUp, X } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { useTeamClient } from "@/components/teams/team-client-context"
 import { Avatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { memberName, sectionById, upsertProposal, voteSummary, type TeamStore } from "@/lib/team-store"
-import { errorMessage, type SplitTaskPayload, type TeamProposal } from "@/lib/teams-api"
+import {
+  errorMessage, type ProjectCriterion, type ProjectDeliverable, type ProposalKind, type SplitTaskPayload, type TeamProposal,
+} from "@/lib/teams-api"
 
 
 interface ProposalCardProps { proposal: TeamProposal; store: TeamStore; update: StoreUpdate }
@@ -34,6 +36,10 @@ export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
   const role = store.team.viewer_role
   const member = role === "lead" || role === "member"
   const votes = voteSummary(store, proposal, me)
+  const open = proposal.status === "pending" || proposal.status === "awaiting_lead"
+  const isLead = me === store.team.lead_user_id
+  // The lead may decide any open proposal directly, except where the normal buttons already make it theirs.
+  const leadOverride = isLead && proposal.status === "pending" && !(proposal.scope === "personal" && proposal.affected_user_id === me)
 
   const act = async (work: () => Promise<TeamProposal>) => {
     setBusy(true)
@@ -53,9 +59,19 @@ export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
       <header>
         <span className="tm-chip tm-chip-accent"><Sparkles className="size-3" aria-hidden="true" /> {t("teams.proposal.badge")}</span>
         <span className="tm-chip">{t(`teams.proposal.status.${proposal.status}`)}</span>
+        {proposal.decided_via === "lead_override" && !open ? (
+          <span className="tm-chip"><Crown className="size-3" aria-hidden="true" /> {t("teams.proposal.leadDecided")}</span>
+        ) : null}
       </header>
       <strong dir="auto">{proposal.summary}</strong>
-      <ProposalBody proposal={proposal} store={store} />
+      <ProposalBody kind={proposal.kind} payload={proposal.payload} store={store} />
+      {open && proposal.warnings?.length ? (
+        <ul className="tm-proposal-warnings">
+          {proposal.warnings.map((warning) => (
+            <li key={warning}><AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" /> <span dir="auto">{warning}</span></li>
+          ))}
+        </ul>
+      ) : null}
       {proposal.status === "stale" && proposal.reason ? <small className="tm-muted">{proposal.reason}</small> : null}
       {proposal.status === "pending" && proposal.scope === "team" ? (
         <div className="tm-vote">
@@ -92,15 +108,25 @@ export function ProposalCard({ proposal, store, update }: ProposalCardProps) {
           </div>
         ) : <small className="tm-muted">{t("teams.proposal.stalledWaiting")}</small>
       ) : null}
+      {leadOverride ? (
+        <div className="tm-proposal-actions tm-proposal-lead">
+          <small className="tm-muted"><Crown className="inline size-3" aria-hidden="true" /> {t("teams.proposal.leadOverrideHint")}</small>
+          <button type="button" className="tm-btn tm-btn-sm" disabled={busy} onClick={() => void act(() => teams.rejectProposal(proposal.id))}>
+            {t("teams.proposal.leadReject")}
+          </button>
+          <button type="button" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy} onClick={() => void act(() => teams.acceptProposal(proposal.id))}>
+            {t("teams.proposal.leadAccept")}
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="tm-banner">{error}</p> : null}
     </div>
   )
 }
 
-function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: TeamStore }) {
-  const { t } = useI18n()
-  const payload = proposal.payload
-  switch (proposal.kind) {
+function ProposalBody({ kind, payload, store }: { kind: ProposalKind; payload: Record<string, unknown>; store: TeamStore }) {
+  const { t, fmt } = useI18n()
+  switch (kind) {
     case "task_split": {
       const tasks = (payload.tasks ?? []) as SplitTaskPayload[]
       return (
@@ -155,6 +181,62 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
         </ul>
       )
     }
+    case "task_merge": {
+      const ids = (payload.task_ids ?? []) as string[]
+      const into = (payload.into ?? {}) as { title?: string; estimate_points?: number }
+      return (
+        <ul className="tm-proposal-tasks">
+          {ids.map((id) => <li key={id} className="tm-change-remove" dir="auto">{store.tasks[id]?.title ?? t("teams.proposal.aTask")}</li>)}
+          <li className="tm-change-add" dir="auto">
+            <span>{into.title}</span> {into.estimate_points ? <span className="tm-chip">{t("teams.common.points", { count: into.estimate_points })}</span> : null}
+          </li>
+          {payload.rationale ? <li><small dir="auto">{String(payload.rationale)}</small></li> : null}
+        </ul>
+      )
+    }
+    case "batch": {
+      const ops = (payload.ops ?? []) as { kind: ProposalKind; payload: Record<string, unknown> }[]
+      return (
+        <ol className="tm-proposal-steps">
+          {ops.map((op, index) => (
+            <li key={index}>
+              <small className="tm-muted">{t("teams.proposal.step", { number: index + 1, kind: t(`teams.proposal.kinds.${op.kind}`) })}</small>
+              <ProposalBody kind={op.kind} payload={op.payload} store={store} />
+            </li>
+          ))}
+          {payload.rationale ? <li><small dir="auto">{String(payload.rationale)}</small></li> : null}
+        </ol>
+      )
+    }
+    case "brief": {
+      const brief = payload as { problem?: string; objective?: string; scope?: string }
+      return (
+        <div className="flex flex-col gap-1 text-sm">
+          {brief.problem ? <p className="m-0" dir="auto">{brief.problem}</p> : null}
+          {brief.objective ? <p className="m-0 tm-muted" dir="auto">{brief.objective}</p> : null}
+          {brief.scope ? <p className="m-0 tm-muted" dir="auto">{brief.scope}</p> : null}
+        </div>
+      )
+    }
+    case "deliverables":
+      return (
+        <ul className="tm-proposal-tasks">
+          {((payload.deliverables ?? []) as ProjectDeliverable[]).map((item) => (
+            <li key={item.key} dir="auto">
+              <span>{item.title}</span> {item.due ? <span className="tm-chip">{fmt.date(item.due)}</span> : null}
+              {item.doc_kind ? <span className="tm-chip">{item.doc_kind.toUpperCase()}</span> : null}
+            </li>
+          ))}
+        </ul>
+      )
+    case "rubric":
+      return (
+        <ul className="tm-proposal-tasks">
+          {((payload.criteria ?? []) as ProjectCriterion[]).map((item) => (
+            <li key={item.name} dir="auto"><span>{item.name}</span> <span className="tm-chip">{fmt.percent(item.weight / 100)}</span></li>
+          ))}
+        </ul>
+      )
     case "task_edit": {
       const task = store.tasks[String(payload.task_id)]
       const changes = (payload.changes ?? {}) as Record<string, unknown>
@@ -179,7 +261,12 @@ function ProposalBody({ proposal, store }: { proposal: TeamProposal; store: Team
     case "charter":
       return <p className="m-0" dir="auto">{String((payload.charter as { goal?: string } | undefined)?.goal ?? "")}</p>
     case "milestones":
-      return <p className="m-0">{((payload.milestones ?? []) as { title: string }[]).map((item) => item.title).join(" · ")}</p>
+      return (
+        <p className="m-0" dir="auto">
+          {((payload.milestones ?? []) as { title: string; due?: string | null }[])
+            .map((item) => (item.due ? `${item.title} (${fmt.date(item.due)})` : item.title)).join(" · ")}
+        </p>
+      )
     case "section_owners":
       return <p className="m-0">{t("teams.proposal.sectionOwners", { count: Object.keys((payload.owners ?? {}) as Record<string, string>).length })}</p>
     default:

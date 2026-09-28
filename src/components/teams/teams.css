@@ -272,6 +272,26 @@
 .fq .tm-proposal-tasks small { display: block; color: var(--fq-muted); }
 .fq .tm-proposal-doc { max-height: 200px; padding: 8px 10px; overflow: auto; border-radius: var(--fq-r-sm); background: var(--fq-surface-solid); }
 .fq .tm-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fq .tm-proposal-lead { padding-top: 6px; border-top: 1px dashed var(--fq-line-strong); }
+.fq .tm-proposal-warnings { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 6px 8px; border-radius: var(--fq-r-sm); background: var(--fq-warning-soft); list-style: none; }
+.fq .tm-proposal-warnings li { display: flex; align-items: flex-start; gap: 6px; color: var(--fq-text-soft); }
+.fq .tm-proposal-warnings svg { margin-top: 2px; color: var(--fq-warning); }
+.fq .tm-proposal-steps { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.fq .tm-proposal-steps > li { display: flex; flex-direction: column; gap: 4px; padding-inline-start: 10px; border-inline-start: 2px solid color-mix(in srgb, var(--fq-accent) 35%, transparent); }
+/* Project setup import */
+.fq .tm-import-busy { display: flex; align-items: center; gap: 8px; color: var(--fq-accent); font-weight: 600; }
+.fq .tm-import-rows { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.fq .tm-import-rows > li { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--fq-line); border-radius: var(--fq-r-sm); background: var(--fq-surface-solid); }
+.fq .tm-import-rows > li[data-off] { opacity: 0.65; }
+.fq .tm-import-rows > li > input[type="checkbox"] { margin-top: 4px; }
+.fq .tm-import-field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fq-muted); }
+.fq .tm-import-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.fq .tm-import-inline > .tm-import-field { flex: 1 1 200px; }
+.fq .tm-import-inline > .tm-import-date { flex: 0 0 160px; }
+.fq .tm-import-inline > .tm-import-weight { flex: 0 0 96px; }
+.fq .tm-import-warn { color: var(--fq-warning); font-weight: 600; }
+.fq .tm-import-quote { margin: 0; padding-inline-start: 8px; border-inline-start: 2px solid var(--fq-line-strong); color: var(--fq-muted); font-size: 12px; font-style: italic; }
+.fq .tm-chip[data-tone="inferred"] { background: var(--fq-warning-soft); }
 .fq .tm-vote { display: flex; flex-direction: column; gap: 6px; }
 .fq .tm-vote .tm-bar { width: 100%; }
 .fq .tm-vote .tm-bar i { background: var(--fq-success); }

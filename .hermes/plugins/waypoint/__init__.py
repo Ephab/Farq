@@ -32,6 +32,8 @@ def _task_payload(p: dict) -> dict:
     if kind == "task_reorganize":
         return {"changes": p.get("task_changes", []), "deletes": p.get("task_ids", []),
                 "adds": p.get("tasks", []), "rationale": p.get("rationale", "")}
+    if kind == "task_merge":
+        return {"task_ids": p.get("task_ids", []), "into": p.get("into", {}), "rationale": p.get("rationale", "")}
     return {"task_id": p.get("task_id", ""), "changes": p.get("changes", {}), "rationale": p.get("rationale", "")}
 
 
@@ -394,13 +396,16 @@ def register(ctx):
             "Propose task changes; nothing changes until the team accepts. task_split: new tasks for every member "
             "(tasks). task_edit: change one to-do task (task_id, changes). task_delete: remove to-do tasks (task_ids, "
             "rationale). task_reorganize: re-split existing to-do work in one vote: task_changes [{task_id, title?, "
-            "estimate_points?, assignee_id?}], task_ids to delete, tasks to add, rationale. Open points must stay "
-            "balanced; tasks in Doing, Review or Done can never be changed.",
+            "description?, estimate_points?, assignee_id?, milestone_id?}], task_ids to delete, tasks to add, rationale. "
+            "task_merge: compress 2-10 to-do tasks into one (task_ids, the first is kept; into {title, description, "
+            "estimate_points, assignee_id?, milestone_id?}; rationale). An uneven workload is shown to the team as a "
+            "warning, not refused; tasks in Doing, Review or Done can never be changed. For several changes at once, "
+            "use waypoint_propose_batch.",
             {
                 "type": "object",
                 "properties": {
                     **TEAM_IDS,
-                    "kind": {"type": "string", "enum": ["task_split", "task_edit", "task_delete", "task_reorganize"]},
+                    "kind": {"type": "string", "enum": ["task_split", "task_edit", "task_delete", "task_reorganize", "task_merge"]},
                     "summary": {"type": "string", "description": "One line shown on the proposal card"},
                     "tasks": {"type": "array", "items": {"type": "object", "properties": {
                         "title": {"type": "string"}, "description": {"type": "string"}, "assignee_id": {"type": "string"},
@@ -415,13 +420,44 @@ def register(ctx):
                     "rationale": {"type": "string"},
                     "task_ids": {"type": "array", "items": {"type": "string"}, "description": "task_delete / task_reorganize: to-do tasks to remove"},
                     "task_changes": {"type": "array", "items": {"type": "object", "properties": {
-                        "task_id": {"type": "string"}, "title": {"type": "string"},
+                        "task_id": {"type": "string"}, "title": {"type": "string"}, "description": {"type": "string"},
                         "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8}, "assignee_id": {"type": "string"},
+                        "milestone_id": {"type": "string"},
                     }, "required": ["task_id"]}, "description": "task_reorganize: edits to existing to-do tasks"},
+                    "into": {"type": "object", "properties": {
+                        "title": {"type": "string"}, "description": {"type": "string"},
+                        "estimate_points": {"type": "integer", "minimum": 1, "maximum": 8},
+                        "assignee_id": {"type": "string"}, "milestone_id": {"type": "string"},
+                    }, "required": ["title", "estimate_points"], "description": "task_merge: the merged task"},
                 },
                 "required": ["team_id", "run_id", "kind", "summary"],
             },
             lambda p, **_: _propose(p, p["kind"], _task_payload(p)),
+        ),
+        (
+            "waypoint_propose_batch",
+            "Propose many changes as ONE card and ONE vote, applied all-or-nothing in order: prefer this over several "
+            "small proposals (e.g. compress eight tasks into three with several task_merge steps). Each op is "
+            "{kind, payload} with the payload the endpoint expects: task_split {tasks}, task_edit {task_id, changes}, "
+            "task_delete {task_ids, rationale}, task_reorganize {changes, deletes, adds, rationale}, task_merge "
+            "{task_ids, into, rationale}, doc_section {section_id, content_md, requirement_ids}, charter {charter}, "
+            "milestones {milestones}, section_owners {owners}. Later steps see earlier ones. If any step no longer "
+            "fits when the team accepts, the whole batch goes stale and nothing changes.",
+            {
+                "type": "object",
+                "properties": {
+                    **TEAM_IDS,
+                    "summary": {"type": "string", "description": "One line shown on the proposal card"},
+                    "rationale": {"type": "string"},
+                    "ops": {"type": "array", "minItems": 1, "maxItems": 25, "items": {"type": "object", "properties": {
+                        "kind": {"type": "string", "enum": ["task_split", "task_edit", "task_delete", "task_reorganize", "task_merge",
+                                                           "doc_section", "charter", "milestones", "section_owners"]},
+                        "payload": {"type": "object"},
+                    }, "required": ["kind", "payload"]}},
+                },
+                "required": ["team_id", "run_id", "ops", "summary"],
+            },
+            lambda p, **_: _propose(p, "batch", {"ops": p.get("ops", []), "rationale": p.get("rationale", "")}),
         ),
         (
             "waypoint_propose_section",

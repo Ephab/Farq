@@ -110,7 +110,7 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
         ) : view === "activity" ? (
           <ActivityLog store={store} />
         ) : (
-          <CharterView store={store} />
+          <CharterView store={store} canEdit={member} update={update} />
         )}
       </main>
       <div className="tm-dock-slot">

@@ -26,6 +26,7 @@ function snapshot(patch: Partial<TeamState> = {}): TeamState {
       assignment: { id: "a", course_id: "c", title: "Project", brief: {}, deadline: null, deliverables: [], rubric: [], team_size_min: 2, team_size_max: 4 },
       course: { id: "c", code: "SWE 363", title: "SE", term: "Fall" },
       members: [{ user_id: "u1", display_name: "Sara Alharbi", role_label: "", is_lead: true }], size_limit: 4,
+      project: { brief: {}, deliverables: [], rubric: [] },
     },
     tasks: [], milestones: [], decisions: [], documents: [], messages: [], proposals: [], last_seq: 10, last_seen_seq: 10, ...patch,
   }
@@ -172,7 +173,7 @@ describe("rebase", () => {
 describe("proposals and Hermes status", () => {
   const proposal = {
     id: "p1", team_id: "t", scope: "team" as const, affected_user_id: null, kind: "task_split" as const, summary: "Split",
-    payload: { tasks: [] }, status: "pending" as const, votes: {}, invoked_by: "u1", created_at: T0, expires_at: T0, decided_at: null, decided_by: null,
+    payload: { tasks: [] }, status: "pending" as const, votes: {}, invoked_by: "u1", created_at: T0, expires_at: T0, decided_at: null, decided_by: null, decided_via: null, warnings: [],
   }
 
   it("follows a proposal from created to applied", () => {
@@ -190,6 +191,23 @@ describe("proposals and Hermes status", () => {
     expect(store.hermes?.stage).toBe("Hermes is thinking")
     store = applyEvent(store, event("hermes.run", { id: "r", team_id: "t", status: "completed", stage: "Done", command: "split", invoked_by: "u1" }))
     expect(store.hermes).toBeNull()
+  })
+
+  it("applies team project updates", () => {
+    const project = { brief: { problem: "Paper records" }, deliverables: [], rubric: [{ name: "Demo", weight: 100, description: "" }] }
+    const store = applyEvent(fromSnapshot(snapshot()), event("team.updated", { project }))
+    expect(store.team.project.brief.problem).toBe("Paper records")
+    expect(store.team.charter).toEqual({})
+  })
+
+  it("keeps an import from reading through review, then drops it once sent", () => {
+    const item = { id: "i1", team_id: "t", uploaded_by: "u1", filename: "brief.pdf", status: "reading" as const, items: [], proposal_id: null, error: null, created_at: T0 }
+    let store = applyEvent(fromSnapshot(snapshot()), event("import.created", item))
+    expect(store.imports.i1.status).toBe("reading")
+    store = applyEvent(store, event("import.updated", { ...item, status: "review" }))
+    expect(store.imports.i1.status).toBe("review")
+    store = applyEvent(store, event("import.proposed", { ...item, status: "proposed", proposal_id: "p9" }))
+    expect(store.imports).toEqual({})
   })
 
   it("applies charter updates", () => {

@@ -43,12 +43,29 @@ def test_balanced_split_becomes_a_team_proposal_with_a_chat_card(client):
     assert (card["kind"], card["metadata"], card["author_user_id"]) == ("proposal", {"proposal_id": proposal_id}, None)
 
 
-@pytest.mark.parametrize(("payload_for", "reason"), [
-    (lambda m, o: {"tasks": [
+def test_unbalanced_split_is_proposed_with_a_warning_instead_of_rejected(client):
+    world = make_world(students=4, team_members=3)
+    m = world["students"][:3]
+    proposal_id = _propose(world["team_id"], "task_split", {"tasks": [
         {"title": "Most of it", "assignee_id": m[0], "estimate_points": 8, "rationale": "r"},
         {"title": "b", "assignee_id": m[1], "estimate_points": 1, "rationale": "r"},
         {"title": "c", "assignee_id": m[2], "estimate_points": 1, "rationale": "r"},
-    ]}, "Unbalanced"),
+    ]}, m[0])
+    card = client.get(f"/api/teams/{world['team_id']}/state", headers=hdr(m[0])).json()["proposals"][0]
+    assert card["id"] == proposal_id and card["status"] == "pending"
+    assert len(card["warnings"]) == 1 and card["warnings"][0].startswith("Uneven workload")
+    # The simulation behind the warning left nothing on the board.
+    assert client.get(f"/api/teams/{world['team_id']}/state", headers=hdr(m[0])).json()["tasks"] == []
+
+
+def test_balanced_split_has_no_warnings(client):
+    world = make_world(students=4, team_members=3)
+    proposal_id = _propose(world["team_id"], "task_split", _split(world["students"][:3]), world["students"][0])
+    assert client.get(f"/api/teams/{world['team_id']}/state", headers=hdr(world["students"][0])).json()["proposals"][0]["warnings"] == []
+    assert _proposal(proposal_id).decided_via is None
+
+
+@pytest.mark.parametrize(("payload_for", "reason"), [
     (lambda m, o: _split(m[:2]), "Every member"),
     (lambda m, o: _split([*m, o]), "not a member"),
     (lambda m, o: {"tasks": [{"title": "x", "assignee_id": m[0], "estimate_points": 2}]}, "Invalid task_split"),
@@ -95,7 +112,7 @@ def test_personal_edit_goes_to_the_assignee_and_goes_stale_if_work_starts(client
     proposal_id = _propose(team, "task_edit", {"task_id": task["id"], "changes": {"description": "Include all entities"}, "rationale": "clearer"}, s0)
     proposal = _proposal(proposal_id)
     assert (proposal.scope, proposal.affected_user_id) == ("personal", s1)
-    assert client.post(f"/api/proposals/{proposal_id}/accept", headers=hdr(s0)).status_code == 403
+    assert client.post(f"/api/proposals/{proposal_id}/accept", headers=hdr(world["students"][2])).status_code == 403
     client.post(f"/api/tasks/{task['id']}/move", json={"status": "doing"}, headers=hdr(s1))
     assert client.post(f"/api/proposals/{proposal_id}/accept", headers=hdr(s1)).json()["status"] == "stale"
     state = client.get(f"/api/teams/{team}/state", headers=hdr(s1)).json()

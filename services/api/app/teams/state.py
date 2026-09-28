@@ -7,6 +7,7 @@ from ..identity import CurrentUser, User
 from .chat import decision_dict, message_dict, reactions_for, votes_for
 from .common import Db, require_team
 from .docs import document_dict
+from .imports import import_dict, open_imports
 from .models import Decision, DocSection, Milestone, Task, TeamDocument, TeamEvent, TeamMember, TeamMessage, TeamProposal
 from .policy import authorize, is_member
 from .proposals import expire_stalled, proposal_dict
@@ -22,6 +23,7 @@ def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
     team = require_team(db, team_id)
     role = authorize(db, user, team, "view")
     expire_stalled(db, team)
+    imports = open_imports(db, team)
     db.commit()
     # Read the cursor first: anything written after this point arrives on the stream.
     last_seq = db.scalar(select(func.max(TeamEvent.seq)).where(TeamEvent.team_id == team.id)) or 0
@@ -50,7 +52,8 @@ def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
     return {
         "team": team_dict(db, team, role), "tasks": [task_dict(item) for item in tasks],
         "milestones": [milestone_dict(item) for item in milestones], "decisions": [decision_dict(item) for item in decisions],
-        "documents": documents, "messages": messages, "proposals": [proposal_dict(item) for item in proposals], "last_seq": last_seq, "last_seen_seq": last_seen,
+        "documents": documents, "messages": messages, "proposals": [proposal_dict(item) for item in proposals],
+        "imports": [import_dict(item) for item in imports], "last_seq": last_seq, "last_seen_seq": last_seen,
     }
 
 

@@ -9,7 +9,7 @@ plugin = importlib.util.module_from_spec(spec)
 sys.modules["waypoint_plugin"] = plugin
 spec.loader.exec_module(plugin)
 
-TEAM_TOOLS = {"waypoint_get_team_context", "waypoint_get_task", "waypoint_get_doc_section", "waypoint_propose_tasks", "waypoint_propose_section", "waypoint_propose_team_change"}
+TEAM_TOOLS = {"waypoint_get_team_context", "waypoint_get_task", "waypoint_get_doc_section", "waypoint_propose_tasks", "waypoint_propose_section", "waypoint_propose_team_change", "waypoint_propose_batch"}
 
 
 class Ctx:
@@ -72,3 +72,13 @@ def test_propose_tasks_shapes_delete_and_reorganize_payloads(monkeypatch):
     assert calls[1][2]["payload"] == {"changes": [{"task_id": "b", "assignee_id": "v"}], "deletes": ["c"], "adds": add, "rationale": "rebalance"}
     enum = tools["waypoint_propose_tasks"][0]["parameters"]["properties"]["kind"]["enum"]
     assert {"task_delete", "task_reorganize"} <= set(enum)
+
+
+def test_batch_and_merge_tools_shape_their_payloads(monkeypatch):
+    tools, calls = _registered(monkeypatch)
+    merge = {"title": "AB", "estimate_points": 3}
+    tools["waypoint_propose_tasks"][1]({"team_id": "t", "run_id": "r", "kind": "task_merge", "task_ids": ["a", "b"], "into": merge, "rationale": "same", "summary": "Merge"})
+    ops = [{"kind": "task_merge", "payload": {"task_ids": ["a", "b"], "into": merge, "rationale": "same"}}]
+    tools["waypoint_propose_batch"][1]({"team_id": "t", "run_id": "r", "ops": ops, "rationale": "compress", "summary": "Compress"})
+    assert calls[0][2]["payload"] == {"task_ids": ["a", "b"], "into": merge, "rationale": "same"}
+    assert calls[1] == ("POST", "/internal/hermes/teams/t/proposals", {"run_id": "r", "kind": "batch", "payload": {"ops": ops, "rationale": "compress"}, "summary": "Compress"})

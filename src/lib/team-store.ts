@@ -1,6 +1,7 @@
 import { translate } from "@/lib/i18n/context"
 import type {
-  DocSectionInfo, HermesRunInfo, PresenceEntry, TaskStatus, TeamDecision, TeamDocumentInfo, TeamEvent, TeamInfo, TeamMessage, TeamMilestone, TeamProposal, TeamState, TeamTask,
+  DocSectionInfo, HermesRunInfo, PresenceEntry, TaskStatus, TeamDecision, TeamDocumentInfo, TeamEvent, TeamImportInfo, TeamInfo, TeamMessage, TeamMilestone,
+  TeamProposal, TeamState, TeamTask,
 } from "@/lib/teams-api"
 
 /** Every event type the stream can send; EventSource needs a listener per named event. */
@@ -12,7 +13,7 @@ export const TEAM_EVENT_TYPES = [
   "document.created", "document.updated", "section.updated", "section.locked", "section.unlocked",
   "member.joined", "invite.created", "invite.declined", "invite.cancelled",
   "proposal.created", "proposal.voted", "proposal.applied", "proposal.rejected", "proposal.stale", "proposal.awaiting_lead",
-  "hermes.run", "team.updated",
+  "hermes.run", "team.updated", "import.created", "import.updated", "import.proposed", "import.discarded",
 ] as const
 
 /** `label` is English for tests/logs; components show t(`teams.status.${status}`). */
@@ -37,6 +38,8 @@ export interface TeamStore {
   proposals: Record<string, TeamProposal>
   /** The team's active Hermes run, or null when Hermes is idle. */
   hermes: HermesRunInfo | null
+  /** Project-description imports being read, waiting for review, or failed. */
+  imports: Record<string, TeamImportInfo>
 }
 
 function byId<T extends { id: string }>(items: T[]): Record<string, T> {
@@ -66,7 +69,15 @@ export function fromSnapshot(state: TeamState): TeamStore {
     presence: [],
     proposals: byId(state.proposals ?? []),
     hermes: null,
+    imports: byId(state.imports ?? []),
   }
+}
+
+const OPEN_IMPORTS = new Set<TeamImportInfo["status"]>(["reading", "review", "failed"])
+
+/** Only open imports are kept (reading, review, failed); a sent or discarded one leaves the store. */
+export function upsertImport(store: TeamStore, item: TeamImportInfo): TeamStore {
+  return { ...store, imports: OPEN_IMPORTS.has(item.status) ? { ...store.imports, [item.id]: item } : omit(store.imports, item.id) }
 }
 
 export function upsertTask(store: TeamStore, task: TeamTask): TeamStore {
@@ -233,8 +244,14 @@ function reduce(store: TeamStore, event: TeamEvent): TeamStore {
       if (payload.charter !== undefined) team.charter = payload.charter as TeamInfo["charter"]
       if (typeof payload.name === "string") team.name = payload.name
       if (typeof payload.size_limit === "number") team.size_limit = payload.size_limit
+      if (payload.project !== undefined) team.project = payload.project as TeamInfo["project"]
       return { ...store, team }
     }
+    case "import.created":
+    case "import.updated":
+    case "import.proposed":
+    case "import.discarded":
+      return upsertImport(store, payload as unknown as TeamImportInfo)
     default:
       return store
   }

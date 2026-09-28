@@ -6,7 +6,9 @@ export const ACTING_USER_EVENT = "waypoint:acting-user-changed"
 
 export type TeamRole = "lead" | "member" | "instructor"
 export type TaskStatus = "todo" | "doing" | "review" | "done"
-export type ProposalKind = "task_split" | "task_edit" | "task_delete" | "task_reorganize" | "doc_section" | "charter" | "milestones" | "section_owners"
+export type ProposalKind =
+  | "task_split" | "task_edit" | "task_delete" | "task_reorganize" | "task_merge" | "doc_section" | "charter" | "milestones"
+  | "section_owners" | "brief" | "deliverables" | "rubric" | "batch"
 export type ProposalStatus = "pending" | "applied" | "rejected" | "stale" | "awaiting_lead"
 export type DocumentKind = "srs" | "sds" | "spmp" | "custom"
 export type ExportFormat = "md" | "docx" | "html"
@@ -20,10 +22,26 @@ export interface AssignmentInfo {
   deliverables: string[]; rubric: Criterion[]; team_size_min: number; team_size_max: number
 }
 export interface TeamCharter { goal?: string; roles?: Record<string, string>; working_agreement?: string[]; meetings?: string }
+export interface ProjectBrief { problem?: string; objective?: string; scope?: string; constraints?: string[]; tools?: string[] }
+export interface ProjectDeliverable { key: string; title: string; due: string | null; doc_kind: "srs" | "sds" | "spmp" | null }
+export interface ProjectCriterion { name: string; weight: number; description: string }
+/** The team's own project from an accepted import; empty where the assignment's brief applies. */
+export interface TeamProject { brief: ProjectBrief; deliverables: ProjectDeliverable[]; rubric: ProjectCriterion[] }
+export type ImportRowKind = "brief" | "deliverable" | "milestone" | "criterion"
+export interface ImportRow {
+  id: string; kind: ImportRowKind; data: Record<string, unknown>; source_quote: string; confidence: "stated" | "inferred"
+}
+export interface TeamImportInfo {
+  id: string; team_id: string; uploaded_by: string; filename: string
+  /** reading: Hermes is extracting in the background; failed carries `error` until dismissed. */
+  status: "reading" | "review" | "failed" | "proposed" | "discarded"
+  items: ImportRow[]; proposal_id: string | null; error: string | null; created_at: string
+}
 export interface TeamMemberInfo { user_id: string; display_name: string; role_label: string; is_lead: boolean }
 export interface TeamInfo {
   id: string; name: string; cover_seed: string; lead_user_id: string; charter: TeamCharter; created_at: string
   viewer_role: TeamRole; assignment: AssignmentInfo; course: CourseRef; members: TeamMemberInfo[]; size_limit: number
+  project: TeamProject
 }
 export interface TeamCard {
   id: string; name: string; cover_seed: string; course: CourseRef
@@ -56,6 +74,10 @@ export interface TeamProposal {
   id: string; team_id: string; scope: "personal" | "team"; affected_user_id: string | null; kind: ProposalKind; summary: string
   payload: Record<string, unknown>; status: ProposalStatus; votes: Record<string, "up" | "down">; invoked_by: string | null
   created_at: string; expires_at: string; decided_at: string | null; decided_by: string | null
+  /** "lead_override" when the lead decided it directly instead of the vote or the affected member. */
+  decided_via: "lead_override" | null
+  /** Advisory notes (uneven workload, rubric not totalling 100); they never block the vote. */
+  warnings: string[]
   /** Present on proposal.stale events: why it no longer applies. */
   reason?: string
 }
@@ -72,6 +94,8 @@ export interface TeamDocumentInfo { id: string; team_id: string; kind: DocumentK
 export interface TeamState {
   team: TeamInfo; tasks: TeamTask[]; milestones: TeamMilestone[]; decisions: TeamDecision[]; documents: TeamDocumentInfo[]
   messages: TeamMessage[] | null; proposals: TeamProposal[]; last_seq: number; last_seen_seq: number | null
+  /** Imports being read, waiting for review, or failed. */
+  imports?: TeamImportInfo[]
 }
 export interface TeamEvent { seq: number; type: string; actor_user_id: string | null; payload: Record<string, unknown>; created_at: string | null }
 export interface PresenceEntry { user_id: string; focus: string | null; typing: boolean }
@@ -155,6 +179,19 @@ export function teamClient(userId: string) {
   vote: (proposalId: string, choice: "up" | "down") => teamApi<TeamProposal>(`/api/proposals/${proposalId}/vote`, send("POST", { vote: choice })),
   acceptProposal: (proposalId: string) => teamApi<TeamProposal>(`/api/proposals/${proposalId}/accept`, send("POST")),
   rejectProposal: (proposalId: string) => teamApi<TeamProposal>(`/api/proposals/${proposalId}/reject`, send("POST")),
+  importProject: (teamId: string, source: { file: File } | { text: string }) => {
+    // Hermes reads the document, so send the tab's model choice and key like the Coach does.
+    const hermes = hermesRequestParts()
+    const form = new FormData()
+    if ("file" in source) form.append("file", source.file)
+    else form.append("text", source.text)
+    form.append("provider", hermes.body.provider)
+    form.append("model", hermes.body.model)
+    return teamApi<TeamImportInfo>(`/api/teams/${teamId}/imports`, { method: "POST", body: form, headers: hermes.headers })
+  },
+  proposeImport: (importId: string, items: { kind: ImportRowKind; data: Record<string, unknown> }[]) =>
+    teamApi<{ import: TeamImportInfo; proposal: TeamProposal }>(`/api/imports/${importId}/propose`, send("POST", { items })),
+  discardImport: (importId: string) => teamApi<TeamImportInfo>(`/api/imports/${importId}/discard`, send("POST")),
   risks: (teamId: string) => teamApi<TeamRisk[]>(`/api/teams/${teamId}/risks`),
   markSeen: (teamId: string, seq: number) => teamApi<{ last_seen_seq: number }>(`/api/teams/${teamId}/seen`, send("POST", { seq })),
   createDocument: (teamId: string, kind: DocumentKind, custom?: { title: string; sections: { key: string; title: string }[] }) =>

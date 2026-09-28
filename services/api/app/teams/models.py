@@ -59,6 +59,10 @@ class Team(Base):
     charter_json: Mapped[str] = mapped_column(Text, default="{}")
     # Lead-chosen cap, within the assignment's limits; None means the assignment maximum.
     size_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The team's own project (from an accepted import), layered over the shared assignment brief.
+    brief_json: Mapped[str] = mapped_column(Text, default="{}")
+    deliverables_json: Mapped[str] = mapped_column(Text, default="[]")
+    rubric_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -222,7 +226,8 @@ class TeamProposal(Base):
     # personal (the affected member decides) | team (majority vote, then the lead)
     scope: Mapped[str] = mapped_column(String(16))
     affected_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    # task_split | task_edit | doc_section | charter | milestones | section_owners
+    # task_split | task_edit | task_delete | task_reorganize | task_merge | doc_section | charter | milestones
+    # | section_owners | brief | deliverables | rubric | batch
     kind: Mapped[str] = mapped_column(String(24))
     summary: Mapped[str] = mapped_column(String(240))
     payload_json: Mapped[str] = mapped_column(Text)
@@ -236,6 +241,26 @@ class TeamProposal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decided_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # None (the normal path) | lead_override
+    decided_via: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Advisory notes shown on the card (e.g. an uneven workload); never block the vote.
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class TeamImport(Base):
+    """A project description a member imported. Holds only the redacted, extracted rows, never the file."""
+
+    __tablename__ = "team_imports"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    team_id: Mapped[str] = mapped_column(ForeignKey("teams.id"), index=True)
+    uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    filename: Mapped[str] = mapped_column(String(240), default="")
+    # reading (Hermes is extracting) | review | failed | proposed | discarded
+    status: Mapped[str] = mapped_column(String(16), default="reading", index=True)
+    items_json: Mapped[str] = mapped_column(Text, default="[]")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposal_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class TeamAgentRun(Base):

@@ -64,7 +64,14 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 - Demo: sidebar **Group Projects** → Group 1 (SWE 363). "Viewing as" switches the acting user
   per tab (students, or Dr. Layla Haddad as instructor, who sees no chat).
 - Hermes: `@Hermes` and `/split`, `/describe`, `/draft srs 3.2`, `/standup`, `/risks`, `/catchup`.
-  Every change is a proposal card (vote, accept or lead decision).
+  Every change is a proposal card (vote, accept or lead decision). Hermes can send many changes as
+  one `batch` card (e.g. several `task_merge` steps to compress the board), applied all-or-nothing.
+  An uneven workload is a warning on the card, not a rejection. The lead can accept or reject any
+  open card directly (recorded as a lead override).
+- Project setup (Charter & brief view): a member uploads the project description (PDF, DOCX or
+  text); Hermes extracts brief, deliverables, milestones and rubric rows; the uploader fixes and
+  ticks them (relative dates like "week 14" must get a real date) and sends one batch to the team.
+  Spec: `docs/superpowers/specs/2026-09-28-project-setup-import-design.md`.
 - Next: Plan 4 (signature animations and a Playwright demo). Deferred review minors are listed in
   the plan final reports.
 
@@ -212,6 +219,10 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - Existing quiz/slides frontends still show their own model labels; fallback happens server-side.
 - UI brand says "SmartLearn"; product is "Waypoint". Home, Dashboard, Projects are placeholders.
 - No visual diff for proposals; quiz results do not feed the roadmap yet.
+- Project import extraction runs on a throwaway session that is told not to call tools (same as
+  CV ingest), but the gateway does not strip tools from it. Worst case is still only a proposal the
+  team must accept; a real tool-less session type would close it. Live extraction quality is untested
+  (the tests stub Hermes).
 
 ## Next steps (in order)
 1. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.

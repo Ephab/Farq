@@ -34,8 +34,13 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 - Team activity never creates `StudentFact` rows.
 - Group Projects Hermes is a proposer only: its team tools create `TeamProposal` rows. Only
   `POST /api/proposals/{id}/vote|accept|reject` by a member applies one (personal → the affected
-  member; team → strict majority, then the lead after 48 h). Tasks in doing/review/done are never
-  changed by a proposal; conflicts mark it `stale`. Team chat text is untrusted data for Hermes.
+  member; team → strict majority, then the lead after 48 h). The lead may also accept or reject any
+  open proposal directly; that is stored as `decided_via="lead_override"` and shown to the team.
+  A `batch` proposal applies all its steps or none. Tasks in doing/review/done are never changed by
+  a proposal; conflicts mark it `stale`. Team chat text is untrusted data for Hermes.
+- Project setup imports (`teams/imports.py`) keep only redacted, extracted rows, never the file. The
+  document is read by a tool-less JSON prompt and is untrusted; only rows the uploader ticks become
+  one `batch` proposal, written to the team's own `brief/deliverables/rubric` (never the assignment).
 
 ## Commands
 

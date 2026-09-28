@@ -740,3 +740,13 @@ def test_opportunity_proposal_metadata_is_authoritative(client: TestClient):
     metadata = proposal["operations"][0]["node"]["opportunity"]
     assert metadata["source"] == "hackathonat"
     assert metadata["registration_url"] == "https://example.org/register"
+
+
+def test_students_list_offers_profiles_made_here_for_resuming(client):
+    created = client.post("/api/students", json={"display_name": "Resume Me"}).json()
+    listed = client.get("/api/students").json()
+    mine = next(item for item in listed if item["student_id"] == created["student_id"])
+    assert (mine["display_name"], mine["onboarding_status"]) == ("Resume Me", "basics")
+    # Seeded demo people have their own entry points and are not listed.
+    assert not any(item["student_id"].startswith("demo-") for item in listed)
+    assert listed[0]["student_id"] == created["student_id"]  # newest first

@@ -255,9 +255,10 @@ class TeamImport(Base):
     team_id: Mapped[str] = mapped_column(ForeignKey("teams.id"), index=True)
     uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     filename: Mapped[str] = mapped_column(String(240), default="")
-    # review | proposed | discarded
-    status: Mapped[str] = mapped_column(String(16), default="review", index=True)
+    # reading (Hermes is extracting) | review | failed | proposed | discarded
+    status: Mapped[str] = mapped_column(String(16), default="reading", index=True)
     items_json: Mapped[str] = mapped_column(Text, default="[]")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     proposal_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 

@@ -24,7 +24,10 @@ lead override covers team *and* personal proposals; the task balance rule become
    plain text as is. Text is `redact()`ed and truncated to 30 000 characters. The file is discarded.
 2. The redacted text is sent to `run_json_prompt("team-import", ...)`: a throwaway, **tool-less**
    session. The document is untrusted data; instructions inside it are ignored. It returns rows.
-3. Rows are stored on a `team_imports` row with `status="review"` and returned to the uploader.
+3. The endpoint answers at once with a `team_imports` row in `status="reading"`; Hermes extracts in
+   a background task (the key stays in memory) and moves it to `review`, or `failed` with the reason.
+   So leaving the page never loses the read. One read at a time per member; a read still `reading`
+   after 10 minutes (e.g. a server restart) is shown as failed. `import.updated` carries each change.
 4. The uploader edits and ticks rows on the review screen, then
    `POST /api/imports/{id}/propose {items: [...]}` builds one `batch` proposal (§3) with
    `invoked_by=uploader`. The import becomes `proposed`. `POST /api/imports/{id}/discard` drops it.

@@ -7,25 +7,31 @@ import io
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..database import SessionLocal
 from ..hermes import HermesJsonError, parse_json_output, run_json_prompt
 from ..identity import CurrentUser
+from ..models import now
 from ..sources import SourceError
 from ..sources.pdf_text import MAX_TEXT_CHARS, MAX_UPLOAD_BYTES, extract_pdf_text, redact
-from .common import Db, iso, loads, lock_for_write, require, require_team
+from .common import Db, aware, iso, loads, lock_for_write, require, require_team
 from .events import emit
 from .models import Milestone, Team, TeamImport
 from .policy import authorize
 from .proposals import BriefPayload, Criterion, Deliverable, NewMilestone, ProposalError, create_proposal, proposal_dict
 
 router = APIRouter()
+# Imports the team still sees: being read, waiting for review, or failed (until dismissed).
+OPEN_STATUSES = ("reading", "review", "failed")
+# A reading import older than this was lost (e.g. the server restarted mid-run).
+READ_TIMEOUT = timedelta(minutes=10)
 MIN_TEXT_CHARS = 80
 QUOTE_CHARS = 200
 ROW_LIMIT = 40
@@ -61,8 +67,49 @@ def import_dict(item: TeamImport) -> dict:
     return {
         "id": item.id, "team_id": item.team_id, "uploaded_by": item.uploaded_by, "filename": item.filename,
         "status": item.status, "items": loads(item.items_json, []), "proposal_id": item.proposal_id,
-        "created_at": iso(item.created_at),
+        "error": item.error, "created_at": iso(item.created_at),
     }
+
+
+def open_imports(db: Session, team: Team) -> list[TeamImport]:
+    """The team's open imports, failing any read that has been running too long. The caller commits."""
+    rows = db.scalars(select(TeamImport).where(TeamImport.team_id == team.id, TeamImport.status.in_(OPEN_STATUSES))
+                      .order_by(TeamImport.created_at.desc()).limit(5)).all()
+    for row in rows:
+        if row.status == "reading" and aware(row.created_at) < now() - READ_TIMEOUT:
+            _finish(db, row, "failed", error="Hermes did not finish reading this document. Try again.")
+    return rows
+
+
+def _finish(db: Session, item: TeamImport, status: str, *, rows: list[dict] | None = None, error: str | None = None) -> None:
+    item.status, item.error = status, error
+    if rows is not None:
+        item.items_json = json.dumps(rows)
+    emit(db, item.team_id, "import.updated", None, import_dict(item))
+
+
+def read_import(import_id: str, content: str, provider: str | None, model: str | None, key: str | None) -> None:
+    """Background job: Hermes extracts the rows, then the import moves to review (or failed).
+    Runs after the response, so the uploader can leave the page; the key lives only in this call."""
+    try:
+        rows, error = extract_rows(content, provider, model, key), None
+    except SourceError as exc:
+        rows, error = None, str(exc)
+    except Exception:  # never leave the import stuck in "reading"
+        rows, error = None, "Hermes could not read this document. Try again."
+    db = SessionLocal()
+    try:
+        lock_for_write(db)
+        item = db.get(TeamImport, import_id)
+        if item is None or item.status != "reading":
+            return  # discarded while Hermes was reading
+        if error:
+            _finish(db, item, "failed", error=error)
+        else:
+            _finish(db, item, "review", rows=rows)
+        db.commit()
+    finally:
+        db.close()
 
 
 def _docx_text(data: bytes) -> str:
@@ -250,9 +297,10 @@ def _import_and_team(db: Session, import_id: str, user) -> tuple[TeamImport, Tea
     return item, team
 
 
-@router.post("/api/teams/{team_id}/imports", status_code=201)
+@router.post("/api/teams/{team_id}/imports", status_code=202)
 def create_import(
     team_id: str,
+    background: BackgroundTasks,
     db: Db,
     user: CurrentUser,
     file: UploadFile | None = File(default=None),
@@ -261,9 +309,9 @@ def create_import(
     model: str | None = Form(default=None),
     x_hermes_api_key: Annotated[str | None, Header()] = None,
 ) -> dict:
+    """Read the file now (fast, so a bad file fails here), then let Hermes extract in the background."""
     team = require_team(db, team_id)
     authorize(db, user, team, "write")
-    db.commit()  # release the read transaction: extraction can take minutes
     try:
         if file is not None and file.filename:
             filename = file.filename[:240]
@@ -274,15 +322,17 @@ def create_import(
             raise SourceError("Upload a file or paste the project description")
         if len(content) < MIN_TEXT_CHARS:
             raise SourceError("That document has too little text to read a project from")
-        rows = extract_rows(content, provider or None, model or None, x_hermes_api_key)
     except SourceError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     lock_for_write(db)
-    item = TeamImport(team_id=team.id, uploaded_by=user.id, filename=filename, items_json=json.dumps(rows))
+    if db.scalar(select(TeamImport.id).where(TeamImport.team_id == team.id, TeamImport.uploaded_by == user.id, TeamImport.status == "reading")):
+        raise HTTPException(409, "Hermes is still reading your last document")
+    item = TeamImport(team_id=team.id, uploaded_by=user.id, filename=filename, status="reading")
     db.add(item)
     db.flush()
     emit(db, team.id, "import.created", user.id, import_dict(item))
     db.commit()
+    background.add_task(read_import, item.id, content, provider or None, model or None, x_hermes_api_key)
     return import_dict(item)
 
 
@@ -290,8 +340,8 @@ def create_import(
 def list_imports(team_id: str, db: Db, user: CurrentUser) -> list[dict]:
     team = require_team(db, team_id)
     authorize(db, user, team, "view")
-    rows = db.scalars(select(TeamImport).where(TeamImport.team_id == team.id, TeamImport.status != "discarded")
-                      .order_by(TeamImport.created_at.desc()).limit(5)).all()
+    rows = open_imports(db, team)
+    db.commit()
     return [import_dict(row) for row in rows]
 
 
@@ -319,7 +369,7 @@ def discard_import(import_id: str, db: Db, user: CurrentUser) -> dict:
     item, team = _import_and_team(db, import_id, user)
     if user.id not in (item.uploaded_by, team.lead_user_id):
         raise HTTPException(403, "Only the uploader or the team lead can discard this import")
-    if item.status != "review":
+    if item.status not in OPEN_STATUSES:
         raise HTTPException(409, "This import was already sent or discarded")
     item.status = "discarded"
     emit(db, team.id, "import.discarded", user.id, import_dict(item))

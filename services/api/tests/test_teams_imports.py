@@ -39,23 +39,33 @@ def fake_hermes(monkeypatch):
     return seen
 
 
-def _upload(client, team, user, text=DOC):
+def _post(client, team, user, text=DOC):
     return client.post(f"/api/teams/{team}/imports", data={"text": text}, headers=hdr(user))
+
+
+def _upload(client, team, user, text=DOC):
+    """Upload, then read the import back once the background extraction has run
+    (TestClient runs background tasks before it returns the response)."""
+    response = _post(client, team, user, text)
+    assert response.status_code == 202, response.text
+    return next(item for item in client.get(f"/api/teams/{team}/imports", headers=hdr(user)).json() if item["id"] == response.json()["id"])
 
 
 def test_import_extracts_redacted_rows_for_review(client, fake_hermes):
     world = make_world()
     team, s0 = world["team_id"], world["students"][0]
-    response = _upload(client, team, s0)
-    assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["status"] == "review" and body["uploaded_by"] == s0
+    response = _post(client, team, s0)
+    assert response.status_code == 202, response.text
+    # The upload returns at once; Hermes reads in the background, so leaving the page loses nothing.
+    assert (response.json()["status"], response.json()["items"]) == ("reading", [])
+    body = _upload(client, team, s0)
+    assert body["status"] == "review" and body["uploaded_by"] == s0 and body["error"] is None
     assert [row["kind"] for row in body["items"]] == ["brief", "deliverable", "deliverable", "milestone", "criterion", "criterion"]
     demo = body["items"][2]["data"]
     assert (demo["due"], demo["due_text"]) == (None, "week 14")
     assert "prof@example.edu" not in fake_hermes["prompt"] and "[email]" in fake_hermes["prompt"]
     assert "untrusted" in fake_hermes["instructions"] and "Do not call any tools" in fake_hermes["instructions"]
-    assert [event["type"] for event in events_for(team)][-1] == "import.created"
+    assert [event["type"] for event in events_for(team)][-2:] == ["import.created", "import.updated"]
     # Nothing changes for the team until a proposal is accepted.
     assert client.get(f"/api/teams/{team}/state", headers=hdr(s0)).json()["proposals"] == []
 
@@ -70,7 +80,7 @@ def test_docx_upload_is_read(client, fake_hermes):
     document.save(buffer)
     response = client.post(f"/api/teams/{world['team_id']}/imports", headers=hdr(world["students"][0]),
                            files={"file": ("brief.docx", buffer.getvalue(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
-    assert response.status_code == 201, response.text
+    assert response.status_code == 202, response.text
     assert response.json()["filename"] == "brief.docx"
     assert "clinics lose paper records" in fake_hermes["prompt"]
 
@@ -80,14 +90,14 @@ def test_unsupported_file_and_outsider_are_refused(client, fake_hermes):
     team = world["team_id"]
     bad = client.post(f"/api/teams/{team}/imports", headers=hdr(world["students"][0]), files={"file": ("brief.exe", b"MZ" * 100, "application/octet-stream")})
     assert bad.status_code == 422
-    assert _upload(client, team, world["instructor"]).status_code == 403
-    assert _upload(client, team, world["outsider"]).status_code == 403
+    assert _post(client, team, world["instructor"]).status_code == 403
+    assert _post(client, team, world["outsider"]).status_code == 403
 
 
 def test_ticked_rows_become_one_batch_proposal(client, fake_hermes):
     world = make_world()
     team, (s0, s1, s2) = world["team_id"], world["students"][:3]
-    rows = _upload(client, team, s1).json()
+    rows = _upload(client, team, s1)
     ticked = [{"kind": row["kind"], "data": row["data"]} for row in rows["items"] if row["data"].get("due_text") != "week 14"]
     assert client.post(f"/api/imports/{rows['id']}/propose", json={"items": ticked}, headers=hdr(s0)).status_code == 403
     response = client.post(f"/api/imports/{rows['id']}/propose", json={"items": ticked}, headers=hdr(s1))
@@ -110,7 +120,7 @@ def test_ticked_rows_become_one_batch_proposal(client, fake_hermes):
 def test_undated_rows_cannot_be_proposed(client, fake_hermes):
     world = make_world()
     team, s0 = world["team_id"], world["students"][0]
-    rows = _upload(client, team, s0).json()
+    rows = _upload(client, team, s0)
     undated = [{"kind": row["kind"], "data": row["data"]} for row in rows["items"] if row["data"].get("due_text") == "week 14"]
     response = client.post(f"/api/imports/{rows['id']}/propose", json={"items": undated}, headers=hdr(s0))
     assert response.status_code == 422 and "calendar date" in response.json()["detail"]
@@ -125,7 +135,7 @@ def test_existing_milestones_are_not_duplicated(client, fake_hermes):
     world = make_world()
     team, s0 = world["team_id"], world["students"][0]
     client.post(f"/api/teams/{team}/milestones", json={"title": "SRS submitted"}, headers=hdr(s0))
-    rows = _upload(client, team, s0).json()
+    rows = _upload(client, team, s0)
     milestone_only = [{"kind": row["kind"], "data": row["data"]} for row in rows["items"] if row["kind"] == "milestone"]
     response = client.post(f"/api/imports/{rows['id']}/propose", json={"items": milestone_only}, headers=hdr(s0))
     assert response.status_code == 422 and "already exists" in response.json()["detail"]
@@ -134,7 +144,57 @@ def test_existing_milestones_are_not_duplicated(client, fake_hermes):
 def test_lead_can_discard_someone_elses_import(client, fake_hermes):
     world = make_world()
     team, (s0, s1, s2) = world["team_id"], world["students"][:3]
-    rows = _upload(client, team, s1).json()
+    rows = _upload(client, team, s1)
     assert client.post(f"/api/imports/{rows['id']}/discard", headers=hdr(s2)).status_code == 403
     assert client.post(f"/api/imports/{rows['id']}/discard", headers=hdr(s0)).json()["status"] == "discarded"
     assert client.get(f"/api/teams/{team}/imports", headers=hdr(s1)).json() == []
+
+
+def test_a_failed_read_is_shown_with_its_reason(client, monkeypatch):
+    def fail(*args):
+        raise imports.HermesJsonError("Hermes gateway unavailable", status=502)
+
+    monkeypatch.setattr(imports, "run_json_prompt", fail)
+    world = make_world()
+    team, s0 = world["team_id"], world["students"][0]
+    item = _upload(client, team, s0)
+    assert (item["status"], item["error"]) == ("failed", "Hermes gateway unavailable")
+    state = client.get(f"/api/teams/{team}/state", headers=hdr(s0)).json()
+    assert [row["status"] for row in state["imports"]] == ["failed"]
+    assert client.post(f"/api/imports/{item['id']}/discard", headers=hdr(s0)).json()["status"] == "discarded"
+
+
+def _reading_import(team, user, minutes_ago=0):
+    from datetime import datetime, timedelta, timezone
+
+    from app.database import SessionLocal
+    from app.teams.models import TeamImport
+
+    db = SessionLocal()
+    try:
+        item = TeamImport(team_id=team, uploaded_by=user, filename="brief.pdf", status="reading",
+                          created_at=datetime.now(timezone.utc) - timedelta(minutes=minutes_ago))
+        db.add(item)
+        db.commit()
+        return item.id
+    finally:
+        db.close()
+
+
+def test_one_read_at_a_time_per_member_and_a_discarded_read_stays_discarded(client, fake_hermes):
+    world = make_world()
+    team, s0 = world["team_id"], world["students"][0]
+    import_id = _reading_import(team, s0)
+    assert _post(client, team, s0).status_code == 409
+    assert client.post(f"/api/imports/{import_id}/discard", headers=hdr(s0)).json()["status"] == "discarded"
+    # Hermes finishing after the discard must not bring the import back.
+    imports.read_import(import_id, DOC, None, None, None)
+    assert client.get(f"/api/teams/{team}/imports", headers=hdr(s0)).json() == []
+
+
+def test_a_read_lost_to_a_restart_times_out_as_failed(client):
+    world = make_world()
+    team, s0 = world["team_id"], world["students"][0]
+    _reading_import(team, s0, minutes_ago=30)
+    state = client.get(f"/api/teams/{team}/state", headers=hdr(s0)).json()
+    assert state["imports"][0]["status"] == "failed" and "did not finish" in state["imports"][0]["error"]

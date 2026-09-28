@@ -3,7 +3,7 @@
 import { useI18n } from "@/lib/i18n/context"
 
 import { useMemo, useRef, useState } from "react"
-import { FileUp, Loader2, Send, Sparkles, Trash2 } from "lucide-react"
+import { AlertTriangle, FileUp, Loader2, Send, Sparkles, Trash2 } from "lucide-react"
 import { useTeamClient } from "@/components/teams/team-client-context"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { fromDateInput } from "@/lib/team-format"
@@ -33,7 +33,10 @@ export function ProjectSetup({ store, update }: ProjectSetupProps) {
         <h2 className="tm-h2">{t("teams.setup.title")}</h2>
         <p className="tm-muted m-0 text-sm">{t("teams.setup.subtitle")}</p>
       </div>
-      {mine ? <ImportReview key={mine.id} item={mine} update={update} /> : <ImportForm teamId={store.team.id} update={update} />}
+      {mine?.status === "review" ? <ImportReview key={mine.id} item={mine} update={update} />
+        : mine?.status === "reading" ? <ImportReading item={mine} />
+          : mine?.status === "failed" ? <ImportFailed item={mine} update={update} />
+            : <ImportForm teamId={store.team.id} update={update} />}
       {others.map((item) => (
         <OtherImport key={item.id} item={item} name={memberName(store, item.uploaded_by)} canDiscard={teams.userId === store.team.lead_user_id} update={update} />
       ))}
@@ -68,7 +71,7 @@ function ImportForm({ teamId, update }: { teamId: string; update: StoreUpdate })
   if (busy) {
     return (
       <div className="tm-card tm-import-busy" role="status">
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" /> {t("teams.setup.reading")}
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" /> {t("teams.setup.uploading")}
       </div>
     )
   }
@@ -96,6 +99,44 @@ function ImportForm({ teamId, update }: { teamId: string; update: StoreUpdate })
         </div>
       ) : null}
       <small className="tm-muted">{t("teams.setup.privacy")}</small>
+      {error ? <p className="tm-banner m-0">{error}</p> : null}
+    </div>
+  )
+}
+
+/** Hermes reads on the server, so this survives switching views, teams or reloading. */
+function ImportReading({ item }: { item: TeamImportInfo }) {
+  const { t } = useI18n()
+  return (
+    <div className="tm-card flex flex-col gap-1" role="status">
+      <span className="tm-import-busy"><Loader2 className="size-4 animate-spin" aria-hidden="true" /> {t("teams.setup.reading")}</span>
+      <small className="tm-muted"><span className="ltr-value">{item.filename}</span> · {t("teams.setup.readingHint")}</small>
+    </div>
+  )
+}
+
+function ImportFailed({ item, update }: { item: TeamImportInfo; update: StoreUpdate }) {
+  const { t } = useI18n()
+  const teams = useTeamClient()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const dismiss = async () => {
+    setBusy(true)
+    try {
+      const result = await teams.discardImport(item.id)
+      update((current) => upsertImport(current, result))
+    } catch (reason) {
+      setError(errorMessage(reason))
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="tm-card flex flex-col gap-2">
+      <span className="tm-import-warn flex items-center gap-2"><AlertTriangle className="size-4 shrink-0" aria-hidden="true" /> {t("teams.setup.failed")}</span>
+      <small className="tm-muted"><span className="ltr-value">{item.filename}</span>{item.error ? <> · <span dir="auto">{item.error}</span></> : null}</small>
+      <div>
+        <button type="button" className="tm-btn tm-btn-sm tm-btn-primary" disabled={busy} onClick={() => void dismiss()}>{t("teams.setup.tryAgain")}</button>
+      </div>
       {error ? <p className="tm-banner m-0">{error}</p> : null}
     </div>
   )
@@ -246,7 +287,10 @@ function OtherImport({ item, name, canDiscard, update }: { item: TeamImportInfo;
   const [error, setError] = useState<string | null>(null)
   return (
     <div className="tm-card flex flex-wrap items-center gap-2 text-sm">
-      <span><bdi>{name}</bdi> {t("teams.setup.othersReviewing")} <span className="ltr-value">{item.filename}</span></span>
+      <span>
+        <bdi>{name}</bdi> {t(item.status === "reading" ? "teams.setup.othersReading" : item.status === "failed" ? "teams.setup.othersFailed" : "teams.setup.othersReviewing")}{" "}
+        <span className="ltr-value">{item.filename}</span>
+      </span>
       {canDiscard ? (
         <button
           type="button" className="tm-btn tm-btn-sm ms-auto"

@@ -200,10 +200,12 @@ describe("proposals and Hermes status", () => {
     expect(store.team.charter).toEqual({})
   })
 
-  it("keeps only imports still under review", () => {
-    const item = { id: "i1", team_id: "t", uploaded_by: "u1", filename: "brief.pdf", status: "review" as const, items: [], proposal_id: null, created_at: T0 }
+  it("keeps an import from reading through review, then drops it once sent", () => {
+    const item = { id: "i1", team_id: "t", uploaded_by: "u1", filename: "brief.pdf", status: "reading" as const, items: [], proposal_id: null, error: null, created_at: T0 }
     let store = applyEvent(fromSnapshot(snapshot()), event("import.created", item))
-    expect(Object.keys(store.imports)).toEqual(["i1"])
+    expect(store.imports.i1.status).toBe("reading")
+    store = applyEvent(store, event("import.updated", { ...item, status: "review" }))
+    expect(store.imports.i1.status).toBe("review")
     store = applyEvent(store, event("import.proposed", { ...item, status: "proposed", proposal_id: "p9" }))
     expect(store.imports).toEqual({})
   })

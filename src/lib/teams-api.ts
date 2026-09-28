@@ -32,8 +32,10 @@ export interface ImportRow {
   id: string; kind: ImportRowKind; data: Record<string, unknown>; source_quote: string; confidence: "stated" | "inferred"
 }
 export interface TeamImportInfo {
-  id: string; team_id: string; uploaded_by: string; filename: string; status: "review" | "proposed" | "discarded"
-  items: ImportRow[]; proposal_id: string | null; created_at: string
+  id: string; team_id: string; uploaded_by: string; filename: string
+  /** reading: Hermes is extracting in the background; failed carries `error` until dismissed. */
+  status: "reading" | "review" | "failed" | "proposed" | "discarded"
+  items: ImportRow[]; proposal_id: string | null; error: string | null; created_at: string
 }
 export interface TeamMemberInfo { user_id: string; display_name: string; role_label: string; is_lead: boolean }
 export interface TeamInfo {
@@ -92,7 +94,7 @@ export interface TeamDocumentInfo { id: string; team_id: string; kind: DocumentK
 export interface TeamState {
   team: TeamInfo; tasks: TeamTask[]; milestones: TeamMilestone[]; decisions: TeamDecision[]; documents: TeamDocumentInfo[]
   messages: TeamMessage[] | null; proposals: TeamProposal[]; last_seq: number; last_seen_seq: number | null
-  /** Imports still waiting for their uploader's review. */
+  /** Imports being read, waiting for review, or failed. */
   imports?: TeamImportInfo[]
 }
 export interface TeamEvent { seq: number; type: string; actor_user_id: string | null; payload: Record<string, unknown>; created_at: string | null }

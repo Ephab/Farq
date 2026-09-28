@@ -44,6 +44,9 @@ ADDED_COLUMNS = {
         "deliverables_json": "TEXT NOT NULL DEFAULT '[]'",
         "rubric_json": "TEXT NOT NULL DEFAULT '[]'",
     },
+    "team_imports": {
+        "error": "TEXT",
+    },
     "team_proposals": {
         "decided_via": "VARCHAR(16)",
         "warnings_json": "TEXT NOT NULL DEFAULT '[]'",

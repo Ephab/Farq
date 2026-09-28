@@ -392,6 +392,26 @@ def create_student(body: StudentCreate, db: Db) -> dict:
     return {**profile_dict(student, db.get(StudentProfile, student.id)), "thread_id": first_thread(db, student.id).id}
 
 
+@app.get("/api/students")
+def list_students(db: Db) -> list[dict]:
+    """Profiles created on this machine, so the welcome page can resume one after a switch.
+
+    Seeded demo classmates (`demo-*`) are left out; the demo student has its own button.
+    There is no auth yet (see docs/future-work.md): anyone using this Waypoint can pick any profile.
+    """
+    rows = db.execute(
+        select(Student, StudentProfile)
+        .join(StudentProfile, StudentProfile.student_id == Student.id)
+        .where(Student.id.not_like("demo-%"))
+        .order_by(Student.created_at.desc())
+    ).all()
+    return [
+        {"student_id": student.id, "display_name": student.display_name, "onboarding_status": profile.onboarding_status,
+         "created_at": student.created_at.isoformat() if student.created_at else None}
+        for student, profile in rows
+    ]
+
+
 def first_thread(db: Session, student_id: str) -> ChatThread:
     thread = db.scalar(select(ChatThread).where(ChatThread.student_id == student_id).order_by(ChatThread.created_at))
     if thread is None:

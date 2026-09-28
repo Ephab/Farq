@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Command, LoaderCircle } from "lucide-react"
+import { ArrowLeft, ChevronRight, Command, LoaderCircle } from "lucide-react"
 import { BasicsStep } from "@/components/onboarding/BasicsStep"
 import { EvidenceReview } from "@/components/onboarding/EvidenceReview"
 import { OnboardingChat } from "@/components/onboarding/OnboardingChat"
@@ -78,6 +78,19 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
 
   useEffect(() => { void load() }, [load])
 
+  // Leave onboarding without losing it: the profile stays and can be resumed from the welcome page.
+  const backToStart = () => {
+    setCurrentStudentId(null)
+    setProfile(null)
+    setError(null)
+  }
+  const resume = (saved: SavedStudent) => {
+    setCurrentStudentId(saved.student_id)
+    if (saved.onboarding_status === "done") { onDone(); return }
+    setLoading(true)
+    void load()
+  }
+
   const setStatus = async (status: OnboardingStatus) => {
     if (!profile) return
     const next = await api<StudentProfile>(`/api/students/${profile.student_id}/profile`, { method: "PUT", body: JSON.stringify({ onboarding_status: status }) })
@@ -85,13 +98,16 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
   }
 
   if (loading) return <div className="grid min-h-svh place-items-center"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div>
-  if (!profile) return <SignIn error={error} onCreated={(created) => { setCurrentStudentId(created.student_id); setProfile(created) }} onDemo={() => { setCurrentStudentId(DEMO_STUDENT_ID); onDone() }} />
+  if (!profile) return <SignIn error={error} onCreated={(created) => { setCurrentStudentId(created.student_id); setProfile(created) }} onDemo={() => { setCurrentStudentId(DEMO_STUDENT_ID); onDone() }} onResume={resume} />
 
   const stepIndex = STEPS.findIndex((step) => step.status.includes(profile.onboarding_status))
   return (
     <div className="flex min-h-svh flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center gap-4 border-b border-border px-4 py-3 sm:px-8">
         <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" /></span><span className="text-sm font-semibold">Waypoint</span></div>
+        <button type="button" onClick={backToStart} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden="true" /> {t("onboarding.backToStart")}
+        </button>
         <ol className="ms-auto flex flex-wrap items-center gap-1.5 text-xs" aria-label={t("onboarding.progressLabel")}>
           {STEPS.map((step, index) => (
             <li key={step.key} aria-current={index === stepIndex ? "step" : undefined} className={cn("rounded-full px-2.5 py-1", index === stepIndex ? "bg-primary text-primary-foreground" : index < stepIndex ? "bg-muted text-foreground" : "text-muted-foreground")}>
@@ -137,8 +153,22 @@ function initialHermesProvider(): HermesProvider {
   return isNvapiKey(getHermesApiKey()) ? "nim" : getHermesProvider()
 }
 
-function SignIn({ error, onCreated, onDemo }: { error: string | null; onCreated: (profile: StudentProfile) => void; onDemo: () => void }) {
-  const { t } = useI18n()
+interface SavedStudent { student_id: string; display_name: string; onboarding_status: OnboardingStatus; created_at: string | null }
+
+interface SignInProps {
+  error: string | null
+  onCreated: (profile: StudentProfile) => void
+  onDemo: () => void
+  onResume: (student: SavedStudent) => void
+}
+
+function SignIn({ error, onCreated, onDemo, onResume }: SignInProps) {
+  const { t, fmt } = useI18n()
+  const [saved, setSaved] = useState<SavedStudent[]>([])
+  useEffect(() => {
+    // Profiles made on this machine, so a switch or sign-out never strands one.
+    api<SavedStudent[]>("/api/students").then(setSaved).catch(() => setSaved([]))
+  }, [])
   const [name, setName] = useState("")
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(error)
@@ -159,12 +189,35 @@ function SignIn({ error, onCreated, onDemo }: { error: string | null; onCreated:
         <span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground"><Command className="size-5" /></span>
         <h1 className="mt-4 text-xl font-semibold">{t("onboarding.signIn.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("onboarding.signIn.intro")}</p>
-        <label htmlFor="student-name" className="mt-6 block text-xs font-medium">{t("onboarding.signIn.nameLabel")}</label>
-        <input id="student-name" dir="auto" autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void create() }} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+        {saved.length ? (
+          <div className="mt-6">
+            <p className="text-xs font-medium">{t("onboarding.signIn.continueAs")}</p>
+            <ul className="mt-1.5 flex max-h-56 flex-col gap-1.5 overflow-y-auto">
+              {saved.map((student) => (
+                <li key={student.student_id}>
+                  <button type="button" onClick={() => onResume(student)} className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-2 text-start outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold" aria-hidden="true">{student.display_name.trim().charAt(0).toUpperCase()}</span>
+                    <span className="min-w-0 flex-1">
+                      <bdi className="block truncate text-sm font-medium">{student.display_name}</bdi>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {student.onboarding_status === "done" ? t("onboarding.signIn.ready") : t("onboarding.signIn.inProgress")}
+                        {student.created_at ? ` · ${t("onboarding.signIn.created", { date: fmt.date(student.created_at) })}` : ""}
+                      </span>
+                    </span>
+                    <ChevronRight className="size-4 text-muted-foreground rtl:-scale-x-100" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-5 text-xs font-medium">{t("onboarding.signIn.orNew")}</p>
+          </div>
+        ) : null}
+        <label htmlFor="student-name" className={cn("block text-xs font-medium", saved.length ? "mt-1.5" : "mt-6")}>{t("onboarding.signIn.nameLabel")}</label>
+        <input id="student-name" dir="auto" autoFocus={!saved.length} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void create() }} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
         {failure ? <p className="mt-2 text-xs text-destructive">{failure}</p> : null}
         <button type="button" disabled={!name.trim() || busy} onClick={() => void create()} className="mt-4 h-10 w-full rounded-xl bg-primary text-sm font-medium text-primary-foreground disabled:opacity-40">{busy ? t("onboarding.signIn.creating") : t("onboarding.signIn.getStarted")}</button>
         <button type="button" onClick={onDemo} className="mt-2 h-9 w-full rounded-xl text-xs text-muted-foreground hover:bg-muted">{t("onboarding.signIn.demo")}</button>
-        <p className="mt-4 text-[11px] leading-4 text-muted-foreground">{t("onboarding.signIn.noAccounts")}</p>
+        <p className="mt-4 text-[11px] leading-4 text-muted-foreground">{t(saved.length ? "onboarding.signIn.savedHere" : "onboarding.signIn.noAccounts")}</p>
       </div>
     </div>
   )

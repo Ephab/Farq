@@ -60,7 +60,7 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
   const [discipline, setDiscipline] = useState<Discipline | null>(null)
   const [sources, setSources] = useState<DataSourceItem[]>([])
   const [suggested, setSuggested] = useState(0)
-  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [counts, setCounts] = useState<Record<string, SourceCounts>>({})
   const reduce = useReducedMotion()
 
   const refresh = useCallback(async () => {
@@ -70,8 +70,12 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
     ])
     setSources(nextSources)
     setSuggested(evidence.filter((item) => item.status === "suggested").length)
-    const next: Record<string, number> = {}
-    for (const item of evidence) if (item.status === "suggested") next[item.source_id] = (next[item.source_id] ?? 0) + 1
+    const next: Record<string, SourceCounts> = {}
+    for (const item of evidence) {
+      const count = (next[item.source_id] ??= { suggested: 0, reviewed: 0 })
+      if (item.status === "suggested") count.suggested += 1
+      else count.reviewed += 1
+    }
     setCounts(next)
   }, [profile.student_id])
 
@@ -258,7 +262,10 @@ function SyncingDetail({ source, kind }: { source: DataSourceItem; kind: SourceK
 }
 
 /** Compact per-source status rows with retry and remove actions. */
-function SourceStatusList({ kind, items, studentId, counts, onChange }: { kind: SourceKind; items: DataSourceItem[]; studentId: string; counts: Record<string, number>; onChange: () => Promise<void> }) {
+/** Evidence per source: still waiting for review, and already confirmed or dismissed. */
+type SourceCounts = { suggested: number; reviewed: number }
+
+function SourceStatusList({ kind, items, studentId, counts, onChange }: { kind: SourceKind; items: DataSourceItem[]; studentId: string; counts: Record<string, SourceCounts>; onChange: () => Promise<void> }) {
   const { t } = useI18n()
   const [rowError, setRowError] = useState<string | null>(null)
   if (!items.length) return null
@@ -289,7 +296,7 @@ function SourceStatusList({ kind, items, studentId, counts, onChange }: { kind: 
   return (
     <div className="mt-2 grid gap-1.5">
       {items.map((source) => {
-        const found = counts[source.id] ?? 0
+        const { suggested: found, reviewed } = counts[source.id] ?? { suggested: 0, reviewed: 0 }
         return (
           <div key={source.id} className="flex items-start gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
             {source.status === "ready" ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" /> : source.status === "failed" ? <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" /> : <LoaderCircle className="mt-0.5 size-3.5 shrink-0 animate-spin" />}
@@ -297,7 +304,7 @@ function SourceStatusList({ kind, items, studentId, counts, onChange }: { kind: 
               <p className="truncate font-medium"><bdi>{source.label !== source.kind ? source.label : sourceKindLabel(kind)}</bdi>{source.config.purpose ? ` · ${PURPOSE_KEYS[String(source.config.purpose)] ? t(PURPOSE_KEYS[String(source.config.purpose)]) : source.config.purpose}` : ""}</p>
               {source.status === "syncing" ? <SyncingDetail source={source} kind={kind} /> : (
                 <p className={source.status === "failed" ? "text-destructive" : "text-muted-foreground"}>
-                  {source.status === "ready" ? t("onboarding.sources.found", { count: found }) : source.status === "failed" ? source.error : t("onboarding.sources.notReadYet")}
+                  {source.status === "ready" ? (found || !reviewed ? t("onboarding.sources.found", { count: found }) : t("onboarding.sources.reviewed", { count: reviewed })) : source.status === "failed" ? source.error : t("onboarding.sources.notReadYet")}
                 </p>
               )}
               {source.status === "ready" && source.note ? <p className="text-amber-700 dark:text-amber-400">{source.note}</p> : null}

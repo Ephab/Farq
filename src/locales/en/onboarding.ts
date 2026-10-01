@@ -176,6 +176,7 @@ export const onboarding = {
     usuallyFolder: "Folders usually take under a minute. You can add other sources while this runs.",
     slow: "Taking longer than usual: the AI model may be busy. It keeps trying; you can add other sources or come back in a minute.",
     found: { zero: "Read, but no records were found", one: "Found 1 suggestion to review", two: "Found 2 suggestions to review", few: "Found {count} suggestions to review", many: "Found {count} suggestions to review", other: "Found {count} suggestions to review" },
+    reviewed: { zero: "Read, but no records were found", one: "1 record reviewed", two: "2 records reviewed", few: "{count} records reviewed", many: "{count} records reviewed", other: "{count} records reviewed" },
     retry: "Try again",
     chooseAgain: "Choose the file again",
     retryHint: "Files are never kept, so choose it again to retry.",

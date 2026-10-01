@@ -64,12 +64,20 @@ OPENROUTER_CHAIN = [
 # Default to the top of the ladder so no better rung is skipped when HERMES_MODEL is unset
 # (matches services/hermes/config.yaml, .env.example and docker-compose.yml).
 HERMES_MODEL = os.getenv("HERMES_MODEL", "").strip() or GEMINI_CHAIN[0]
-# OpenRouter (when configured) catches a Google overload; Hugging Face (paid credit) is the last resort.
+# OpenRouter catches a Google overload; Hugging Face (paid credit) is the last resort.
 FALLBACK_CHAIN: list[tuple[str, str]] = (
     [(m, "gemini") for m in GEMINI_CHAIN]
-    + ([(m, "openrouter") for m in OPENROUTER_CHAIN] if os.getenv("OPENROUTER_API_KEY", "").strip() else [])
+    + [(m, "openrouter") for m in OPENROUTER_CHAIN]
     + [(m, "huggingface") for m in HF_CHAIN]
 )
+# Fallback rungs whose key is missing fail instantly with an auth error, so they are skipped.
+# (The student's chosen first rung is always tried, so a missing key is still reported.)
+OPTIONAL_PROVIDER_KEYS = {"openrouter": "OPENROUTER_API_KEY", "huggingface": "HF_TOKEN"}
+
+
+def _configured(provider: str) -> bool:
+    env = OPTIONAL_PROVIDER_KEYS.get(provider)
+    return env is None or bool(os.getenv(env, "").strip())
 
 # Keep in sync with src/lib/waypoint-api.ts model lists.
 # The env default is always allowed so custom server deployments keep working.
@@ -334,14 +342,17 @@ def candidate_chain(provider: str | None, model: str | None, hermes_api_key: str
         return _ready(ladder)
     first = resolve_hermes_selection(provider, model)
     chain = [first]
-    if first in FALLBACK_CHAIN:
+    if first[1] == "openrouter":
+        # OpenRouter sits after Google in the shared ladder; picked first, it still falls back to every Google rung.
+        chain += [item for item in FALLBACK_CHAIN if item != first]
+    elif first in FALLBACK_CHAIN:
         chain += FALLBACK_CHAIN[FALLBACK_CHAIN.index(first) + 1:]
     elif first[1] == "nvidia":
         chain += [(item, "nvidia") for item in NIM_CHAIN if item != first[0]]
         chain += [item for item in FALLBACK_CHAIN if item != first]
     else:
         chain += [item for item in FALLBACK_CHAIN if item != first]
-    return _ready(chain)
+    return _ready([chain[0], *(item for item in chain[1:] if _configured(item[1]))])
 
 
 class RunFailed(RuntimeError):

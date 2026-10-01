@@ -160,7 +160,8 @@ export function httpErrorMessage(status: number): string {
 
 /** A model-run failure in the student's words: provider overload and timeouts read as "busy, try again". */
 export function runErrorMessage(message: string): string {
-  return /models tried failed|did not finish within|\b(429|503)\b|overloaded|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(message)
+  return /did not finish within|\b(429|502|503)\b|overloaded|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED|rate.?limit/i.test(message)
+      && !/authentication failed|credentials|API key/i.test(message)
     ? translate("common.errors.modelBusy")
     : message
 }

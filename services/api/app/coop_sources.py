@@ -126,7 +126,8 @@ def _deadline(text: str) -> str | None:
 
 def _infer_company(text: str) -> str:
     lines = [_clean(line).strip("|—- ") for line in text.splitlines()]
-    lines = [line for line in lines if line and not line.startswith("#") and not re.fullmatch(r"[^\w\u0600-\u06ff]+", line)]
+    # A bare "Label:" line ("المسمى:") names a field whose value is on the next line, never the employer.
+    lines = [line for line in lines if line and not line.startswith("#") and not re.fullmatch(r"[^\w\u0600-\u06ff]+", line) and not re.search(r"[:：]$", line)]
     for line in lines:
         match = re.search(r"(?:^|\s)(شركة|مؤسسة|جامعة|هيئة)\s+(.{2,120}?)(?=\s+(?:تعلن|فاتحة|توفر)|$)", line)
         if match:

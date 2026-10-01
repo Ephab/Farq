@@ -427,9 +427,12 @@ def test_nvapi_key_selects_nim_ladder_only():
     assert {provider for _, provider in chain} == {"nvidia"}
 
 
-def test_openrouter_provider_is_allowlisted_and_falls_back_to_google():
+def test_openrouter_provider_is_allowlisted_and_falls_back_to_google(monkeypatch: pytest.MonkeyPatch):
     from app import hermes as hermes_module
 
+    monkeypatch.setattr(hermes_module, "_cooldown", {})
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
     assert hermes_module.resolve_hermes_selection("openrouter") == ("stealth/space-bunny-alpha", "openrouter")
     assert hermes_module.resolve_hermes_selection(None, "stealth/space-bunny-alpha") == ("stealth/space-bunny-alpha", "openrouter")
     with pytest.raises(ValueError):
@@ -437,6 +440,11 @@ def test_openrouter_provider_is_allowlisted_and_falls_back_to_google():
     chain = hermes_module.candidate_chain("openrouter", None)
     assert chain[0] == ("stealth/space-bunny-alpha", "openrouter")
     assert ("gemini-3.8-flash", "gemini") in chain
+    # No HF token: the Hugging Face rungs are skipped instead of failing one by one.
+    assert all(provider != "huggingface" for _, provider in chain)
+    # Without an OpenRouter key, Google's ladder does not detour through it.
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    assert all(provider != "openrouter" for _, provider in hermes_module.candidate_chain("gemini", None))
 
 
 def test_nvapi_key_never_becomes_gateway_bearer(monkeypatch: pytest.MonkeyPatch):

@@ -148,7 +148,7 @@ def test_hugging_face_is_the_last_resort():
     from app.hermes import FALLBACK_CHAIN
 
     providers = [provider for _model, provider in FALLBACK_CHAIN]
-    assert providers.index("huggingface") == len([p for p in providers if p == "gemini"])
+    assert providers.index("huggingface") == len([p for p in providers if p != "huggingface"])
     assert FALLBACK_CHAIN[-1][0].startswith("meta-llama/")
 
 

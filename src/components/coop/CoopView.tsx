@@ -294,7 +294,7 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
     <div className="mx-auto w-full max-w-6xl p-4 sm:p-8">
       <header className="mb-7 grid gap-4 border-b border-border pb-7 md:grid-cols-[1fr_auto] md:items-end">
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("dashboard.coop.eyebrow")}</p>
+          <p className="mb-2 text-sm font-medium text-muted-foreground">{t("dashboard.coop.eyebrow")}</p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">{t("dashboard.coop.title")}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{t("dashboard.coop.intro")}</p>
         </div>

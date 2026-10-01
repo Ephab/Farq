@@ -2,7 +2,7 @@
 
 import { Check, ExternalLink, Eye, EyeOff, LoaderCircle } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import { api, modelsFor, saveHermesModel, saveHermesProvider, type HermesProvider } from "@/lib/waypoint-api"
+import { api, hermesRequestParts, modelsFor, saveHermesModel, saveHermesProvider, type HermesProvider } from "@/lib/waypoint-api"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
 import { cn } from "@/lib/utils"
 
@@ -85,7 +85,7 @@ function Body({ status, reload }: { status: ConnectionsStatus; reload: () => voi
       <section className="mt-4 rounded-xl border border-border p-4 sm:p-5" aria-labelledby="connections-features">
         <h3 id="connections-features" className="text-[15px] font-semibold">{t("connections.features.title")}</h3>
         <dl className="mt-3 grid gap-2 text-sm">
-          {status.models.map((item) => (
+          {status.models.map((item) => (item.feature === "coach" ? { ...item, ...coachUse() } : item)).map((item) => (
             <div key={item.feature} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
               <dt className="text-muted-foreground">{t(`connections.features.${item.feature}` as MessageKey)}</dt>
               <dd className="text-end font-medium">
@@ -112,19 +112,22 @@ const HERMES_KEY_CONNECTION: Record<HermesProvider, string> = { gemini: "gemini"
 
 function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: () => void }) {
   const { t } = useI18n()
-  const [provider, setProvider] = useState<HermesProvider>(status.hermes.provider)
-  const [model, setModel] = useState(status.hermes.model)
+  // Every request from this tab carries its own choice, so start from that, not the server default.
+  const tab = hermesRequestParts().body
+  const [provider, setProvider] = useState<HermesProvider>(tab.provider)
+  const [model, setModel] = useState(tab.model)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null)
   const options = modelsFor(provider)
   const choices = model && !options.some((option) => option.id === model) ? [{ id: model, label: model }, ...options] : options
   const keyConnection = status.connections.find((item) => item.id === HERMES_KEY_CONNECTION[provider])
-  const dirty = provider !== status.hermes.provider || model !== status.hermes.model
+  const dirty = provider !== tab.provider || model !== tab.model || provider !== status.hermes.provider || model !== status.hermes.model
+  const tabDiffers = tab.provider !== status.hermes.provider || tab.model !== status.hermes.model
   const selectClass = "mt-1 h-9 w-full rounded-lg border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
 
   const changeProvider = (next: HermesProvider) => {
     setProvider(next)
-    setModel(next === status.hermes.provider ? status.hermes.model : modelsFor(next)[0].id)
+    setModel(next === tab.provider ? tab.model : next === status.hermes.provider ? status.hermes.model : modelsFor(next)[0].id)
     setMessage(null)
   }
 
@@ -166,6 +169,11 @@ function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: 
       <p className={cn("mt-2 text-xs", keyConnection?.set ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
         {t(keyConnection?.set ? "connections.hermes.keyReady" : "connections.hermes.keyMissing", { env: keyEnvFor(provider) })}
       </p>
+      {tabDiffers ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t("connections.hermes.tabDiffers", { model: modelLabel(status.hermes.provider, status.hermes.model), provider: providerName(status.hermes.provider) })}
+        </p>
+      ) : null}
       {status.can_edit ? (
         <button type="button" disabled={!dirty || saving} onClick={() => void save()} className={cn(buttonClass, "mt-3 bg-primary text-primary-foreground hover:bg-primary/90")}>
           {saving ? t("connections.keys.saving") : t("connections.hermes.save")}
@@ -176,10 +184,20 @@ function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: 
   )
 }
 
+/** What Coach uses in this tab: the tab's own provider and model. */
+function coachUse() {
+  const { provider, model } = hermesRequestParts().body
+  return { provider, model }
+}
+
+function modelLabel(provider: HermesProvider, model: string) {
+  return modelsFor(provider).find((option) => option.id === model)?.label ?? model
+}
+
 const KEY_ENV: Record<HermesProvider, string> = { gemini: "GEMINI_API_KEY", nim: "NVIDIA_API_KEY", hf: "HF_TOKEN", openrouter: "OPENROUTER_API_KEY" }
 function keyEnvFor(provider: HermesProvider) { return KEY_ENV[provider] }
 
-const PROVIDER_NAMES: Record<string, string> = { gemini: "Gemini", nim: "NVIDIA NIM", nvidia: "NVIDIA NIM", hf: "Hugging Face", openrouter: "OpenRouter" }
+const PROVIDER_NAMES: Record<string, string> = { gemini: "Gemini", nim: "NVIDIA NIM", nvidia: "NVIDIA NIM", hf: "Hugging Face", huggingface: "Hugging Face", openrouter: "OpenRouter" }
 function providerName(provider: string | null) {
   return provider ? PROVIDER_NAMES[provider] ?? provider : ""
 }

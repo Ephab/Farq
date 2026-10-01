@@ -42,6 +42,7 @@ export const connections: CatalogShape<typeof en> = {
     save: "استخدام هذا النموذج",
     saved: "تم الحفظ. تستخدمه المحادثات الجديدة الآن؛ ويُطبَّق الافتراضي على الخادم بعد إعادة التشغيل.",
     saveFailed: "تعذّر حفظ اختيار النموذج",
+    tabDiffers: "الإعداد الافتراضي المحفوظ في Waypoint هو {model} عبر {provider}. هذا التبويب يستخدم الاختيار أعلاه؛ زر «استخدام هذا النموذج» يحفظه افتراضيًا أيضًا.",
   },
   features: {
     title: "ما تستخدمه كل ميزة",
@@ -74,9 +75,9 @@ export const connections: CatalogShape<typeof en> = {
       how: "احصل على مفتاح API من TypeSafe والصقه هنا. يُطبَّق فورًا.",
     },
     span: {
-      name: "Span-01 Lite (OpenRouter)",
-      purpose: "محرّك قرارات سحابي احتياطي يُستخدم إذا تعذّر Jev. تكفي الباقة المجانية.",
-      how: "أنشئ مفتاحًا على OpenRouter والصقه هنا. يُطبَّق فورًا.",
+      name: "OpenRouter",
+      purpose: "يشغّل Span-01 Lite، محرّك القرارات الاحتياطي عند تعذّر Jev، ويشغّل المدرّب عند اختيار OpenRouter مزوّدًا. تكفي الباقة المجانية.",
+      how: "أنشئ مفتاحًا على OpenRouter والصقه هنا. تستخدمه القرارات فورًا، ويستخدمه المدرّب بعد إعادة التشغيل.",
     },
     apify: {
       name: "Apify",

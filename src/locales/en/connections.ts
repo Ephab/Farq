@@ -40,6 +40,7 @@ export const connections = {
     save: "Use this model",
     saved: "Saved. New chats use it now; the server default applies after a restart.",
     saveFailed: "Could not save the model choice",
+    tabDiffers: "Waypoint's saved default is {model} via {provider}. This tab uses the choice above; “Use this model” saves it as the default too.",
   },
   features: {
     title: "What each feature uses",
@@ -72,9 +73,9 @@ export const connections = {
       how: "Get an API key from TypeSafe and paste it here. It applies right away.",
     },
     span: {
-      name: "Span-01 Lite (OpenRouter)",
-      purpose: "Backup cloud decision engine, used if Jev is unavailable. Free tier works.",
-      how: "Create a key on OpenRouter and paste it here. It applies right away.",
+      name: "OpenRouter",
+      purpose: "Runs Span-01 Lite, the backup decision engine used if Jev is unavailable, and Coach when OpenRouter is the chosen provider. Free tier works.",
+      how: "Create a key on OpenRouter and paste it here. Decisions use it right away; Coach picks it up after a restart.",
     },
     apify: {
       name: "Apify",

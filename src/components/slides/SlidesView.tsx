@@ -362,10 +362,10 @@ export function SlidesView() {
 
   const workbenchSlides: ViewerSlide[] | null = (() => {
     if (!selectedDeck) return null;
+    // Without a rendered preview (e.g. after a reload) the new slides still show, on their own.
     const originals = buildOriginalSlides(selectedDeck.id);
-    if (!originals) return null;
     if (previewSlides.length === 0) return originals;
-    return [...originals, ...buildAiSlides(selectedDeck.id, previewSlides, 0)];
+    return [...(originals ?? []), ...buildAiSlides(selectedDeck.id, previewSlides, 0)];
   })();
 
   const getExtensionSlides = useCallback(

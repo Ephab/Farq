@@ -43,7 +43,7 @@ export function RoadmapHeader({ title, versionLine, done, total, percent, query,
       {total ? (
         <>
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={t("roadmap.header.progressLabel")}>
-            <div className="h-full rounded-full bg-[#2b78e4] transition-[width] duration-700" style={{ width: `${percent}%` }} />
+            <div className="h-full rounded-full bg-[#0f766e] transition-[width] duration-700" style={{ width: `${percent}%` }} />
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
             <label className="relative">
@@ -58,9 +58,9 @@ export function RoadmapHeader({ title, versionLine, done, total, percent, query,
               ))}
             </div>
             <ul className="ms-auto hidden flex-wrap sm:flex items-center gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label={t("roadmap.header.legend")}>
-              <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-[3px] border-[1.5px] border-black bg-[#ffe599]" aria-hidden="true" />{t("roadmap.status.not-started")}</li>
-              <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-[3px] border-[1.5px] border-black bg-[#dad1fd]" aria-hidden="true" /><span className="underline decoration-1 underline-offset-2">{t("roadmap.status.in-progress")}</span></li>
-              <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-[3px] border-[1.5px] border-black bg-[#cbcbcb]" aria-hidden="true" /><span className="line-through">{t("roadmap.status.done")}</span></li>
+              <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-[3px] border-[1.5px] border-black bg-[#dbeafe]" aria-hidden="true" />{t("roadmap.status.not-started")}</li>
+              <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-[3px] border-[1.5px] border-black bg-[#fed7aa]" aria-hidden="true" /><span className="underline decoration-1 underline-offset-2">{t("roadmap.status.in-progress")}</span></li>
+              <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-[3px] border-[1.5px] border-black bg-[#d6d3d1]" aria-hidden="true" /><span className="line-through">{t("roadmap.status.done")}</span></li>
               <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-[3px] border-[1.5px] border-black bg-white" aria-hidden="true" />{t("roadmap.header.optional")}</li>
             </ul>
           </div>

@@ -25,9 +25,9 @@ interface RoadmapNodeProps {
 }
 
 /**
- * A subtopic in the roadmap.sh idiom: a pale-yellow box with a heavy ink outline and the title only.
- * Progress reads the way roadmap.sh shows it: done turns grey and is struck through, in progress turns
- * lavender and is underlined. Level and duration live in the tooltip and the detail panel.
+ * A subtopic box with a heavy ink outline and the title only, in the roadmap.sh *structure* but not
+ * its palette: not-started is pale sky, done turns warm stone and is struck through, in progress
+ * turns peach and is underlined. Level and duration live in the tooltip and the detail panel.
  */
 export const RoadmapNode = memo(function RoadmapNode({ node, status, locked, selected, dimmed, onSelect, onToggleDone, onOpenProject }: RoadmapNodeProps) {
   const { t } = useI18n();
@@ -60,9 +60,9 @@ export const RoadmapNode = memo(function RoadmapNode({ node, status, locked, sel
       aria-pressed={selected}
       className={cn(
         "rm-node group relative flex min-h-11 w-full items-center justify-center gap-2 rounded-[5px] border-[2.7px] border-black px-3 py-2 text-center text-black outline-none",
-        "focus-visible:ring-[3px] focus-visible:ring-[#2b78e4] focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        isDone ? "bg-[#cbcbcb]" : learning ? "bg-[#dad1fd]" : isOptionalNode(node) ? "bg-white" : "bg-[#ffe599]",
-        selected && "ring-[3px] ring-[#2b78e4] ring-offset-2 ring-offset-background",
+        "focus-visible:ring-[3px] focus-visible:ring-[#0f766e] focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        isDone ? "bg-[#d6d3d1]" : learning ? "bg-[#fed7aa]" : isOptionalNode(node) ? "bg-white" : "bg-[#dbeafe]",
+        selected && "ring-[3px] ring-[#0f766e] ring-offset-2 ring-offset-background",
         dimmed && "opacity-25",
       )}
     >
@@ -78,11 +78,11 @@ export const RoadmapNode = memo(function RoadmapNode({ node, status, locked, sel
         {node.title}
       </span>
       {isDone ? (
-        <span className="rm-badge absolute -end-2.5 -top-2.5 grid size-5 place-items-center rounded-full border-2 border-black bg-[#22c55e] text-white" aria-hidden="true">
+        <span className="rm-badge absolute -end-2.5 -top-2.5 grid size-5 place-items-center rounded-full border-2 border-black bg-[#0f766e] text-white" aria-hidden="true">
           <Check className="size-3" strokeWidth={3.5} />
         </span>
       ) : learning ? (
-        <span className="rm-badge absolute -end-2 -top-2 size-3.5 rounded-full border-2 border-black bg-[#7c5cf5]" aria-hidden="true" />
+        <span className="rm-badge absolute -end-2 -top-2 size-3.5 rounded-full border-2 border-black bg-[#c2410c]" aria-hidden="true" />
       ) : null}
     </button>
   );

@@ -27,8 +27,9 @@ interface Group {
 }
 
 /**
- * A roadmap.sh-style diagram drawn in plain DOM. Each stage is a bright-yellow topic on a solid blue
- * spine; its subtopics stack in a column on each side and hang off it on dotted blue curves. The
+ * A roadmap.sh-*style* diagram drawn in plain DOM, with Waypoint's own colors: each stage is a mint
+ * topic on a solid teal spine; its subtopics stack in a column on each side and hang off it on
+ * dotted teal curves. The
  * curves are measured from the laid-out boxes, so they follow wrapping titles, RTL and resizes.
  * Below the container breakpoint the subtopics drop under their stage on a dotted rail.
  */
@@ -61,9 +62,9 @@ export function RoadmapCanvas({ title, nodes, stages, statuses, selectedId, dimm
     <div className="relative min-h-0 flex-1">
       <div className="rm-paper absolute inset-0 overflow-y-auto overscroll-contain" onClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onSelect(null) }}>
         <div role="list" aria-label={t("roadmap.canvas.ariaLabel")} className="@container relative mx-auto w-full max-w-[66rem] px-4 pb-28 pt-10 sm:px-8">
-          {/* The spine: one solid blue line behind every stage, drawn top to bottom on first view. */}
+          {/* The spine: one solid teal line behind every stage, drawn top to bottom on first view. */}
           {title ? <p dir="auto" className="rm-hand rm-enter relative z-10 mx-auto mb-10 w-fit max-w-full bg-[var(--background)] px-4 text-center text-[28px] font-bold leading-tight text-foreground">{title}</p> : null}
-          <div aria-hidden="true" className="rm-spine absolute bottom-28 top-14 start-1/2 hidden w-[3.5px] -translate-x-1/2 rounded-full bg-[#2b78e4] rtl:translate-x-1/2 @3xl:block" />
+          <div aria-hidden="true" className="rm-spine absolute bottom-28 top-14 start-1/2 hidden w-[3.5px] -translate-x-1/2 rounded-full bg-[#0f766e] rtl:translate-x-1/2 @3xl:block" />
 
           {allDimmed ? (
             <div className="relative z-10 mx-auto mb-10 max-w-xs rounded-xl border border-border bg-background p-5 text-center">
@@ -164,18 +165,18 @@ function StageSection({ group, index, count, statuses, selectedId, dimmedIds, on
       {curves.length ? (
         <svg aria-hidden="true" className="rm-curves pointer-events-none absolute inset-0 size-full overflow-visible">
           {curves.map((curve) => (
-            <path key={curve.id} d={curve.d} fill="none" stroke="#2b78e4" strokeWidth={3.5} strokeLinecap="round" strokeDasharray={curve.optional ? "0.8 14" : "0.8 8"} className={cn(dimmedIds.has(curve.id) && "opacity-25")} />
+            <path key={curve.id} d={curve.d} fill="none" stroke="#0f766e" strokeWidth={3.5} strokeLinecap="round" strokeDasharray={curve.optional ? "0.8 14" : "0.8 8"} className={cn(dimmedIds.has(curve.id) && "opacity-25")} />
           ))}
         </svg>
       ) : null}
 
       {/* Narrow containers: a short stretch of spine leads into each stage after the first. */}
-      {index > 0 ? <div aria-hidden="true" className="mx-auto -mt-10 mb-4 h-6 w-[3.5px] rounded-full bg-[#2b78e4] @3xl:hidden" /> : null}
+      {index > 0 ? <div aria-hidden="true" className="mx-auto -mt-10 mb-4 h-6 w-[3.5px] rounded-full bg-[#0f766e] @3xl:hidden" /> : null}
 
       <div className="grid items-center gap-y-3 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,17rem)_minmax(0,1fr)] @3xl:gap-x-20">
         <div ref={stageRef} className="relative z-10 @3xl:col-start-2 @3xl:row-start-1">
           <div
-            className="rm-enter relative rounded-[5px] border-[2.7px] border-black bg-[#fdff00] px-4 py-3 text-center text-black"
+            className="rm-enter relative rounded-[5px] border-[2.7px] border-black bg-[#a7f3d0] px-4 py-3 text-center text-black"
             style={{ animationDelay: `${index ? 120 : 60}ms` }}
             title={group.stage.description || undefined}
           >
@@ -185,7 +186,7 @@ function StageSection({ group, index, count, statuses, selectedId, dimmedIds, on
               <p className="rm-hand mt-1 text-[13px] tabular-nums text-black/65">{t("roadmap.canvas.stageDone", { done: fmt.number(done), total: fmt.number(total) })}</p>
             ) : null}
             {complete ? (
-              <span className="rm-badge absolute -end-2.5 -top-2.5 grid size-6 place-items-center rounded-full border-2 border-black bg-[#22c55e] text-white" aria-hidden="true">
+              <span className="rm-badge absolute -end-2.5 -top-2.5 grid size-6 place-items-center rounded-full border-2 border-black bg-[#0f766e] text-white" aria-hidden="true">
                 <Check className="size-3.5" strokeWidth={3.5} />
               </span>
             ) : null}
@@ -201,7 +202,7 @@ function StageSection({ group, index, count, statuses, selectedId, dimmedIds, on
             key={side}
             role="list"
             className={cn(
-              "flex flex-col gap-3 border-s-[3.5px] border-dotted border-[#2b78e4] ps-5",
+              "flex flex-col gap-3 border-s-[3.5px] border-dotted border-[#0f766e] ps-5",
               "@3xl:row-start-1 @3xl:border-0 @3xl:ps-0",
               side === 0 ? "@3xl:col-start-1" : "@3xl:col-start-3",
             )}

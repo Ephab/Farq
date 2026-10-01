@@ -19,7 +19,6 @@ POLL_INTERVAL_SECONDS = 2
 
 HERMES_URL = os.getenv("HERMES_URL", "http://127.0.0.1:8642").rstrip("/")
 HERMES_API_KEY = os.getenv("HERMES_API_KEY", "")
-HERMES_MODEL = os.getenv("HERMES_MODEL", "gemini-3-flash-preview")
 HERMES_PROVIDER = os.getenv("HERMES_PROVIDER", "gemini")
 
 # NVIDIA NIM ladder, best first. Used whenever the run key is an nvapi key
@@ -57,6 +56,9 @@ HF_CHAIN = [
     "meta-llama/Llama-3.1-8B-Instruct:nscale",     # no tool support, invalid JSON: last resort
 ]
 HF_MODEL = HF_CHAIN[0]
+# Default to the top of the ladder so no better rung is skipped when HERMES_MODEL is unset
+# (matches services/hermes/config.yaml, .env.example and docker-compose.yml).
+HERMES_MODEL = os.getenv("HERMES_MODEL", "").strip() or GEMINI_CHAIN[0]
 # Hugging Face (paid credit) is the last resort after every Google rung.
 FALLBACK_CHAIN: list[tuple[str, str]] = [(m, "gemini") for m in GEMINI_CHAIN] + [(m, "huggingface") for m in HF_CHAIN]
 
@@ -77,15 +79,27 @@ def is_rate_limited(message: str) -> bool:
     return bool(RATE_LIMIT.search(message or ""))
 
 
+OVERLOADED = re.compile(r"\b503\b|UNAVAILABLE|overloaded|high demand", re.IGNORECASE)
+
+
 def cool_down(model: str, message: str) -> None:
-    # Daily quotas will not recover soon; per-minute ones will.
-    if re.search(r"per.?day|daily|RPD|PerDay", message):
-        seconds = 1800
-    elif is_rate_limited(message) or re.search(r"\b503\b|UNAVAILABLE|overloaded|high demand", message, re.IGNORECASE):
+    """Rest a model that is rate limited or overloaded. Other failures (an empty answer, a
+    bad gateway response) move this run to the next rung but do not bench the model for
+    everyone else: a single gateway hiccup must not push every run down the ladder."""
+    if re.search(r"per.?day|daily|RPD|PerDay", message) and is_rate_limited(message):
+        seconds = 1800  # daily quotas will not recover soon
+    elif is_rate_limited(message) or OVERLOADED.search(message or ""):
         seconds = 65
     else:
-        seconds = 30
+        return
     _cooldown[model] = time.monotonic() + seconds
+
+
+def _ready(chain: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Rungs not cooling down; if every rung is resting, the one that recovers first."""
+    now_ = time.monotonic()
+    ready = [item for item in chain if _cooldown.get(item[0], 0) <= now_]
+    return ready or [min(chain, key=lambda item: _cooldown.get(item[0], 0))]
 
 
 COACH_INSTRUCTIONS = """
@@ -300,9 +314,7 @@ def candidate_chain(provider: str | None, model: str | None, hermes_api_key: str
         ladder = [(item, "nvidia") for item in NIM_CHAIN]
         if model in NIM_CHAIN:
             ladder = ladder[NIM_CHAIN.index(model):]
-        now_ = time.monotonic()
-        ready = [item for item in ladder if _cooldown.get(item[0], 0) <= now_]
-        return ready or ladder[-1:]
+        return _ready(ladder)
     first = resolve_hermes_selection(provider, model)
     chain = [first]
     if first in FALLBACK_CHAIN:
@@ -312,9 +324,7 @@ def candidate_chain(provider: str | None, model: str | None, hermes_api_key: str
         chain += [item for item in FALLBACK_CHAIN if item != first]
     else:
         chain += [item for item in FALLBACK_CHAIN if item != first]
-    now_ = time.monotonic()
-    ready = [item for item in chain if _cooldown.get(item[0], 0) <= now_]
-    return ready or chain[-1:]
+    return _ready(chain)
 
 
 class RunFailed(RuntimeError):
@@ -331,17 +341,28 @@ class RunCancelled(RuntimeError):
 ATTEMPT_TIMEOUT_SECONDS = 120
 
 
+def _cancel_gateway_run(client, base_url: str, run_id: str, headers: dict) -> None:
+    """Best effort: ask the gateway to stop a run we are abandoning (timeout, empty answer,
+    student stop), so it frees its slot and stops calling tools while the next rung runs.
+    Gateways without a cancel route simply ignore this."""
+    try:
+        client.post(f"{base_url}/v1/runs/{run_id}/cancel", headers=headers, json={})
+    except Exception:
+        pass
+
+
 def execute_with_fallback(client, headers: dict, payload: dict, provider: str | None, model: str | None, timeout_seconds: int, on_state=None, hermes_api_key: str | None = None, gateway_url: str | None = None) -> tuple[str, str, str]:
     """Run on the gateway, moving to the next model on any model-side failure.
 
     Rate limits, quota, overload (503), provider auth or model errors, failed or
-    cancelled runs, and per-model timeouts all descend the chain. Only a
-    rejected Waypoint gateway key (401) stops immediately, since no model can fix it.
-    An nvapi run key selects the NIM-only ladder (see candidate_chain).
+    cancelled runs, per-model timeouts and transient network errors all descend the
+    chain. Only a rejected Waypoint gateway key (401) stops immediately, since no model
+    can fix it. An nvapi run key selects the NIM-only ladder (see candidate_chain).
     A student stop surfaces as RunCancelled from `on_state` and propagates
     immediately without trying the next rung.
     Returns (output, model, provider).
     """
+    base_url = gateway_url or HERMES_URL
     errors: list[str] = []
     budget_end = time.monotonic() + timeout_seconds * 2
     for attempt, (run_model, run_provider) in enumerate(candidate_chain(provider, model, hermes_api_key)):
@@ -351,16 +372,20 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
         run_headers = {**headers, "Idempotency-Key": f"{headers['Idempotency-Key']}-{attempt}"}
         if on_state:
             on_state(None, run_model)
-        response = client.post(f"{gateway_url or HERMES_URL}/v1/runs", headers=run_headers, json=body)
-        # 429 on run creation is the gateway's own concurrency cap (all run slots
-        # busy), not the model: wait for a free slot instead of burning the chain.
-        busy_wait = 2.0
-        while response.status_code == 429 and time.monotonic() + busy_wait < budget_end:
-            if on_state:
-                on_state("queued", run_model)
-            time.sleep(busy_wait)
-            busy_wait = min(busy_wait * 1.5, 15)
-            response = client.post(f"{gateway_url or HERMES_URL}/v1/runs", headers=run_headers, json=body)
+        try:
+            response = client.post(f"{base_url}/v1/runs", headers=run_headers, json=body)
+            # 429 on run creation is the gateway's own concurrency cap (all run slots
+            # busy), not the model: wait for a free slot instead of burning the chain.
+            busy_wait = 2.0
+            while response.status_code == 429 and time.monotonic() + busy_wait < budget_end:
+                if on_state:
+                    on_state("queued", run_model)
+                time.sleep(busy_wait)
+                busy_wait = min(busy_wait * 1.5, 15)
+                response = client.post(f"{base_url}/v1/runs", headers=run_headers, json=body)
+        except httpx.HTTPError as exc:
+            errors.append(f"{run_model}: gateway unreachable ({type(exc).__name__})")
+            continue
         if response.status_code == 429:
             raise RunFailed("Hermes is busy with other runs (all gateway slots in use); try again in a minute")
         if response.status_code == 401:
@@ -372,23 +397,37 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
         run_id = response.json()["run_id"]
         deadline = min(time.monotonic() + min(timeout_seconds, ATTEMPT_TIMEOUT_SECONDS), budget_end)
         error = f"did not finish within {min(timeout_seconds, ATTEMPT_TIMEOUT_SECONDS)} seconds"
-        while time.monotonic() < deadline:
-            poll = client.get(f"{gateway_url or HERMES_URL}/v1/runs/{run_id}", headers=run_headers)
-            raise_for_gateway_status(poll)
-            state = poll.json()
-            status = state.get("status")
-            if on_state:
-                on_state(status, run_model)
-            if status == "completed":
-                output = (state.get("output") or "").strip()
-                if output:
-                    return output, run_model, run_provider
-                error = "returned an empty answer"
-                break
-            if status in {"failed", "cancelled"}:
-                error = state.get("error") or f"run {status}"
-                break
-            time.sleep(POLL_INTERVAL_SECONDS)
+        finished = False
+        try:
+            while time.monotonic() < deadline:
+                try:
+                    poll = client.get(f"{base_url}/v1/runs/{run_id}", headers=run_headers)
+                    raise_for_gateway_status(poll)
+                except httpx.HTTPError as exc:
+                    # A dropped poll (gateway restart, 404/5xx) abandons this rung, not the whole chain.
+                    error = f"lost the run ({type(exc).__name__})"
+                    break
+                state = poll.json()
+                status = state.get("status")
+                if on_state:
+                    on_state(status, run_model)
+                if status == "completed":
+                    finished = True
+                    output = (state.get("output") or "").strip()
+                    if output:
+                        return output, run_model, run_provider
+                    error = "returned an empty answer"
+                    break
+                if status in {"failed", "cancelled"}:
+                    finished = True
+                    error = state.get("error") or f"run {status}"
+                    break
+                time.sleep(POLL_INTERVAL_SECONDS)
+        except RunCancelled:
+            _cancel_gateway_run(client, base_url, run_id, run_headers)
+            raise
+        if not finished:
+            _cancel_gateway_run(client, base_url, run_id, run_headers)
         errors.append(f"{run_model}: {error[:200]}")
         cool_down(run_model, error)
     if not errors:

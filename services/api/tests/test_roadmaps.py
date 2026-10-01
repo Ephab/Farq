@@ -170,3 +170,43 @@ def test_busy_gateway_waits_instead_of_skipping_models(monkeypatch):
     assert hermes.execute_with_fallback(Client(), {"Idempotency-Key": "k"}, {}, "gemini", None, 30)[1] == "gemini-3.8-flash"
     assert posts == ["gemini-3.8-flash"] * 3
     assert hermes._cooldown == {}
+
+
+def test_network_errors_move_to_the_next_rung_and_unused_cooldowns_pick_the_soonest(monkeypatch):
+    import app.hermes as hermes
+
+    monkeypatch.setattr(hermes, "_cooldown", {})
+    monkeypatch.setattr(hermes.time, "sleep", lambda _s: None)
+    tried = []
+
+    class Client:
+        def post(self, url, headers=None, json=None):
+            if url.endswith("/cancel"):
+                return _Resp({})
+            tried.append(json["model"])
+            if json["model"] == "gemini-3.8-flash":
+                raise hermes.httpx.ConnectError("refused")
+            return _Resp({"run_id": json["model"]})
+
+        def get(self, url, headers=None):
+            model = url.rsplit("/", 1)[1]
+            if model == "gemini-3.7-flash":
+                return _Resp({"status": "completed", "output": ""})
+            return _Resp({"status": "completed", "output": "ok"})
+
+    assert hermes.execute_with_fallback(Client(), {"Idempotency-Key": "k"}, {}, "gemini", None, 5)[1] == "gemini-3.6-flash"
+    assert tried == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+    # Neither a network error nor an empty answer benches the model for other runs.
+    assert hermes._cooldown == {}
+
+    now = hermes.time.monotonic()
+    hermes._cooldown.update({model: now + 100 + index for index, (model, _p) in enumerate(hermes.FALLBACK_CHAIN)})
+    hermes._cooldown["gemini-3.5-flash"] = now + 1
+    assert hermes.candidate_chain("gemini", None) == [("gemini-3.5-flash", "gemini")]
+
+
+def test_default_model_is_the_top_of_the_ladder():
+    import app.hermes as hermes
+
+    assert hermes.GEMINI_CHAIN[0] == "gemini-3.8-flash"
+    assert hermes.HERMES_MODEL in hermes.GEMINI_MODELS

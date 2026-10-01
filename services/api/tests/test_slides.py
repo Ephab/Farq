@@ -406,3 +406,40 @@ def test_export_rejects_bad_payload(client: TestClient):
         },
     )
     assert bad.status_code == 422
+
+
+def test_export_keeps_pdf_page_proportions_and_survives_control_characters(client: TestClient):
+    from PIL import Image
+    from pptx import Presentation
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (300, 400), "white").save(buffer, format="PNG")  # a portrait handout page
+    page = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+    response = client.post(
+        "/api/slides/export",
+        json={
+            "original_filename": "handout.pdf",
+            "topic": "Bad\x0btext",
+            "slides": [{"title": "Odd\x00chars", "bullets": ["one\x1f", "two", "three", "four"], "layout": "two-column"}],
+            "original_images_base64": [page],
+            "divider_title": "جديد: الانتباه",
+        },
+    )
+    assert response.status_code == 200
+    prs = Presentation(io.BytesIO(response.content))
+    assert round(prs.slide_width / prs.slide_height, 2) == 0.75
+    picture = next(shape for shape in prs.slides[0].shapes if shape.shape_type == 13)
+    assert round(picture.width / picture.height, 2) == 0.75
+    assert prs.slides[1].shapes.title.text_frame.text == "جديد: الانتباه"
+    texts = " ".join(shape.text_frame.text for shape in prs.slides[2].shapes if shape.has_text_frame)
+    # Two-column without columns splits the bullets like the preview does.
+    assert "one" in texts and "four" in texts and "\x00" not in texts
+
+
+def test_export_reports_a_damaged_original_as_422(client: TestClient):
+    response = client.post(
+        "/api/slides/export",
+        json={"original_filename": "broken.pptx", "topic": "T", "slides": [{"title": "A", "bullets": ["b"]}],
+              "original_pptx_base64": base64.b64encode(b"PK\x03\x04not really a zip").decode("ascii")},
+    )
+    assert response.status_code == 422

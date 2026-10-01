@@ -1274,9 +1274,14 @@ def export_slides(body: SlidesExportInput) -> Response:
             [slide.model_dump() for slide in body.slides],
             original_bytes,
             original_images,
+            body.divider_title,
+            body.divider_note,
         )
     except SlidesRunError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Slide export failed")
+        raise HTTPException(422, "This deck could not be exported. Try fewer slides or re-upload the original file.") from exc
     safe = "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in body.original_filename)
     return Response(
         content=data,

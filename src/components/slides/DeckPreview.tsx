@@ -500,23 +500,32 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
     setIndex(Math.min(initialIndex, Math.max(0, total - 1)));
   }, [total, initialIndex]);
 
+  // Keep the active thumbnail in view, but only after the student moves: on mount every preview
+  // on the page (workbench and each saved extension) would otherwise scroll the page to itself.
+  const moved = useRef(false);
   useEffect(() => {
+    if (!moved.current) {
+      moved.current = true;
+      return;
+    }
     const el = stripRef.current?.querySelector<HTMLElement>(`[data-thumb="${index}"]`);
     el?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
   }, [index]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-      // Arrow keys follow the reading direction: in RTL, ArrowLeft moves forward.
-      const step = dir === "rtl" ? -1 : 1;
-      if (e.key === "ArrowRight") go(index + step);
-      else if (e.key === "ArrowLeft") go(index - step);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [go, index, dir]);
+  // Arrow keys act on this viewer only while focus is inside it (several viewers share a page).
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    // Arrow keys follow the reading direction: in RTL, ArrowLeft moves forward.
+    const step = dir === "rtl" ? -1 : 1;
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      go(index + step);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      go(index - step);
+    }
+  };
 
   if (!current) {
     return <p className="text-sm text-muted-foreground">{t("slides.preview.empty")}</p>;
@@ -525,9 +534,16 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
   const dividerAt = slides.findIndex((s) => s.isNew);
 
   return (
-    <div className="w-full min-w-0">
+    <div className="w-full min-w-0" onKeyDown={onKeyDown}>
       {/* Shape lock: viewer rounded-2xl, thumbs rounded-lg, arrows/badges rounded-full */}
-      <div className="relative overflow-hidden rounded-2xl border border-border shadow-sm" style={{ aspectRatio: `${aspect}` }}>
+      <div
+        className="relative overflow-hidden rounded-2xl border border-border shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        style={{ aspectRatio: `${aspect}` }}
+        tabIndex={0}
+        role="group"
+        aria-roledescription="slide"
+        aria-label={current.label}
+      >
         <SlideFrame slide={current} deckWidthPx={deckWidthPx} titleFont={current.theme.titleFont} bodyFont={current.theme.bodyFont} />
         {total > 1 ? (
           <>
@@ -563,18 +579,17 @@ export function DeckPreview({ slides, deckWidthPx = 1219, aspect = 16 / 9, initi
       </div>
 
       {total > 1 ? (
-        <div ref={stripRef} className="mt-3 flex gap-2 overflow-x-auto pb-1" role="listbox" aria-label={t("slides.preview.thumbsAria")}>
+        <div ref={stripRef} className="mt-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label={t("slides.preview.thumbsAria")}>
           {slides.map((slide, i) => (
             <div key={slide.key} className="flex shrink-0 items-stretch gap-2">
               {i === dividerAt && dividerAt > 0 ? (
-                <div className="flex w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 px-1 text-center text-[10px] font-bold leading-tight text-primary">
+                <div aria-hidden="true" className="flex w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 px-1 text-center text-[10px] font-bold leading-tight text-primary">
                   {t("slides.preview.aiDivider")}
                 </div>
               ) : null}
               <button
                 type="button"
-                role="option"
-                aria-selected={i === index}
+                aria-current={i === index ? "true" : undefined}
                 data-thumb={i}
                 aria-label={t("slides.preview.showAria", { label: slide.label })}
                 onClick={() => setIndex(i)}

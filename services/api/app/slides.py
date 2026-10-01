@@ -26,6 +26,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import re
 
 from .hermes import HermesJsonError, effective_hermes_key, run_json_prompt
 
@@ -301,6 +302,35 @@ def decode_image_list(images: list[str] | None) -> list[bytes]:
     return decoded
 
 
+# Characters XML 1.0 forbids (control codes, unpaired surrogates, U+FFFE/U+FFFF). Model text
+# occasionally contains them, and python-pptx would fail the whole export on save.
+_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def clean_text(value: object) -> str:
+    return _XML_INVALID.sub("", str(value or ""))
+
+
+def _clean_tree(value):
+    if isinstance(value, str):
+        return clean_text(value)
+    if isinstance(value, list):
+        return [_clean_tree(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _clean_tree(item) for key, item in value.items()}
+    return value
+
+
+def _enable_shrink(text_frame) -> None:
+    """Wrap and shrink text on overflow, so long model bullets stay on the slide."""
+    from pptx.enum.text import MSO_AUTO_SIZE
+    try:
+        text_frame.word_wrap = True
+        text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    except Exception:
+        pass
+
+
 def _solid_bg_rgb(slide):
     """Solid background color of a slide, or None (theme default/gradient/picture)."""
     try:
@@ -440,7 +470,11 @@ def _write_content_slide(
     cols = [c for c in (columns or []) if isinstance(c, dict) and c.get("bullets")] [:2]
     figures = [s for s in (stats or []) if isinstance(s, dict) and s.get("value")] [:3]
     if kind == "two-column" and len(cols) < 2:
-        kind = "bullets"
+        # Same fallback as the in-app preview (DeckPreview): split the bullets alternately.
+        if len(bullets) >= 2:
+            cols = [{"heading": "", "bullets": bullets[0::2]}, {"heading": "", "bullets": bullets[1::2]}]
+        else:
+            kind = "bullets"
     if kind == "stats" and not figures:
         kind = "bullets"
     if kind == "quote" and not bullets:
@@ -482,6 +516,7 @@ def _write_content_slide(
     if body is not None:
         tf = body.text_frame
         tf.clear()
+        _enable_shrink(tf)
         if kind == "steps":
             for i, bullet in enumerate(bullets):
                 para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
@@ -560,9 +595,9 @@ def _write_content_slide(
         _write_column_box(prs, new_slide, left, title_style, body_style, left_frac=0.06, width_frac=0.41)
         _write_column_box(prs, new_slide, right, title_style, body_style, left_frac=0.53, width_frac=0.41)
     if not body_written:
-        tx_box = new_slide.shapes.add_textbox(Inches(prs.slide_width.inches * 0.06), Inches(1.8), Inches(prs.slide_width.inches * 0.88), Inches(4.5))
+        tx_box = new_slide.shapes.add_textbox(Inches(prs.slide_width.inches * 0.06), Inches(1.8), Inches(prs.slide_width.inches * 0.88), Inches(max(1.0, prs.slide_height.inches - 2.3)))
         tf = tx_box.text_frame
-        tf.word_wrap = True
+        _enable_shrink(tf)
         for i, bullet in enumerate(bullets):
             para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             para.level = 0
@@ -590,10 +625,10 @@ def _write_column_box(prs, slide, column: dict, title_style, body_style, left_fr
         Inches(prs.slide_width.inches * left_frac),
         Inches(1.8),
         Inches(prs.slide_width.inches * width_frac),
-        Inches(4.5),
+        Inches(max(1.0, prs.slide_height.inches - 2.3)),
     )
     tf = box.text_frame
-    tf.word_wrap = True
+    _enable_shrink(tf)
     first = True
     if heading:
         run = tf.paragraphs[0].add_run()
@@ -619,6 +654,8 @@ def build_full_deck_pptx(
     slides: list[dict],
     original_bytes: bytes | None = None,
     original_images: list[bytes] | None = None,
+    divider_title: str | None = None,
+    divider_note: str | None = None,
 ) -> bytes:
     """Build one downloadable .pptx: originals first, AI slides appended.
 
@@ -630,18 +667,36 @@ def build_full_deck_pptx(
     - A divider slide marks where the AI extension starts (provenance).
     """
     from pptx import Presentation
-    from pptx.util import Pt
+    from pptx.util import Emu
 
+    topic = clean_text(topic)
+    original_filename = clean_text(original_filename)
+    slides = _clean_tree(slides)
     images = original_images or []
     if original_bytes:
-        prs = Presentation(io.BytesIO(original_bytes))
+        try:
+            prs = Presentation(io.BytesIO(original_bytes))
+        except Exception as exc:
+            raise SlidesRunError("The original .pptx could not be opened; it may be damaged or password protected.", status=422) from exc
         original_count = len(prs.slides)
     elif images:
         prs = Presentation()
+        sizes = [_image_size(raw) for raw in images]
+        # Match the slide shape to the pages (16:9, 4:3, portrait handouts) instead of stretching.
+        first = next((size for size in sizes if size), None)
+        if first:
+            prs.slide_height = Emu(int(prs.slide_width * first[1] / first[0]))
         blank = _blank_layout(prs)
-        for raw in images:
+        for raw, size in zip(images, sizes):
             slide = prs.slides.add_slide(blank)
-            slide.shapes.add_picture(io.BytesIO(raw), Pt(0), Pt(0), width=prs.slide_width, height=prs.slide_height)
+            if size:
+                # Letterbox: fit inside the slide, keep the page's own proportions, center it.
+                scale = min(prs.slide_width / size[0], prs.slide_height / size[1])
+                width, height = int(size[0] * scale), int(size[1] * scale)
+                left, top = (prs.slide_width - width) // 2, (prs.slide_height - height) // 2
+            else:
+                width, height, left, top = prs.slide_width, prs.slide_height, 0, 0
+            slide.shapes.add_picture(io.BytesIO(raw), Emu(left), Emu(top), width=Emu(width), height=Emu(height))
         original_count = len(prs.slides)
     else:
         prs = Presentation()
@@ -676,8 +731,8 @@ def build_full_deck_pptx(
     # Divider: provenance + topic, styled like the deck.
     _write_content_slide(
         prs, title_layout, bg, title_style, body_style,
-        f"New: {topic.strip() or 'Extension'}",
-        [f"The following {len(slides)} slide(s) extend {original_filename} — generated with Hermes, review before presenting."],
+        clean_text(divider_title).strip() or f"New: {topic.strip() or 'Extension'}",
+        [clean_text(divider_note).strip() or f"The following {len(slides)} slide(s) extend {original_filename} — generated with Hermes, review before presenting."],
         "",
     )
 
@@ -733,6 +788,16 @@ def _layout_has_body(layout) -> bool:
         return False
     except Exception:
         return False
+
+
+def _image_size(raw: bytes) -> tuple[int, int] | None:
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(raw)) as image:
+            width, height = image.size
+        return (width, height) if width > 0 and height > 0 else None
+    except Exception:
+        return None
 
 
 def _blank_layout(prs):

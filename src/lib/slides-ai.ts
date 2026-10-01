@@ -1,5 +1,5 @@
 import type { slides as slidesCatalog } from "../locales/en/slides";
-import { API_BASE, HERMES_API_KEY_HEADER, formatErrorDetail, getHermesApiKey, identityHeaders } from "./waypoint-api";
+import { API_BASE, formatErrorDetail, hermesRequestParts, identityHeaders } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // slides-ai.ts — AI backbone for slide extension (mirrors quiz-ai.ts).
@@ -285,15 +285,16 @@ async function postSlides(
 ): Promise<{ output: string; model: string; provider: string }> {
   let res: Response;
   try {
-    const gatewayKey = getHermesApiKey().trim();
+    // The tab's Hermes provider/model and key, exactly like the coach (nvapi keys pick NIM).
+    const hermes = hermesRequestParts();
     res = await fetch(`${API_BASE}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...identityHeaders(),
-        ...(gatewayKey ? { [HERMES_API_KEY_HEADER]: gatewayKey } : {}),
+        ...hermes.headers,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...hermes.body, ...body }),
       signal,
     });
   } catch (e) {
@@ -401,10 +402,11 @@ export async function exportExtensionPptx(args: {
   originalPptxBase64?: string;
   /** Rendered original pages (PNG data URLs) for PDF decks. */
   originalImagesBase64?: string[];
+  /** Divider slide text in the student's language. */
+  dividerTitle?: string;
+  dividerNote?: string;
   signal?: AbortSignal;
 }): Promise<Blob> {
-  const gatewayKey = getHermesApiKey().trim();
-  void gatewayKey;
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/slides/export`, {
@@ -426,6 +428,8 @@ export async function exportExtensionPptx(args: {
         })),
         ...(args.originalPptxBase64 ? { original_pptx_base64: args.originalPptxBase64 } : {}),
         ...(args.originalImagesBase64?.length ? { original_images_base64: args.originalImagesBase64 } : {}),
+        ...(args.dividerTitle ? { divider_title: args.dividerTitle } : {}),
+        ...(args.dividerNote ? { divider_note: args.dividerNote } : {}),
       }),
       signal: args.signal,
     });

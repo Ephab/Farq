@@ -104,6 +104,10 @@ export const slides: CatalogShape<typeof en> = {
     counts: "{added} جديدة، {date}",
     originalMissing: "الملف الأصلي غير موجود في الذاكرة (أعد رفعه لتراه هنا). تُعرض الشرائح الجديدة بنمط العرض.",
   },
+  exportDivider: {
+    title: "جديد: {topic}",
+    note: "الشرائح التالية ({count}) توسّع {name}. أُنشئت بواسطة Hermes؛ راجعها قبل العرض.",
+  },
   preview: {
     visual: "تصوّر بصري",
     empty: "لا توجد شرائح للمعاينة.",
@@ -145,5 +149,7 @@ export const slides: CatalogShape<typeof en> = {
     exportUnreachable: "تعذّر الوصول إلى خادم Waypoint للتصدير.",
     exportStatus: "فشل التصدير ({status}).",
     readForExport: "تعذّرت قراءة «{name}» للتصدير.",
+    reuploadForExport: "ارفع «{name}» مرة أخرى أولًا: يُحتفظ بالملف الأصلي فقط أثناء فتح هذه الصفحة، والتصدير الآن سيُسقط شرائحه.",
+    retrySuggest: "حاول مرة أخرى",
   },
 }

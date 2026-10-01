@@ -553,6 +553,9 @@ class SlidesExportInput(BaseModel):
     # Optional rendered original pages (PNG/JPEG data URLs or raw base64, for
     # PDF decks): each becomes a full-bleed image slide ahead of the new ones.
     original_images_base64: list[str] = Field(default_factory=list, max_length=60)
+    # The divider slide's text in the student's language (the browser owns translations).
+    divider_title: str | None = Field(default=None, max_length=320)
+    divider_note: str | None = Field(default=None, max_length=400)
 
 
 class HermesSettingsApply(BaseModel):

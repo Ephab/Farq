@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 from datetime import date, datetime, timedelta, timezone
@@ -24,6 +25,7 @@ from .decisions import DecisionItem, observe_items, rerank
 from .coop_sources import CoopCandidate, fetch_linkedin_candidates, fetch_telegram_candidates
 from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySyncRun, Project, RoadmapVersion, Student, StudentCoopState, StudentFact, StudentProfile, now
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 TOKEN = re.compile(r"[A-Za-z0-9+#.]+|[\u0600-\u06ff]+")
@@ -184,14 +186,50 @@ def _slug(value: str) -> str:
     return f"company-{hashlib.sha256(value.encode()).hexdigest()[:12]}"
 
 
+GENERIC_PATH_PARTS = {"", "careers", "career", "jobs", "job", "vacancies", "coop", "co-op", "en", "ar", "join-us", "students", "internships"}
+CURATED_SLUGS = {record["slug"] for record in COMPANIES}
+# Names a posting may use for a curated company (normalized: lowercase, no spaces or punctuation).
+COMPANY_ALIASES = {
+    "tahakom": "tahakom", "تحكم": "tahakom",
+    "sdaia": "sdaia-jrcai", "sdaiajrcai": "sdaia-jrcai", "jrcai": "sdaia-jrcai", "سدايا": "sdaia-jrcai",
+    "kaust": "kaust", "كاوست": "kaust",
+    "kacst": "kacst", "كاكست": "kacst", "مدينةالملكعبدالعزيزللعلوموالتقنية": "kacst",
+    "elm": "elm", "علم": "elm",
+    "stc": "stc", "saudistc": "stc", "sauditelecom": "stc", "الاتصالاتالسعودية": "stc",
+    "aramco": "aramco", "saudiaramco": "aramco", "أرامكو": "aramco", "ارامكو": "aramco", "أرامكوالسعودية": "aramco",
+    "mozn": "mozn", "موزن": "mozn",
+}
+_COMPANY_NOISE = re.compile(r"\b(?:company|co|ltd|inc|llc|group)\b|شركة|مجموعة")
+TELEGRAM_MAX_AGE_DAYS = 45
+RIYADH = timezone(timedelta(hours=3))
+
+
+def riyadh_today() -> date:
+    """Deadlines are Saudi dates; the server may run in UTC."""
+    return datetime.now(RIYADH).date()
+
+
+def _company_key(name: str) -> str:
+    return re.sub(r"[^a-z0-9\u0600-\u06ff]", "", _COMPANY_NOISE.sub(" ", name.lower()))
+
+
 def _normalized_url(value: str) -> str:
+    """Comparable URL: scheme, host, path and the query (job ids often live there), minus tracking."""
     if not value:
         return ""
     parsed = urlparse(value.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         return ""
     path = re.sub(r"/+$", "", parsed.path)
-    return f"{parsed.scheme.lower()}://{parsed.hostname.lower()}{path}"
+    query = "&".join(sorted(part for part in parsed.query.split("&") if part and not part.lower().startswith(("utm_", "ref=", "src=", "trk="))))
+    return f"{parsed.scheme.lower()}://{parsed.hostname.lower()}{path}" + (f"?{query}" if query else "")
+
+
+def _is_generic_url(value: str) -> bool:
+    """A careers landing page is shared by many roles, so it can never prove two postings are one."""
+    parsed = urlparse(value)
+    parts = [part.lower() for part in parsed.path.split("/") if part]
+    return not parsed.query and all(part in GENERIC_PATH_PARTS for part in parts)
 
 
 def _canonical_key(candidate: CoopCandidate) -> str:
@@ -201,16 +239,20 @@ def _canonical_key(candidate: CoopCandidate) -> str:
 
 
 def _company_for_candidate(db: Session, candidate: CoopCandidate) -> CoopCompany:
-    wanted = re.sub(r"[^a-z0-9\u0600-\u06ff]", "", candidate.company.lower())
-    for company in db.scalars(select(CoopCompany)).all():
-        known = re.sub(r"[^a-z0-9\u0600-\u06ff]", "", company.name.lower())
-        if wanted and (wanted == known or wanted in known or known in wanted):
-            skills = list(dict.fromkeys(_json(company.skills_json) + candidate.skills))
-            locations = list(dict.fromkeys(_json(company.locations_json) + ([candidate.location] if candidate.location else [])))
-            company.skills_json = json.dumps(skills)
-            company.locations_json = json.dumps(locations)
-            company.fetched_at = now()
-            return company
+    """Exact (normalized) name or a known alias only. Substring matching attached postings from
+    unrelated employers to curated companies (a short name like "ai" matched "sdaiajrcai")."""
+    wanted = _company_key(candidate.company)
+    alias = COMPANY_ALIASES.get(wanted)
+    match = db.get(CoopCompany, alias) if alias else None
+    if match is None and wanted:
+        match = next((company for company in db.scalars(select(CoopCompany)).all() if _company_key(company.name) == wanted), None)
+    if match is not None:
+        # Curated profiles are reviewed copy; only discovered companies learn from listings.
+        if match.slug not in CURATED_SLUGS:
+            match.skills_json = json.dumps(list(dict.fromkeys(_json(match.skills_json) + candidate.skills)))
+            match.locations_json = json.dumps(list(dict.fromkeys(_json(match.locations_json) + ([candidate.location] if candidate.location else []))))
+            match.fetched_at = now()
+        return match
     slug = _slug(candidate.company)
     existing = db.get(CoopCompany, slug)
     if existing:
@@ -237,7 +279,7 @@ def _upsert_candidate(db: Session, candidate: CoopCandidate) -> tuple[str, CoopP
     posting = db.get(CoopPosting, provenance.posting_id) if provenance else None
     if posting is None:
         candidate_url = _normalized_url(candidate.apply_url)
-        if candidate_url:
+        if candidate_url and not _is_generic_url(candidate_url):
             posting = next((item for item in db.scalars(select(CoopPosting)).all() if _normalized_url(item.apply_url) == candidate_url), None)
     if posting is None:
         posting = db.scalar(select(CoopPosting).where(CoopPosting.canonical_key == key))
@@ -262,8 +304,9 @@ def _upsert_candidate(db: Session, candidate: CoopCandidate) -> tuple[str, CoopP
     posting.closes_at = candidate.closes_at or posting.closes_at
     posting.detail_url = candidate.detail_url or posting.detail_url
     posting.apply_url = candidate.apply_url or posting.apply_url
-    posting.status = "listed"
-    posting.source_status = candidate.source_status
+    if posting.status != "verified_open":  # a community repost never downgrades a verified opening
+        posting.status = "listed"
+        posting.source_status = candidate.source_status
     posting.is_demo = False
     posting.active = True
     posting.raw_hash = candidate.raw_hash
@@ -296,10 +339,20 @@ def sync_coop_source(db: Session, source: Literal["telegram", "linkedin"], clien
             entity_type=f"coop_{source}", entity_id=candidate.external_id, title=candidate.title,
             text=f"{candidate.company}. {candidate.location}. {candidate.description}",
         ) for candidate in candidates], purpose="coop_ingestion")
+        failed = 0
         for candidate in candidates:
-            action, _ = _upsert_candidate(db, candidate)
-            counts[action] += 1
-        if source == "linkedin":
+            # One malformed listing must not abort the whole sync.
+            try:
+                with db.begin_nested():
+                    action, _ = _upsert_candidate(db, candidate)
+                counts[action] += 1
+            except Exception:
+                failed += 1
+                logger.exception("Skipping co-op candidate %s:%s", candidate.source, candidate.external_id)
+        if source == "telegram":
+            _expire_old_telegram_postings(db)
+        # An empty fetch (no key, or an empty dataset) says nothing about which postings closed.
+        if source == "linkedin" and candidates:
             cutoff = now() - timedelta(days=7)
             stale = db.scalars(select(CoopPostingSource).where(
                 CoopPostingSource.source == source,
@@ -314,12 +367,13 @@ def sync_coop_source(db: Session, source: Literal["telegram", "linkedin"], clien
                     posting = db.get(CoopPosting, record.posting_id)
                     if posting:
                         posting.active = False
-        run.status = "completed"
+        run.status = "completed" if candidates else "empty"
         run.fetched_count = len(candidates)
         run.changed_count = counts["inserted"] + counts["merged"]
+        run.error = f"{failed} listing(s) skipped" if failed else None
         run.finished_at = now()
         db.commit()
-        return {"source": source, "status": "completed", "fetched": len(candidates), **counts}
+        return {"source": source, "status": run.status, "fetched": len(candidates), "skipped": failed, **counts}
     except Exception as exc:
         db.rollback()
         run = db.get(OpportunitySyncRun, run.id)
@@ -328,6 +382,18 @@ def sync_coop_source(db: Session, source: Literal["telegram", "linkedin"], clien
         run.finished_at = now()
         db.commit()
         return {"source": source, "status": "failed", "fetched": 0, **counts, "error": str(exc)}
+
+
+def _expire_old_telegram_postings(db: Session) -> None:
+    """Channel posts rarely state a deadline; hide ones only Telegram knows about once they are old."""
+    cutoff = now() - timedelta(days=TELEGRAM_MAX_AGE_DAYS)
+    for posting in db.scalars(select(CoopPosting).where(CoopPosting.active.is_(True), CoopPosting.closes_at.is_(None))).all():
+        sources = db.scalars(select(CoopPostingSource).where(CoopPostingSource.posting_id == posting.id)).all()
+        if not sources or any(item.source != "telegram" for item in sources):
+            continue
+        published = max((item.published_at or item.last_seen_at for item in sources), default=None)
+        if published is not None and (published if published.tzinfo else published.replace(tzinfo=timezone.utc)) < cutoff:
+            posting.active = False
 
 
 def sync_all_coop_sources(db: Session) -> dict:
@@ -345,6 +411,9 @@ def sync_official_coop_sources(db: Session, client: httpx.Client | None = None) 
     session = client or httpx.Client(timeout=12, follow_redirects=True, headers={"User-Agent": "Waypoint/0.1 co-op discovery"})
     changed = 0
     failures: list[str] = []
+    run = OpportunitySyncRun(source="coop:official")
+    db.add(run)
+    db.commit()
     try:
         for company in db.scalars(select(CoopCompany).where(CoopCompany.active.is_(True))).all():
             parsed = urlparse(company.source_url)
@@ -393,9 +462,21 @@ def sync_official_coop_sources(db: Session, client: httpx.Client | None = None) 
                 elif posting is not None:
                     posting.active = False
                     posting.status = "closed" if closed else "unknown"
-            except (httpx.HTTPError, ValueError):
+            except Exception:
+                # One unreachable or odd page never stops the other companies.
+                logger.warning("Official co-op source failed: %s", company.slug, exc_info=True)
                 failures.append(company.slug)
+        run.status = "partial" if failures else "completed"
+        run.changed_count = changed
+        run.error = ", ".join(failures)[:1000] or None
+        run.finished_at = now()
         db.commit()
+    except Exception as exc:
+        db.rollback()
+        run = db.get(OpportunitySyncRun, run.id)
+        run.status, run.error, run.finished_at = "failed", str(exc)[:1000], now()
+        db.commit()
+        raise
     finally:
         if owned:
             session.close()
@@ -448,35 +529,54 @@ def _state(db: Session, student_id: str, target_type: str, target_id: str) -> st
     return item.status if item else "neutral"
 
 
-def _fit(company: CoopCompany, signals: tuple[set[str], set[str], str, set[str]]) -> tuple[int, list[str], list[str]]:
+# Each reason is sent as English text (Hermes and older clients) and as a code the UI translates.
+REASON_TEXT = {
+    "skill": "Uses your {items} experience",
+    "interest": "Matches your interest in {items}",
+    "orientation": "Fits your {orientation}-focused direction",
+    "location": "Matches your location preference",
+    "program": "Offers a path connected to your current program",
+    "role": "The role mentions {items}",
+}
+
+
+def _reason(code: str, **values: str) -> dict:
+    return {"code": code, "values": values, "text": REASON_TEXT[code].format(**values)}
+
+
+def _fit(company: CoopCompany, signals: tuple[set[str], set[str], str, set[str]]) -> tuple[int, list[dict], list[str]]:
     interests, skills, orientation, preferences = signals
     domains = _tokens(_json(company.sectors_json) + _json(company.tracks_json))
     wanted = _tokens(_json(company.skills_json))
     locations = _tokens(_json(company.locations_json))
-    reasons: list[str] = []
+    reasons: list[dict] = []
     score = 20
     skill_hits = sorted(skills.intersection(wanted))
     interest_hits = sorted(interests.intersection(domains | wanted))
     if skill_hits:
         score += min(35, 12 + len(skill_hits) * 6)
-        reasons.append(f"Uses your {', '.join(skill_hits[:2])} experience")
+        reasons.append(_reason("skill", items=", ".join(skill_hits[:2])))
     if interest_hits:
         score += min(25, 8 + len(interest_hits) * 5)
-        reasons.append(f"Matches your interest in {', '.join(interest_hits[:2])}")
+        reasons.append(_reason("interest", items=", ".join(interest_hits[:2])))
     if orientation != "undecided" and company.orientation == orientation:
         score += 15
-        reasons.append(f"Fits your {orientation}-focused direction")
+        reasons.append(_reason("orientation", orientation=orientation))
     if preferences.intersection(locations):
         score += 5
-        reasons.append("Matches your location preference")
+        reasons.append(_reason("location"))
     gaps = [item for item in _json(company.skills_json) if not _tokens(item).intersection(skills)][:3]
     if not reasons:
-        reasons.append("Offers a path connected to your current program")
+        reasons.append(_reason("program"))
     return min(score, 100), reasons[:3], gaps
 
 
+def _tier_code(score: int) -> str:
+    return "strong" if score >= 75 else "good" if score >= 50 else "explore"
+
+
 def _tier(score: int) -> str:
-    return "Strong match" if score >= 75 else "Good match" if score >= 50 else "Explore"
+    return {"strong": "Strong match", "good": "Good match", "explore": "Explore"}[_tier_code(score)]
 
 
 def company_result(db: Session, student_id: str, company: CoopCompany, signals=None) -> dict:
@@ -489,7 +589,8 @@ def company_result(db: Session, student_id: str, company: CoopCompany, signals=N
         "locations": _json(company.locations_json), "orientation": company.orientation,
         "company_url": company.company_url, "careers_url": company.careers_url, "source_url": company.source_url,
         "source_status": company.source_status, "fetched_at": company.fetched_at.isoformat(),
-        "fit_score": score, "fit_tier": _tier(score), "reasons": reasons, "gaps": gaps,
+        "fit_score": score, "fit_tier": _tier(score), "fit_tier_code": _tier_code(score),
+        "reasons": [item["text"] for item in reasons], "reason_codes": reasons, "gaps": gaps,
         "verified_openings": len(verified), "state": _state(db, student_id, "company", company.slug),
     }
 
@@ -497,12 +598,14 @@ def company_result(db: Session, student_id: str, company: CoopCompany, signals=N
 def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=None) -> dict:
     company = db.get(CoopCompany, posting.company_slug)
     resolved_signals = signals or _signals(db, student_id)
-    base = company_result(db, student_id, company, resolved_signals) if company else {"fit_score": 0, "fit_tier": "Explore", "reasons": [], "gaps": []}
+    base = company_result(db, student_id, company, resolved_signals) if company else {"fit_score": 0, "fit_tier": "Explore", "fit_tier_code": "explore", "reasons": [], "reason_codes": [], "gaps": []}
     posting_hits = sorted((resolved_signals[0] | resolved_signals[1]).intersection(_tokens(_json(posting.skills_json))))
     if posting_hits:
         base = {**base, "fit_score": min(100, base["fit_score"] + min(12, len(posting_hits) * 4))}
         base["fit_tier"] = _tier(base["fit_score"])
-        base["reasons"] = ([f"The role mentions {', '.join(posting_hits[:2])}"] + base["reasons"])[:3]
+        base["fit_tier_code"] = _tier_code(base["fit_score"])
+        base["reason_codes"] = ([_reason("role", items=", ".join(posting_hits[:2]))] + base["reason_codes"])[:3]
+        base["reasons"] = [item["text"] for item in base["reason_codes"]]
     records = db.scalars(select(CoopPostingSource).where(CoopPostingSource.posting_id == posting.id)).all()
     sources = [{
         "name": item.source,
@@ -535,7 +638,8 @@ def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=N
         "last_seen_at": freshest.isoformat(), "freshness": freshness,
         "deadline_confidence": "explicit" if posting.closes_at else "unknown",
         "fetched_at": posting.fetched_at.isoformat(),
-        "fit_score": base["fit_score"], "fit_tier": base["fit_tier"], "reasons": base["reasons"], "gaps": base["gaps"],
+        "fit_score": base["fit_score"], "fit_tier": base["fit_tier"], "fit_tier_code": base["fit_tier_code"],
+        "reasons": base["reasons"], "reason_codes": base["reason_codes"], "gaps": base["gaps"],
         "state": _state(db, student_id, "posting", posting.id),
     }
 
@@ -557,13 +661,22 @@ def find_companies(db: Session, student_id: str, query: str = "", status: str = 
     return sorted(results, key=lambda item: (-item["fit_score"], item["name"]))[: max(1, min(limit, 50))]
 
 
+def _closed(posting: CoopPosting, today: date) -> bool:
+    if not posting.closes_at:
+        return False
+    try:
+        return date.fromisoformat(posting.closes_at) < today
+    except ValueError:
+        return False  # an unparseable stored deadline is shown, labelled by the UI, not hidden
+
+
 def find_postings(db: Session, student_id: str, query: str = "", status: str = "all", limit: int = 20) -> list[dict]:
     signals = _signals(db, student_id)
     query_tokens = _tokens(query)
     results = []
-    today = date.today().isoformat()
+    today = riyadh_today()
     for posting in db.scalars(select(CoopPosting).where(CoopPosting.active.is_(True))).all():
-        if posting.closes_at and posting.closes_at < today:
+        if _closed(posting, today):
             continue
         result = posting_result(db, student_id, posting, signals)
         if query_tokens and not query_tokens.intersection(_tokens([result["title"], result["company_name"], result["skills"], result["location"]])):
@@ -589,9 +702,14 @@ def overview(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     companies = find_companies(db, student_id, limit=8)
     postings = find_postings(db, student_id, limit=8)
     saved = db.scalars(select(StudentCoopState).where(StudentCoopState.student_id == student_id, StudentCoopState.status == "saved")).all()
+    today = riyadh_today()
+    # Counted over every current posting, not just the eight shown.
+    verified = [item for item in db.scalars(select(CoopPosting).where(
+        CoopPosting.active.is_(True), CoopPosting.status == "verified_open", CoopPosting.is_demo.is_(False),
+    )).all() if not _closed(item, today)]
     return {
         "companies": companies, "postings": postings, "saved_count": len(saved),
-        "verified_openings": sum(1 for item in postings if item["status"] == "verified_open" and not item["is_demo"]),
+        "verified_openings": len(verified),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 

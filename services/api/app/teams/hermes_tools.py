@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import os
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +10,7 @@ from ..identity import User, resolve_user
 from ..models import RoadmapVersion, StudentFact, StudentProfile
 from .common import Db, loads, require, require_team
 from .chat import decision_dict
+from ..internal_auth import require_internal
 from .docs import section_dict
 from .models import Decision, DocSection, TeamAgentRun, Milestone, Task, Team, TeamDocument, TeamMember, TeamMessage, TeamProposal
 from .policy import authorize, is_member
@@ -19,15 +18,9 @@ from .proposals import ProposalError, create_proposal, expire_stalled, proposal_
 from .tasks import milestone_dict, task_dict
 from .teams import team_dict
 
-INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 CARD_CATEGORIES = ("skill", "goal", "strength", "interest")
 CHAT_WINDOW = 50
 router = APIRouter()
-
-
-def require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_waypoint_internal_token != INTERNAL_TOKEN:
-        raise HTTPException(401, "Invalid internal token")
 
 
 INTERNAL = [Depends(require_internal)]

@@ -194,7 +194,7 @@ def generated_roadmap(done_evidence: str) -> dict:
 def test_generate_preview_and_accept_initial_roadmap(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     sid = new_student(client)["student_id"]
     client.put(f"/api/students/{sid}/profile", json={"program": "Medicine", "onboarding_status": "chat"})
-    source = client.post(f"/api/students/{sid}/sources", json={"kind": "linkedin_zip"}).json()
+    source = client.post(f"/api/students/{sid}/sources", json={"kind": "folder", "value": "C:/work/courses", "purpose": "coursework"}).json()
     client.post("/internal/hermes/evidence", headers=INTERNAL, json={"user_id": sid, "source_id": source["id"], "items": [{"kind": "course", "title": "Anatomy", "data": {"code": "MED 101", "grade": "A"}}]})
     evidence_id = client.get(f"/api/students/{sid}/evidence").json()[0]["id"]
     client.post(f"/api/students/{sid}/evidence/decide", json={"confirm": [evidence_id]})

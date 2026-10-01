@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { API_BASE, api, hermesRequestParts } from "@/lib/waypoint-api"
+import { API_BASE, api, hermesRequestParts, withIdentityQuery } from "@/lib/waypoint-api"
 
 export interface OpportunityCard {
   id: string
@@ -116,7 +116,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     runIdRef.current = runIdToWatch
     setRunId(runIdToWatch)
     setBusy(true)
-    const source = new EventSource(`${API_BASE}/api/agent-runs/${runIdToWatch}/events`)
+    const source = new EventSource(withIdentityQuery(`${API_BASE}/api/agent-runs/${runIdToWatch}/events`))
     streamRef.current = source
     source.addEventListener("status", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { status: string; stage: string; error?: string }

@@ -54,12 +54,27 @@ def test_scan_projects_skips_secrets_and_dependencies(projects: Path):
 def test_read_file_refuses_secrets_identity_and_binaries(projects: Path):
     app = projects / "Web" / "my-app"
     for name in (".env", "appsettings.secrets.json"):
-        assert json.loads(scanner.read_project_file(str(app / name)))["success"] is False
+        assert json.loads(scanner.read_project_file(str(app / name), str(projects)))["success"] is False
     (app / "passport.pdf").write_bytes(b"%PDF")
     (app / "model.pt").write_bytes(b"\x00\x01")
-    assert json.loads(scanner.read_project_file(str(app / "passport.pdf")))["success"] is False
-    assert json.loads(scanner.read_project_file(str(app / "model.pt")))["success"] is False
-    assert json.loads(scanner.read_project_file(str(app / "README.md")))["success"] is True
+    assert json.loads(scanner.read_project_file(str(app / "passport.pdf"), str(projects)))["success"] is False
+    assert json.loads(scanner.read_project_file(str(app / "model.pt"), str(projects)))["success"] is False
+    assert json.loads(scanner.read_project_file(str(app / "README.md"), str(projects)))["success"] is True
+
+
+def test_read_file_stays_inside_the_typed_folder(projects: Path, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("elsewhere") / "notes.txt"
+    outside.write_text("private")
+    assert json.loads(scanner.read_project_file(str(outside), str(projects)))["success"] is False
+    vault = projects / "secrets"
+    vault.mkdir()
+    (vault / "db.yaml").write_text("password: x")
+    assert json.loads(scanner.read_project_file(str(vault / "db.yaml"), str(projects)))["success"] is False
+
+
+def test_scan_refuses_home_and_its_parents():
+    for path in (str(Path.home()), str(Path.home().parent)):
+        assert json.loads(scanner.scan_folder(path))["success"] is False
 
 
 def test_scan_coursework_infers_terms_courses_and_materials(tmp_path: Path):

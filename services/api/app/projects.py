@@ -6,7 +6,7 @@ import ntpath
 import os
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Annotated
 from urllib.parse import urlparse
 from pathlib import Path
@@ -17,13 +17,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import Project, ProjectEvaluation, ProjectRevision, ProjectSubmission, RoadmapVersion, Student, StudentProfile, now
+from .identity import CurrentUser, User
+from .internal_auth import internal_token_ok
+from .ownership import OwnedStudent, StreamUser, assert_owner
+from .tool_grants import HermesToolGrant, ProjectsGrant
+from .models import Project, ProjectEvaluation, ProjectRevision, ProjectSubmission, RoadmapVersion, StudentProfile, now
 from .schemas import EvaluationComplete, EvaluationFailure, EvaluationProgress, ProjectBrief, ProjectEvaluationCreate, ProjectRevisionCreate, ProjectSubmissionCreate, RoadmapSnapshot
 
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 UPLOAD_ROOT = Path(os.getenv("PROJECT_UPLOAD_ROOT", "/data/project-submissions" if Path("/data").exists() else Path(__file__).resolve().parents[2] / "data" / "project-submissions"))
 MAX_PROJECT_UPLOAD = 100 * 1024 * 1024
 EVALUATOR_LAST_SEEN = 0.0
@@ -125,21 +128,28 @@ def _require_project(db: Session, project_id: str) -> Project:
     return item
 
 
+def _owned_project(db: Session, project_id: str, user: User) -> Project:
+    project = _require_project(db, project_id)
+    assert_owner(user, project.student_id)
+    return project
+
+
 @router.get("/api/students/{student_id}/projects")
-def list_projects(student_id: str, db: Db) -> list[dict]:
-    if db.get(Student, student_id) is None:
-        raise HTTPException(404, "Student not found")
+def list_projects(student_id: str, _owner: OwnedStudent, db: Db) -> list[dict]:
     return [_project_dict(db, item) for item in _sync_projects(db, student_id)]
 
 
 @router.get("/api/projects/{project_id}")
-def get_project(project_id: str, db: Db) -> dict:
-    return _project_dict(db, _require_project(db, project_id))
+def get_project(project_id: str, db: Db, user: CurrentUser) -> dict:
+    return _project_dict(db, _owned_project(db, project_id, user))
 
 
 @router.post("/api/projects/{project_id}/refinements")
-def create_revision(project_id: str, body: ProjectRevisionCreate, db: Db) -> dict:
-    project = _require_project(db, project_id)
+def create_revision(project_id: str, body: ProjectRevisionCreate, db: Db, user: CurrentUser) -> dict:
+    return _create_revision(db, _owned_project(db, project_id, user), body)
+
+
+def _create_revision(db: Session, project: Project, body: ProjectRevisionCreate) -> dict:
     version = (db.scalar(select(func.max(ProjectRevision.version)).where(ProjectRevision.project_id == project.id)) or 0) + 1
     revision = ProjectRevision(project_id=project.id, version=version, brief_json=body.brief.model_dump_json(), status="draft", source=body.source)
     db.add(revision); db.commit()
@@ -147,8 +157,8 @@ def create_revision(project_id: str, body: ProjectRevisionCreate, db: Db) -> dic
 
 
 @router.post("/api/projects/{project_id}/refinements/{revision_id}/accept")
-def accept_revision(project_id: str, revision_id: str, db: Db) -> dict:
-    project = _require_project(db, project_id)
+def accept_revision(project_id: str, revision_id: str, db: Db, user: CurrentUser) -> dict:
+    project = _owned_project(db, project_id, user)
     revision = db.get(ProjectRevision, revision_id)
     if revision is None or revision.project_id != project.id:
         raise HTTPException(404, "Project revision not found")
@@ -172,8 +182,8 @@ def accept_revision(project_id: str, revision_id: str, db: Db) -> dict:
 
 
 @router.post("/api/projects/{project_id}/submissions")
-def create_submission(project_id: str, body: ProjectSubmissionCreate, db: Db) -> dict:
-    project = _require_project(db, project_id)
+def create_submission(project_id: str, body: ProjectSubmissionCreate, db: Db, user: CurrentUser) -> dict:
+    project = _owned_project(db, project_id, user)
     if body.source_type == "github":
         parsed = urlparse(body.source_ref)
         if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"} or parsed.username or parsed.password:
@@ -187,8 +197,8 @@ def create_submission(project_id: str, body: ProjectSubmissionCreate, db: Db) ->
 
 
 @router.post("/api/projects/{project_id}/submissions/upload")
-async def upload_submission(project_id: str, db: Db, file: UploadFile = File(...)) -> dict:
-    project = _require_project(db, project_id)
+async def upload_submission(project_id: str, db: Db, user: CurrentUser, file: UploadFile = File(...)) -> dict:
+    project = _owned_project(db, project_id, user)
     if not (file.filename or "").lower().endswith(".zip"):
         raise HTTPException(422, "Project uploads must be ZIP archives")
     content = await file.read(MAX_PROJECT_UPLOAD + 1)
@@ -207,8 +217,8 @@ async def upload_submission(project_id: str, db: Db, file: UploadFile = File(...
 
 
 @router.post("/api/projects/{project_id}/evaluations")
-def create_evaluation(project_id: str, body: ProjectEvaluationCreate, db: Db) -> dict:
-    project = _require_project(db, project_id)
+def create_evaluation(project_id: str, body: ProjectEvaluationCreate, db: Db, user: CurrentUser) -> dict:
+    project = _owned_project(db, project_id, user)
     submission = db.get(ProjectSubmission, body.submission_id)
     if submission is None or submission.project_id != project.id:
         raise HTTPException(404, "Submission not found for this project")
@@ -219,17 +229,20 @@ def create_evaluation(project_id: str, body: ProjectEvaluationCreate, db: Db) ->
 
 
 @router.get("/api/evaluations/{evaluation_id}")
-def get_evaluation(evaluation_id: str, db: Db) -> dict:
+def get_evaluation(evaluation_id: str, db: Db, user: CurrentUser) -> dict:
     item = db.get(ProjectEvaluation, evaluation_id)
     if item is None:
         raise HTTPException(404, "Evaluation not found")
+    _owned_project(db, item.project_id, user)
     return _evaluation_dict(item)
 
 
 @router.get("/api/evaluations/{evaluation_id}/events")
-def evaluation_events(evaluation_id: str, db: Db):
-    if db.get(ProjectEvaluation, evaluation_id) is None:
+def evaluation_events(evaluation_id: str, db: Db, user: StreamUser):
+    evaluation = db.get(ProjectEvaluation, evaluation_id)
+    if evaluation is None:
         raise HTTPException(404, "Evaluation not found")
+    _owned_project(db, evaluation.project_id, user)
 
     def stream():
         from .database import SessionLocal
@@ -254,7 +267,7 @@ def evaluation_events(evaluation_id: str, db: Db):
 
 
 def _require_worker(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_waypoint_internal_token != INTERNAL_TOKEN:
+    if not internal_token_ok(x_waypoint_internal_token):
         raise HTTPException(401, "Invalid evaluator token")
 
 
@@ -337,11 +350,18 @@ def evaluator_heartbeat() -> dict:
     return {"status": "ready"}
 
 
-@router.get("/internal/hermes/projects/{project_id}", dependencies=[Depends(_require_worker)])
-def internal_project(project_id: str, db: Db) -> dict:
-    return _project_dict(db, _require_project(db, project_id))
+def _granted_project(db: Session, project_id: str, grant: HermesToolGrant) -> Project:
+    project = _require_project(db, project_id)
+    if project.student_id != grant.student_id:
+        raise HTTPException(404, "Project not found")
+    return project
 
 
-@router.post("/internal/hermes/projects/{project_id}/refinements", dependencies=[Depends(_require_worker)])
-def internal_project_revision(project_id: str, body: ProjectRevisionCreate, db: Db) -> dict:
-    return create_revision(project_id, body, db)
+@router.get("/internal/hermes/projects/{project_id}")
+def internal_project(project_id: str, db: Db, grant: ProjectsGrant) -> dict:
+    return _project_dict(db, _granted_project(db, project_id, grant))
+
+
+@router.post("/internal/hermes/projects/{project_id}/refinements")
+def internal_project_revision(project_id: str, body: ProjectRevisionCreate, db: Db, grant: ProjectsGrant) -> dict:
+    return _create_revision(db, _granted_project(db, project_id, grant), body)

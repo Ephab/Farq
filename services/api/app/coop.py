@@ -11,11 +11,14 @@ from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .internal_auth import require_internal
+from .ownership import OwnedStudent
+from .tool_grants import ReadGrant, student_for
 from .database import get_db
 from .decisions import DecisionItem, observe_items, rerank
 from .coop_sources import CoopCandidate, fetch_linkedin_candidates, fetch_telegram_candidates
@@ -23,7 +26,6 @@ from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySync
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 TOKEN = re.compile(r"[A-Za-z0-9+#.]+|[\u0600-\u06ff]+")
 SOURCE_LABELS = {"official": "Official", "telegram": "Telegram", "linkedin": "LinkedIn", "demo": "Demo"}
 ALLOWED_SOURCE_HOSTS = {
@@ -581,13 +583,8 @@ def require_student(db: Session, student_id: str) -> None:
         raise HTTPException(404, "Student not found")
 
 
-def require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_waypoint_internal_token != INTERNAL_TOKEN:
-        raise HTTPException(401, "Invalid internal token")
-
-
 @router.get("/api/students/{student_id}/coop/overview")
-def overview(student_id: str, db: Db) -> dict:
+def overview(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     require_student(db, student_id)
     companies = find_companies(db, student_id, limit=8)
     postings = find_postings(db, student_id, limit=8)
@@ -600,19 +597,19 @@ def overview(student_id: str, db: Db) -> dict:
 
 
 @router.get("/api/students/{student_id}/coop/companies")
-def companies(student_id: str, db: Db, query: str = "", status: str = "all", limit: int = Query(20, ge=1, le=50)) -> dict:
+def companies(student_id: str, _owner: OwnedStudent, db: Db, query: str = "", status: str = "all", limit: int = Query(20, ge=1, le=50)) -> dict:
     require_student(db, student_id)
     return {"results": find_companies(db, student_id, query, status, limit)}
 
 
 @router.get("/api/students/{student_id}/coop/postings")
-def postings(student_id: str, db: Db, query: str = "", status: str = "all", limit: int = Query(20, ge=1, le=50)) -> dict:
+def postings(student_id: str, _owner: OwnedStudent, db: Db, query: str = "", status: str = "all", limit: int = Query(20, ge=1, le=50)) -> dict:
     require_student(db, student_id)
     return {"results": find_postings(db, student_id, query, status, limit)}
 
 
 @router.get("/api/students/{student_id}/coop/companies/{company_id}")
-def company_detail(student_id: str, company_id: str, db: Db) -> dict:
+def company_detail(student_id: str, _owner: OwnedStudent, company_id: str, db: Db) -> dict:
     require_student(db, student_id)
     company = db.get(CoopCompany, company_id)
     if company is None or not company.active:
@@ -621,7 +618,7 @@ def company_detail(student_id: str, company_id: str, db: Db) -> dict:
 
 
 @router.get("/api/students/{student_id}/coop/postings/{posting_id}")
-def posting_detail(student_id: str, posting_id: str, db: Db) -> dict:
+def posting_detail(student_id: str, _owner: OwnedStudent, posting_id: str, db: Db) -> dict:
     require_student(db, student_id)
     posting = db.get(CoopPosting, posting_id)
     if posting is None or not posting.active:
@@ -648,39 +645,42 @@ def _set_state(db: Session, student_id: str, target_type: str, target_id: str, s
 
 
 @router.post("/api/students/{student_id}/coop/companies/{company_id}/status")
-def set_company_state(student_id: str, company_id: str, body: CoopStateInput, db: Db) -> dict:
+def set_company_state(student_id: str, _owner: OwnedStudent, company_id: str, body: CoopStateInput, db: Db) -> dict:
     require_student(db, student_id)
     return _set_state(db, student_id, "company", company_id, body.status)
 
 
 @router.post("/api/students/{student_id}/coop/postings/{posting_id}/status")
-def set_posting_state(student_id: str, posting_id: str, body: CoopStateInput, db: Db) -> dict:
+def set_posting_state(student_id: str, _owner: OwnedStudent, posting_id: str, body: CoopStateInput, db: Db) -> dict:
     require_student(db, student_id)
     return _set_state(db, student_id, "posting", posting_id, body.status)
 
 
-@router.get("/internal/hermes/students/{student_id}/coop/companies", dependencies=[Depends(require_internal)])
-def internal_companies(student_id: str, db: Db, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
+@router.get("/internal/hermes/students/{student_id}/coop/companies")
+def internal_companies(student_id: str, db: Db, grant: ReadGrant, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
+    student_id = student_for(db, grant, student_id)
     require_student(db, student_id)
     return {"results": find_companies(db, student_id, query, limit=limit), "provenance": "Waypoint cached co-op catalog"}
 
 
-@router.get("/internal/hermes/students/{student_id}/coop/postings", dependencies=[Depends(require_internal)])
-def internal_postings(student_id: str, db: Db, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
+@router.get("/internal/hermes/students/{student_id}/coop/postings")
+def internal_postings(student_id: str, db: Db, grant: ReadGrant, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
+    student_id = student_for(db, grant, student_id)
     require_student(db, student_id)
     return {"results": find_postings(db, student_id, query, limit=limit), "provenance": "Waypoint cached official, Telegram, and LinkedIn sources"}
 
 
-@router.get("/internal/hermes/students/{student_id}/coop/{target_type}/{target_id}", dependencies=[Depends(require_internal)])
-def internal_target(student_id: str, target_type: Literal["company", "posting"], target_id: str, db: Db) -> dict:
+@router.get("/internal/hermes/students/{student_id}/coop/{target_type}/{target_id}")
+def internal_target(student_id: str, target_type: Literal["company", "posting"], target_id: str, db: Db, grant: ReadGrant) -> dict:
+    student_id = student_for(db, grant, student_id)
     require_student(db, student_id)
     if target_type == "company":
         company = db.get(CoopCompany, target_id)
-        if not company:
+        if not company or not company.active:
             raise HTTPException(404, "Company not found")
         return company_result(db, student_id, company)
     posting = db.get(CoopPosting, target_id)
-    if not posting:
+    if not posting or not posting.active:
         raise HTTPException(404, "Posting not found")
     return posting_result(db, student_id, posting)
 

@@ -26,12 +26,8 @@ them identifiably differently from plain ``source="deck"`` topics.
 import base64
 import binascii
 import io
-import time
-import uuid
 
-import httpx
-
-from .hermes import LAST_JSON_MODEL, HermesJsonError, effective_hermes_key, run_json_prompt
+from .hermes import HermesJsonError, effective_hermes_key, run_json_prompt
 
 MAX_SOURCE_CHARS = 12_000
 RUN_TIMEOUT_SECONDS = 180
@@ -226,16 +222,16 @@ def _run_prompt(
     prompt: str,
     provider: str | None,
     model: str | None,
-    gateway_key: str,
+    hermes_api_key: str | None,
 ) -> dict:
     instructions = SUGGEST_INSTRUCTIONS if kind == "suggest" else EXTEND_INSTRUCTIONS
     try:
-        output = run_json_prompt(f"slides-{kind}", prompt, instructions, provider, model, gateway_key, RUN_TIMEOUT_SECONDS)
+        # Pass the browser's own key: run_json_prompt needs it to spot an nvapi key and pick the NIM ladder.
+        output = run_json_prompt(f"slides-{kind}", prompt, instructions, provider, model, hermes_api_key, RUN_TIMEOUT_SECONDS)
     except HermesJsonError as exc:
         message = "Hermes returned an empty answer — try a smaller deck" if "empty answer" in str(exc) else str(exc)
         raise SlidesRunError(message, status=exc.status) from exc
-    used_model, used_provider = LAST_JSON_MODEL[f"slides-{kind}"]
-    return {"output": output, "model": used_model, "provider": used_provider}
+    return {"output": str(output), "model": getattr(output, "model", ""), "provider": getattr(output, "provider", "")}
 
 
 def run_suggest(
@@ -246,8 +242,8 @@ def run_suggest(
     hermes_api_key: str | None = None,
     learner_context: str = "",
 ) -> dict:
-    gateway_key = _gateway_key_or_raise(hermes_api_key)
-    return _run_prompt("suggest", build_suggest_input(source_text, count, learner_context), provider, model, gateway_key)
+    _gateway_key_or_raise(hermes_api_key)
+    return _run_prompt("suggest", build_suggest_input(source_text, count, learner_context), provider, model, hermes_api_key)
 
 
 def run_extend(
@@ -261,8 +257,8 @@ def run_extend(
 ) -> dict:
     if length not in LENGTH_GUIDANCE:
         raise SlidesRunError(f"Unknown extension length: {length}", status=422)
-    gateway_key = _gateway_key_or_raise(hermes_api_key)
-    return _run_prompt("extend", build_extend_input(source_text, topic, length, design_hint), provider, model, gateway_key)
+    _gateway_key_or_raise(hermes_api_key)
+    return _run_prompt("extend", build_extend_input(source_text, topic, length, design_hint), provider, model, hermes_api_key)
 
 
 def decode_original_pptx(original_pptx_base64: str | None) -> bytes | None:

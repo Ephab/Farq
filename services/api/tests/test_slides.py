@@ -110,7 +110,7 @@ def test_suggest_with_student_injects_learner_context(client: TestClient, monkey
 
     response = client.post(
         "/api/slides/suggest",
-        headers={"X-Hermes-Api-Key": "k" * 64},
+        headers={"X-Hermes-Api-Key": "k" * 64, "X-Waypoint-User": student["student_id"]},
         json={"source_text": "Transformers intro.", "count": 3, "student_id": student["student_id"]},
     )
     assert response.status_code == 200

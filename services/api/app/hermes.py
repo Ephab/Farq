@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
+from sqlalchemy import delete
 
 from .database import SessionLocal
 from .models import AgentRun, ChatMessage, ChatThread, StudentProfile
@@ -412,7 +413,7 @@ def run_json_prompt(
     model: str | None = None,
     hermes_api_key: str | None = None,
     timeout_seconds: int = 180,
-) -> str:
+) -> "JsonOutput":
     """Run one prompt on a throwaway `waypoint:<kind>:*` session and return raw output.
 
     Same contract as app.quiz / app.slides: fresh session per call so the
@@ -444,12 +445,23 @@ def run_json_prompt(
         raise HermesJsonError(f"Hermes gateway unavailable: {exc}", status=502) from exc
     if not output:
         raise HermesJsonError("Hermes returned an empty answer", status=502)
-    LAST_JSON_MODEL[kind] = (used_model, used_provider)
-    return output
+    return JsonOutput(output, used_model, used_provider)
 
 
-# Which model actually answered the most recent JSON run of each kind.
-LAST_JSON_MODEL: dict[str, tuple[str, str]] = {}
+class JsonOutput(str):
+    """A JSON run's raw text that also remembers which model answered it.
+
+    Per call, not a module global, so concurrent quiz/slide requests never
+    report each other's model."""
+
+    model: str
+    provider: str
+
+    def __new__(cls, text: str, model: str = "", provider: str = ""):
+        value = super().__new__(cls, text)
+        value.model = model
+        value.provider = provider
+        return value
 
 
 def parse_json_output(text: str) -> dict:
@@ -492,6 +504,8 @@ def run_agent(
             raise RuntimeError(str(exc)) from exc
         run.status = "running"
         run.stage = "Starting Hermes"
+        from .tool_grants import COACH_SCOPES, issue_grant
+        tool_grant = issue_grant(db, student_id, COACH_SCOPES, agent_run_id=run.id)
         db.commit()
         headers = {
             "Authorization": f"Bearer {gateway_key}",
@@ -514,7 +528,8 @@ def run_agent(
         )
         payload = {
             "input": (
-                f"Waypoint user_id={student_id}; source_message_id={message.id}.\n\n"
+                f"Waypoint user_id={student_id}; grant={tool_grant}; source_message_id={message.id}.\n"
+                "Pass this grant to every waypoint_* student tool in THIS run. Never save it in memory or reuse one from history.\n\n"
                 f"{mail_context}"
                 f"Student message:\n{message_input}"
             ),
@@ -584,4 +599,10 @@ def run_agent(
         run.finished_at = datetime.now(timezone.utc)
         db.commit()
     finally:
+        try:
+            from .tool_grants import HermesToolGrant
+            db.execute(delete(HermesToolGrant).where(HermesToolGrant.agent_run_id == local_run_id))
+            db.commit()
+        except Exception:
+            db.rollback()
         db.close()

@@ -292,6 +292,8 @@ class EvidenceIn(BaseModel):
 class EvidenceSubmit(BaseModel):
     user_id: str
     source_id: str
+    # The folder the plugin actually scanned; checked against the path the student typed.
+    root: str = Field(default="", max_length=1000)
     items: list[EvidenceIn] = Field(min_length=1, max_length=200)
 
 

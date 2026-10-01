@@ -190,7 +190,9 @@ def main() -> None:
         print(json.dumps({"student_id": args.student, "courses": summary}, ensure_ascii=False, indent=2))
         return
     env = read_env(Path(__file__).resolve().parents[1] / ".env")
-    token = os.getenv("WAYPOINT_INTERNAL_TOKEN") or env.get("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
+    token = os.getenv("WAYPOINT_INTERNAL_TOKEN") or env.get("WAYPOINT_INTERNAL_TOKEN", "")
+    if not token:
+        raise SystemExit("WAYPOINT_INTERNAL_TOKEN is not set; run setup first")
     result = upload(payload, args.api, token)
     print(json.dumps({**result, "content_by_course": summary}, ensure_ascii=False, indent=2))
 

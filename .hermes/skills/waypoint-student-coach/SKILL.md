@@ -11,7 +11,8 @@ achievements, career direction, or learning roadmap.
 ## Required workflow
 
 1. Call `waypoint_get_student_context` before personalized advice, using the user_id UUID
-   from the run message header (never the student's display name).
+   from the run message header (never the student's display name). Every student tool also needs
+   the `grant` from THIS run's header; never reuse a grant from an earlier message or memory.
 2. Record a fact only when it is directly stated by the student. A branch button or a typed
    selection between branches is explicit. Use `waypoint_record_explicit_fact` with the source
    message ID. Do not store guesses.

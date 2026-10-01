@@ -23,18 +23,42 @@ def env_values() -> dict[str, str]:
     return result
 
 
+def read_grant(student_id: str) -> str:
+    """Student tools need a run grant. Issue a short read-only one straight into the local database,
+    as a coach run would (run this on the machine that hosts Waypoint's SQLite file)."""
+    import sys
+    sys.path.insert(0, str(REPO / "services" / "api"))
+    from app.database import Base, SessionLocal, engine
+    from app.tool_grants import READ, issue_grant
+    Base.metadata.create_all(engine)
+    db = SessionLocal()
+    try:
+        token = issue_grant(db, student_id, (READ,), ttl_seconds=120)
+        db.commit()
+        return token
+    finally:
+        db.close()
+
+
+GRANT = ""
+
+
 def get(path: str, token: str) -> dict:
     request = Request(
         f"http://127.0.0.1:8000{path}",
-        headers={"X-Waypoint-Internal-Token": token},
+        headers={"X-Waypoint-Internal-Token": token, "X-Waypoint-Grant": GRANT},
     )
     with urlopen(request, timeout=20) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def main() -> None:
-    token = os.getenv("WAYPOINT_INTERNAL_TOKEN") or env_values().get("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
+    global GRANT
+    token = os.getenv("WAYPOINT_INTERNAL_TOKEN") or env_values().get("WAYPOINT_INTERNAL_TOKEN", "")
+    if not token:
+        raise SystemExit("WAYPOINT_INTERNAL_TOKEN is not set; run setup first")
     user = "demo-student"
+    GRANT = read_grant(user)
     courses = get(f"/internal/hermes/students/{user}/blackboard/courses", token)
     assert courses["courses"], "import the Blackboard demo snapshot first"
     course = courses["courses"][0]

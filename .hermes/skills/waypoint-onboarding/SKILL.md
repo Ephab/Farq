@@ -10,7 +10,7 @@ to index a folder for Waypoint.
 
 ## Indexing a folder
 
-1. Call `waypoint_index_folder` once with exactly the user_id, source_id, path and purpose you were
+1. Call `waypoint_index_folder` once with exactly the user_id, grant, source_id, path and purpose you were
    given. It scans and submits the evidence itself. Never scan other paths or whole drives.
 2. Do not read files or call other tools for indexing. Never try to open `.env` files, keys,
    credentials, secrets or identity documents; the tools refuse them in code.
@@ -18,8 +18,8 @@ to index a folder for Waypoint.
 
 ## Gap-filling chat
 
-1. Call `waypoint_get_student_profile` first with the user_id UUID from the run message header
-   (never the student's display name). Do not ask about anything already there.
+1. Call `waypoint_get_student_profile` first with the user_id UUID and the `grant` from the run
+   message header (never the student's display name, never a grant from history). Do not ask about anything already there.
 2. Ask at most five questions in total, one per message, in plain friendly language.
    Priorities: career direction, main interests, weekly hours, learning style, weak areas,
    deadlines (exams, internships, graduation).

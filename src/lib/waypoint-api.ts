@@ -133,13 +133,26 @@ export function httpErrorMessage(status: number): string {
   return translate("common.errors.generic", { status })
 }
 
+/** Who this browser acts as. The API checks it on every student record (see services/api/app/ownership.py). */
+export const USER_HEADER = "X-Waypoint-User"
+
+export function identityHeaders(): Record<string, string> {
+  return { [USER_HEADER]: getCurrentStudentId() }
+}
+
+/** EventSource cannot send headers, so event streams take the same identity as `?as=`. */
+export function withIdentityQuery(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}as=${encodeURIComponent(getCurrentStudentId())}`
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init?.body instanceof FormData
   let response: Response
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...init?.headers },
+      // Explicit headers win, so a team client's View-as user is never replaced.
+      headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...identityHeaders(), ...init?.headers },
     })
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === "AbortError") throw reason
@@ -340,7 +353,7 @@ export async function uploadSourceFile(studentId: string, sourceId: string, file
   // No JSON content-type: the browser sets the multipart boundary.
   let response: Response
   try {
-    response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload`, { method: "POST", body: form, headers })
+    response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload`, { method: "POST", body: form, headers: { ...identityHeaders(), ...headers } })
   } catch {
     throw new Error(translate("common.networkError"))
   }

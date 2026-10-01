@@ -21,7 +21,8 @@ from pathlib import Path
 
 
 API = os.getenv("WAYPOINT_API_URL", "http://127.0.0.1:8000").rstrip("/")
-TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
+# No fallback: the API has no built-in token (setup writes one to .env).
+TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "")
 MAX_FILES = 5000
 MAX_BYTES = 250 * 1024 * 1024
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__", ".next"}

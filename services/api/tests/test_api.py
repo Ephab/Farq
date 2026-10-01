@@ -14,11 +14,34 @@ os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 from app.database import SessionLocal, engine  # noqa: E402
 from app.hermes import NIM_MODEL, parse_chat_output, resolve_hermes_selection  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import AgentRun, ChatMessage, Opportunity, RoadmapVersion, StudentOpportunity  # noqa: E402
+from app.models import AgentRun, ChatMessage, ChatThread, Opportunity, RoadmapVersion, StudentOpportunity  # noqa: E402
 from app.opportunities.base import OpportunityRecord  # noqa: E402
 from app.opportunities.hackathonat import HackathonatConnector, OpportunitySourceError  # noqa: E402
 from app.opportunities.service import sync_hackathonat  # noqa: E402
 from app.schemas import ChatMessageUi  # noqa: E402
+
+
+def user_message_id(student_id: str, text: str = "I prefer research") -> str:
+    """A real message the student sent, so a recorded fact can cite it."""
+    from app.models import ChatThread
+    db = SessionLocal()
+    thread = db.query(ChatThread).filter(ChatThread.student_id == student_id).order_by(ChatThread.created_at).first()
+    message = ChatMessage(thread_id=thread.id, role="user", content=text)
+    db.add(message)
+    db.commit()
+    message_id = message.id
+    db.close()
+    return message_id
+
+
+def complete_run(run_id, *_args, **_kwargs):
+    """Stand-in worker: a run that finishes at once, so the next message is not blocked by a live run."""
+    db = SessionLocal()
+    run = db.get(AgentRun, run_id)
+    if run is not None:
+        run.status = "completed"
+        db.commit()
+    db.close()
 
 
 @pytest.fixture(scope="module")
@@ -76,7 +99,7 @@ def test_structured_chat_output_is_validated_and_hidden_from_visible_text():
 
 
 def test_structured_chat_choices_are_validated_and_persisted(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    monkeypatch.setattr("app.main.run_agent", complete_run)
     student = client.post("/api/students", json={"display_name": "Choice Student"}).json()
     thread_id = student["thread_id"]
     ui = ChatMessageUi.model_validate({
@@ -121,7 +144,7 @@ def test_chat_output_repairs_repeated_top_level_numbering():
 
 
 def test_structured_chat_multi_select_limits_and_follow_up(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    monkeypatch.setattr("app.main.run_agent", complete_run)
     student = client.post("/api/students", json={"display_name": "Multi Student"}).json()
     thread_id = student["thread_id"]
     multi = ChatMessageUi.model_validate({
@@ -162,7 +185,7 @@ def test_fact_proposal_accept_and_reject_flow(client: TestClient):
         "category": "preference",
         "key": "career_direction",
         "value": "research",
-        "source_message_id": "test-message",
+        "source_message_id": user_message_id("demo-student"),
         "explicit": True,
     })
     assert fact.status_code == 200
@@ -270,7 +293,7 @@ def test_reset_restores_fresh_waypoint(client: TestClient, monkeypatch: pytest.M
         "category": "preference",
         "key": "reset_test_preference",
         "value": "temporary",
-        "source_message_id": "temporary-message",
+        "source_message_id": user_message_id("demo-student"),
         "explicit": True,
     })
     assert fact.status_code == 200
@@ -308,7 +331,7 @@ def test_reset_restores_fresh_waypoint(client: TestClient, monkeypatch: pytest.M
     assert client.get(f"/api/chat/threads/{fresh['thread_id']}/messages").json() == []
     assert client.get("/api/students/demo-student/context").json()["facts"] == []
     assert client.get("/api/students/demo-student/roadmap/proposals").json() == []
-    assert client.get(f"/api/agent-runs/{run_id}").status_code == 404
+    assert client.get(f"/api/agent-runs/{run_id}", headers={"X-Waypoint-User": "demo-student"}).status_code == 404
 
     fresh_roadmap = client.get("/api/students/demo-student/roadmap").json()
     assert fresh_roadmap["version"] == 1
@@ -452,7 +475,7 @@ def test_nvapi_key_never_becomes_gateway_bearer(monkeypatch: pytest.MonkeyPatch)
     assert hermes_module.effective_hermes_key("plain-tab-key-0123456789abcdef") == "plain-tab-key-0123456789abcdef"
 
 
-def test_internal_endpoints_resolve_display_name(client: TestClient):
+def test_internal_endpoints_accept_the_granted_students_display_name(client: TestClient):
     internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     # The agent sometimes passes the display name instead of the UUID.
     profile = client.get("/internal/hermes/students/Demo Student/profile", headers=internal)
@@ -463,22 +486,74 @@ def test_internal_endpoints_resolve_display_name(client: TestClient):
         "category": "preference",
         "key": "display_name_fallback",
         "value": "works",
-        "source_message_id": "test-message",
+        "source_message_id": user_message_id("demo-student"),
         "explicit": True,
     })
     assert fact.status_code == 200
-    assert client.get("/internal/hermes/students/No Such Person/profile", headers=internal).status_code == 404
-    # Ambiguous names still 404 rather than guessing.
-    client.post("/api/students", json={"display_name": "Sam Same"})
-    client.post("/api/students", json={"display_name": "sam same"})
-    assert client.get("/internal/hermes/students/Sam Same/profile", headers=internal).status_code == 404
+
+
+def test_student_tools_need_this_runs_grant(client: TestClient):
+    """The internal token alone (shared by every gateway session, including JSON prompts that read
+    untrusted files) is not enough: a student tool also needs the run's grant, for that student."""
+    from conftest import issue_test_grant
+
+    internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev", "X-Test-No-Auto": "1"}
+    other = client.post("/api/students", json={"display_name": "Grant Other"}).json()["student_id"]
+    fact = {"user_id": "demo-student", "category": "goal", "key": "grant_check", "value": "x",
+            "source_message_id": user_message_id("demo-student"), "explicit": True}
+
+    assert client.post("/internal/hermes/facts", headers=internal, json=fact).status_code == 403
+    assert client.get("/internal/hermes/students/demo-student/profile", headers=internal).status_code == 403
+
+    # A grant for another student cannot be pointed at this one.
+    others = {**internal, "X-Waypoint-Grant": issue_test_grant(other)}
+    assert client.post("/internal/hermes/facts", headers=others, json=fact).status_code == 403
+    assert client.get("/internal/hermes/students/demo-student/context", headers=others).status_code == 403
+
+    # Read-only grants cannot write; an expired grant is refused.
+    readonly = {**internal, "X-Waypoint-Grant": issue_test_grant("demo-student", ("read",))}
+    assert client.get("/internal/hermes/students/demo-student/context", headers=readonly).status_code == 200
+    assert client.post("/internal/hermes/facts", headers=readonly, json=fact).status_code == 403
+    expired = {**internal, "X-Waypoint-Grant": issue_test_grant("demo-student", ttl_seconds=-1)}
+    assert client.get("/internal/hermes/students/demo-student/context", headers=expired).status_code == 403
+
+    # Facts must cite one of the student's own messages, not invented ids or Hermes' replies.
+    writer = {**internal, "X-Waypoint-Grant": issue_test_grant("demo-student", ("facts",))}
+    assert client.post("/internal/hermes/facts", headers=writer, json={**fact, "source_message_id": "made-up"}).status_code == 422
+    assert client.post("/internal/hermes/facts", headers=writer, json=fact).status_code == 200
+
+    # A grant tied to a finished run dies with it.
+    db = SessionLocal()
+    thread = db.query(ChatThread).filter(ChatThread.student_id == "demo-student").first()
+    run = AgentRun(thread_id=thread.id, user_message_id=fact["source_message_id"], status="completed")
+    db.add(run); db.commit(); run_id = run.id; db.close()
+    finished = {**internal, "X-Waypoint-Grant": issue_test_grant("demo-student", agent_run_id=run_id)}
+    assert client.get("/internal/hermes/students/demo-student/context", headers=finished).status_code == 403
+
+
+def test_students_can_only_open_their_own_records(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.main.run_agent", complete_run)
+    mine = client.post("/api/students", json={"display_name": "Owner One"}).json()
+    theirs = client.post("/api/students", json={"display_name": "Owner Two"}).json()
+    as_mine = {"X-Waypoint-User": mine["student_id"]}
+
+    assert client.get(f"/api/students/{theirs['student_id']}/roadmap", headers=as_mine).status_code == 403
+    assert client.get(f"/api/chat/threads/{theirs['thread_id']}/messages", headers=as_mine).status_code == 403
+    assert client.post(f"/api/chat/threads/{theirs['thread_id']}/messages", headers=as_mine, json={"content": "hi"}).status_code == 403
+    assert client.get(f"/api/students/{mine['student_id']}/roadmap", headers={"X-Test-No-Auto": "1"}).status_code == 401
+    assert client.get(f"/api/students/{mine['student_id']}/roadmap", headers=as_mine).status_code == 200
+
+
+def test_hermes_settings_apply_only_from_this_computer(client: TestClient):
+    response = client.post("/api/settings/hermes", headers={"Origin": "http://evil.example"}, json={"key": "k" * 40})
+    assert response.status_code == 403
 
 
 def test_rewind_drops_message_and_later(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     from app.database import SessionLocal
     from app.models import AgentRun, ChatMessage
 
-    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    monkeypatch.setattr("app.main.run_agent", complete_run)
     thread_id = client.get("/api/demo").json()["thread_id"]
 
     first = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "First prompt"}).json()["message_id"]
@@ -531,7 +606,7 @@ def test_latest_run_for_thread(client: TestClient, monkeypatch: pytest.MonkeyPat
     thread_id = client.get(f"/api/students/{student_id}/profile").json()["thread_id"]
 
     assert client.get(f"/api/chat/threads/{thread_id}/runs/latest").json() == {"run": None}
-    assert client.get("/api/chat/threads/nope/runs/latest").status_code == 404
+    assert client.get("/api/chat/threads/nope/runs/latest", headers={"X-Waypoint-User": student_id}).status_code == 404
 
     client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Hello Hermes"})
     latest = client.get(f"/api/chat/threads/{thread_id}/runs/latest").json()["run"]
@@ -565,8 +640,8 @@ def test_cancel_run_stops_generating(client: TestClient, monkeypatch: pytest.Mon
     # Idempotent: cancelling a terminal run keeps it cancelled.
     assert client.post(f"/api/agent-runs/{run_id}/cancel").json()["status"] == "cancelled"
     assert client.post(f"/api/chat/threads/{thread_id}/runs/cancel").json() == {"run": None}
-    assert client.post("/api/agent-runs/nope/cancel").status_code == 404
-    assert client.post("/api/chat/threads/nope/runs/cancel").status_code == 404
+    assert client.post("/api/agent-runs/nope/cancel", headers={"X-Waypoint-User": student_id}).status_code == 404
+    assert client.post("/api/chat/threads/nope/runs/cancel", headers={"X-Waypoint-User": student_id}).status_code == 404
 
     # Thread-level cancel stops a live run without tracking its id.
     second_id = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Again"}).json()["run_id"]
@@ -589,7 +664,7 @@ def test_edit_and_resend_rewinds_instead_of_stacking(client: TestClient, monkeyp
     from app.database import SessionLocal
     from app.models import AgentRun, ChatMessage
 
-    monkeypatch.setattr("app.main.run_agent", lambda *args: None)
+    monkeypatch.setattr("app.main.run_agent", complete_run)
     student_id = client.post("/api/students", json={"display_name": "Edit Resend Student"}).json()["student_id"]
     thread_id = client.get(f"/api/students/{student_id}/profile").json()["thread_id"]
 

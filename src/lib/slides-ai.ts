@@ -1,5 +1,5 @@
 import type { slides as slidesCatalog } from "../locales/en/slides";
-import { API_BASE, HERMES_API_KEY_HEADER, getHermesApiKey } from "./waypoint-api";
+import { API_BASE, HERMES_API_KEY_HEADER, getHermesApiKey, identityHeaders } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // slides-ai.ts — AI backbone for slide extension (mirrors quiz-ai.ts).
@@ -290,6 +290,7 @@ async function postSlides(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...identityHeaders(),
         ...(gatewayKey ? { [HERMES_API_KEY_HEADER]: gatewayKey } : {}),
       },
       body: JSON.stringify(body),

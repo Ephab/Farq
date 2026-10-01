@@ -33,7 +33,7 @@ import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { LoaderCircle } from "lucide-react"
-import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type StudentProfile } from "@/lib/waypoint-api"
+import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/waypoint-api"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
 import { cn } from "@/lib/utils"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -53,7 +53,51 @@ const VIEW_LABELS: Record<string, MessageKey> = {
   "My data": "nav.items.myData",
 }
 
+// Gentle app-wide startup veil, once per page load. It lives outside the view
+// branches below so loading -> onboarding -> app swaps never remount (and so
+// replay) it: loading (0.65s) -> leave (0.7s) -> done, skippable with Esc/click.
+function AppIntro() {
+  const { t } = useI18n()
+  const reduceMotion = useReducedMotion()
+  const [phase, setPhase] = useState<PortalPhase | "done">(() => (reduceMotion ? "done" : "loading"))
+  const dismiss = useCallback(() => setPhase("done"), [])
+  useEffect(() => {
+    if (reduceMotion || phase === "done") return
+    const timer = window.setTimeout(
+      () => setPhase((previous) => (previous === "loading" ? "leave" : "done")),
+      phase === "loading" ? 650 : 700,
+    )
+    return () => window.clearTimeout(timer)
+  }, [phase, reduceMotion])
+  useEffect(() => {
+    if (phase === "done") return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismiss()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [phase, dismiss])
+  return (
+    <AnimatePresence>
+      {phase !== "done" ? (
+        <div className="fixed inset-0 z-[70]">
+          <CoachPortalIntro phase={phase} speed={1.3} word={t("common.appName")} tone="gentle" onSkip={dismiss} />
+        </div>
+      ) : null}
+    </AnimatePresence>
+  )
+}
+
 export default function App() {
+  return (
+    <>
+      <AppShell />
+      <AppIntro />
+    </>
+  )
+}
+
+function AppShell() {
   const { t, fmt } = useI18n()
   const viewLabel = (id: string) => (VIEW_LABELS[id] ? t(VIEW_LABELS[id]) : id)
   const [active, setActive] = useState("Home")
@@ -65,42 +109,10 @@ export default function App() {
   // A remembered student's profile decides between the app and onboarding: wait for it instead
   // of flashing the app (and firing its requests) for someone who is still onboarding.
   const [profileChecked, setProfileChecked] = useState(!hasChosenStudent())
-  const [jev, setJev] = useState<DecisionStatus | null>(null)
   // Live Hermes run for this student's coach thread — polled so any section
   // can show that Hermes is still generating after navigating away.
   const activeRun = useActiveRun(profile?.thread_id ?? null)
   const teamUnread = useTeamUnread(active)
-  const reduceMotion = useReducedMotion()
-  // Gentle app-wide startup veil — once per page load, slower and softer
-  // than the Coach intro: loading (1.2s) -> leave (1.7s) -> done.
-  const [appIntro, setAppIntro] = useState<PortalPhase | "done">(() => (reduceMotion ? "done" : "loading"))
-  const dismissAppIntro = useCallback(() => setAppIntro("done"), [])
-  useEffect(() => {
-    if (reduceMotion || appIntro === "done") return
-    const timer = window.setTimeout(
-      () => setAppIntro((previous) => (previous === "loading" ? "leave" : "done")),
-      appIntro === "loading" ? 1200 : 1700,
-    )
-    return () => window.clearTimeout(timer)
-  }, [appIntro, reduceMotion])
-  useEffect(() => {
-    if (appIntro === "done") return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") dismissAppIntro()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [appIntro, dismissAppIntro])
-  const appIntroOverlay = (
-    <AnimatePresence>
-      {appIntro !== "done" ? (
-        <div className="fixed inset-0 z-[70]">
-          <CoachPortalIntro phase={appIntro} speed={0.65} word={t("common.appName")} tone="gentle" onSkip={dismissAppIntro} />
-        </div>
-      ) : null}
-    </AnimatePresence>
-  )
-
   const stopBackgroundRun = useCallback(async () => {
     if (!activeRun) return
     try {
@@ -125,12 +137,6 @@ export default function App() {
   useEffect(() => { loadProfile() }, [loadProfile])
   // Stable so OnboardingView's profile load does not re-run on every App render.
   const finishOnboarding = useCallback(() => { setActive("Roadmap"); loadProfile() }, [loadProfile])
-  useEffect(() => {
-    let stopped = false
-    const load = () => api<DecisionStatus>("/api/decisions/status").then((value) => { if (!stopped) setJev(value) }).catch(() => undefined)
-    load(); const timer = window.setInterval(load, 30_000)
-    return () => { stopped = true; window.clearInterval(timer) }
-  }, [])
 
   if (!profileChecked) {
     return (
@@ -138,7 +144,6 @@ export default function App() {
         <div className="grid min-h-svh place-items-center bg-background" role="status" aria-label={t("common.loading")}>
           <LoaderCircle className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
         </div>
-        {appIntroOverlay}
       </ThemeProvider>
     )
   }
@@ -147,7 +152,6 @@ export default function App() {
     return (
       <ThemeProvider>
         <OnboardingView onDone={finishOnboarding} />
-        {appIntroOverlay}
       </ThemeProvider>
     )
   }
@@ -252,19 +256,6 @@ export default function App() {
               <div className="h-5 w-px bg-border" />
               {/* Each view has its own h1; this is the shell's section label. */}
               <p className="min-w-0 truncate text-sm font-medium">{viewLabel(active)}</p>
-              {jev ? (
-                <span
-                  title={[
-                    ...jev.engines.map((e) => t(e.available ? "header.engineAvailable" : "header.engineUnavailable", { engine: e.label })),
-                    ...(jev.last_success_at ? [t("header.lastDecision", { time: fmt.time(jev.last_success_at) })] : []),
-                    ...(jev.last_error ? [t("header.fallback", { error: jev.last_error })] : []),
-                  ].join(" · ")}
-                  className={`hidden shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex ${jev.state === "degraded" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : jev.state === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
-                >
-                  <span className={`size-1.5 rounded-full ${jev.state === "degraded" ? "bg-amber-500" : jev.state === "active" ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                  <bdi>{jev.engine_label ?? t("header.decisions")}</bdi> · {t(`header.decisionState.${jev.state}` as MessageKey)}
-                </span>
-              ) : null}
               {activeRun ? (
                 <div className="ms-auto flex min-w-0 items-center gap-1.5" role="status" aria-live="polite" aria-label={t("header.hermesGenerating", { stage: activeRun.stage || t("nav.working") })}>
                   <button
@@ -293,7 +284,7 @@ export default function App() {
               {active === "Home" ? (
                 <TodayView onNavigate={(tab) => setActive(tab)} />
               ) : active === "Roadmap" ? (
-                <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} />
+                <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} onAskCoach={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Hermes Coach" ? null : active === "My data" ? (
                 <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Emails" ? (
@@ -312,12 +303,11 @@ export default function App() {
               {/* Hermes Coach stays mounted while hidden so an in-progress
                   reply survives tab switches instead of unmounting mid-stream. */}
               <div className={active === "Hermes Coach" ? "contents" : "hidden"}>
-                <HermesCoach initialDraft={coachDraft} onConsumeDraft={clearCoachDraft} visible={active === "Hermes Coach"} />
+                <HermesCoach initialDraft={coachDraft} onConsumeDraft={clearCoachDraft} visible={active === "Hermes Coach"} onNavigate={(tab) => setActive(tab)} />
               </div>
             </main>
           </AnimatedSidebarInset>
         </AnimatedSidebarProvider>
-        {appIntroOverlay}
       </div>
     </ThemeProvider>
   )

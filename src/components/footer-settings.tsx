@@ -1,29 +1,15 @@
 "use client"
 
-import { Eye, EyeOff, KeyRound, LoaderCircle, RotateCcw, Settings, UserPlus, Users } from "lucide-react"
+import { LoaderCircle, Plug, RotateCcw, Settings, UserPlus, Users } from "lucide-react"
 import { useEffect, useState } from "react"
+import { ConnectionsDialog } from "@/components/connections-dialog"
 import { useAnimatedSidebar } from "@/components/motion/animated-sidebar"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/motion/popover"
-import {
-  DEFAULT_HERMES_GEMINI_MODEL,
-  DEFAULT_HERMES_HF_MODEL,
-  DEFAULT_HERMES_NIM_MODEL,
-  api,
-  clearLocalWaypointState,
-  getHermesApiKey,
-  getHermesModel,
-  getHermesProvider,
-  modelsFor,
-  saveHermesApiKey,
-  saveHermesModel,
-  saveHermesProvider,
-  setCurrentStudentId,
-  type HermesProvider,
-} from "@/lib/waypoint-api"
+import { api, clearLocalWaypointState, setCurrentStudentId } from "@/lib/waypoint-api"
 import { getActingUserId, setActingUserId } from "@/lib/teams-api"
 import { useTheme } from "@/lib/theme-context"
 import { THEMES } from "@/lib/themes"
@@ -39,20 +25,10 @@ export function FooterSettings() {
   const { t, locale, setLocale } = useI18n()
   const { open: sidebarOpen } = useAnimatedSidebar()
   const [popoverOpen, setPopoverOpen] = useState(false)
-  const [hermesProvider, setHermesProvider] = useState<HermesProvider>("gemini")
-  const [hermesModel, setHermesModel] = useState<string>(DEFAULT_HERMES_GEMINI_MODEL)
-  const [hermesApiKey, setHermesApiKey] = useState("")
-  const [showKey, setShowKey] = useState(false)
+  const [connectionsOpen, setConnectionsOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [resettingTeam, setResettingTeam] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
-  const [applyState, setApplyState] = useState<"idle" | "saving" | "waiting" | "live" | "saved" | "error">("idle")
-  const [applyError, setApplyError] = useState<string | null>(null)
-  const modelOptions = modelsFor(hermesProvider)
-  const modelChoices =
-    hermesModel && !modelOptions.some((m) => m.id === hermesModel)
-      ? [{ id: hermesModel, label: hermesModel }, ...modelOptions]
-      : modelOptions
   const activeTheme = THEMES.find((t) => t.id === themeId) ?? THEMES[0]
 
   // The sidebar width animates when toggled, which moves the gear without
@@ -61,58 +37,6 @@ export function FooterSettings() {
   useEffect(() => {
     setPopoverOpen(false)
   }, [sidebarOpen])
-
-  const applySettings = async () => {
-    const key = hermesApiKey.trim()
-    if (key.length < 32) {
-      setApplyState("error")
-      setApplyError(t("settings.keyTooShort"))
-      return
-    }
-    setApplyState("saving")
-    setApplyError(null)
-    let pre: number | null = null
-    try {
-      const health = await api<{ started_at?: number }>("/api/health")
-      pre = health.started_at ?? null
-    } catch {
-      // Backend may be starting; the apply POST below is the real probe.
-    }
-    try {
-      await api("/api/settings/hermes", {
-        method: "POST",
-        body: JSON.stringify({ key, provider: hermesProvider, model: hermesModel }),
-      })
-    } catch (reason) {
-      setApplyState("error")
-      setApplyError(reason instanceof Error ? reason.message : t("settings.saveFailed"))
-      return
-    }
-    // The server is authoritative now; drop the tab-only override.
-    saveHermesApiKey("")
-    setHermesApiKey("")
-    setApplyState("waiting")
-    const deadline = Date.now() + 45000
-    let sawDown = false
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      try {
-        const health = await api<{ started_at?: number }>("/api/health")
-        if (pre === null || (health.started_at !== undefined && health.started_at !== pre)) {
-          setApplyState("live")
-          return
-        }
-      } catch {
-        sawDown = true
-      }
-    }
-    if (sawDown) {
-      setApplyState("error")
-      setApplyError(t("settings.backendDidNotReturn"))
-    } else {
-      setApplyState("saved")
-    }
-  }
 
   const resetDemoTeam = async () => {
     if (resettingTeam || !window.confirm(t("settings.resetTeamConfirm"))) return
@@ -145,17 +69,12 @@ export function FooterSettings() {
   }
 
   return (
+    <>
+    {connectionsOpen ? <ConnectionsDialog onClose={() => setConnectionsOpen(false)} /> : null}
     <Popover
       open={popoverOpen}
       onOpenChange={(open) => {
         setPopoverOpen(open)
-        if (open) {
-          const provider = getHermesProvider()
-          setHermesProvider(provider)
-          setHermesModel(getHermesModel(provider))
-          setHermesApiKey(getHermesApiKey())
-          setShowKey(false)
-        }
       }}
       side="top"
       align="end"
@@ -236,112 +155,14 @@ export function FooterSettings() {
         </p>
 
         <div className="mt-3 border-t border-border pt-3">
-          <label htmlFor="hermes-provider" className="block px-1 text-xs font-medium text-foreground">
-            {t("settings.hermesModel")}
-          </label>
-          <select
-            id="hermes-provider"
-            value={hermesProvider}
-            onChange={(event) => {
-              const provider = event.target.value as HermesProvider
-              setHermesProvider(provider)
-              saveHermesProvider(provider)
-              const nextModel = getHermesModel(provider)
-              setHermesModel(nextModel)
-            }}
-            className="mt-2 h-9 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="gemini">Gemini</option>
-            <option value="nim">NVIDIA NIM</option>
-            <option value="hf">Hugging Face</option>
-          </select>
-
-          <label htmlFor="hermes-model" className="mt-3 block px-1 text-xs font-medium text-foreground">
-            {t("settings.model")}
-          </label>
-          <select
-            id="hermes-model"
-            value={hermesModel}
-            onChange={(event) => {
-              setHermesModel(event.target.value)
-              saveHermesModel(hermesProvider, event.target.value)
-            }}
-            className="mt-2 h-9 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {modelChoices.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-
-          <label htmlFor="hermes-api-key" className="mt-3 block px-1 text-xs font-medium text-foreground">
-            {t("settings.apiKey")}
-          </label>
-          <div className="mt-2 flex items-center gap-1 rounded-lg border border-border bg-background px-2 focus-within:ring-2 focus-within:ring-ring">
-            <KeyRound className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <input
-              id="hermes-api-key"
-              type={showKey ? "text" : "password"}
-              value={hermesApiKey}
-              onChange={(event) => {
-                setHermesApiKey(event.target.value)
-                saveHermesApiKey(event.target.value)
-              }}
-              placeholder={t(hermesProvider === "nim" ? "settings.apiKeyPlaceholderNim" : "settings.apiKeyPlaceholder")}
-              // Keys are Latin machine values: type them LTR, but let an Arabic placeholder read RTL.
-              dir={hermesApiKey ? "ltr" : undefined}
-              autoComplete="off"
-              spellCheck={false}
-              className="h-9 w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
-            />
-            {hermesApiKey ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setHermesApiKey("")
-                  saveHermesApiKey("")
-                }}
-                aria-label={t("settings.clearKey")}
-                className="grid size-7 shrink-0 place-items-center rounded-md text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                ✕
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setShowKey((v) => !v)}
-              aria-label={t(showKey ? "settings.hideKey" : "settings.showKey")}
-              aria-pressed={showKey}
-              className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {showKey ? <EyeOff className="size-3.5" aria-hidden="true" /> : <Eye className="size-3.5" aria-hidden="true" />}
-            </button>
-          </div>
-          {hermesProvider === "hf" ? (
-            <p className="mt-2 px-1 text-[11px] leading-4 text-muted-foreground">
-              {t("settings.defaultHf", { model: DEFAULT_HERMES_HF_MODEL })}
-            </p>
-          ) : hermesProvider === "nim" ? (
-            <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-              {t("settings.defaultNim", { model: DEFAULT_HERMES_NIM_MODEL })}
-            </p>
-          ) : (
-            <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-              {t("settings.defaultGemini", { model: DEFAULT_HERMES_GEMINI_MODEL })}
-            </p>
-          )}
           <button
             type="button"
-            disabled={applyState === "saving" || applyState === "waiting" || hermesApiKey.trim().length < 32}
-            onClick={() => void applySettings()}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            onClick={() => { setPopoverOpen(false); setConnectionsOpen(true) }}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <KeyRound className="size-3.5" aria-hidden="true" />
-            {t(applyState === "saving" ? "settings.saving" : applyState === "waiting" ? "settings.restartingGateway" : applyState === "live" ? "settings.live" : "settings.apply")}
+            <Plug className="size-3.5" aria-hidden="true" />
+            {t("connections.open")}
           </button>
-          {applyState === "saved" ? <p className="mt-2 px-1 text-[11px] leading-4 text-amber-700">{t("settings.savedRestart")}</p> : null}
-          {applyError ? <p role="alert" className="mt-2 px-1 text-[11px] leading-4 text-destructive">{applyError}</p> : null}
         </div>
 
         <div className="mt-3 border-t border-border pt-3">
@@ -381,5 +202,6 @@ export function FooterSettings() {
         </div>
       </PopoverContent>
     </Popover>
+    </>
   )
 }

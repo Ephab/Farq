@@ -11,6 +11,20 @@ PYTHON_VARS = {"VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "__PYVENV_LAUNCHER__"}
 MAIL_SECRETS = {"WAYPOINT_TOKEN_ENCRYPTION_KEY", "OUTLOOK_LOCAL_TOKEN", "MICROSOFT_CLIENT_SECRET"}
 PROVIDER_SECRETS = {"GEMINI_API_KEY", "NVIDIA_API_KEY", "HF_TOKEN", "HERMES_API_KEY", "API_SERVER_KEY", "WAYPOINT_INTERNAL_TOKEN"}
 
+# The Hermes gateway reads provider secrets and its own HERMES_*/API_SERVER_*/WAYPOINT_* settings;
+# every other .env key (TypeSafe, OpenRouter, Apify, Jev/Span tuning, ...) is read by the API alone.
+GATEWAY_PREFIXES = ("HERMES_", "API_SERVER_", "WAYPOINT_")
+
+
+def restart_targets(old: dict[str, str], new: dict[str, str], restartable=("api", "hermes")) -> tuple[str, ...]:
+    """Which Waypoint children must restart after a .env change: the API always, the gateway only if it reads a changed key."""
+    changed = {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+    if not changed:
+        return ()
+    gateway = any(key in PROVIDER_SECRETS or key.startswith(GATEWAY_PREFIXES) for key in changed)
+    return tuple(name for name in restartable if name != "hermes" or gateway)
+
+
 RETIRED_SKILLS = ("onboarding", "project-coach", "quiz", "slides", "student-coach", "team-coach")
 
 

@@ -11,6 +11,7 @@ import ipaddress
 import os
 import re
 import socket
+from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -47,16 +48,27 @@ def fetch_github(username: str) -> list[EvidenceIn]:
             repos.raise_for_status()
             repo_list = [repo for repo in repos.json() if not repo.get("fork") and not repo.get("archived")]
             items: list[EvidenceIn] = []
-            for index, repo in enumerate(repo_list[:40]):
+
+            def details(index_repo: tuple[int, dict]) -> tuple[list[str], str]:
+                index, repo = index_repo
                 languages: list[str] = []
                 readme = ""
                 if index < TOP_README_REPOS:
-                    lang = client.get(repo["languages_url"])
-                    if lang.status_code == 200:
-                        languages = list(lang.json().keys())[:6]
-                    head = client.get(f"{GITHUB_API}/repos/{repo['full_name']}/readme", headers={"Accept": "application/vnd.github.raw"})
-                    if head.status_code == 200:
-                        readme = re.sub(r"\s+", " ", re.sub(r"<[^>]+>|!\[[^\]]*\]\([^)]*\)", " ", head.text))[:500].strip()
+                    try:
+                        lang = client.get(repo["languages_url"])
+                        if lang.status_code == 200:
+                            languages = list(lang.json().keys())[:6]
+                        head = client.get(f"{GITHUB_API}/repos/{repo['full_name']}/readme", headers={"Accept": "application/vnd.github.raw"})
+                        if head.status_code == 200:
+                            readme = re.sub(r"\s+", " ", re.sub(r"<[^>]+>|!\[[^\]]*\]\([^)]*\)", " ", head.text))[:500].strip()
+                    except httpx.HTTPError:
+                        pass  # a repo's extras are optional; the repo itself is still listed
+                return languages, readme
+
+            # The README/language lookups are independent: fetch them in parallel instead of 16 round trips in a row.
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                extras = list(pool.map(details, list(enumerate(repo_list[:40]))))
+            for repo, (languages, readme) in zip(repo_list[:40], extras):
                 items.append(EvidenceIn(
                     kind="project",
                     title=repo["name"],

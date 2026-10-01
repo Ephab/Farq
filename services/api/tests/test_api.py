@@ -232,54 +232,13 @@ def test_completed_node_cannot_be_rewritten(client: TestClient):
     assert response.status_code == 422
 
 
-def test_settings_apply_rewrites_env_and_preserves_other_vars(client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    from app.settings_env import read_env_values
-
-    env = tmp_path / ".env"
-    env.write_text("# keep me\nOTHER=keep\nHERMES_API_KEY=" + "o" * 64 + "\n", encoding="utf-8")
-    monkeypatch.setattr("app.main.ENV_PATH", env)
-
-    key = "k" * 64
-    response = client.post("/api/settings/hermes", json={"key": key, "provider": "gemini", "model": "gemini-2.5-flash"})
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "applied"
-    assert payload["model"] == "gemini-2.5-flash"
-    assert payload["provider"] == "gemini"
-
-    values = read_env_values(env)
-    assert values["HERMES_API_KEY"] == key
-    assert values["HERMES_MODEL"] == "gemini-2.5-flash"
-    assert values["HERMES_PROVIDER"] == "gemini"
-    assert values["OTHER"] == "keep"
-    assert "# keep me" in env.read_text(encoding="utf-8")
-
-
-def test_settings_apply_rejects_short_key_and_unknown_model(client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    env = tmp_path / ".env"
-    original = "HERMES_API_KEY=" + "o" * 64 + "\n"
-    env.write_text(original, encoding="utf-8")
-    monkeypatch.setattr("app.main.ENV_PATH", env)
-
-    assert client.post("/api/settings/hermes", json={"key": "too-short"}).status_code == 422
-    unknown = client.post("/api/settings/hermes", json={"key": "k" * 64, "provider": "gemini", "model": "not-a-model"})
-    assert unknown.status_code == 422
-    assert env.read_text(encoding="utf-8") == original
-
-
-def test_settings_apply_without_env_file_conflicts(client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    monkeypatch.setattr("app.main.ENV_PATH", tmp_path / ".env")
-    response = client.post("/api/settings/hermes", json={"key": "k" * 64})
-    assert response.status_code == 409
-
-
-def test_gateway_401_error_mentions_apply():
+def test_gateway_401_error_mentions_restart():
     import httpx
 
     from app.hermes import raise_for_gateway_status
 
     response = httpx.Response(401, request=httpx.Request("POST", "http://127.0.0.1:8642/v1/runs"))
-    with pytest.raises(RuntimeError, match="Apply"):
+    with pytest.raises(RuntimeError, match="restart"):
         raise_for_gateway_status(response)
 
 
@@ -543,11 +502,6 @@ def test_students_can_only_open_their_own_records(client: TestClient, monkeypatc
     assert client.post(f"/api/chat/threads/{theirs['thread_id']}/messages", headers=as_mine, json={"content": "hi"}).status_code == 403
     assert client.get(f"/api/students/{mine['student_id']}/roadmap", headers={"X-Test-No-Auto": "1"}).status_code == 401
     assert client.get(f"/api/students/{mine['student_id']}/roadmap", headers=as_mine).status_code == 200
-
-
-def test_hermes_settings_apply_only_from_this_computer(client: TestClient):
-    response = client.post("/api/settings/hermes", headers={"Origin": "http://evil.example"}, json={"key": "k" * 40})
-    assert response.status_code == 403
 
 
 def test_rewind_drops_message_and_later(client: TestClient, monkeypatch: pytest.MonkeyPatch):

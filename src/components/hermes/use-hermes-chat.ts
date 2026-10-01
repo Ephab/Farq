@@ -353,3 +353,44 @@ export function splitOptions(content: string): { text: string; options: string[]
   const options = match[1].split("|").map((option) => option.trim().replace(/^[`*]+|[`*]+$/g, "")).filter(Boolean).slice(0, 3)
   return { text: content.replace(OPTIONS_LINE, "").trim(), options }
 }
+
+/**
+ * Short follow-up chips for the newest assistant reply, generated server-side
+ * from only the last exchange (see services/api/app/suggestions.py). Resolves to
+ * an empty list when no model is configured, on error, or after ~5s, so the
+ * caller falls back to its heuristic chips. `loading` is true only while a
+ * request is in flight.
+ */
+export function useChatSuggestions(threadId: string | null, messages: ChatMessage[], busy: boolean): { prompts: string[]; loading: boolean } {
+  const end = messages.length ? messages[messages.length - 1] : null
+  const eligibleId = threadId && end && end.role === "assistant" && !busy
+    && !end.id.startsWith("optimistic-")
+    && !end.metadata?.follow_ups?.length && !end.metadata?.choice_group
+    ? end.id : null
+  const cache = useRef(new Map<string, string[]>())
+  const [state, setState] = useState<{ id: string | null; prompts: string[]; loading: boolean }>({ id: null, prompts: [], loading: false })
+
+  useEffect(() => {
+    if (!threadId || !eligibleId) { setState({ id: null, prompts: [], loading: false }); return }
+    const key = `${threadId}:${eligibleId}`
+    const cached = cache.current.get(key)
+    if (cached) { setState({ id: eligibleId, prompts: cached, loading: false }); return }
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 5000)
+    setState({ id: eligibleId, prompts: [], loading: true })
+    api<{ suggestions: string[] }>(`/api/chat/threads/${threadId}/suggestions?message_id=${encodeURIComponent(eligibleId)}`, { signal: controller.signal })
+      .then((result) => {
+        const prompts = Array.isArray(result.suggestions) ? result.suggestions.filter((item) => typeof item === "string").slice(0, 3) : []
+        if (prompts.length) cache.current.set(key, prompts)
+        setState({ id: eligibleId, prompts, loading: false })
+      })
+      .catch(() => setState({ id: eligibleId, prompts: [], loading: false }))
+      .finally(() => window.clearTimeout(timer))
+    return () => { controller.abort(); window.clearTimeout(timer) }
+  }, [threadId, eligibleId])
+
+  // A stale result for an older message must never show against a newer one.
+  if (!eligibleId) return { prompts: [], loading: false }
+  if (state.id !== eligibleId) return { prompts: [], loading: true }
+  return { prompts: state.prompts, loading: state.loading }
+}

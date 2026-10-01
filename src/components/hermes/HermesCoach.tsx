@@ -1,12 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
-import { parseServerTime } from "@/lib/server-time"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { RotateCcw, Sparkles, Trophy } from "lucide-react"
+import { ArrowRight, Check, Database, Flag, RotateCcw, Sparkles, Trophy } from "lucide-react"
 import { ChatThreadView, type SuggestedPrompt } from "@/components/hermes/ChatThreadView"
 import { CoachPortalIntro, type PortalPhase } from "@/components/animation/CoachPortalIntro"
-import { useHermesChat } from "@/components/hermes/use-hermes-chat"
+import { useChatSuggestions, useHermesChat } from "@/components/hermes/use-hermes-chat"
 import { api, getCurrentStudentId, notifyRoadmapChanged, type OpportunitySummary, type StudentProfile } from "@/lib/waypoint-api"
 import { EASE_OUT } from "@/lib/ease"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
@@ -18,15 +17,8 @@ interface Proposal {
   id: string; summary: string; reasoning: string; status: "pending" | "accepted" | "rejected"; kind?: "ops" | "initial"
   operations: ProposalOperation[]; created_at?: string
 }
-interface RoadmapNode { id: string; title: string; status?: string; deps?: string[] }
+interface RoadmapNode { id: string; title: string; status?: string; deps?: string[]; duration?: string }
 interface RoadmapResponse { snapshot: { title: string; nodes: RoadmapNode[] } }
-
-function formatFactValue(value: unknown): string {
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).map(([key, item]) => `${key}: ${Array.isArray(item) ? item.join(", ") : String(item)}`).join(" · ")
-  }
-  return String(value)
-}
 
 function humanizeId(id: string): string {
   return id.replaceAll("_", " ").replaceAll("-", " ").replace(/\s+/g, " ").trim() || id
@@ -50,18 +42,12 @@ function opDetail(operation: ProposalOperation): string {
   return humanizeId(operation.node_id)
 }
 
-// Fact categories are server data (free text), so the summary keeps them as-is
-// and only localizes the numbers and list joining.
+const FACT_CATEGORIES = new Set(["interest", "goal", "course", "skill", "strength", "weakness", "achievement", "preference"])
+
 function factCounts(facts: Fact[]): [string, number][] {
   const counts = new Map<string, number>()
   for (const fact of facts) counts.set(fact.category, (counts.get(fact.category) ?? 0) + 1)
-  return [...counts.entries()].slice(0, 3)
-}
-
-const TOPIC_STATUS_KEYS: Record<string, MessageKey> = {
-  "in-progress": "coach.context.status.in-progress",
-  "not-started": "coach.context.status.not-started",
-  done: "coach.context.status.done",
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
 }
 
 // Session flag: the portal intro plays on the first Coach visit only. The
@@ -80,7 +66,7 @@ function readIntroEveryVisit(): boolean {
   }
 }
 
-export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true }: { initialDraft?: string; onConsumeDraft?: () => void; visible?: boolean }) {
+export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true, onNavigate }: { initialDraft?: string; onConsumeDraft?: () => void; visible?: boolean; onNavigate?: (tab: string) => void }) {
   const { t, fmt } = useI18n()
   const studentId = getCurrentStudentId()
   const [threadId, setThreadId] = useState<string | null>(null)
@@ -90,6 +76,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
   const [opportunities, setOpportunities] = useState<OpportunitySummary | null>(null)
   const [roadmapTitle, setRoadmapTitle] = useState("")
   const [currentTopic, setCurrentTopic] = useState<{ title: string; status: string } | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number; next: { id: string; title: string; status: string; duration?: string }[] } | null>(null)
   // One-shot handoff from another tab (e.g. Projects "Refine with Hermes").
   // The draft prefills the composer once, then the parent clears it so
   // navigating away and back does not restore the same prompt.
@@ -162,7 +149,6 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
     setPortal("loading")
   }, [reduce])
   const pendingProposals = useMemo(() => proposals.filter((proposal) => proposal.status === "pending"), [proposals])
-  const recentDecisions = useMemo(() => proposals.filter((proposal) => proposal.status !== "pending").slice(0, 3), [proposals])
 
   // Suggestion chips composed from live backend state — used only when Hermes
   // attached no follow-ups of its own. Labels stay short so they fit the pills.
@@ -214,14 +200,21 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
         ?? nodes.find((node) => (node.status ?? "not-started") !== "done")
         ?? null
       setCurrentTopic(current ? { title: current.title, status: current.status ?? "not-started" } : null)
+      const status = (node: RoadmapNode) => node.status ?? "not-started"
+      const unlocked = nodes.filter((node) => status(node) === "not-started" && (node.deps ?? []).every((dep) => done.has(dep)))
+      const next = [...nodes.filter((node) => status(node) === "in-progress"), ...unlocked].slice(0, 3)
+        .map((node) => ({ id: node.id, title: node.title, status: status(node), duration: node.duration }))
+      setProgress(nodes.length ? { done: done.size, total: nodes.length, next } : null)
     } else {
       setRoadmapTitle("")
       setCurrentTopic(null)
+      setProgress(null)
     }
   }, [studentId])
 
   const onRunFinished = useCallback(() => { refreshSide().catch(() => undefined) }, [refreshSide])
   const chat = useHermesChat(threadId, onRunFinished)
+  const suggestions = useChatSuggestions(threadId, chat.messages, chat.busy)
   const { setError } = chat
   const refreshChat = chat.refresh
   // Mounted once and hidden on other tabs: refresh the thread and side
@@ -291,11 +284,8 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
       : "coach.agent.titleDefault")
   const subtitle = roadmapTitle ? t("coach.subtitleGoal", { title: roadmapTitle }) : t("coach.subtitleDefault")
 
-  const recentDecision = recentDecisions[0] ?? null
-  const recentDecisionTime = parseServerTime(recentDecision?.created_at)
-  const recentDecisionAgo = recentDecisionTime !== null ? fmt.relative(Math.min(recentDecisionTime, Date.now())) : null
   const factParts = factCounts(facts)
-  const latestFact = facts[facts.length - 1] ?? null
+  const percent = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0
 
   return (
     <div className="fq fq-coach-page relative">
@@ -345,6 +335,8 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
             disabled={!threadId}
             draft={initialDraft}
             fallbackPrompts={fallbackPrompts}
+            dynamicPrompts={suggestions.prompts}
+            promptsLoading={suggestions.loading}
             afterMessages={
               pendingProposals.length ? (
                 <AnimatePresence initial={false}>
@@ -404,60 +396,88 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
             transition={{ duration: 0.55, delay: 0.12, ease: EASE_OUT }}
           >
             <div className="context-section">
-              <h2>{t("coach.context.title")}</h2>
-              <p>{t("coach.context.subtitle")}</p>
-              <div className="context-item">
-                <strong>{t("coach.context.currentTopic")}</strong>
-                <span>{currentTopic ? <><bdi>{currentTopic.title}</bdi>{" · "}{TOPIC_STATUS_KEYS[currentTopic.status] ? t(TOPIC_STATUS_KEYS[currentTopic.status]) : <bdi>{humanizeId(currentTopic.status)}</bdi>}</> : t("coach.context.noRoadmap")}</span>
-              </div>
-              <div className="context-item">
-                <strong>{t("coach.context.confirmed", { count: facts.length })}</strong>
-                <span dir="auto">{factParts.length ? fmt.list(factParts.map(([category, count]) => `${fmt.number(count)} ${category}`)) : t("coach.context.nothingConfirmed")}</span>
-              </div>
-              {pendingProposals.length ? (
-                <div className="context-item">
-                  <strong>{t("coach.context.drafts", { count: pendingProposals.length })}</strong>
-                  <span>{t("coach.context.draftsNote")}</span>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="context-section">
-              <h2>{t("coach.context.recentDecision")}</h2>
-              {recentDecision ? (
-                <div className="context-item">
-                  <strong>
-                    <span className={`decision-dot${recentDecision.status === "rejected" ? " rejected" : ""}`} aria-hidden="true" />
-                    <bdi>{recentDecision.summary}</bdi>
-                  </strong>
-                  <span>{recentDecision.status === "accepted" ? t("coach.context.accepted") : t("coach.context.passed")}{recentDecisionAgo ? ` · ${recentDecisionAgo}` : ""}</span>
-                </div>
-              ) : latestFact ? (
-                <div className="context-item">
-                  <strong dir="auto">{latestFact.key}</strong>
-                  <span className="change-sub" dir="auto">{formatFactValue(latestFact.value)}</span>
-                  <span>{t("coach.context.statedByYou")}</span>
-                </div>
+              <h2><Flag size={14} aria-hidden="true" />{t("coach.context.progress")}</h2>
+              {progress ? (
+                <>
+                  <p dir="auto">{roadmapTitle}</p>
+                  <div className="ctx-progress">
+                    <div className="ctx-progress-head">
+                      <strong>{t("coach.context.stepsDone", { done: fmt.number(progress.done), total: fmt.number(progress.total) })}</strong>
+                      <span>{fmt.percent(percent / 100)}</span>
+                    </div>
+                    <div className="ctx-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={t("coach.context.progress")}>
+                      <span style={{ width: `${percent}%` }} />
+                    </div>
+                  </div>
+                  {progress.next.length ? (
+                    <>
+                      <h3 className="ctx-sub">{t("coach.context.upNext")}</h3>
+                      <ol className="ctx-next">
+                        {progress.next.map((node) => (
+                          <li key={node.id}>
+                            <span className={`ctx-next-dot${node.status === "in-progress" ? " active" : ""}`} aria-hidden="true" />
+                            <span className="ctx-next-copy">
+                              <strong dir="auto">{node.title}</strong>
+                              <span>{node.status === "in-progress" ? t("coach.context.inProgress") : t("coach.context.readyToStart")}{node.duration ? <> · <bdi>{node.duration}</bdi></> : null}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </>
+                  ) : (
+                    <p className="ctx-done"><Check size={13} aria-hidden="true" />{t("coach.context.allDone")}</p>
+                  )}
+                  {onNavigate ? (
+                    <button type="button" className="ctx-link" onClick={() => onNavigate("Roadmap")}>
+                      {t("coach.context.openRoadmap")}<ArrowRight size={13} aria-hidden="true" className="ctx-arrow" />
+                    </button>
+                  ) : null}
+                </>
               ) : (
-                <div className="context-item">
-                  <strong>{t("coach.context.noDecisions")}</strong>
-                  <span>{t("coach.context.noDecisionsNote")}</span>
-                </div>
+                <p>{t("coach.context.noRoadmap")}</p>
               )}
             </div>
 
-            {facts.length ? (
+            {pendingProposals.length ? (
               <div className="context-section">
-                <h2>{t("coach.context.knows")}</h2>
-                <p>{t("coach.context.knowsNote")}</p>
-                {facts.slice(-3).reverse().map((fact) => (
-                  <div className="context-item" key={fact.id}>
-                    <strong dir="auto">{fact.key}</strong>
-                    <span dir="auto">{formatFactValue(fact.value)}</span>
+                <h2>{t("coach.context.decide")}</h2>
+                <p>{t("coach.context.decideNote")}</p>
+                {pendingProposals.map((proposal) => (
+                  <div className="ctx-decision" key={proposal.id}>
+                    <strong dir="auto">{proposal.summary}</strong>
+                    <span>{t("coach.context.changeCount", { count: proposal.operations.length })}</span>
+                    <div className="ctx-decision-actions">
+                      <button type="button" disabled={deciding !== null} onClick={() => void decide(proposal, "reject")} className="button secondary small">{t("coach.proposal.notNow")}</button>
+                      <button type="button" disabled={deciding !== null} onClick={() => void decide(proposal, "accept")} className="button small">{t("coach.context.accept")}</button>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : null}
+
+            <div className="context-section">
+              <h2><Database size={14} aria-hidden="true" />{t("coach.context.knows")}</h2>
+              {facts.length ? (
+                <>
+                  <p>{t("coach.context.knowsCount", { count: facts.length })}</p>
+                  <div className="ctx-chips">
+                    {factParts.map(([category, count]) => (
+                      <span className="ctx-chip" key={category}>
+                        {FACT_CATEGORIES.has(category) ? t(`coach.context.category.${category}` as MessageKey) : <bdi>{humanizeId(category)}</bdi>}
+                        <b>{fmt.number(count)}</b>
+                      </span>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p>{t("coach.context.knowsEmpty")}</p>
+              )}
+              {onNavigate ? (
+                <button type="button" className="ctx-link" onClick={() => onNavigate("My data")}>
+                  {t("coach.context.reviewData")}<ArrowRight size={13} aria-hidden="true" className="ctx-arrow" />
+                </button>
+              ) : null}
+            </div>
 
             <div className="context-section">
               <h2>{t("coach.context.tools")}</h2>

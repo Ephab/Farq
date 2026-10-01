@@ -1,0 +1,68 @@
+/* Waypoint compass-star activity glyph. Colors come from the app accent token. */
+.coach-activity {
+  display: inline-block;
+  flex: 0 0 auto;
+  color: var(--fq-accent, var(--primary));
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.coach-activity-spin {
+  transform-origin: 12px 12px;
+}
+
+.coach-activity-major {
+  fill: currentColor;
+}
+
+.coach-activity-minor {
+  fill: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+.coach-activity-core {
+  fill: var(--fq-surface-solid, var(--background));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Thinking: slow turn with a soft breath. */
+  .coach-activity-thinking .coach-activity-spin {
+    animation: coach-activity-turn 6s linear infinite;
+  }
+
+  .coach-activity-thinking {
+    animation: coach-activity-breathe 2.4s ease-in-out infinite;
+  }
+
+  /* Writing: quicker turn and a tighter pulse. */
+  .coach-activity-writing .coach-activity-spin {
+    animation: coach-activity-turn 2.2s linear infinite;
+  }
+
+  .coach-activity-writing {
+    animation: coach-activity-breathe 1s ease-in-out infinite;
+  }
+
+  /* Tool use: ticks round one point at a time, like a compass dial. */
+  .coach-activity-tool .coach-activity-spin {
+    animation: coach-activity-turn 2.4s steps(8, end) infinite;
+  }
+}
+
+@keyframes coach-activity-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes coach-activity-breathe {
+  0%,
+  100% {
+    opacity: 0.7;
+    scale: 0.92;
+  }
+
+  50% {
+    opacity: 1;
+    scale: 1.05;
+  }
+}

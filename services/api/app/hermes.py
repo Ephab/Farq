@@ -295,9 +295,8 @@ def raise_for_gateway_status(response: httpx.Response) -> None:
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 401:
             raise RuntimeError(
-                "Hermes gateway rejected the API key (401). Press Apply in Settings "
-                "to save this tab's key to the server, or clear the tab-only key so "
-                "the server key is used; otherwise restart the Waypoint stack so the API "
+                "Hermes gateway rejected the API key (401). Clear any tab-only key so the "
+                "server key is used; otherwise restart the Waypoint stack so the API "
                 "and gateway share the same key."
             ) from exc
         raise
@@ -460,7 +459,7 @@ def run_json_prompt(
     """
     gateway_key = effective_hermes_key(hermes_api_key)
     if len(gateway_key) < 16:
-        raise HermesJsonError("Waypoint Hermes key is missing or too short; press Apply in Settings or set HERMES_API_KEY in the server .env", status=401)
+        raise HermesJsonError("Waypoint Hermes key is missing or too short; run setup (setup.bat or bash setup.sh) to generate HERMES_API_KEY in the server .env", status=401)
     try:
         resolve_hermes_selection(provider, model)
     except ValueError as exc:

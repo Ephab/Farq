@@ -289,7 +289,7 @@ def work_one_page(connection_id: str, lease: str) -> None:
             reconnect = (isinstance(error, ValueError) and str(error) == "reauthorization_required") or (isinstance(error, GraphError) and error.status in {401, 403})
             connection.status = "reconnect" if reconnect else "error"
             connection.error = "Reconnect with a fresh Microsoft Graph token. Your organization must permit Mail.Read access." if reconnect else (
-                "Laya is unavailable. Run setup.bat or setup.sh, then retry sync." if isinstance(error, ClassifierUnavailable)
+                "The email classifier is unavailable. Check Models & connections (or run setup), then retry sync." if isinstance(error, ClassifierUnavailable)
                 else "Classic Outlook could not be read. Check its profile, security prompts and organization policy; then retry." if connection.tenant == desktop.TENANT
                 else "Sync paused after a provider error. Previous results are preserved; retry later.")
             connection.next_sync = time.time() + retry

@@ -58,8 +58,8 @@ def run_email_chat(
     gateway_key = effective_hermes_key(hermes_api_key)
     if len(gateway_key) < 16:
         raise EmailChatError(
-            "Waypoint Hermes key is missing or too short; press Apply in Settings "
-            "or set HERMES_API_KEY in the server .env",
+            "Waypoint Hermes key is missing or too short; run setup (setup.bat or bash setup.sh) "
+            "to generate HERMES_API_KEY in the server .env",
             status=401,
         )
     prompt = build_email_prompt(emails, cleaned)

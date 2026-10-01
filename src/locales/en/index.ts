@@ -10,5 +10,6 @@ import { emails } from "./emails"
 import { teams } from "./teams"
 import { quiz } from "./quiz"
 import { slides } from "./slides"
+import { connections } from "./connections"
 
-export const en = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides } as const
+export const en = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides, connections } as const

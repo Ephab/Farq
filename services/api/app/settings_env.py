@@ -73,9 +73,9 @@ def write_env_values(updates: dict[str, str], path: Path = ENV_PATH) -> None:
                 seen.add(key)
                 continue
         out.append(line)
-    for key in MANAGED_KEYS:
-        if key in updates and key not in seen:
-            out.append(f"{key}={updates[key]}")
+    for key, value in updates.items():
+        if key not in seen:
+            out.append(f"{key}={value}")
     tmp = path.with_suffix(".tmp")
     tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
     os.replace(tmp, path)

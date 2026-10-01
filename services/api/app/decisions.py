@@ -53,8 +53,8 @@ INTENT_CRITERIA = {
 
 
 def enabled() -> bool:
-    """The gate runs when any engine in the chain is configured."""
-    return any(engine["available"] for engine in decision_engines.engines_status())
+    """The gate runs when any engine the engine switch allows is configured."""
+    return any(engine["available"] and engine["selected"] for engine in decision_engines.engines_status())
 
 
 def mode() -> str:
@@ -202,13 +202,14 @@ def status(db: Session) -> dict:
     success = db.scalar(select(DecisionRecord).where(DecisionRecord.status != "error").order_by(DecisionRecord.created_at.desc()))
     failure = db.scalar(select(DecisionRecord).where(DecisionRecord.status == "error").order_by(DecisionRecord.created_at.desc()))
     engines = decision_engines.engines_status()
-    lead = next((engine for engine in engines if engine["available"]), None)
+    lead = next((engine for engine in engines if engine["available"] and engine["selected"]), None)
     configured = lead is not None
     state = "disabled" if not configured or mode() == "off" else "degraded" if latest and latest.status == "error" else "active" if mode() == "active" else "observing"
     return {
         "state": state, "enabled": configured, "mode": mode(),
         "engine": lead["id"] if lead else None, "engine_label": lead["label"] if lead else None,
         "model": lead["model"] if lead else None, "engines": engines,
+        "engine_choice": decision_engines.engine_choice(),
         "active_purposes": sorted(active_purposes()),
         "last_success_at": success.created_at.isoformat() if success else None,
         "last_failure_at": failure.created_at.isoformat() if failure else None,

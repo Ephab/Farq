@@ -23,6 +23,55 @@ JEV_URL = "https://api.typesafe.ai/v1/systemone"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/systemone"
 CHAIN = ("jev", "span", "laya")
 CLOUD = {"jev", "span"}
+# The student-facing switch: "jev" = cloud engines only (Laya is never loaded, so no local CPU use),
+# "laya" = local only (nothing leaves the machine), "auto" = the full chain.
+ENGINE_MODES = {"auto": CHAIN, "jev": ("jev", "span"), "laya": ("laya",)}
+SETTING_KEY = "decision_engine"
+_choice: str | None = None
+
+
+def engine_choice() -> str:
+    """Current switch value: persisted in app_settings, else DECISION_ENGINE in the environment, else auto."""
+    global _choice
+    if _choice is None:
+        fallback = os.getenv("DECISION_ENGINE", "").strip().lower()
+        try:
+            from .database import SessionLocal
+            from .models import AppSetting
+            with SessionLocal() as db:
+                row = db.get(AppSetting, SETTING_KEY)
+        except Exception:
+            return fallback if fallback in ENGINE_MODES else "auto"  # table not created yet; do not cache
+        value = row.value if row else fallback
+        _choice = value if value in ENGINE_MODES else "auto"
+    return _choice
+
+
+def set_engine_choice(value: str) -> str:
+    """Persist the switch; takes effect on the next decision without a restart."""
+    global _choice
+    if value not in ENGINE_MODES:
+        raise ValueError("engine must be one of: " + ", ".join(ENGINE_MODES))
+    from .database import SessionLocal
+    from .models import AppSetting
+    with SessionLocal() as db:
+        row = db.get(AppSetting, SETTING_KEY)
+        if row is None:
+            db.add(AppSetting(key=SETTING_KEY, value=value))
+        else:
+            row.value = value
+        db.commit()
+    _choice = value
+    return value
+
+
+def laya_loaded() -> bool:
+    """True only if the local model is actually in memory (never loads it)."""
+    return _laya is not None and getattr(_laya, "_agent", None) is not None
+
+
+def active_chain() -> tuple[str, ...]:
+    return ENGINE_MODES[engine_choice()]
 
 
 class EngineUnavailable(RuntimeError):
@@ -77,11 +126,16 @@ INFO: dict[str, Callable[[], EngineInfo]] = {"jev": jev_info, "span": span_info,
 
 
 def engines_status() -> list[dict]:
-    return [INFO[name]().__dict__ for name in CHAIN]
+    """Every engine with `selected` = whether the current switch allows it to run."""
+    allowed = active_chain()
+    return [{**INFO[name]().__dict__, "selected": name in allowed} for name in CHAIN]
 
 
 def chain_from(preferred: str) -> tuple[str, ...]:
-    """The chain starting at the preferred engine: jev -> (jev, span, laya), span -> (span, laya)."""
+    """The chain starting at the preferred engine: jev -> (jev, span, laya), span -> (span, laya).
+
+    The engine switch only narrows this at call time (see classify_email); the shape stays fixed here.
+    """
     return CHAIN[CHAIN.index(preferred):] if preferred in CHAIN else CHAIN
 
 
@@ -190,8 +244,10 @@ def error_category(exc: Exception) -> str:
     return "invalid_response"
 
 
-def ask_chain(state: str, questions: dict, order: tuple[str, ...] = CHAIN) -> ChainResult:
-    """First engine in `order` that is configured and answers wins. Unconfigured engines are skipped."""
+def ask_chain(state: str, questions: dict, order: tuple[str, ...] | None = None) -> ChainResult:
+    """First engine in `order` that is configured, allowed by the engine switch and answers wins."""
+    allowed = active_chain()
+    order = tuple(name for name in (order or CHAIN) if name in allowed)
     failures: list[tuple[str, str]] = []
     for name in order:
         if not INFO[name]().available:
@@ -236,7 +292,8 @@ def classify_email(email, preferred: str, laya):
     from .email_classifier import QUESTIONS, clean_email_body
 
     failures: list[tuple[str, str]] = []
-    cloud = [name for name in chain_from(preferred) if name in CLOUD and INFO[name]().available]
+    allowed = active_chain()
+    cloud = [name for name in chain_from(preferred) if name in CLOUD and name in allowed and INFO[name]().available]
     if cloud:
         # redact_text also collapses whitespace, so the body joins the subject on one line.
         state = redact_text(f"Subject: {email.subject}\n\n{clean_email_body(email.body)}", limit=EMAIL_TEXT_CHARS)
@@ -247,6 +304,10 @@ def classify_email(email, preferred: str, laya):
                 failures.append((name, str(error).split(":", 1)[-1]))
             except (KeyError, TypeError, ValueError):
                 failures.append((name, "invalid_response"))
+    if "laya" not in allowed:
+        # Cloud-only mode: never load the local model, even as a last resort.
+        from .email_classifier import ClassifierUnavailable
+        raise ClassifierUnavailable("Cloud-only mode is on and no cloud engine answered. Check Models & connections.")
     classification = laya.classify(email)
     if failures:
         classification = replace(classification, review_reasons=classification.review_reasons + tuple(f"fallback_from_{name}" for name, _ in failures))

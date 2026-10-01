@@ -1,8 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Bookmark, BriefcaseBusiness, Building2, ExternalLink, FlaskConical, MapPin, Search, Sparkles, X } from "lucide-react"
-import { api, getCurrentStudentId } from "@/lib/waypoint-api"
+import { Bookmark, BriefcaseBusiness, Building2, ExternalLink, FlaskConical, MapPin, RefreshCw, Search, Sparkles, X } from "lucide-react"
+import { ApiError, api, getCurrentStudentId } from "@/lib/waypoint-api"
 import { useModalFocus } from "@/lib/use-modal-focus"
 import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
@@ -57,6 +57,9 @@ interface CoopPosting {
   deadline_confidence: "explicit" | "unknown"
   is_demo: boolean
   fetched_at: string
+  first_seen_at: string
+  is_new: boolean
+  days_left: number | null
   fit_score: number
   fit_tier: string
   fit_tier_code?: FitTier
@@ -71,7 +74,27 @@ interface CoopOverview {
   postings: CoopPosting[]
   saved_count: number
   verified_openings: number
+  new_count: number
+  last_visit_at: string | null
   generated_at: string
+}
+
+type SourceKey = "feeds" | "telegram" | "official" | "linkedin"
+type SourceStatus = "ok" | "partial" | "failed" | "not_configured" | "running" | "never"
+interface SourceRow {
+  key: SourceKey
+  status: SourceStatus
+  hint: string | null
+  last_run_at: string | null
+  last_ok_at: string | null
+  fetched: number
+  changed: number
+  error: string | null
+}
+interface CoopSources {
+  sources: SourceRow[]
+  refresh: { status: "idle" | "running" | "done" }
+  last_updated_at: string | null
 }
 
 type Selected = { type: "company"; item: CoopCompany } | { type: "posting"; item: CoopPosting }
@@ -89,6 +112,27 @@ function sourceTone(status: string, demo = false): string {
   if (demo) return "bg-amber-500/10 text-amber-700 dark:text-amber-300"
   if (status === "verified_open") return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
   return "bg-muted text-muted-foreground"
+}
+
+function statusTone(status: SourceStatus): string {
+  if (status === "ok") return "bg-emerald-500"
+  if (status === "partial" || status === "running") return "bg-amber-500"
+  if (status === "failed") return "bg-red-500"
+  return "bg-muted-foreground/40"
+}
+
+/** NEW badge, deadline countdown and "found N ago" for a posting. */
+function PostingSignals({ posting }: { posting: CoopPosting }) {
+  const { t, fmt } = useI18n()
+  const days = posting.days_left
+  const urgent = days !== null && days <= 7
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {posting.is_new ? <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground">{t("dashboard.coop.live.new")}</span> : null}
+      {days !== null ? <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", urgent ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-muted text-muted-foreground")}>{days <= 0 ? t("dashboard.coop.live.closesToday") : days === 1 ? t("dashboard.coop.live.closesTomorrow") : t("dashboard.coop.live.closesIn", { days: fmt.number(days) })}</span> : null}
+      {!posting.is_demo ? <span className="text-[11px] text-muted-foreground">{t("dashboard.coop.live.found", { time: fmt.relative(posting.first_seen_at) })}</span> : null}
+    </div>
+  )
 }
 
 function FitPill({ item }: { item: { fit_tier: string; fit_tier_code?: FitTier } }) {
@@ -127,6 +171,10 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
   // not filtered from the eight recommendations the overview carries.
   const [list, setList] = useState<{ companies: CoopCompany[]; postings: CoopPosting[] } | null>(null)
   const listRequest = useRef(0)
+  const [sources, setSources] = useState<CoopSources | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [, setTick] = useState(0)
+  const viewed = useRef(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query.trim()), 250)
@@ -163,11 +211,63 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
     }
   }, [studentId, tab, debounced, t])
 
+  const loadSources = useCallback(async () => {
+    try {
+      setSources(await api<CoopSources>(`/api/students/${studentId}/coop/sources`))
+    } catch {
+      // Status is advisory; the cached matches below stay usable without it.
+    }
+  }, [studentId])
+
   useEffect(() => { void load() }, [load])
   useEffect(() => { void loadList() }, [loadList])
+  useEffect(() => { void loadSources() }, [loadSources])
+  useEffect(() => { if (data) viewed.current = true }, [data])
+
+  // Poll fast while a refresh runs, slowly otherwise: background refreshes show up on their own.
+  const refreshStatus = sources?.refresh.status
+  useEffect(() => {
+    const timer = window.setInterval(() => { if (!document.hidden) void loadSources() }, refreshStatus === "running" ? 1500 : 30000)
+    return () => window.clearInterval(timer)
+  }, [refreshStatus, loadSources])
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((value) => value + 1), 30000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  // New data landed (scheduled or manual refresh): reload the lists without a page refresh.
+  const updatedAt = sources?.last_updated_at ?? null
+  const seenUpdate = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (seenUpdate.current === undefined) { seenUpdate.current = updatedAt; return }
+    if (seenUpdate.current !== updatedAt) {
+      seenUpdate.current = updatedAt
+      void load()
+      void loadList()
+    }
+  }, [updatedAt, load, loadList])
+
+  // "New since your last visit" is measured from when the student last left this view.
+  useEffect(() => {
+    const mark = () => {
+      if (viewed.current) void api(`/api/students/${studentId}/coop/visit`, { method: "POST", keepalive: true }).catch(() => undefined)
+    }
+    window.addEventListener("pagehide", mark)
+    return () => { window.removeEventListener("pagehide", mark); mark() }
+  }, [studentId])
+
+  const refreshNow = async () => {
+    setRefreshError(null)
+    try {
+      setSources(await api<CoopSources>(`/api/students/${studentId}/coop/refresh`, { method: "POST" }))
+    } catch (reason) {
+      setRefreshError(reason instanceof ApiError && reason.status === 429 ? t("dashboard.coop.live.refreshWait") : reason instanceof Error ? reason.message : t("dashboard.coop.live.refreshError"))
+    }
+  }
 
   const companies = list ? list.companies : tab === "matches" ? data?.companies ?? [] : []
   const postings = list ? list.postings : []
+  const fresh = (data?.postings ?? []).filter((posting) => !posting.is_demo).slice(0, 4)
 
   const setState = async (type: "company" | "posting", id: string, status: TargetState) => {
     try {
@@ -198,11 +298,35 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
           <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">{t("dashboard.coop.title")}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{t("dashboard.coop.intro")}</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-center">
+        <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-2xl border border-border p-3"><strong className="block text-2xl">{fmt.number(data?.companies.length ?? 0)}</strong><span className="text-xs text-muted-foreground">{t("dashboard.coop.companyMatches", { count: data?.companies.length ?? 0 })}</span></div>
           <div className="rounded-2xl border border-border p-3"><strong className="block text-2xl">{fmt.number(data?.verified_openings ?? 0)}</strong><span className="text-xs text-muted-foreground">{t("dashboard.coop.verifiedOpenStat")}</span></div>
+          <div className="rounded-2xl border border-border p-3"><strong className="block text-2xl">{fmt.number(data?.new_count ?? 0)}</strong><span className="text-xs text-muted-foreground">{t("dashboard.coop.live.newStat")}</span></div>
         </div>
       </header>
+
+      <section aria-label={t("dashboard.coop.live.sectionLabel")} className="mb-5 rounded-2xl border border-border p-3 sm:p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+            {refreshStatus === "running" ? t("dashboard.coop.live.refreshing") : updatedAt ? t("dashboard.coop.live.updated", { time: fmt.relative(updatedAt) }) : t("dashboard.coop.live.neverUpdated")}
+          </p>
+          <button type="button" onClick={() => void refreshNow()} disabled={refreshStatus === "running"} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
+            <RefreshCw className={cn("size-4", refreshStatus === "running" && "animate-spin")} aria-hidden="true" />{t("dashboard.coop.live.refresh")}
+          </button>
+        </div>
+        {refreshError ? <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{refreshError}</p> : null}
+        {sources ? (
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {sources.sources.map((row) => (
+              <li key={row.key} title={[row.last_run_at ? t("dashboard.coop.live.lastRun", { time: fmt.relative(row.last_run_at), count: fmt.number(row.fetched) }) : "", row.error ?? ""].filter(Boolean).join(" · ") || undefined} className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs">
+                <span aria-hidden="true" className={cn("size-2 rounded-full", statusTone(row.status), row.status === "running" && "animate-pulse")} />
+                <span className="font-medium">{t(`dashboard.coop.live.source.${row.key}`)}</span>
+                <span className="text-muted-foreground">{row.status === "not_configured" && row.hint ? t("dashboard.coop.live.needs", { hint: row.hint }) : t(`dashboard.coop.live.status.${row.status}`)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
 
       {error ? <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600">{error}</div> : null}
 
@@ -217,6 +341,22 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
           <input type="search" aria-label={t("dashboard.coop.search")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("dashboard.coop.search")} dir={query ? "auto" : undefined} className="h-9 w-full rounded-xl border border-border bg-background ps-9 pe-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
         </label>
       </div>
+
+      {tab === "matches" && !debounced ? (
+        <section className="mb-6" aria-label={t("dashboard.coop.live.freshTitle")}>
+          <h2 className="mb-3 text-lg font-semibold">{t("dashboard.coop.live.freshTitle")}</h2>
+          {fresh.length ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {fresh.map((posting) => (
+                <button key={posting.id} type="button" onClick={() => setSelected({ type: "posting", item: posting })} className="rounded-2xl border border-border bg-background p-4 text-start outline-none transition hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring">
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"><bdi>{posting.company_name}</bdi></p><p dir="auto" className="mt-1 font-semibold">{posting.title}</p></div><FitPill item={posting} /></div>
+                  <PostingSignals posting={posting} />
+                </button>
+              ))}
+            </div>
+          ) : <p className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">{t("dashboard.coop.live.freshEmpty")}</p>}
+        </section>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         {companies.map((company) => (
@@ -238,6 +378,7 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
             <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><bdi>{posting.company_name}</bdi></p><h2 dir="auto" className="mt-1 text-start text-xl font-semibold">{posting.title}</h2>
             <p className="mt-2 flex items-center gap-1 text-sm text-muted-foreground"><MapPin className="size-3.5" aria-hidden="true" />{posting.location ? <bdi>{posting.location}</bdi> : t("dashboard.coop.locationUnknown")}</p>
             {posting.closes_at ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">{t("dashboard.coop.detail.deadline", { date: fmt.date(posting.closes_at, { dateStyle: "medium", timeZone: "UTC" }) })}</p> : null}
+            <PostingSignals posting={posting} />
             <p dir="auto" className="mt-4 text-start text-sm text-muted-foreground">{reasonsOf(posting)[0]}</p>
             <div className="mt-auto flex items-center justify-between gap-3 pt-5"><div className="flex flex-wrap gap-1.5">{posting.is_demo ? <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", sourceTone(posting.status, true))}>{t("dashboard.coop.source.demo")}</span> : posting.sources.map((source) => <span key={`${source.name}-${source.detail_url}`} className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"><bdi>{source.label}</bdi></span>)}</div><button type="button" onClick={() => setSelected({ type: "posting", item: posting })} className="shrink-0 text-sm font-semibold underline-offset-4 hover:underline">{t("dashboard.coop.viewOpportunity")}</button></div>
           </article>

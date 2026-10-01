@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import { parseServerTime } from "@/lib/server-time"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, LoaderCircle, MapPin, Mic, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
+import { CoachActivityIcon, type CoachActivity } from "@/components/hermes/CoachActivityIcon"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
 import { useVoiceInput } from "@/components/hermes/use-voice-input"
@@ -39,14 +40,28 @@ interface ChatThreadViewProps {
    * must be composed from live backend state (roadmap, facts, drafts) — never
    * static text — and fills the composer so the student can edit first. */
   fallbackPrompts?: SuggestedPrompt[]
+  /** Short follow-ups generated for the latest reply (see useChatSuggestions).
+   * Clicking one sends it as the student's next message. */
+  dynamicPrompts?: string[]
+  /** True while dynamic follow-ups are being fetched: chips wait instead of flickering. */
+  promptsLoading?: boolean
 }
 
 /** use-hermes-chat sets `coach.*` catalog keys for its own stages/errors;
  * anything else (server stages, API error text) is shown as-is. */
 const isCoachKey = (value: string): value is MessageKey => /^coach\.[\w.]+$/.test(value)
 
+/** Map the run stage onto what the coach is doing. Server stages are English
+ * text ("Hermes is using Waypoint tools"); the label shown is always our own
+ * translated one, so model names and internal wording never reach the student. */
+export function activityFromStage(stage: string): CoachActivity {
+  if (/tool/i.test(stage)) return "tool"
+  if (!stage || /think|review|start|queue|wait|approval/i.test(stage)) return "thinking"
+  return "writing"
+}
+
 /** Message list + composer in the coach concept language (chat-shell interior). */
-export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [] }: ChatThreadViewProps) {
+export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [], dynamicPrompts = [], promptsLoading = false }: ChatThreadViewProps) {
   const { t, fmt } = useI18n()
   const display = (value: string) => (isCoachKey(value) ? t(value) : value)
   const formatTime = (iso: string) => {
@@ -142,6 +157,9 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   const endFollowUps = threadEnd?.role === "assistant" ? (threadEnd.metadata?.follow_ups ?? []) : []
   const endAnswered = threadEnd ? interactionAnswer(threadEnd.id) : undefined
   const suggestedPrompts = threadEnd?.role === "assistant" && !endAnswered ? endFollowUps.slice(0, 3) : []
+  const generated = !suggestedPrompts.length && threadEnd?.role === "assistant" && !endAnswered ? dynamicPrompts.slice(0, 3) : []
+  const showFallback = !suggestedPrompts.length && !generated.length && !promptsLoading
+  const activity = activityFromStage(stage)
 
   const choose = (message: ChatMessage, optionId: string, title: string) => {
     const group = message.metadata?.choice_group
@@ -376,13 +394,10 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
               aria-live="polite"
             >
               <div className="message assistant">
-                <p className="message-meta">{t("coach.thread.generating")}</p>
-                <div className="typing-dots" aria-hidden="true"><span /><span /><span /></div>
-                <p className="typing-stage"><bdi>{stage ? display(stage) : t("coach.stage.working")}</bdi></p>
-                <div className="button-row" style={{ marginTop: 12 }}>
-                  <button type="button" onClick={onStop} className="button secondary small" aria-label={t("coach.thread.stopGenerating")}>
-                    <Square size={13} />{t("coach.thread.stop")}
-                  </button>
+                <p className="message-meta">{t("coach.thread.hermes")}</p>
+                <div className="activity-row" role="status">
+                  <CoachActivityIcon activity={activity} size={20} />
+                  <span>{t(`coach.activity.${activity}`)}</span>
                 </div>
               </div>
             </div>
@@ -415,7 +430,24 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
             ))}
           </div>
         ) : null}
-        {!suggestedPrompts.length && fallbackPrompts.length && !busy && !disabled && messages.length > 0 ? (
+        {generated.length && !busy && !disabled ? (
+          <div className="button-row composer-prompts">
+            {generated.map((label) => (
+              <button
+                key={label}
+                type="button"
+                title={label}
+                onClick={() => onSend(label)}
+                className="status"
+                aria-label={t("coach.thread.askHermes", { label })}
+                dir="auto"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {showFallback && fallbackPrompts.length && !busy && !disabled && messages.length > 0 ? (
           <div className="button-row composer-prompts">
             {fallbackPrompts.map((prompt) => (
               <button

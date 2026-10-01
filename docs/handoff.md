@@ -14,6 +14,12 @@
   score questions are rewritten per option/level and folded back. With Laya installed and no keys,
   the gate now observes locally; the first call cold-loads the model (~6 s), including in rerank
   request paths.
+- Engine switch (Settings > Models & connections): `auto` (default, full chain), `jev` (cloud only, Laya is
+  never loaded, email classification raises instead of falling back to it) and `laya` (local only). Stored in
+  the `app_settings` table (`decision_engine`), read by `decision_engines.engine_choice()`, applied without a
+  restart. `app/connections.py` serves `/api/settings/connections` (key presence, source `.env` vs process
+  environment, masked last-4 hint only for loopback callers), per-key `PUT .../{id}` (writes `.env`, loopback
+  plus Origin check; Jev/Span/Apify apply live, Gemini/NVIDIA/HF need the gateway restarted) and `POST .../{id}/test`.
 - Emails: the student picks the classifier (default Laya) in the Emails panel; cloud engines fall
   back down the same chain. See `outlook-threat-model.md`.
 
@@ -21,6 +27,23 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
 `docs/future-work.md` before changing this area.
 
 ## What was built
+
+### Roadmap view, lifecycle and history
+- The roadmap view (`src/components/roadmap/`) is a roadmap.sh-style vertical flow: stages are filled boxes on
+  a central spine, topics hang off both sides (one column on narrow containers, mirrored in RTL). It is
+  plain DOM (no pan/zoom canvas); `RoadmapCanvas` keeps its props so onboarding previews reuse it.
+- Header actions: **Ask coach to change it** (prefills Hermes Coach), and a **Roadmap options** menu with
+  Generate new roadmap, Version history, Reset progress and Remove this roadmap. A collapsible
+  "How your roadmap works" explainer sits under the header. Pending coach proposals render inline with a
+  per-operation diff and Accept/Reject (`PendingChanges.tsx`); stale or protected-node proposals cannot be accepted.
+- Backend (all owner-checked): `GET /api/students/{id}/roadmap/versions`, `GET .../versions/{version_id}`,
+  `POST .../roadmap/archive` (removes the roadmap: the active version becomes an empty one, the old version
+  stays in history, pending proposals are rejected) and `POST .../versions/{version_id}/restore` (copies an
+  old snapshot forward as a new version). History is never rewritten or deleted.
+- Generating a replacement is unchanged in kind: the UI archives the current roadmap (the empty roadmap is the
+  only base an `initial` proposal may replace), calls `/onboarding/generate`, and shows the draft for review. Nothing
+  is active until `POST /api/roadmap-proposals/{id}/accept`. If generation fails the previous roadmap is restored.
+  A student whose onboarding is `done` stays `done` while regenerating.
 
 ### Outlook and local setup (2026-09-27)
 - Exactly two mailbox methods: native Windows classic Outlook and a temporary
@@ -49,6 +72,16 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
   Apify LinkedIn Jobs actor feed a canonical posting cache. Cross-source duplicates merge while
   retaining every provenance link. Telegram refreshes every 30 minutes; official and LinkedIn
   sources refresh every six hours. Failures preserve the last good cache.
+- Live refresh (`services/api/app/coop_refresh.py`): a scheduler starts with the API (independent of
+  `OPPORTUNITY_SYNC_ENABLED`; disable with `COOP_SYNC_ENABLED=false`) and runs each source when its
+  last persisted run is past its interval: employer career-site RSS feeds (SuccessFactors, key-free:
+  Tahakom, stc co-op categories, KAUST filtered) and Telegram every 30 min, official pages and
+  LinkedIn every 6 h, failed sources retry after 5 min. A feed that answers successfully retires
+  postings it no longer lists. `POST /api/students/{id}/coop/refresh` is the "Refresh now" button
+  (global 60 s cooldown, LinkedIn at most hourly because it spends Apify credit);
+  `GET .../coop/sources` reports per-source ok/partial/failed/not_configured/running and
+  `last_updated_at`, which the UI polls. `POST .../coop/visit` records the last visit so postings
+  first seen after it carry `is_new`. Postings past their stated deadline are dropped.
 - Telegram is read through its public archive without a bot. LinkedIn runs only when
   `APIFY_API_KEY` exists and is bounded by `APIFY_MAX_TOTAL_CHARGE_USD`. External text is treated
   as untrusted data; only normalized SQLite records reach Hermes.
@@ -159,6 +192,20 @@ future-only proposal. Nothing regenerates from scratch; protected nodes stay pro
 | Local folder | Hermes plugin tool `waypoint_index_folder` (`.hermes/plugins/waypoint/scanner.py`) | one tool call |
 
 Uploaded files are never stored. Evidence is deduped by `fingerprint` (git remote, course code, DOI…).
+
+**Extraction speed (2026-10-01).** CV/transcript/LinkedIn-PDF/portfolio extraction no longer runs an
+agent loop. `sources/extract.py` tidies the text, splits documents over ~7k chars into ~5k chunks,
+and extracts them in parallel (4 workers) through `app/llm_direct.py`: a tool-less structured JSON
+call from FastAPI straight to Gemini (`gemini-3.5-flash-lite` first, then 3.1 lite, 3.8/3.5 flash)
+and NVIDIA `nemotron-3-super-120b` (server `NVIDIA_API_KEY`, or an nvapi tab key), 25-50 s per
+attempt and an immediate hop on 429/503. No grant is issued; keys stay server-side. The Hermes
+gateway is only the fallback (60 s) when no direct key works. Results are cached in memory by
+content hash. Set `WAYPOINT_DIRECT_EXTRACT=off` to force the gateway (tests do). Folder indexing
+still needs the gateway (one tool call) and starts on `gemini-3.5-flash-lite` when `GEMINI_API_KEY`
+is set. Upload/sync endpoints accept `?background=true`: they validate at once, return, and the
+browser polls `GET /sources` for `stage` (queued/reading/extracting/saving), `progress`,
+`elapsed_seconds` and `note` (`sources/jobs.py`, process-local). Sources left `syncing` by a
+restart are reported failed. Review groups suggestions by source with select all/none.
 
 ### 4. Folder scanning (Hermes on the student's machine)
 `scanner.py` walks a student-typed path, skips dependency trees (any dir with `pyvenv.cfg`,

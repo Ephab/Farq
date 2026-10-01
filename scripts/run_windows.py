@@ -47,7 +47,7 @@ def log(msg: str) -> None:
 
 sys.path.insert(0, REPO)
 from scripts.local_env import configure_env, read_env
-from scripts.runtime import build_env, child_env, executable, hermes_command, provision, require_python
+from scripts.runtime import build_env, child_env, restart_targets, executable, hermes_command, provision, require_python
 from pathlib import Path
 
 
@@ -278,6 +278,7 @@ def main() -> int:
             last = os.path.getmtime(ENV_FILE)
         except OSError:
             last = 0.0
+        known = read_dotenv_values()
         while not STOP.is_set():
             time.sleep(2)
             try:
@@ -295,12 +296,17 @@ def main() -> int:
                 last = settled
                 continue
             last = mtime
-            log(".env changed — restarting api+hermes with new settings ...")
+            current = read_dotenv_values()
+            targets = restart_targets(known, current, RESTARTABLE)
+            known = current
+            if not targets:
+                continue
+            log(f".env changed — restarting {'+'.join(targets)} with new settings ...")
             with lock:
                 if STOP.is_set():
                     return
-                pending_restart.update(RESTARTABLE)
-                victims = [children.pop(name, None) for name in RESTARTABLE]
+                pending_restart.update(targets)
+                victims = [children.pop(name, None) for name in targets]
             for service in victims:
                 if service is not None:
                     service.stop()
@@ -309,20 +315,19 @@ def main() -> int:
                 # spawn a child the main thread will not clean up.
                 if STOP.is_set():
                     return
-                for name in RESTARTABLE:
+                for name in targets:
                     try:
                         spawn(name)
                     except Exception as exc:
                         log(f"{name} failed to restart: {exc}")
-                pending_restart.difference_update(RESTARTABLE)
-            if wait_healthy(f"http://127.0.0.1:{API_PORT}/api/health", 20):
-                log("api restarted with new settings")
-            else:
-                log("api did NOT come back — see [api] output above")
-            if wait_healthy(f"http://127.0.0.1:{HERMES_PORT}/health", 20):
-                log("hermes restarted with new settings")
-            else:
-                log("hermes did NOT come back — see [hermes] output above")
+                pending_restart.difference_update(targets)
+            for name, url in (("api", f"http://127.0.0.1:{API_PORT}/api/health"), ("hermes", f"http://127.0.0.1:{HERMES_PORT}/health")):
+                if name not in targets:
+                    continue
+                if wait_healthy(url, 20):
+                    log(f"{name} restarted with new settings")
+                else:
+                    log(f"{name} did NOT come back — see [{name}] output above")
 
     # Handlers go in before any child exists, so Ctrl+C during startup still
     # reaches the cleanup below instead of orphaning half-started services.

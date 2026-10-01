@@ -9,6 +9,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # The API has no built-in internal token; tests use a fixed one.
 os.environ.setdefault("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
+# Tests stub the Hermes gateway; never let extraction reach a real model API with a developer's keys.
+os.environ["WAYPOINT_DIRECT_EXTRACT"] = "off"
 
 OWNED_PREFIXES = ("/api/students/", "/api/chat/threads/", "/api/agent-runs/", "/api/roadmap-proposals/",
                   "/api/projects/", "/api/evaluations/")

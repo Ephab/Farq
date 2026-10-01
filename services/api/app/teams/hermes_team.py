@@ -195,7 +195,7 @@ def run_team_agent(run_id: str) -> None:
                 raise RuntimeError("The team or the person who asked no longer exists")
             key = effective_hermes_key(override)
             if len(key) < 16:
-                raise RuntimeError("Waypoint Hermes key is missing; press Apply in Settings or set HERMES_API_KEY in the server .env")
+                raise RuntimeError("Waypoint Hermes key is missing; run setup (setup.bat or bash setup.sh) to generate HERMES_API_KEY in the server .env")
             run.status = "running"
             run.stage = STAGES[None]
             prompt = _build_input(db, run, team, user)

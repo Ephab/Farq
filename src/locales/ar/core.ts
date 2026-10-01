@@ -61,12 +61,6 @@ export const core: CatalogShape<typeof en> = {
     },
   },
   header: {
-    decisions: "القرارات",
-    engineAvailable: "{engine}: متاح",
-    engineUnavailable: "{engine}: غير متاح",
-    lastDecision: "آخر قرار {time}",
-    fallback: "البديل الاحتياطي: {error}",
-    decisionState: { disabled: "معطّل", observing: "قيد المراقبة", active: "نشط", degraded: "أداء محدود" },
     hermesGenerating: "Hermes يعمل الآن: {stage}",
     hermesWorking: "Hermes يعمل",
     viewRun: "عرض مهمة Hermes",

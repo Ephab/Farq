@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .internal_auth import require_internal
@@ -22,18 +22,18 @@ from .ownership import OwnedStudent
 from .tool_grants import ReadGrant, student_for
 from .database import get_db
 from .decisions import DecisionItem, observe_items, rerank
-from .coop_sources import CoopCandidate, fetch_linkedin_candidates, fetch_telegram_candidates
-from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySyncRun, Project, RoadmapVersion, Student, StudentCoopState, StudentFact, StudentProfile, now
+from .coop_sources import CoopCandidate, FEED_SOURCE, fetch_feed_candidates, fetch_linkedin_candidates, fetch_telegram_candidates
+from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySyncRun, Project, RoadmapVersion, Student, StudentCoopState, StudentCoopVisit, StudentFact, StudentProfile, now
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 TOKEN = re.compile(r"[A-Za-z0-9+#.]+|[\u0600-\u06ff]+")
-SOURCE_LABELS = {"official": "Official", "telegram": "Telegram", "linkedin": "LinkedIn", "demo": "Demo"}
+SOURCE_LABELS = {"official": "Official", "official_feed": "Official careers feed", "telegram": "Telegram", "linkedin": "LinkedIn", "demo": "Demo"}
 ALLOWED_SOURCE_HOSTS = {
     "careers.tahakom.com", "sdaia.gov.sa", "www.sdaia.gov.sa", "careers.kaust.edu.sa",
     "kacst.gov.sa", "www.kacst.gov.sa", "careers.elm.sa", "careers.stc.com.sa",
-    "aramco.com", "www.aramco.com", "mozn.sa", "www.mozn.sa",
+    "aramco.com", "www.aramco.com", "mozn.sa", "www.mozn.sa", "mozn.ai", "www.mozn.ai",
 }
 
 COMPANIES = [
@@ -304,7 +304,10 @@ def _upsert_candidate(db: Session, candidate: CoopCandidate) -> tuple[str, CoopP
     posting.closes_at = candidate.closes_at or posting.closes_at
     posting.detail_url = candidate.detail_url or posting.detail_url
     posting.apply_url = candidate.apply_url or posting.apply_url
-    if posting.status != "verified_open":  # a community repost never downgrades a verified opening
+    if candidate.source_status == "verified_open":  # the employer's own live listing
+        posting.status = "verified_open"
+        posting.source_status = "verified_open"
+    elif posting.status != "verified_open":  # a community repost never downgrades a verified opening
         posting.status = "listed"
         posting.source_status = candidate.source_status
     posting.is_demo = False
@@ -328,6 +331,11 @@ def _upsert_candidate(db: Session, candidate: CoopCandidate) -> tuple[str, CoopP
 
 
 def sync_coop_source(db: Session, source: Literal["telegram", "linkedin"], client: httpx.Client | None = None) -> dict:
+    if source == "linkedin" and client is None and not os.getenv("APIFY_API_KEY", "").strip():
+        run = OpportunitySyncRun(source="coop:linkedin", status="not_configured", error="APIFY_API_KEY is not set", finished_at=now())
+        db.add(run)
+        db.commit()
+        return {"source": source, "status": "not_configured", "fetched": 0, "error": "APIFY_API_KEY is not set"}
     run = OpportunitySyncRun(source=f"coop:{source}")
     db.add(run)
     db.commit()
@@ -396,8 +404,78 @@ def _expire_old_telegram_postings(db: Session) -> None:
             posting.active = False
 
 
+def expire_closed_postings(db: Session) -> int:
+    """Hide postings whose stated deadline has passed (they are also filtered at read time)."""
+    today = riyadh_today()
+    closed = 0
+    for posting in db.scalars(select(CoopPosting).where(CoopPosting.active.is_(True), CoopPosting.closes_at.is_not(None))).all():
+        if _closed(posting, today):
+            posting.active = False
+            closed += 1
+    db.commit()
+    return closed
+
+
+def sync_feed_sources(db: Session, client: httpx.Client | None = None) -> dict:
+    """Live employer career-site feeds. A feed that answers successfully is authoritative: a
+    posting it listed before and no longer lists has been taken down, so it is retired."""
+    run = OpportunitySyncRun(source="coop:feeds")
+    db.add(run)
+    db.commit()
+    started = now()
+    counts = {"inserted": 0, "updated": 0, "merged": 0}
+    try:
+        candidates, outcomes = fetch_feed_candidates(client)
+        failed = 0
+        for candidate in candidates:
+            try:
+                with db.begin_nested():
+                    action, _ = _upsert_candidate(db, candidate)
+                counts[action] += 1
+            except Exception:
+                failed += 1
+                logger.exception("Skipping feed listing %s", candidate.external_id)
+        retired = 0
+        for slug, outcome in outcomes.items():
+            if not outcome["ok"]:
+                continue
+            for record in db.scalars(select(CoopPostingSource).where(
+                CoopPostingSource.source == FEED_SOURCE,
+                CoopPostingSource.external_id.like(f"{slug}:%"),
+                CoopPostingSource.last_seen_at < started,
+            )).all():
+                other_current = db.scalar(select(CoopPostingSource.id).where(
+                    CoopPostingSource.posting_id == record.posting_id,
+                    CoopPostingSource.id != record.id,
+                    CoopPostingSource.last_seen_at >= started - timedelta(days=7),
+                ).limit(1))
+                posting = db.get(CoopPosting, record.posting_id)
+                if posting and other_current is None and posting.active:
+                    posting.active = False
+                    posting.status = "closed"
+                    retired += 1
+        expire_closed_postings(db)
+        bad = [f"{slug}: {outcome['error']}" for slug, outcome in outcomes.items() if not outcome["ok"]]
+        if failed:
+            bad.append(f"{failed} listing(s) skipped")
+        all_failed = bool(outcomes) and all(not item["ok"] for item in outcomes.values())
+        run.status = "failed" if all_failed else "partial" if bad else "completed"
+        run.fetched_count = len(candidates)
+        run.changed_count = counts["inserted"] + counts["merged"] + retired
+        run.error = "; ".join(bad)[:1000] or None
+        run.finished_at = now()
+        db.commit()
+        return {"source": "feeds", "status": run.status, "fetched": len(candidates), "retired": retired, "feeds": outcomes, **counts}
+    except Exception as exc:
+        db.rollback()
+        run = db.get(OpportunitySyncRun, run.id)
+        run.status, run.error, run.finished_at = "failed", str(exc)[:1000], now()
+        db.commit()
+        return {"source": "feeds", "status": "failed", "fetched": 0, "error": str(exc)}
+
+
 def sync_all_coop_sources(db: Session) -> dict:
-    results = {"official": sync_official_coop_sources(db)}
+    results = {"feeds": sync_feed_sources(db), "official": sync_official_coop_sources(db)}
     if os.getenv("COOP_TELEGRAM_ARCHIVE_ENABLED", "true").lower() in {"1", "true", "yes"}:
         results["telegram"] = sync_coop_source(db, "telegram")
     if os.getenv("COOP_LINKEDIN_ENABLED", "true").lower() in {"1", "true", "yes"}:
@@ -459,6 +537,16 @@ def sync_official_coop_sources(db: Session, client: httpx.Client | None = None) 
                     posting.active = True
                     posting.raw_hash = digest
                     posting.fetched_at = now()
+                    posting.last_seen_at = now()
+                    db.flush()
+                    seen = db.scalar(select(CoopPostingSource).where(CoopPostingSource.source == "official", CoopPostingSource.external_id == company.slug))
+                    if seen is None:
+                        seen = CoopPostingSource(posting_id=posting.id, source="official", external_id=company.slug)
+                        db.add(seen)
+                    seen.detail_url = seen.apply_url = company.source_url
+                    seen.source_status = "verified_open"
+                    seen.raw_hash = digest
+                    seen.last_seen_at = now()
                 elif posting is not None:
                     posting.active = False
                     posting.status = "closed" if closed else "unknown"
@@ -466,7 +554,8 @@ def sync_official_coop_sources(db: Session, client: httpx.Client | None = None) 
                 # One unreachable or odd page never stops the other companies.
                 logger.warning("Official co-op source failed: %s", company.slug, exc_info=True)
                 failures.append(company.slug)
-        run.status = "partial" if failures else "completed"
+        total = len(db.scalars(select(CoopCompany.slug).where(CoopCompany.active.is_(True))).all())
+        run.status = "failed" if failures and len(failures) >= total else "partial" if failures else "completed"
         run.changed_count = changed
         run.error = ", ".join(failures)[:1000] or None
         run.finished_at = now()
@@ -480,7 +569,7 @@ def sync_official_coop_sources(db: Session, client: httpx.Client | None = None) 
     finally:
         if owned:
             session.close()
-    return {"status": "partial" if failures else "completed", "changed": changed, "failures": failures}
+    return {"status": run.status, "changed": changed, "failures": failures}
 
 
 def _signals(db: Session, student_id: str) -> tuple[set[str], set[str], str, set[str]]:
@@ -595,7 +684,24 @@ def company_result(db: Session, student_id: str, company: CoopCompany, signals=N
     }
 
 
-def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=None) -> dict:
+_UNSET = object()
+
+
+def last_visit(db: Session, student_id: str) -> datetime | None:
+    row = db.get(StudentCoopVisit, student_id)
+    if row is None:
+        return None
+    return row.last_visit_at if row.last_visit_at.tzinfo else row.last_visit_at.replace(tzinfo=timezone.utc)
+
+
+def first_seen(db: Session, posting: CoopPosting) -> datetime:
+    """When Waypoint first saw this posting in any source."""
+    earliest = db.scalar(select(func.min(CoopPostingSource.first_seen_at)).where(CoopPostingSource.posting_id == posting.id))
+    value = earliest or posting.fetched_at
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=None, since=_UNSET) -> dict:
     company = db.get(CoopCompany, posting.company_slug)
     resolved_signals = signals or _signals(db, student_id)
     base = company_result(db, student_id, company, resolved_signals) if company else {"fit_score": 0, "fit_tier": "Explore", "fit_tier_code": "explore", "reasons": [], "reason_codes": [], "gaps": []}
@@ -624,6 +730,16 @@ def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=N
             "status": posting.source_status, "published_at": posting.published_at.isoformat() if posting.published_at else None,
             "last_seen_at": (posting.last_seen_at or posting.fetched_at).isoformat(),
         }]
+    visited = last_visit(db, student_id) if since is _UNSET else since
+    seen_first = first_seen(db, posting)
+    # With no earlier visit nothing is "new": everything would be, which says nothing.
+    is_new = bool(visited and not posting.is_demo and seen_first > visited)
+    days_left = None
+    if posting.closes_at:
+        try:
+            days_left = (date.fromisoformat(posting.closes_at) - riyadh_today()).days
+        except ValueError:
+            days_left = None
     freshest = posting.last_seen_at or posting.fetched_at
     age = datetime.now(timezone.utc) - (freshest if freshest.tzinfo else freshest.replace(tzinfo=timezone.utc))
     freshness = "today" if age < timedelta(days=1) else "recent" if age < timedelta(days=7) else "older"
@@ -636,6 +752,7 @@ def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=N
         "source": posting.source, "sources": sources, "is_demo": posting.is_demo,
         "published_at": posting.published_at.isoformat() if posting.published_at else None,
         "last_seen_at": freshest.isoformat(), "freshness": freshness,
+        "first_seen_at": seen_first.isoformat(), "is_new": is_new, "days_left": days_left,
         "deadline_confidence": "explicit" if posting.closes_at else "unknown",
         "fetched_at": posting.fetched_at.isoformat(),
         "fit_score": base["fit_score"], "fit_tier": base["fit_tier"], "fit_tier_code": base["fit_tier_code"],
@@ -675,10 +792,11 @@ def find_postings(db: Session, student_id: str, query: str = "", status: str = "
     query_tokens = _tokens(query)
     results = []
     today = riyadh_today()
+    since = last_visit(db, student_id)
     for posting in db.scalars(select(CoopPosting).where(CoopPosting.active.is_(True))).all():
         if _closed(posting, today):
             continue
-        result = posting_result(db, student_id, posting, signals)
+        result = posting_result(db, student_id, posting, signals, since)
         if query_tokens and not query_tokens.intersection(_tokens([result["title"], result["company_name"], result["skills"], result["location"]])):
             continue
         if status != "all" and result["state"] != status:
@@ -687,7 +805,7 @@ def find_postings(db: Session, student_id: str, query: str = "", status: str = "
             continue
         results.append(result)
     freshness_order = {"today": 0, "recent": 1, "older": 2}
-    shortlist = sorted(results, key=lambda item: (item["is_demo"], -item["fit_score"], freshness_order[item["freshness"]], item["title"]))[: max(1, min(limit, 50))]
+    shortlist = sorted(results, key=lambda item: (item["is_demo"], -item["fit_score"], not item["is_new"], freshness_order[item["freshness"]], item["title"]))[: max(1, min(limit, 50))]
     return rerank(db, shortlist, "coop_rerank", student_id=student_id)
 
 
@@ -707,9 +825,16 @@ def overview(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     verified = [item for item in db.scalars(select(CoopPosting).where(
         CoopPosting.active.is_(True), CoopPosting.status == "verified_open", CoopPosting.is_demo.is_(False),
     )).all() if not _closed(item, today)]
+    visited = last_visit(db, student_id)
+    new_count = 0
+    if visited:
+        for item in db.scalars(select(CoopPosting).where(CoopPosting.active.is_(True), CoopPosting.is_demo.is_(False))).all():
+            if not _closed(item, today) and first_seen(db, item) > visited:
+                new_count += 1
     return {
         "companies": companies, "postings": postings, "saved_count": len(saved),
-        "verified_openings": len(verified),
+        "verified_openings": len(verified), "new_count": new_count,
+        "last_visit_at": visited.isoformat() if visited else None,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -804,9 +929,11 @@ def internal_target(student_id: str, target_type: Literal["company", "posting"],
 
 
 @router.post("/internal/coop/sync", dependencies=[Depends(require_internal)])
-def internal_sync(db: Db, source: Literal["all", "official", "telegram", "linkedin"] = "all") -> dict:
+def internal_sync(db: Db, source: Literal["all", "official", "feeds", "telegram", "linkedin"] = "all") -> dict:
     if source == "all":
         return sync_all_coop_sources(db)
+    if source == "feeds":
+        return {"feeds": sync_feed_sources(db)}
     if source == "official":
         return {"official": sync_official_coop_sources(db)}
     return {source: sync_coop_source(db, source)}

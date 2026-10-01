@@ -556,17 +556,3 @@ class SlidesExportInput(BaseModel):
     # The divider slide's text in the student's language (the browser owns translations).
     divider_title: str | None = Field(default=None, max_length=320)
     divider_note: str | None = Field(default=None, max_length=400)
-
-
-class HermesSettingsApply(BaseModel):
-    """Persist Settings-pane Hermes choices to .env (takes effect on restart).
-
-    The key becomes both the API's HERMES_API_KEY and the gateway's
-    API_SERVER_KEY once the stack restarts, so it must already satisfy the
-    native runner's minimum (>= 32 chars) or the next start would regenerate it.
-    """
-
-    key: str = Field(min_length=32, max_length=256)
-    provider: HermesProvider | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=200)
-

@@ -52,12 +52,6 @@ export const core = {
     unreadTeamMessages: { one: "{count} unread team message", other: "{count} unread team messages" },
   },
   header: {
-    decisions: "Decisions",
-    engineAvailable: "{engine}: available",
-    engineUnavailable: "{engine}: not available",
-    lastDecision: "last decision {time}",
-    fallback: "fallback: {error}",
-    decisionState: { disabled: "disabled", observing: "observing", active: "active", degraded: "degraded" },
     hermesGenerating: "Hermes is generating: {stage}",
     hermesWorking: "Hermes working",
     viewRun: "View Hermes run",

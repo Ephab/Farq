@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Annotated
@@ -16,7 +17,9 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from .blackboard import router as blackboard_router, seed_demo_snapshot
-from .coop import router as coop_router, seed_coop_catalog, sync_all_coop_sources, sync_coop_source
+from .connections import router as connections_router
+from .coop import router as coop_router, seed_coop_catalog
+from .coop_refresh import router as coop_refresh_router, start_scheduler as start_coop_scheduler, stop_scheduler as stop_coop_scheduler
 from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
@@ -38,12 +41,13 @@ from .ownership import OwnedStudent, StreamUser, assert_owner
 from .tool_grants import EvidenceGrant, FactsGrant, ProposalsGrant, ReadGrant, student_for
 from .outlook.router import router as outlook_router
 from .outlook.sync import sync_loop as outlook_sync_loop
+from .suggestions import router as suggestions_router
 from .teams import router as teams_router
 from .teams.seed import seed_teammate_roadmaps, seed_teams
-from .schemas import AcceptInput, ProgressUpdate, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
-from .sources import SourceError, normalize_value, store_evidence
+from .schemas import AcceptInput, ProgressUpdate, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
+from .sources import SourceError, jobs as source_jobs, normalize_value, store_evidence
+from .pipeline.evidence_step import prepare_upload
 from .sources.pdf_text import MAX_UPLOAD_BYTES
-from .settings_env import ENV_PATH, write_env_values
 from .quiz import QuizRunError, run_quiz
 from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, decode_original_pptx, run_extend, run_suggest
 from .transcribe import MAX_AUDIO_BYTES, TranscribeError, transcribe_audio
@@ -67,6 +71,9 @@ app.include_router(outlook_router)
 app.include_router(teams_router)
 app.include_router(blackboard_router)
 app.include_router(coop_router)
+app.include_router(coop_refresh_router)
+app.include_router(suggestions_router)
+app.include_router(connections_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")],
@@ -132,6 +139,7 @@ def source_dict(item: DataSource) -> dict:
         "status": item.status,
         "error": item.error,
         "last_synced_at": item.last_synced_at.isoformat() if item.last_synced_at else None,
+        **source_jobs.snapshot(item.id),
     }
 
 
@@ -171,6 +179,11 @@ def owned_proposal(db: Session, proposal_id: str, user: User) -> RoadmapProposal
     return item
 
 
+def _regenerating(profile: StudentProfile | None) -> bool:
+    """True while a student who finished onboarding is generating a replacement roadmap."""
+    return profile is not None and profile.onboarding_status == "done"
+
+
 def _store_initial_proposal(db: Session, student_id: str, base_id: str, snapshot: RoadmapSnapshot) -> dict:
     """Persist a generated first roadmap as a pending `initial` proposal."""
     for stale in db.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id, RoadmapProposal.kind == "initial", RoadmapProposal.status == "pending")).all():
@@ -184,7 +197,8 @@ def _store_initial_proposal(db: Session, student_id: str, base_id: str, snapshot
     )
     db.add(proposal)
     saved_profile = db.get(StudentProfile, student_id)
-    if saved_profile is not None:
+    # A student who already finished onboarding and archived a roadmap stays in the app.
+    if saved_profile is not None and not _regenerating(saved_profile):
         saved_profile.onboarding_status = "preview"
     db.commit()
     return proposal_dict(proposal)
@@ -213,6 +227,7 @@ async def startup() -> None:
         db.close()
     global _opportunity_sync_task
     global _outlook_sync_task
+    start_coop_scheduler()  # co-op refresh runs from app start, independent of the hackathon sync
     if os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true" and (_outlook_sync_task is None or _outlook_sync_task.done()):
         _outlook_sync_task = asyncio.create_task(outlook_sync_loop())
     if OPPORTUNITY_SYNC_ENABLED and (_opportunity_sync_task is None or _opportunity_sync_task.done()):
@@ -233,19 +248,14 @@ def _sync_job(name: str, job, *args) -> None:
 
 
 async def _opportunity_sync_loop() -> None:
-    cycle = 0
     while True:
         await asyncio.to_thread(_sync_job, "hackathonat", sync_hackathonat)
-        if cycle == 0:
-            await asyncio.to_thread(_sync_job, "coop:all", sync_all_coop_sources)
-        else:
-            await asyncio.to_thread(_sync_job, "coop:telegram", sync_coop_source, "telegram")
-        cycle = (cycle + 1) % 12
         await asyncio.sleep(OPPORTUNITY_SYNC_SECONDS)
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    await stop_coop_scheduler()
     global _outlook_sync_task
     if _outlook_sync_task is not None:
         _outlook_sync_task.cancel()
@@ -480,6 +490,13 @@ def dismiss_opportunity(student_id: str, _owner: OwnedStudent, opportunity_id: s
 def list_sources(student_id: str, _owner: OwnedStudent, db: Db) -> list[dict]:
     require_student(db, student_id)
     items = db.scalars(select(DataSource).where(DataSource.student_id == student_id).order_by(DataSource.created_at)).all()
+    # A source SQLite calls "syncing" with no live job was cut off by a restart: report it as
+    # failed (retryable) instead of showing a spinner forever.
+    stale = [item for item in items if item.status == "syncing" and not source_jobs.is_active(item.id)]
+    for item in stale:
+        mark_synced(item, "Reading was interrupted (the server restarted). Try again.")
+    if stale:
+        db.commit()
     return [source_dict(item) for item in items]
 
 
@@ -522,6 +539,7 @@ def _hermes_opts(provider: str | None, model: str | None, key: str | None) -> di
 def _run_source_job(source_id: str, job) -> dict:
     """Run one sync in a worker thread with its own session; record success or failure."""
     db = SessionLocal()
+    source_jobs.begin(source_id, "reading")
     try:
         source = db.get(DataSource, source_id)
         if source is None:
@@ -546,7 +564,33 @@ def _run_source_job(source_id: str, job) -> dict:
         db.commit()
         return {**source_dict(source), "added": added}
     finally:
+        source_jobs.finish(source_id)
         db.close()
+
+
+def _start_background_job(db, source: DataSource, job) -> dict:
+    """Mark the source queued and run the slow part on a worker thread; the browser polls /sources.
+
+    Used with ?background=true so a slow model never holds an HTTP request open. Failures are
+    recorded on the source (status failed + reason), exactly as in the synchronous path.
+    """
+    if source_jobs.is_active(source.id):
+        raise HTTPException(409, "This source is already being read")
+    source_jobs.begin(source.id, "queued")
+    source.status = "syncing"
+    source.error = None
+    db.commit()
+
+    def runner() -> None:
+        try:
+            _run_source_job(source.id, job)
+        except SourceError:
+            pass  # recorded on the source by _run_source_job
+        except Exception:  # pragma: no cover - defensive; _run_source_job already records failures
+            logger.exception("Background source job crashed for %s", source.id)
+
+    threading.Thread(target=runner, name=f"source-{source.id[:8]}", daemon=True).start()
+    return {**source_dict(source), "added": 0}
 
 
 @app.post("/api/students/{student_id}/sources/{source_id}/upload")
@@ -558,6 +602,7 @@ async def upload_source(
     file: UploadFile = File(...),
     provider: str | None = Form(default=None),
     model: str | None = Form(default=None),
+    background: bool = False,
     x_hermes_api_key: Annotated[str | None, Header()] = None,
 ) -> dict:
     """Read an uploaded transcript/CV/LinkedIn file into suggested evidence.
@@ -576,6 +621,15 @@ async def upload_source(
         raise HTTPException(413, f"Files must be {limit // (1024 * 1024)} MB or smaller")
     hermes = _hermes_opts(provider or None, model or None, x_hermes_api_key)
     try:
+        if background:
+            # Wrong, scanned or oversized files fail here, instantly; only the model call is deferred.
+            try:
+                job = await asyncio.to_thread(prepare_upload, source, data, file.filename or "", hermes)
+            except SourceError as exc:
+                mark_synced(source, str(exc))
+                db.commit()
+                raise
+            return _start_background_job(db, source, job)
         return await asyncio.to_thread(_run_source_job, source_id, lambda session, src: sync_upload(session, src, data, file.filename or "", hermes))
     except SourceError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
@@ -588,6 +642,7 @@ async def sync_source(
     source_id: str,
     db: Db,
     body: GenerateInput = Body(default_factory=GenerateInput),
+    background: bool = False,
     x_hermes_api_key: Annotated[str | None, Header()] = None,
 ) -> dict:
     source = db.get(DataSource, source_id)
@@ -596,6 +651,8 @@ async def sync_source(
     if source.kind in UPLOAD_KINDS:
         raise HTTPException(422, "Upload a file for this source")
     hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
+    if background:
+        return _start_background_job(db, source, lambda session, src: sync_remote(session, src, hermes))
     try:
         return await asyncio.to_thread(_run_source_job, source_id, lambda session, src: sync_remote(session, src, hermes))
     except SourceError as exc:
@@ -647,13 +704,16 @@ async def generate_roadmap(
         finally:
             session.close()
 
-    if profile is not None:
+    # Only first-time onboarding moves through the generating/preview states; a student who is
+    # replacing an archived roadmap stays "done" so the app never throws them back into onboarding.
+    first_time = not _regenerating(profile)
+    if profile is not None and first_time:
         profile.onboarding_status = "generating"
         db.commit()
     try:
         return await asyncio.to_thread(job)
     except Exception as exc:
-        if profile is not None:
+        if profile is not None and first_time:
             profile.onboarding_status = "chat"
             db.commit()
         if isinstance(exc, HermesJsonError):
@@ -957,6 +1017,87 @@ def update_progress_bulk(student_id: str, _owner: OwnedStudent, body: ProgressUp
     return {"updated": len(body.statuses)}
 
 
+def _version_summary(item: RoadmapVersion) -> dict:
+    snapshot = RoadmapSnapshot.model_validate_json(item.snapshot_json)
+    return {
+        "id": item.id,
+        "version": item.version,
+        "reason": item.reason,
+        "active": item.active,
+        "created_at": item.created_at.isoformat(),
+        "title": snapshot.title,
+        "nodes": len(snapshot.nodes),
+        "done": sum(1 for node in snapshot.nodes if node.status == "done"),
+    }
+
+
+def _owned_version(db: Session, student_id: str, version_id: str) -> RoadmapVersion:
+    item = db.get(RoadmapVersion, version_id)
+    if item is None or item.student_id != student_id:
+        raise HTTPException(404, "Roadmap version not found")
+    return item
+
+
+def _replace_active_roadmap(db: Session, student_id: str, current: RoadmapVersion, snapshot: RoadmapSnapshot, reason: str) -> RoadmapVersion:
+    """Retire the active version and append a new one; pending proposals were written against the old base."""
+    retired = db.execute(
+        update(RoadmapVersion).where(RoadmapVersion.id == current.id, RoadmapVersion.active.is_(True))
+        .values(active=False).execution_options(synchronize_session=False)
+    ).rowcount
+    if not retired:
+        db.rollback()
+        raise HTTPException(409, "The roadmap changed; refresh and try again")
+    for stale in db.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id, RoadmapProposal.status == "pending")).all():
+        stale.status = "rejected"
+        stale.decided_at = now()
+    latest = db.scalar(select(func.max(RoadmapVersion.version)).where(RoadmapVersion.student_id == student_id)) or 0
+    version = RoadmapVersion(student_id=student_id, version=latest + 1, snapshot_json=snapshot.model_dump_json(), reason=reason, active=True)
+    db.add(version)
+    db.flush()
+    recompute_student(db, student_id)
+    db.commit()
+    return version
+
+
+@app.get("/api/students/{student_id}/roadmap/versions")
+def list_roadmap_versions(student_id: str, _owner: OwnedStudent, db: Db) -> list[dict]:
+    """History: every version the student has had, newest first. Old versions are never deleted."""
+    items = db.scalars(select(RoadmapVersion).where(RoadmapVersion.student_id == student_id).order_by(RoadmapVersion.version.desc())).all()
+    return [_version_summary(item) for item in items]
+
+
+@app.get("/api/students/{student_id}/roadmap/versions/{version_id}")
+def get_roadmap_version(student_id: str, _owner: OwnedStudent, version_id: str, db: Db) -> dict:
+    item = _owned_version(db, student_id, version_id)
+    return {"version_id": item.id, "version": item.version, "reason": item.reason, "active": item.active, "snapshot": json.loads(item.snapshot_json)}
+
+
+@app.post("/api/students/{student_id}/roadmap/archive")
+def archive_roadmap(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
+    """The student removes their current roadmap. It stays in history; the active roadmap becomes
+    empty, which is the one state a newly generated roadmap (a Hermes `initial` proposal) may
+    replace, and it still takes an explicit accept."""
+    current = active_roadmap(db, student_id)
+    if not RoadmapSnapshot.model_validate_json(current.snapshot_json).nodes:
+        raise HTTPException(409, "There is no roadmap to remove")
+    version = _replace_active_roadmap(db, student_id, current, EMPTY_ROADMAP, f"Removed version {current.version}")
+    return {"status": "archived", "version_id": version.id, "version": version.version}
+
+
+@app.post("/api/students/{student_id}/roadmap/versions/{version_id}/restore")
+def restore_roadmap_version(student_id: str, _owner: OwnedStudent, version_id: str, db: Db) -> dict:
+    """The student brings an earlier roadmap back as a new version (history is never rewritten)."""
+    old = _owned_version(db, student_id, version_id)
+    snapshot = RoadmapSnapshot.model_validate_json(old.snapshot_json)
+    if not snapshot.nodes:
+        raise HTTPException(409, "That version is empty")
+    current = active_roadmap(db, student_id)
+    if current.id == old.id:
+        raise HTTPException(409, "That version is already active")
+    version = _replace_active_roadmap(db, student_id, current, snapshot, f"Restored version {old.version}")
+    return {"status": "restored", "version_id": version.id, "version": version.version}
+
+
 @app.get("/api/students/{student_id}/roadmap/proposals")
 def list_proposals(student_id: str, _owner: OwnedStudent, db: Db) -> list[dict]:
     items = db.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id).order_by(RoadmapProposal.created_at.desc())).all()
@@ -1119,48 +1260,6 @@ def rewind_thread(thread_id: str, body: RewindInput, db: Db, user: CurrentUser) 
         db.delete(item)
     db.commit()
     return {"status": "rewound", "deleted": len(items) - index}
-
-
-LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
-
-
-def _require_local_request(request: Request) -> None:
-    """Writing the server's .env is for the person at this computer, not anyone on the network."""
-    host = request.client.host if request.client else ""
-    origin = request.headers.get("origin")
-    if host not in LOOPBACK_HOSTS:
-        raise HTTPException(403, "Settings can only be applied from this computer")
-    if origin:
-        from urllib.parse import urlparse
-        if (urlparse(origin).hostname or "") not in LOOPBACK_HOSTS:
-            raise HTTPException(403, "Settings can only be applied from this computer")
-
-
-@app.post("/api/settings/hermes")
-def apply_hermes_settings(body: HermesSettingsApply, request: Request) -> dict:
-    """Persist Settings-pane Hermes key/model to .env (takes effect on restart).
-
-    The native runner watches .env and restarts its isolated API + gateway, so
-    Apply in the UI is enough there. Other deployments must be restarted
-    manually after a successful apply. Loopback callers only.
-    """
-    _require_local_request(request)
-    key = body.key.strip()
-    updates = {"HERMES_API_KEY": key}
-    if body.provider is not None or body.model is not None:
-        try:
-            model, provider = resolve_hermes_selection(body.provider, body.model)
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        updates["HERMES_MODEL"] = model
-        updates["HERMES_PROVIDER"] = provider
-    try:
-        write_env_values(updates, ENV_PATH)
-    except FileNotFoundError as exc:
-        raise HTTPException(409, "No .env file in this deployment; set HERMES_API_KEY in the server environment instead") from exc
-    except OSError as exc:
-        raise HTTPException(500, f"Could not write .env: {exc}") from exc
-    return {"status": "applied", "model": updates.get("HERMES_MODEL"), "provider": updates.get("HERMES_PROVIDER"), "restart_required": True}
 
 
 @app.post("/api/quiz/generate")

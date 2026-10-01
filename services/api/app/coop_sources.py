@@ -9,7 +9,9 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+from xml.etree import ElementTree
 from urllib.parse import quote, urlparse
 
 import httpx
@@ -302,6 +304,92 @@ def fetch_linkedin_candidates(client: httpx.Client | None = None) -> list[CoopCa
         if not isinstance(items, list):
             raise ValueError("Apify dataset was not a list")
         return parse_linkedin_items(items)
+    finally:
+        if owned:
+            session.close()
+
+
+# Public SAP SuccessFactors career-site RSS feeds. They need no key and list only what the
+# employer has open right now; an empty feed is a real "nothing open" answer. "category" feeds
+# are the employer's own co-op category (every item is a co-op); "filter" feeds are the whole
+# site, so only items whose title says co-op/intern are kept.
+FEEDS = [
+    {"slug": "tahakom", "name": "Tahakom", "mode": "category", "location": "Riyadh",
+     "url": "https://careers.tahakom.com/services/rss/category/?catid=4388723"},
+    {"slug": "stc", "name": "stc", "mode": "category", "location": "Riyadh",
+     "url": "https://careers.stc.com.sa/services/rss/category/?catid=7736023"},
+    {"slug": "kaust", "name": "KAUST", "mode": "filter", "location": "Thuwal",
+     "url": "https://careers.kaust.edu.sa/services/rss/job/?locale=en_US"},
+]
+FEED_SOURCE = "official_feed"
+FEED_USER_AGENT = "Waypoint/0.1 (student co-op discovery; polite public-feed reader)"
+MAX_FEED_ITEMS = 50
+
+
+def _html_text(value: str) -> str:
+    text = re.sub(r"(?i)<\s*(?:br|/p|/div|/li|/h\d)[^>]*>", "\n", value or "")
+    text = re.sub(r"<[^>]+>", " ", text)
+    return "\n".join(part for part in (_clean(line) for line in html.unescape(text).splitlines()) if part)
+
+
+def parse_feed_items(body: str | bytes, feed: dict) -> list[CoopCandidate]:
+    """Normalize one career-site RSS feed. Raises on malformed XML so a broken feed is reported
+    as a failure instead of silently reading as "nothing open"."""
+    root = ElementTree.fromstring(body)
+    results: list[CoopCandidate] = []
+    for item in root.iter("item"):
+        guid = _clean(item.findtext("guid"))
+        link = _clean(item.findtext("link"))
+        title = _clean(item.findtext("title"))
+        # SuccessFactors pads an empty feed with a "No jobs currently available" placeholder (guid 0).
+        match = re.search(r"/job/[^/]+/(\d{5,})", link)
+        if not title or guid == "0" or not match:
+            continue
+        if feed["mode"] == "filter" and not is_coop_text(title):
+            continue
+        description = _html_text(item.findtext("description") or "")[:8000]
+        parsed = urlparse(link)
+        clean_link = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        published = None
+        try:
+            published = parsedate_to_datetime(item.findtext("pubDate") or "")
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            pass
+        results.append(CoopCandidate(
+            source=FEED_SOURCE, external_id=f"{feed['slug']}:{match.group(1)}", title=title[:300],
+            company=feed["name"], location=feed.get("location", ""), description=description,
+            skills=_infer_skills(f"{title} {description}"), detail_url=clean_link, apply_url=clean_link,
+            closes_at=_deadline(description), published_at=published, source_status="verified_open",
+            metadata={"feed": feed["slug"]},
+        ))
+        if len(results) >= MAX_FEED_ITEMS:
+            break
+    return results
+
+
+def fetch_feed_candidates(client: httpx.Client | None = None, feeds: list[dict] | None = None) -> tuple[list[CoopCandidate], dict[str, dict]]:
+    """Fetch every feed with a hard timeout and size cap. Returns the candidates plus a per-feed
+    outcome; one failing feed never hides the others."""
+    owned = client is None
+    session = client or httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": FEED_USER_AGENT, "Accept": "application/rss+xml, application/xml"})
+    outcomes: dict[str, dict] = {}
+    candidates: list[CoopCandidate] = []
+    try:
+        for feed in feeds if feeds is not None else FEEDS:
+            expected_host = urlparse(feed["url"]).hostname
+            try:
+                response = session.get(feed["url"])
+                response.raise_for_status()
+                if response.url.host != expected_host or len(response.content) > MAX_RESPONSE_BYTES:
+                    raise ValueError("unexpected feed response")
+                items = parse_feed_items(response.content, feed)
+                candidates.extend(items)
+                outcomes[feed["slug"]] = {"ok": True, "count": len(items)}
+            except Exception as exc:  # network, HTTP or parse failure: report, keep the other feeds
+                outcomes[feed["slug"]] = {"ok": False, "count": 0, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+        return candidates, outcomes
     finally:
         if owned:
             session.close()

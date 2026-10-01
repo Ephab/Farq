@@ -4,7 +4,7 @@ import { OutlookView } from "@/components/outlook/OutlookView"
 
 import { useCallback, useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
-import { AlertCircle, ArrowRight, BookOpen, Briefcase, CheckCircle2, FileText, FolderSearch, Globe, GraduationCap, Link2, LoaderCircle, Trash2, UserRound, type LucideIcon } from "lucide-react"
+import { AlertCircle, ArrowRight, BookOpen, Briefcase, CheckCircle2, FileText, FolderSearch, Globe, GraduationCap, Info, Link2, LoaderCircle, RotateCcw, Trash2, UserRound, type LucideIcon } from "lucide-react"
 import { api, hermesRequestParts, uploadSourceFile, type DataSourceItem, type Discipline, type EvidenceItem, type SourceKind, type StudentProfile, sourceKindLabel } from "@/lib/waypoint-api"
 import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
@@ -60,6 +60,7 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
   const [discipline, setDiscipline] = useState<Discipline | null>(null)
   const [sources, setSources] = useState<DataSourceItem[]>([])
   const [suggested, setSuggested] = useState(0)
+  const [counts, setCounts] = useState<Record<string, number>>({})
   const reduce = useReducedMotion()
 
   const refresh = useCallback(async () => {
@@ -69,6 +70,9 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
     ])
     setSources(nextSources)
     setSuggested(evidence.filter((item) => item.status === "suggested").length)
+    const next: Record<string, number> = {}
+    for (const item of evidence) if (item.status === "suggested") next[item.source_id] = (next[item.source_id] ?? 0) + 1
+    setCounts(next)
   }, [profile.student_id])
 
   useEffect(() => {
@@ -80,6 +84,14 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
   const featuredKind: SourceKind | null = kinds.includes("github") ? "github" : (kinds[0] ?? null)
   const otherKinds = kinds.filter((kind) => kind !== featuredKind)
   const busy = sources.some((source) => source.status === "syncing")
+
+  // Reads run on the server in the background: poll while any source is working so the student
+  // sees each stage and the result without pressing anything.
+  useEffect(() => {
+    if (!busy) return
+    const timer = window.setInterval(() => { refresh().catch(() => undefined) }, 1500)
+    return () => window.clearInterval(timer)
+  }, [busy, refresh])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
@@ -105,6 +117,11 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
           </motion.button>
         </div>
 
+        <p className="mt-5 flex max-w-[78ch] items-start gap-2.5 rounded-2xl bg-muted/60 px-4 py-3 text-[13px] text-muted-foreground">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span><strong className="font-semibold text-foreground">{t("onboarding.sources.nextTitle")}.</strong> {t("onboarding.sources.nextBody")}</span>
+        </p>
+
         <details className="mt-6 rounded-2xl border border-border p-4">
           <summary className="cursor-pointer text-sm font-semibold">{t("onboarding.sources.outlook")}</summary>
           <OutlookView />
@@ -125,6 +142,9 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
                 </div>
                 <SourceAction kind={featuredKind} studentId={profile.student_id} active={sources.filter((source) => source.kind === featuredKind && source.status !== "removed")} onChange={refresh} featured />
               </motion.div>
+            ) : null}
+            {featuredKind ? (
+              <SourceStatusList kind={featuredKind} items={sources.filter((source) => source.kind === featuredKind && source.status !== "removed")} studentId={profile.student_id} counts={counts} onChange={refresh} />
             ) : null}
 
             <h2 className="mb-3 mt-6 text-[19px] font-semibold tracking-tight">{t("onboarding.sources.otherRecords")}</h2>
@@ -153,7 +173,7 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
                       </span>
                       <SourceAction kind={kind} studentId={profile.student_id} active={active} onChange={refresh} compact />
                     </div>
-                    <SourceStatusList kind={kind} items={active} studentId={profile.student_id} onChange={refresh} />
+                    <SourceStatusList kind={kind} items={active} studentId={profile.student_id} counts={counts} onChange={refresh} />
                   </motion.div>
                 )
               })}
@@ -212,33 +232,93 @@ function StatusPill({ status }: { status: KindStatus }) {
   return <span className="inline-flex min-h-7 items-center rounded-full bg-muted px-2.5 text-xs font-semibold text-muted-foreground">{t("onboarding.sources.notAdded")}</span>
 }
 
-/** Compact per-source status rows with remove actions. */
-function SourceStatusList({ kind, items, studentId, onChange }: { kind: SourceKind; items: DataSourceItem[]; studentId: string; onChange: () => Promise<void> }) {
+function stageText(source: DataSourceItem, kind: SourceKind, t: ReturnType<typeof useI18n>["t"]): string {
+  if (source.stage === "extracting" && (source.progress?.total ?? 0) > 1) return t("onboarding.sources.stage.extractingParts", { done: Math.min((source.progress?.done ?? 0) + 1, source.progress?.total ?? 1), total: source.progress?.total ?? 1 })
+  if (source.stage === "extracting") return kind === "folder" ? t("onboarding.sources.indexingFolder") : t("onboarding.sources.stage.extracting")
+  if (source.stage === "saving") return t("onboarding.sources.stage.saving")
+  if (source.stage === "queued") return t("onboarding.sources.stage.queued")
+  return t("onboarding.sources.stage.reading")
+}
+
+/** Progress for one source that is being read: stage, a bar, elapsed time and what to expect. */
+function SyncingDetail({ source, kind }: { source: DataSourceItem; kind: SourceKind }) {
+  const { t, fmt } = useI18n()
+  const elapsed = Math.round(source.elapsed_seconds ?? 0)
+  const total = source.progress?.total ?? 0
+  const percent = source.stage === "extracting" && total > 1 ? Math.max(8, Math.round(((source.progress?.done ?? 0) / total) * 100)) : null
+  return (
+    <div role="status" aria-live="polite" className="mt-1 grid gap-1.5">
+      <p className="text-foreground">{stageText(source, kind, t)} <span className="text-muted-foreground">· {t("onboarding.sources.elapsed", { seconds: fmt.number(elapsed) })}</span></p>
+      <div className="h-1 overflow-hidden rounded-full bg-border" aria-hidden="true">
+        <div className={cn("h-full rounded-full bg-primary transition-[width] duration-500", percent === null && "w-1/3 animate-pulse")} style={percent === null ? undefined : { width: `${percent}%` }} />
+      </div>
+      <p className="text-muted-foreground">{elapsed > 45 ? t("onboarding.sources.slow") : kind === "folder" ? t("onboarding.sources.usuallyFolder") : t("onboarding.sources.usually")}</p>
+    </div>
+  )
+}
+
+/** Compact per-source status rows with retry and remove actions. */
+function SourceStatusList({ kind, items, studentId, counts, onChange }: { kind: SourceKind; items: DataSourceItem[]; studentId: string; counts: Record<string, number>; onChange: () => Promise<void> }) {
   const { t } = useI18n()
-  const [removeError, setRemoveError] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
   if (!items.length) return null
   const remove = async (source: DataSourceItem) => {
-    setRemoveError(null)
+    setRowError(null)
     try {
       await api(`/api/students/${studentId}/sources/${source.id}`, { method: "DELETE" })
     } catch (reason) {
-      setRemoveError(reason instanceof Error ? reason.message : t("onboarding.sources.remove"))
+      setRowError(reason instanceof Error ? reason.message : t("onboarding.sources.remove"))
     }
     await onChange()
   }
+  const retry = async (source: DataSourceItem, file?: File) => {
+    setRowError(null)
+    try {
+      if (file) {
+        await uploadSourceFile(studentId, source.id, file, { background: true })
+      } else {
+        const { body, headers } = hermesRequestParts()
+        await api(`/api/students/${studentId}/sources/${source.id}/sync?background=true`, { method: "POST", body: JSON.stringify(body), headers })
+      }
+    } catch (reason) {
+      setRowError(reason instanceof Error ? reason.message : t("onboarding.sources.readFailed"))
+    }
+    await onChange().catch(() => undefined)
+  }
+  const isFile = SOURCE_META[kind].input === "file"
   return (
     <div className="mt-2 grid gap-1.5">
-      {items.map((source) => (
-        <div key={source.id} className="flex items-start gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
-          {source.status === "ready" ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" /> : source.status === "failed" ? <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" /> : <LoaderCircle className="mt-0.5 size-3.5 shrink-0 animate-spin" />}
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-medium"><bdi>{source.label !== source.kind ? source.label : sourceKindLabel(kind)}</bdi>{source.config.purpose ? ` · ${PURPOSE_KEYS[String(source.config.purpose)] ? t(PURPOSE_KEYS[String(source.config.purpose)]) : source.config.purpose}` : ""}</p>
-            <p className="text-muted-foreground">{source.status === "ready" ? t("onboarding.sources.readOk") : source.status === "failed" ? source.error : source.status === "pending" ? t("onboarding.sources.notReadYet") : kind === "folder" ? t("onboarding.sources.indexingFolder") : t("onboarding.sources.readingEllipsis")}</p>
+      {items.map((source) => {
+        const found = counts[source.id] ?? 0
+        return (
+          <div key={source.id} className="flex items-start gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
+            {source.status === "ready" ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" /> : source.status === "failed" ? <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" /> : <LoaderCircle className="mt-0.5 size-3.5 shrink-0 animate-spin" />}
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium"><bdi>{source.label !== source.kind ? source.label : sourceKindLabel(kind)}</bdi>{source.config.purpose ? ` · ${PURPOSE_KEYS[String(source.config.purpose)] ? t(PURPOSE_KEYS[String(source.config.purpose)]) : source.config.purpose}` : ""}</p>
+              {source.status === "syncing" ? <SyncingDetail source={source} kind={kind} /> : (
+                <p className={source.status === "failed" ? "text-destructive" : "text-muted-foreground"}>
+                  {source.status === "ready" ? t("onboarding.sources.found", { count: found }) : source.status === "failed" ? source.error : t("onboarding.sources.notReadYet")}
+                </p>
+              )}
+              {source.status === "ready" && source.note ? <p className="text-amber-700 dark:text-amber-400">{source.note}</p> : null}
+              {source.status === "failed" || source.status === "pending" ? (
+                isFile ? (
+                  <label className="mt-1.5 inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-3 font-semibold outline-none transition hover:bg-muted focus-within:ring-2 focus-within:ring-ring">
+                    <RotateCcw className="size-3" aria-hidden="true" />{t("onboarding.sources.chooseAgain")}
+                    <input type="file" accept={SOURCE_META[kind].accept} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void retry(source, file) }} />
+                  </label>
+                ) : (
+                  <button type="button" onClick={() => void retry(source)} className="mt-1.5 inline-flex min-h-8 items-center gap-1.5 rounded-full border border-border bg-card px-3 font-semibold outline-none transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
+                    <RotateCcw className="size-3" aria-hidden="true" />{t("onboarding.sources.retry")}
+                  </button>
+                )
+              ) : null}
+            </div>
+            <button type="button" aria-label={t("onboarding.sources.remove")} onClick={() => void remove(source)} className="-m-1.5 grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><Trash2 className="size-3.5" aria-hidden="true" /></button>
           </div>
-          <button type="button" aria-label={t("onboarding.sources.remove")} onClick={() => void remove(source)} className="-m-1.5 grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><Trash2 className="size-3.5" aria-hidden="true" /></button>
-        </div>
-      ))}
-      {removeError ? <p role="alert" className="text-xs text-destructive">{removeError}</p> : null}
+        )
+      })}
+      {rowError ? <p role="alert" className="text-xs text-destructive">{rowError}</p> : null}
     </div>
   )
 }
@@ -262,11 +342,13 @@ function SourceAction({ kind, studentId, active, onChange, featured = false, com
         method: "POST",
         body: JSON.stringify({ kind, value: file ? "" : value, ...(kind === "folder" ? { purpose } : {}) }),
       })
+      // Background: the request returns at once and the list polls progress, so a slow model never freezes the form.
+      await onChange().catch(() => undefined)
       if (file) {
-        await uploadSourceFile(studentId, source.id, file)
+        await uploadSourceFile(studentId, source.id, file, { background: true })
       } else {
         const { body, headers } = hermesRequestParts()
-        await api(`/api/students/${studentId}/sources/${source.id}/sync`, { method: "POST", body: JSON.stringify(body), headers })
+        await api(`/api/students/${studentId}/sources/${source.id}/sync?background=true`, { method: "POST", body: JSON.stringify(body), headers })
       }
       setValue("")
     } catch (reason) {
@@ -314,7 +396,6 @@ function SourceAction({ kind, studentId, active, onChange, featured = false, com
         <button type="button" disabled={!value.trim() || working} onClick={() => void run()} className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">{working ? t("onboarding.sources.readingEllipsis") : t("onboarding.sources.connect")}</button>
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      <SourceStatusList kind={kind} items={active} studentId={studentId} onChange={onChange} />
     </div>
   )
 }

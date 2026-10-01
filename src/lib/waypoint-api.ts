@@ -359,6 +359,12 @@ export interface DataSourceItem {
   last_synced_at?: string | null
   /** Evidence rows added by the sync that just ran. */
   added?: number
+  /** Live progress while status is "syncing" (process-local on the server). */
+  stage?: "queued" | "reading" | "extracting" | "saving"
+  progress?: { done?: number; total?: number }
+  elapsed_seconds?: number
+  /** A non-fatal remark kept after a read, e.g. part of a long document could not be read. */
+  note?: string
 }
 
 export interface EvidenceItem {
@@ -378,7 +384,7 @@ export interface Discipline {
   coming_soon: string[]
 }
 
-export async function uploadSourceFile(studentId: string, sourceId: string, file: File): Promise<DataSourceItem> {
+export async function uploadSourceFile(studentId: string, sourceId: string, file: File, options: { background?: boolean } = {}): Promise<DataSourceItem> {
   const { body, headers } = hermesRequestParts()
   const form = new FormData()
   form.append("file", file)
@@ -387,7 +393,7 @@ export async function uploadSourceFile(studentId: string, sourceId: string, file
   // No JSON content-type: the browser sets the multipart boundary.
   let response: Response
   try {
-    response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload`, { method: "POST", body: form, headers: { ...identityHeaders(), ...headers } })
+    response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload${options.background ? "?background=true" : ""}`, { method: "POST", body: form, headers: { ...identityHeaders(), ...headers } })
   } catch {
     throw new Error(translate("common.networkError"))
   }

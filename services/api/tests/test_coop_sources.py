@@ -132,6 +132,7 @@ def test_empty_linkedin_fetch_keeps_cached_postings(monkeypatch):
 
     from app.models import now
 
+    monkeypatch.setenv("APIFY_API_KEY", "test-key")  # configured, but the dataset came back empty
     db = SessionLocal()
     try:
         _, posting = _upsert_candidate(db, CoopCandidate(source="linkedin", external_id="old-li", title="Old intern", company="Li Co"))

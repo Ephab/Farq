@@ -1251,3 +1251,202 @@ html[data-theme="deep-ocean"] .fq {
     max-width: 100%;
   }
 }
+
+/* Activity row: Waypoint star + plain-language status while the coach works. */
+.fq .activity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+  color: var(--fq-text-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Context panel: progress, decisions, what the coach knows. */
+.fq .context-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.fq .context-section h2 svg {
+  color: var(--fq-accent);
+}
+
+.fq .ctx-sub {
+  margin: 16px 0 8px;
+  color: var(--fq-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fq .ctx-progress {
+  display: grid;
+  gap: 8px;
+}
+
+.fq .ctx-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.fq .ctx-progress-head span {
+  color: var(--fq-accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fq .ctx-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--fq-r-pill);
+  background: var(--fq-surface-strong);
+}
+
+.fq .ctx-bar span {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+  background: var(--fq-accent);
+  transition: width 0.6s var(--fq-ease-out);
+}
+
+.fq .ctx-next {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fq .ctx-next li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: var(--fq-r-md);
+  background: var(--fq-surface-solid);
+  padding: 10px 12px;
+}
+
+.fq .ctx-next-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 2px solid var(--fq-line-strong);
+  border-radius: 50%;
+}
+
+.fq .ctx-next-dot.active {
+  border-color: var(--fq-accent);
+  background: var(--fq-accent);
+}
+
+.fq .ctx-next-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fq .ctx-next-copy strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.fq .ctx-next-copy span {
+  color: var(--fq-muted);
+  font-size: 12px;
+}
+
+.fq .ctx-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 0;
+  color: var(--fq-success);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fq .ctx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 14px;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: var(--fq-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fq .ctx-link:hover {
+  text-decoration: underline;
+}
+
+[dir="rtl"] .fq .ctx-arrow {
+  transform: scaleX(-1);
+}
+
+.fq .ctx-decision {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--fq-accent-glass);
+  border-radius: var(--fq-r-md);
+  background: var(--fq-accent-soft);
+  padding: 12px;
+}
+
+.fq .ctx-decision + .ctx-decision {
+  margin-top: 8px;
+}
+
+.fq .ctx-decision strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.fq .ctx-decision > span {
+  color: var(--fq-muted);
+  font-size: 12px;
+}
+
+.fq .ctx-decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fq .ctx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fq .ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--fq-r-pill);
+  background: var(--fq-surface-solid);
+  padding: 4px 10px;
+  color: var(--fq-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fq .ctx-chip b {
+  color: var(--fq-accent);
+  font-variant-numeric: tabular-nums;
+}

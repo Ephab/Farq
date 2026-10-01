@@ -382,3 +382,18 @@ class StudentCoopState(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
+
+class StudentCoopVisit(Base):
+    """When the student last looked at the Co-op view; postings first seen after it are "new"."""
+    __tablename__ = "student_coop_visits"
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), primary_key=True)
+    last_visit_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+
+class AppSetting(Base):
+    """Server-wide switches that must survive restarts without touching .env (e.g. decision engine)."""
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

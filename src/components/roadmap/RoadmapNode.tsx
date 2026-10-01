@@ -1,10 +1,8 @@
 "use client";
 
 import { createElement, memo } from "react";
-import { motion } from "motion/react";
 import { Check, Trophy } from "lucide-react";
 import type { NodeStatus, RoadmapNodeData } from "@/data/computer-vision-roadmap";
-import { NODE_H, NODE_W } from "@/lib/roadmap-layout";
 import { nodeIcon } from "@/components/roadmap/roadmap-icons";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
@@ -13,128 +11,70 @@ export function RoadmapNodeIcon({ icon, className }: { icon: string; className?:
   return createElement(nodeIcon(icon), { className, "aria-hidden": true });
 }
 
-const STATUS_DOT: Record<NodeStatus, string> = {
-  "not-started": "bg-muted-foreground/40",
-  "in-progress": "bg-amber-500",
-  done: "bg-emerald-500",
-};
-
-const LEVEL_BADGE: Record<string, string> = {
-  Beginner: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  Intermediate: "bg-sky-500/10 text-sky-700 dark:text-sky-400",
-  Advanced: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
-};
-
 interface RoadmapNodeProps {
   node: RoadmapNodeData;
-  x: number;
-  y: number;
   status: NodeStatus;
+  /** Not started and something it builds on is not done yet: drawn muted, still clickable. */
+  locked: boolean;
   selected: boolean;
   dimmed: boolean;
-  index: number;
   onSelect: (id: string) => void;
   onToggleDone: (id: string) => void;
   onOpenProject?: (projectId: string) => void;
 }
 
-export const RoadmapNode = memo(function RoadmapNode({
-  node,
-  x,
-  y,
-  status,
-  selected,
-  dimmed,
-  index,
-  onSelect,
-  onToggleDone,
-  onOpenProject,
-}: RoadmapNodeProps) {
+/** A sub-topic: a light box hanging off the spine. Title and meta truncate; the detail panel has the full text. */
+export const RoadmapNode = memo(function RoadmapNode({ node, status, locked, selected, dimmed, onSelect, onToggleDone, onOpenProject }: RoadmapNodeProps) {
   const { t } = useI18n();
   const isDone = status === "done";
-  const isOpportunity = node.nodeType === "opportunity";
+  const isProject = node.nodeType === "project";
+  const meta = [t(`roadmap.levels.${node.level}`), node.duration].filter(Boolean).join(" · ");
 
   return (
-    <motion.button
+    <button
       type="button"
       id={`roadmap-node-${node.id}`}
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: dimmed ? 0.35 : 1, y: 0 }}
-      transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.4) }}
       onClick={() => onSelect(node.id)}
       onDoubleClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (node.nodeType === "project" && node.projectId) onOpenProject?.(node.projectId);
+        if (isProject && node.projectId) onOpenProject?.(node.projectId);
         else onToggleDone(node.id);
       }}
       onContextMenu={(event) => {
         // A long-press on touch screens is a context menu: it must never silently change progress.
         event.preventDefault();
         event.stopPropagation();
-        if (node.nodeType === "project" && node.projectId) onOpenProject?.(node.projectId);
+        if (isProject && node.projectId) onOpenProject?.(node.projectId);
         else onSelect(node.id);
       }}
-      title={node.nodeType === "project" ? t("roadmap.node.titleProject") : t("roadmap.node.titleTopic")}
-      aria-label={t(
-        node.nodeType === "project" ? "roadmap.node.ariaProject" : isDone ? "roadmap.node.ariaMarkNotStarted" : "roadmap.node.ariaMarkDone",
-        { title: node.title, status: t(`roadmap.status.${status}`) },
-      )}
+      title={node.title}
+      aria-label={t(isProject ? "roadmap.node.ariaProject" : isDone ? "roadmap.node.ariaMarkNotStarted" : "roadmap.node.ariaMarkDone", { title: node.title, status: t(`roadmap.status.${status}`) })}
       aria-pressed={selected}
       className={cn(
-        "group absolute flex flex-col rounded-xl border p-3 text-start outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md",
-        "focus-visible:ring-2 focus-visible:ring-ring",
-        isDone
-          ? "border-foreground bg-foreground text-background shadow-md"
-          : selected
-            ? "border-primary bg-background ring-2 ring-ring"
-            : status === "in-progress"
-              ? "border-amber-500/50 bg-background shadow-sm"
-              : "border-border bg-background shadow-sm",
+        "group flex min-h-14 w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-start outline-none transition-[background-color,border-color,box-shadow,opacity] duration-150",
+        "hover:border-foreground/40 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring",
+        isDone && "border-emerald-500/40 bg-emerald-500/10",
+        status === "in-progress" && "border-primary bg-card ring-1 ring-primary/25",
+        status === "not-started" && (locked ? "border-border bg-muted/30" : "border-border bg-card"),
+        selected && "ring-2 ring-ring",
+        dimmed && "opacity-30",
       )}
-      style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
     >
-      <span className="flex items-center gap-2.5">
-        <span
-          className={cn(
-            "grid size-9 shrink-0 place-items-center rounded-xl",
-            isDone
-              ? "bg-background/12 text-background"
-              : "bg-muted text-foreground",
-          )}
-        >
-          <RoadmapNodeIcon icon={node.icon} className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span dir="auto" className="block truncate text-sm font-semibold leading-tight">
-            {node.title}
-          </span>
-          <span dir="auto" className={cn("mt-0.5 block truncate text-[13px]", isDone ? "text-background/65" : "text-muted-foreground")}>
-            {node.tagline}
-          </span>
-        </span>
-        {isDone ? (
-          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-background text-foreground" aria-hidden="true">
-            <Check className="size-3.5" strokeWidth={3} />
-          </span>
-        ) : (
-          <span className={cn("size-2.5 shrink-0 rounded-full", STATUS_DOT[status])} aria-hidden="true" />
-        )}
+      <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", isDone ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-muted text-foreground/80")}>
+        {node.nodeType === "opportunity" ? <Trophy className="size-4" aria-hidden="true" /> : <RoadmapNodeIcon icon={node.icon} className="size-4" />}
       </span>
-      <span className={cn("mt-2.5 flex items-center justify-between border-t pt-2 text-xs", isDone ? "border-background/15" : "border-border")}>
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 font-medium",
-            isDone ? "bg-background/12 text-background" : LEVEL_BADGE[node.level],
-          )}
-        >
-          {isOpportunity ? <span className="flex items-center gap-1"><Trophy className="size-3" />{t("roadmap.node.hackathon")}</span> : t(`roadmap.levels.${node.level}`)}
-        </span>
-        <span className={isDone ? "text-background/60" : "text-muted-foreground"}><bdi>{node.duration}</bdi></span>
-        <span className={isDone ? "text-background/60" : "text-muted-foreground"}>
-          {t("roadmap.node.topics", { count: node.subtopics.length })}
-        </span>
+      <span className="min-w-0 flex-1">
+        <span dir="auto" className={cn("block truncate text-sm font-medium leading-tight", locked && "text-foreground/70")}>{node.title}</span>
+        <span dir="auto" className="mt-0.5 block truncate text-xs text-muted-foreground"><bdi>{meta}</bdi></span>
       </span>
-    </motion.button>
+      {isDone ? (
+        <span className="grid size-5 shrink-0 place-items-center rounded-full bg-emerald-500 text-white" aria-hidden="true"><Check className="size-3.5" strokeWidth={3} /></span>
+      ) : status === "in-progress" ? (
+        <span className="size-2.5 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+      ) : (
+        <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" aria-hidden="true" />
+      )}
+    </button>
   );
 });

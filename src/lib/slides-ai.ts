@@ -1,5 +1,5 @@
 import type { slides as slidesCatalog } from "../locales/en/slides";
-import { API_BASE, HERMES_API_KEY_HEADER, getHermesApiKey, identityHeaders } from "./waypoint-api";
+import { API_BASE, HERMES_API_KEY_HEADER, formatErrorDetail, getHermesApiKey, identityHeaders } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // slides-ai.ts — AI backbone for slide extension (mirrors quiz-ai.ts).
@@ -304,7 +304,7 @@ async function postSlides(
   if (!res.ok) {
     let detail = "";
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? "";
+      detail = formatErrorDetail(((await res.json()) as { detail?: unknown }).detail);
     } catch {
       // non-JSON error
     }
@@ -436,7 +436,7 @@ export async function exportExtensionPptx(args: {
   if (!res.ok) {
     let detail = "";
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? "";
+      detail = formatErrorDetail(((await res.json()) as { detail?: unknown }).detail);
     } catch {
       // binary error unlikely
     }

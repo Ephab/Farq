@@ -145,6 +145,18 @@ export function withIdentityQuery(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}as=${encodeURIComponent(getCurrentStudentId())}`
 }
 
+/** FastAPI `detail` as readable text: a string as-is, a validation error list as its messages. */
+export function formatErrorDetail(detail: unknown): string {
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => (item && typeof item === "object" && "msg" in item ? String((item as { msg: unknown }).msg) : ""))
+      .filter(Boolean)
+      .join("; ")
+  }
+  return ""
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init?.body instanceof FormData
   let response: Response
@@ -162,8 +174,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     // Server `detail` text is server content and passes through; a bare status gets a localized message.
     let message = httpErrorMessage(response.status)
     try {
-      const payload = await response.json() as { detail?: string }
-      if (payload.detail) message = payload.detail
+      const payload = await response.json() as { detail?: unknown }
+      message = formatErrorDetail(payload.detail) || message
     } catch {
       // Keep the HTTP status when the server did not return JSON.
     }
@@ -360,8 +372,8 @@ export async function uploadSourceFile(studentId: string, sourceId: string, file
   if (!response.ok) {
     let message = httpErrorMessage(response.status)
     try {
-      const payload = await response.json() as { detail?: string }
-      if (payload.detail) message = payload.detail
+      const payload = await response.json() as { detail?: unknown }
+      message = formatErrorDetail(payload.detail) || message
     } catch {
       // Keep the HTTP status when the server did not return JSON.
     }

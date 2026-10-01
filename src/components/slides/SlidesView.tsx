@@ -192,7 +192,7 @@ export function SlidesView() {
     const ctrl = new AbortController();
     suggestCtrl.current = ctrl;
     setTopicsLoading(true);
-    suggestTopics(combineDeckTexts([deck]), {
+    suggestTopics(combineDeckTexts([deck]).text, {
       count: 5,
       studentId: getCurrentStudentId(),
       signal: ctrl.signal,
@@ -377,7 +377,7 @@ export function SlidesView() {
     setExtendError(null);
     setExtendProgress({ percent: 2, stage: "waiting", charsReceived: 0 });
     try {
-      const slides = await extendSlides(combineDeckTexts([deck]), topic, {
+      const slides = await extendSlides(combineDeckTexts([deck]).text, topic, {
         length: extensionLength,
         designHint: designHintFor(deck.id),
         signal: ctrl.signal,

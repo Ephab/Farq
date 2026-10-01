@@ -259,6 +259,8 @@ export function SlidesHome(props: SlidesHomeProps) {
                   aria-label={t("slides.decks.extendAria", { name: deck.fileName })}
                   onClick={() => onSelectDeck(deck.id)}
                   onKeyDown={(e) => {
+                    // Keys pressed on the nested delete button belong to that button.
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onSelectDeck(deck.id);

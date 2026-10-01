@@ -13,16 +13,11 @@ import {
 } from "lucide-react";
 import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
 import type { QuizQuestion } from "@/lib/quiz-ai";
+import { isGraded, optionLabel, type QuizAnswer } from "@/lib/quiz-grading";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
 
-export interface QuizAnswer {
-  given: string;
-  correct: boolean;
-  revealed: boolean;
-  /** short_answer self-grade */
-  selfMarked?: boolean;
-}
+export type { QuizAnswer } from "@/lib/quiz-grading";
 
 interface QuizRunnerProps {
   questions: QuizQuestion[];
@@ -71,6 +66,7 @@ export function QuizRunner({
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState(""); // selection / textarea before check
   const [shakeKey, setShakeKey] = useState(0);
+  const [confirmFinish, setConfirmFinish] = useState(false);
   const reduce = useReducedMotion();
   const q = questions[index];
   const saved = answers[q.id];
@@ -86,15 +82,29 @@ export function QuizRunner({
     () => questions.filter((qq) => answers[qq.id]?.revealed).length,
     [questions, answers],
   );
+  // Consecutive correct answers in the order they were given; ungraded short answers are skipped.
   const streak = useMemo(() => {
+    const graded = questions
+      .filter((qq) => isGraded(qq, answers[qq.id]))
+      .map((qq) => answers[qq.id] as QuizAnswer)
+      .sort((a, b) => (b.answeredAt ?? 0) - (a.answeredAt ?? 0));
     let s = 0;
-    for (let i = questions.length - 1; i >= 0; i--) {
-      const a = answers[questions[i].id];
-      if (a?.revealed && a.correct) s++;
-      else if (a?.revealed) break;
+    for (const a of graded) {
+      if (!a.correct) break;
+      s++;
     }
     return s;
   }, [questions, answers]);
+  const unanswered = questions.filter((qq) => !answers[qq.id]?.revealed).length;
+  const ungraded = questions.filter((qq) => answers[qq.id]?.revealed && !isGraded(qq, answers[qq.id])).length;
+
+  const finish = () => {
+    if ((unanswered > 0 || ungraded > 0) && !confirmFinish) {
+      setConfirmFinish(true);
+      return;
+    }
+    onFinish();
+  };
 
   const check = () => {
     if (revealed) return;
@@ -104,12 +114,12 @@ export function QuizRunner({
       return;
     }
     if (q.type === "short_answer") {
-      onAnswer(q.id, { given, correct: false, revealed: true });
+      onAnswer(q.id, { given, correct: false, revealed: true, answeredAt: Date.now() });
       return;
     }
     const correct = given === q.answer;
     if (!correct) setShakeKey((k) => k + 1);
-    onAnswer(q.id, { given, correct, revealed: true });
+    onAnswer(q.id, { given, correct, revealed: true, answeredAt: Date.now() });
   };
 
   const selfGrade = (correct: boolean) => {
@@ -131,10 +141,12 @@ export function QuizRunner({
         return;
       }
       if (e.key === "Enter") {
+        // A focused button or link keeps its own Enter (quit, jump to a question, self-grade).
+        if (tag === "BUTTON" || tag === "A") return;
         e.preventDefault();
         if (revealed) {
           if (index < questions.length - 1) go(1);
-          else onFinish();
+          else finish();
         } else check();
         return;
       }
@@ -316,10 +328,10 @@ export function QuizRunner({
                       ) : q.type === "mcq" ? (
                         LETTERS[i] ?? i + 1
                       ) : (
-                        opt[0]
+                        fmt.number(i + 1)
                       )}
                     </span>
-                    <span className="min-w-0 flex-1" dir="auto">{opt}</span>
+                    <span className="min-w-0 flex-1" dir="auto">{optionLabel(q, opt, t)}</span>
                   </motion.button>
                 );
               })}
@@ -391,7 +403,7 @@ export function QuizRunner({
                         t("quiz.runner.correct")
                       ) : (
                         <>
-                          {t("quiz.runner.notQuite")} <bdi>{q.answer}</bdi>
+                          {t("quiz.runner.notQuite")} <bdi>{optionLabel(q, q.answer, t)}</bdi>
                         </>
                       )}
                     </p>
@@ -436,13 +448,18 @@ export function QuizRunner({
           ) : (
             <button
               type="button"
-              onClick={onFinish}
+              onClick={finish}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-base font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {t("quiz.runner.seeResults")} <Check className="size-5" aria-hidden="true" />
             </button>
           )}
         </div>
+        {confirmFinish ? (
+          <p role="alert" className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-[13px] text-amber-800 dark:text-amber-300">
+            {t("quiz.runner.finishWarning", { unanswered: fmt.number(unanswered), ungraded: fmt.number(ungraded) })}
+          </p>
+        ) : null}
         <p className="mt-2 text-center text-[13px] text-muted-foreground">
           {q.type === "short_answer" ? t("quiz.runner.shortHint") : t("quiz.runner.keysHint")}
         </p>

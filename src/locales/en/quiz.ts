@@ -115,6 +115,9 @@ export const quiz = {
     seeResults: "See results",
     shortHint: "Answer, reveal, then grade yourself",
     keysHint: "Keys 1-4 / A-D select · Enter checks",
+    trueLabel: "True",
+    falseLabel: "False",
+    finishWarning: "{unanswered} unanswered and {ungraded} not self-graded. Unanswered questions count as missed; ungraded ones are left out. Press again to finish.",
   },
   results: {
     headline: {
@@ -128,7 +131,12 @@ export const quiz = {
     correct: "Correct",
     bestStreak: "Best streak",
     grade: "Grade",
+    gradeA: "A",
+    gradeB: "B",
+    gradeC: "C",
     gradeRetry: "Retry",
+    ungraded: "Not graded",
+    ungradedNote: "{count} short answer(s) were not self-graded and are not counted.",
     retry: "Retry quiz",
     home: "Quizzes home",
     review: "Review ({count})",

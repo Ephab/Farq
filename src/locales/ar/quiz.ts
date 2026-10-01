@@ -184,6 +184,9 @@ export const quiz: CatalogShape<typeof en> = {
     seeResults: "عرض النتائج",
     shortHint: "أجب، ثم اكشف الإجابة، ثم قيّم نفسك",
     keysHint: "المفاتيح 1-4 / A-D للاختيار · Enter للتحقق",
+    trueLabel: "صح",
+    falseLabel: "خطأ",
+    finishWarning: "{unanswered} بلا إجابة و{ungraded} بلا تقييم ذاتي. الأسئلة بلا إجابة تُحسب خاطئة، وغير المقيَّمة لا تُحسب. اضغط مرة أخرى للإنهاء.",
   },
   results: {
     headline: {
@@ -197,7 +200,12 @@ export const quiz: CatalogShape<typeof en> = {
     correct: "صحيحة",
     bestStreak: "أفضل سلسلة",
     grade: "التقدير",
+    gradeA: "ممتاز",
+    gradeB: "جيد جدًا",
+    gradeC: "جيد",
     gradeRetry: "أعد",
+    ungraded: "غير مقيَّم",
+    ungradedNote: "{count} إجابة قصيرة لم تُقيَّم ذاتيًا ولا تُحسب.",
     retry: "إعادة الاختبار",
     home: "رئيسية الاختبارات",
     review: "المراجعة ({count})",

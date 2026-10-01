@@ -1,4 +1,4 @@
-import { API_BASE, HERMES_API_KEY_HEADER, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_NIM_MODELS, getHermesApiKey } from "./waypoint-api";
+import { API_BASE, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_NIM_MODELS, formatErrorDetail, hermesRequestParts } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // quiz-ai.ts — THE swappable AI backbone for Waypoint quizzes.
@@ -33,6 +33,8 @@ export interface QuizGenerationOptions {
   count: number;
   difficulty: QuizDifficulty;
   types: QuizQuestionType[];
+  /** The tab's Hermes provider/model (hermesRequestParts); empty uses the server default. */
+  provider?: string;
   model?: string;
   /** Optional AbortSignal so the UI can cancel a slow generation. */
   signal?: AbortSignal;
@@ -101,9 +103,6 @@ export class QuizAIError extends Error {
   }
 }
 
-/** Small, fast model used as the escape hatch when the big models are saturated. */
-export const NIM_FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
-
 /** Strip ```json fences etc. then JSON.parse. Throws QuizAIError on failure. */
 /** First 200 chars of raw output, for diagnosable error messages. */
 function outputSnippet(raw: string): string {
@@ -158,7 +157,7 @@ function parseQuizJson(raw: string): QuizQuestion[] {
   // 4) Last resort: parse each complete question object on its own.
   // Question objects contain no nested braces, so flat matching works.
   const singles: unknown[] = [];
-  for (const m of cleaned.matchAll(/\{[^{}]*"type"\s*:\s*"(mcq|true_false|short_answer)"[^{}]*\}/g)) {
+  for (const m of cleaned.matchAll(/\{[^{}]*"type"\s*:\s*"[^"]*"[^{}]*\}/g)) {
     try {
       singles.push(JSON.parse(m[0]));
     } catch {
@@ -215,49 +214,75 @@ function repairTruncatedJson(block: string): string | null {
   return `${text}${closers}`;
 }
 
-function sanitizeQuestions(input: unknown[]): QuizQuestion[] {
+const TRUE_WORDS = new Set(["true", "t", "yes", "y", "correct", "right", "1", "صح", "صحيح", "نعم"]);
+const FALSE_WORDS = new Set(["false", "f", "no", "n", "incorrect", "wrong", "0", "خطأ", "خاطئ", "خطا", "لا"]);
+
+/** "True"/"False" from the many ways a model writes them, or null when it is neither. */
+export function normalizeTrueFalse(answer: string): "True" | "False" | null {
+  const word = answer.trim().toLowerCase().replace(/[.!\s]+$/u, "");
+  if (TRUE_WORDS.has(word)) return "True";
+  if (FALSE_WORDS.has(word)) return "False";
+  return null;
+}
+
+/** The option an MCQ answer refers to: exact text, case/space-insensitive text, a letter
+ *  ("B", "(b)", "Option B", "B) …") or a 1-based index. Null when it matches nothing. */
+export function resolveMcqAnswer(answer: string, options: string[]): string | null {
+  if (options.includes(answer)) return answer;
+  const squash = (value: string) => value.toLowerCase().replace(/\s+/g, " ").trim();
+  const exact = options.find((option) => squash(option) === squash(answer));
+  if (exact) return exact;
+  // A bare letter, or a letter followed by ")", "." or ":" ("B) Dropout"); never a sentence like "A method…".
+  const letter = answer.trim().match(/^(?:option\s*)?\(?([a-d])\)?(?:[).:]|$)/i);
+  if (letter) {
+    const index = letter[1].toLowerCase().charCodeAt(0) - 97;
+    if (index < options.length) return options[index];
+  }
+  const number = answer.trim().match(/^(?:option\s*)?([1-4])(?:[).:]|$)/i);
+  if (number) {
+    const index = Number(number[1]) - 1;
+    if (index < options.length) return options[index];
+  }
+  return null;
+}
+
+function normalizeType(value: unknown): QuizQuestionType | null {
+  const key = String(value ?? "").toLowerCase().replace(/[\s/-]+/g, "_");
+  if (key === "mcq" || key === "multiple_choice" || key === "multiplechoice") return "mcq";
+  if (key === "true_false" || key === "truefalse" || key === "tf" || key === "boolean") return "true_false";
+  if (key === "short_answer" || key === "shortanswer" || key === "short" || key === "open") return "short_answer";
+  return null;
+}
+
+/** Turn loose model output into UI-ready questions. A question whose answer cannot be matched
+ *  to one of its options is dropped, never "repaired" into a wrong key. */
+export function sanitizeQuestions(input: unknown[]): QuizQuestion[] {
   const out: QuizQuestion[] = [];
-  input.forEach((q, i) => {
+  input.forEach((q) => {
+    if (!q || typeof q !== "object") return;
     const r = q as Record<string, unknown>;
-    const type = r.type as QuizQuestionType;
+    const type = normalizeType(r.type);
     const question = String(r.question ?? "").trim();
     const answer = String(r.answer ?? "").trim();
-    if (!question || !answer) return;
+    if (!type || !question || !answer) return;
+    const extra = {
+      explanation: String(r.explanation ?? "").trim() || undefined,
+      source: String(r.source ?? "").trim() || undefined,
+    };
     if (type === "mcq") {
-      const options = Array.isArray(r.options)
-        ? (r.options as unknown[]).map((o) => String(o).trim()).filter(Boolean).slice(0, 4)
-        : [];
+      const raw = Array.isArray(r.options) ? (r.options as unknown[]).map((o) => String(o).trim()).filter(Boolean) : [];
+      // Duplicates would make two buttons for one answer (and collide as React keys).
+      const options = [...new Set(raw)].slice(0, 4);
       if (options.length < 2) return;
-      if (!options.includes(answer)) options[0] = answer; // keep answer selectable
-      out.push({
-        id: String(r.id ?? `q${i + 1}`),
-        type: "mcq",
-        question,
-        options,
-        answer,
-        explanation: String(r.explanation ?? "").trim() || undefined,
-        source: String(r.source ?? "").trim() || undefined,
-      });
+      const resolved = resolveMcqAnswer(answer, options);
+      if (!resolved) return;
+      out.push({ id: "", type: "mcq", question, options, answer: resolved, ...extra });
     } else if (type === "true_false") {
-      const norm = answer.toLowerCase().startsWith("t") ? "True" : "False";
-      out.push({
-        id: String(r.id ?? `q${i + 1}`),
-        type: "true_false",
-        question,
-        options: ["True", "False"],
-        answer: norm,
-        explanation: String(r.explanation ?? "").trim() || undefined,
-        source: String(r.source ?? "").trim() || undefined,
-      });
-    } else if (type === "short_answer") {
-      out.push({
-        id: String(r.id ?? `q${i + 1}`),
-        type: "short_answer",
-        question,
-        answer,
-        explanation: String(r.explanation ?? "").trim() || undefined,
-        source: String(r.source ?? "").trim() || undefined,
-      });
+      const norm = normalizeTrueFalse(answer);
+      if (!norm) return;
+      out.push({ id: "", type: "true_false", question, options: ["True", "False"], answer: norm, ...extra });
+    } else {
+      out.push({ id: "", type: "short_answer", question, answer, ...extra });
     }
   });
   // Re-id sequentially so UI keys are stable.
@@ -341,22 +366,20 @@ export async function generateQuiz(
 
   const source =
     sourceText.length > MAX_SOURCE_CHARS ? sourceText.slice(0, MAX_SOURCE_CHARS) : sourceText;
+  const { headers: hermesHeaders } = hermesRequestParts();
   const stopTicker = startRunTicker(options);
 
   let res: Response;
   try {
-    const gatewayKey = getHermesApiKey().trim();
     res = await fetch(`${API_BASE}/api/quiz/generate`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(gatewayKey ? { [HERMES_API_KEY_HEADER]: gatewayKey } : {}),
-      },
+      headers: { "Content-Type": "application/json", ...hermesHeaders },
       body: JSON.stringify({
         source_text: source,
         count: options.count,
         difficulty: options.difficulty,
         types: options.types,
+        provider: options.provider,
         model: options.model,
       }),
       signal: options.signal,
@@ -378,7 +401,7 @@ export async function generateQuiz(
     stopTicker();
     let detail = "";
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? "";
+      detail = formatErrorDetail(((await res.json()) as { detail?: unknown }).detail);
     } catch {
       // Non-JSON error body — fall back to the status mapping.
     }

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -12,12 +12,12 @@ import httpx
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from .blackboard import router as blackboard_router, seed_demo_snapshot
 from .coop import router as coop_router, seed_coop_catalog, sync_all_coop_sources, sync_coop_source
-from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
+from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
@@ -32,20 +32,24 @@ from .roadmap_gen import stitch as roadmap_stitch
 from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
 from .projects import router as projects_router
-from .identity import router as identity_router
+from .identity import CurrentUser, User, resolve_user, router as identity_router
+from .internal_auth import require_internal
+from .ownership import OwnedStudent, StreamUser, assert_owner
+from .tool_grants import EvidenceGrant, FactsGrant, ProposalsGrant, ReadGrant, student_for
 from .outlook.router import router as outlook_router
 from .outlook.sync import sync_loop as outlook_sync_loop
 from .teams import router as teams_router
 from .teams.seed import seed_teammate_roadmaps, seed_teams
-from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
+from .schemas import AcceptInput, ProgressUpdate, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
 from .quiz import QuizRunError, run_quiz
 from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, decode_original_pptx, run_extend, run_suggest
-from .transcribe import TranscribeError, transcribe_audio
+from .transcribe import MAX_AUDIO_BYTES, TranscribeError, transcribe_audio
 
 
+logger = logging.getLogger(__name__)
 STARTED_AT = time.time()
 OPPORTUNITY_SYNC_ENABLED = os.getenv("OPPORTUNITY_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}
 OPPORTUNITY_SYNC_SECONDS = 30 * 60
@@ -55,7 +59,6 @@ _outlook_sync_task: asyncio.Task | None = None
 
 DEMO_STUDENT_ID = "demo-student"
 ROADMAP_SEED_PATH = Path(__file__).resolve().parents[1] / "seed-roadmap.json"
-INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 Db = Annotated[Session, Depends(get_db)]
 app = FastAPI(title="Waypoint Hermes Backbone", version="0.1.0")
 app.include_router(projects_router)
@@ -106,27 +109,6 @@ def require_student(db: Session, student_id: str) -> Student:
     return student
 
 
-def resolve_student(db: Session, user_id: str) -> Student | None:
-    """Exact id first, else a unique case-insensitive display-name match.
-
-    Hermes sometimes passes the display name it saw in chat instead of the
-    UUID from the run header. Resolving it beats a 404 that silently drops
-    onboarding facts and profile reads; unknown or ambiguous names return None.
-    """
-    student = db.get(Student, user_id)
-    if student is not None:
-        return student
-    matches = db.scalars(select(Student).where(func.lower(Student.display_name) == user_id.strip().lower())).all()
-    return matches[0] if len(matches) == 1 else None
-
-
-def require_resolved_student(db: Session, user_id: str) -> Student:
-    student = resolve_student(db, user_id)
-    if student is None:
-        raise HTTPException(404, "Student not found")
-    return student
-
-
 def profile_dict(student: Student, profile: StudentProfile | None) -> dict:
     # Students created before onboarding existed (the demo) count as onboarded.
     return {
@@ -165,9 +147,28 @@ def evidence_dict(item: EvidenceItem) -> dict:
     }
 
 
-def require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_waypoint_internal_token != INTERNAL_TOKEN:
-        raise HTTPException(401, "Invalid internal token")
+def owned_thread(db: Session, thread_id: str, user: User) -> ChatThread:
+    thread = db.get(ChatThread, thread_id)
+    if thread is None:
+        raise HTTPException(404, "Thread not found")
+    assert_owner(user, thread.student_id)
+    return thread
+
+
+def owned_run(db: Session, run_id: str, user: User) -> AgentRun:
+    run = db.get(AgentRun, run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    owned_thread(db, run.thread_id, user)
+    return run
+
+
+def owned_proposal(db: Session, proposal_id: str, user: User) -> RoadmapProposal:
+    item = db.get(RoadmapProposal, proposal_id)
+    if item is None:
+        raise HTTPException(404, "Proposal not found")
+    assert_owner(user, item.student_id)
+    return item
 
 
 def _store_initial_proposal(db: Session, student_id: str, base_id: str, snapshot: RoadmapSnapshot) -> dict:
@@ -193,6 +194,7 @@ def _store_initial_proposal(db: Session, student_id: str, base_id: str, snapshot
 async def startup() -> None:
     Base.metadata.create_all(engine)
     ensure_added_columns()
+    ensure_indexes()
     db = SessionLocal()
     try:
         if db.get(Student, DEMO_STUDENT_ID) is None:
@@ -217,27 +219,27 @@ async def startup() -> None:
         _opportunity_sync_task = asyncio.create_task(_opportunity_sync_loop())
 
 
+def _sync_job(name: str, job, *args) -> None:
+    """One sync on its own session: a failure in one source never poisons the next one's
+    transaction, and the previous cache stays usable."""
+    db = SessionLocal()
+    try:
+        job(db, *args)
+    except Exception:
+        db.rollback()
+        logger.exception("Opportunity sync failed: %s", name)
+    finally:
+        db.close()
+
+
 async def _opportunity_sync_loop() -> None:
     cycle = 0
     while True:
-        db = SessionLocal()
-        try:
-            try:
-                await asyncio.to_thread(sync_hackathonat, db)
-            except Exception:
-                pass
-            try:
-                if cycle == 0:
-                    await asyncio.to_thread(sync_all_coop_sources, db)
-                else:
-                    await asyncio.to_thread(sync_coop_source, db, "telegram")
-            except Exception:
-                pass
-        except Exception:
-            # A failed run is persisted and the previous cache remains usable.
-            pass
-        finally:
-            db.close()
+        await asyncio.to_thread(_sync_job, "hackathonat", sync_hackathonat)
+        if cycle == 0:
+            await asyncio.to_thread(_sync_job, "coop:all", sync_all_coop_sources)
+        else:
+            await asyncio.to_thread(_sync_job, "coop:telegram", sync_coop_source, "telegram")
         cycle = (cycle + 1) % 12
         await asyncio.sleep(OPPORTUNITY_SYNC_SECONDS)
 
@@ -386,6 +388,8 @@ def create_student(body: StudentCreate, db: Db) -> dict:
         RoadmapVersion(student_id=student.id, version=0, snapshot_json=EMPTY_ROADMAP.model_dump_json(), reason="Awaiting onboarding", active=True),
         ChatThread(student_id=student.id, title="My Hermes Coach"),
     ])
+    # The identity row exists from the start, so the app's first parallel requests never race to create it.
+    db.add(User(id=student.id, display_name=student.display_name, role="student", student_id=student.id))
     db.flush()
     recompute_student(db, student.id)
     db.commit()
@@ -425,13 +429,13 @@ def disciplines() -> list[dict]:
 
 
 @app.get("/api/students/{student_id}/profile")
-def get_profile(student_id: str, db: Db) -> dict:
+def get_profile(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     student = require_student(db, student_id)
     return {**profile_dict(student, db.get(StudentProfile, student_id)), "thread_id": first_thread(db, student_id).id}
 
 
 @app.put("/api/students/{student_id}/profile")
-def update_profile(student_id: str, body: ProfileUpdate, db: Db) -> dict:
+def update_profile(student_id: str, _owner: OwnedStudent, body: ProfileUpdate, db: Db) -> dict:
     student = require_student(db, student_id)
     profile = db.get(StudentProfile, student_id)
     if profile is None:
@@ -449,19 +453,19 @@ def update_profile(student_id: str, body: ProfileUpdate, db: Db) -> dict:
 
 
 @app.get("/api/students/{student_id}/opportunities/summary")
-def get_opportunity_summary(student_id: str, db: Db) -> dict:
+def get_opportunity_summary(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     require_student(db, student_id)
     return opportunity_summary(db, student_id)
 
 
 @app.post("/api/students/{student_id}/opportunities/mark-seen")
-def mark_opportunities_seen(student_id: str, body: OpportunityIds, db: Db) -> dict:
+def mark_opportunities_seen(student_id: str, _owner: OwnedStudent, body: OpportunityIds, db: Db) -> dict:
     require_student(db, student_id)
     return {"updated": mark_seen(db, student_id, body.ids)}
 
 
 @app.post("/api/students/{student_id}/opportunities/{opportunity_id}/dismiss")
-def dismiss_opportunity(student_id: str, opportunity_id: str, db: Db) -> dict:
+def dismiss_opportunity(student_id: str, _owner: OwnedStudent, opportunity_id: str, db: Db) -> dict:
     require_student(db, student_id)
     item = db.scalar(select(StudentOpportunity).where(StudentOpportunity.student_id == student_id, StudentOpportunity.opportunity_id == opportunity_id))
     if item is None:
@@ -473,14 +477,14 @@ def dismiss_opportunity(student_id: str, opportunity_id: str, db: Db) -> dict:
 
 
 @app.get("/api/students/{student_id}/sources")
-def list_sources(student_id: str, db: Db) -> list[dict]:
+def list_sources(student_id: str, _owner: OwnedStudent, db: Db) -> list[dict]:
     require_student(db, student_id)
     items = db.scalars(select(DataSource).where(DataSource.student_id == student_id).order_by(DataSource.created_at)).all()
     return [source_dict(item) for item in items]
 
 
 @app.post("/api/students/{student_id}/sources", status_code=201)
-def add_source(student_id: str, body: SourceCreate, db: Db) -> dict:
+def add_source(student_id: str, _owner: OwnedStudent, body: SourceCreate, db: Db) -> dict:
     require_student(db, student_id)
     try:
         config = normalize_value(body.kind, body.value)
@@ -496,7 +500,7 @@ def add_source(student_id: str, body: SourceCreate, db: Db) -> dict:
 
 
 @app.delete("/api/students/{student_id}/sources/{source_id}")
-def delete_source(student_id: str, source_id: str, db: Db) -> dict:
+def delete_source(student_id: str, _owner: OwnedStudent, source_id: str, db: Db) -> dict:
     item = db.get(DataSource, source_id)
     if item is None or item.student_id != student_id:
         raise HTTPException(404, "Source not found")
@@ -520,16 +524,24 @@ def _run_source_job(source_id: str, job) -> dict:
     db = SessionLocal()
     try:
         source = db.get(DataSource, source_id)
+        if source is None:
+            raise SourceError("Source not found", status=404)
         source.status = "syncing"
         db.commit()
         try:
             added = job(db, source)
-        except SourceError as exc:
+        except Exception as exc:
+            # Any failure (not only SourceError) must leave the source failed, never "syncing" forever.
             db.rollback()
             source = db.get(DataSource, source_id)
-            mark_synced(source, str(exc))
-            db.commit()
-            raise
+            message = str(exc) if isinstance(exc, SourceError) else "Reading this source failed unexpectedly; try again"
+            if source is not None:
+                mark_synced(source, message)
+                db.commit()
+            if isinstance(exc, SourceError):
+                raise
+            logger.exception("Source sync failed for %s", source_id)
+            raise SourceError(message, status=502) from exc
         mark_synced(source)
         db.commit()
         return {**source_dict(source), "added": added}
@@ -540,6 +552,7 @@ def _run_source_job(source_id: str, job) -> dict:
 @app.post("/api/students/{student_id}/sources/{source_id}/upload")
 async def upload_source(
     student_id: str,
+    _owner: OwnedStudent,
     source_id: str,
     db: Db,
     file: UploadFile = File(...),
@@ -556,7 +569,11 @@ async def upload_source(
         raise HTTPException(404, "Source not found")
     if source.kind not in UPLOAD_KINDS:
         raise HTTPException(422, "This source is not a file upload")
-    data = await file.read(MAX_UPLOAD_BYTES * 3 + 1)
+    # LinkedIn exports are ZIPs of many CSVs, so they get a larger cap (see sources/linkedin_zip.py).
+    limit = MAX_UPLOAD_BYTES * 3 if source.kind == "linkedin_zip" else MAX_UPLOAD_BYTES
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(413, f"Files must be {limit // (1024 * 1024)} MB or smaller")
     hermes = _hermes_opts(provider or None, model or None, x_hermes_api_key)
     try:
         return await asyncio.to_thread(_run_source_job, source_id, lambda session, src: sync_upload(session, src, data, file.filename or "", hermes))
@@ -567,6 +584,7 @@ async def upload_source(
 @app.post("/api/students/{student_id}/sources/{source_id}/sync")
 async def sync_source(
     student_id: str,
+    _owner: OwnedStudent,
     source_id: str,
     db: Db,
     body: GenerateInput = Body(default_factory=GenerateInput),
@@ -585,14 +603,14 @@ async def sync_source(
 
 
 @app.get("/api/students/{student_id}/evidence")
-def list_evidence(student_id: str, db: Db) -> list[dict]:
+def list_evidence(student_id: str, _owner: OwnedStudent, db: Db) -> list[dict]:
     require_student(db, student_id)
     items = db.scalars(select(EvidenceItem).where(EvidenceItem.student_id == student_id, EvidenceItem.status != "dismissed").order_by(EvidenceItem.kind, EvidenceItem.created_at)).all()
     return [evidence_dict(item) for item in items]
 
 
 @app.post("/api/students/{student_id}/evidence/decide")
-def decide_evidence(student_id: str, body: EvidenceDecision, db: Db) -> dict:
+def decide_evidence(student_id: str, _owner: OwnedStudent, body: EvidenceDecision, db: Db) -> dict:
     """The student's explicit review: confirmed evidence becomes StudentFacts.
 
     Ticking an item is an explicit statement by the student, so it is the one
@@ -605,6 +623,7 @@ def decide_evidence(student_id: str, body: EvidenceDecision, db: Db) -> dict:
 @app.post("/api/students/{student_id}/onboarding/generate")
 async def generate_roadmap(
     student_id: str,
+    _owner: OwnedStudent,
     db: Db,
     body: GenerateInput = Body(default_factory=GenerateInput),
     x_hermes_api_key: Annotated[str | None, Header()] = None,
@@ -614,10 +633,8 @@ async def generate_roadmap(
     Only the accept endpoint activates it. Allowed while the active roadmap is
     still the empty v0.
     """
-    require_student(db, student_id)
-    current = active_roadmap(db, student_id)
-    if RoadmapSnapshot.model_validate_json(current.snapshot_json).nodes:
-        raise HTTPException(409, "This student already has a roadmap; ask Hermes Coach to revise it instead")
+    current = _require_empty_roadmap(db, student_id)
+    _require_ready(db, student_id)
     profile = db.get(StudentProfile, student_id)
     base_id = current.id
     hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
@@ -626,21 +643,7 @@ async def generate_roadmap(
         session = SessionLocal()
         try:
             snapshot = generate_initial_roadmap(session, student_id, hermes)
-            for stale in session.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id, RoadmapProposal.kind == "initial", RoadmapProposal.status == "pending")).all():
-                stale.status = "rejected"
-                stale.decided_at = now()
-            proposal = RoadmapProposal(
-                student_id=student_id, base_version_id=base_id, kind="initial",
-                summary=f"First roadmap: {snapshot.title}"[:240],
-                reasoning="Generated from your confirmed evidence and onboarding answers.",
-                operations_json="[]", snapshot_json=snapshot.model_dump_json(),
-            )
-            session.add(proposal)
-            saved_profile = session.get(StudentProfile, student_id)
-            if saved_profile is not None:
-                saved_profile.onboarding_status = "preview"
-            session.commit()
-            return proposal_dict(proposal)
+            return _store_initial_proposal(session, student_id, base_id, snapshot)
         finally:
             session.close()
 
@@ -659,7 +662,7 @@ async def generate_roadmap(
 
 
 @app.get("/api/students/{student_id}/onboarding/readiness")
-def onboarding_readiness(student_id: str, db: Db) -> dict:
+def onboarding_readiness(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     """Readiness gate: is the background collection complete enough to generate?"""
     require_student(db, student_id)
     return readiness_for(db, student_id)
@@ -672,9 +675,17 @@ def _require_empty_roadmap(db: Session, student_id: str):
     return current
 
 
+def _require_ready(db: Session, student_id: str) -> None:
+    """The readiness gate is a server rule, not just a disabled button."""
+    state = readiness_for(db, student_id)
+    if not state["ready"]:
+        raise HTTPException(409, "; ".join(state["blockers"]))
+
+
 @app.post("/api/students/{student_id}/onboarding/roadmap/plan")
 async def plan_staged_roadmap(
     student_id: str,
+    _owner: OwnedStudent,
     db: Db,
     body: GenerateInput = Body(default_factory=GenerateInput),
     x_hermes_api_key: Annotated[str | None, Header()] = None,
@@ -684,8 +695,8 @@ async def plan_staged_roadmap(
     Returns a job_id used by the per-stage endpoints. The plan fixes stage
     IDs upfront so later wiring checks can enforce backwards-only deps.
     """
-    require_student(db, student_id)
     current = _require_empty_roadmap(db, student_id)
+    _require_ready(db, student_id)
     hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
     brief = build_profile_brief(db, student_id)
     base_id = current.id
@@ -700,6 +711,7 @@ async def plan_staged_roadmap(
 @app.post("/api/students/{student_id}/onboarding/roadmap/stages/{stage_id}/generate")
 async def generate_roadmap_stage(
     student_id: str,
+    _owner: OwnedStudent,
     stage_id: str,
     db: Db,
     body: StageGenerateInput = Body(...),
@@ -738,7 +750,12 @@ async def generate_roadmap_stage(
         staged_store.append_stage(body.job_id, stage_id, nodes)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
-    snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(body.job_id)["completed"])
+    except KeyError as exc:
+        raise HTTPException(409, "This generation job was finished or expired; plan again") from exc
+    finished = staged_store.get_job(body.job_id)
+    if finished is None:
+        raise HTTPException(409, "This generation job was finished or expired; plan again")
+    snapshot = roadmap_stitch.merge_stages(plan.title, plan, finished["completed"])
     return {
         "job_id": body.job_id,
         "stage_id": stage_id,
@@ -748,7 +765,7 @@ async def generate_roadmap_stage(
 
 
 @app.post("/api/students/{student_id}/onboarding/roadmap/finalize")
-def finalize_staged_roadmap(student_id: str, body: FinalizeInput, db: Db) -> dict:
+def finalize_staged_roadmap(student_id: str, _owner: OwnedStudent, body: FinalizeInput, db: Db) -> dict:
     """Validate the stitched stages and store the `initial` proposal."""
     require_student(db, student_id)
     current = _require_empty_roadmap(db, student_id)
@@ -777,76 +794,94 @@ def finalize_staged_roadmap(student_id: str, body: FinalizeInput, db: Db) -> dic
 @app.get("/api/students/{student_id}/onboarding/generate/stream")
 async def generate_staged_stream(
     student_id: str,
+    _owner: OwnedStudent,
     provider: str | None = None,
     model: str | None = None,
     x_hermes_api_key: Annotated[str | None, Header()] = None,
 ) -> StreamingResponse:
     """Sequential staged generation as SSE: plan, then each finished stage
     with the snapshot so far, then done. The canvas renders each stage as
-    it arrives. Only the finalize step writes the proposal."""
+    it arrives. Only the finalize step writes the proposal.
+
+    Whatever happens (an error, a closed tab), the student is never left in
+    `generating` and the in-memory job is dropped."""
     hermes = _hermes_opts(provider, model, x_hermes_api_key)
 
-    async def stream():
+    def event(name: str, payload: dict) -> str:
+        return f"event: {name}\ndata: {json.dumps(payload)}\n\n"
+
+    def prepare() -> tuple[str, dict]:
         db = SessionLocal()
         try:
-            require_student(db, student_id)
-            try:
-                current = _require_empty_roadmap(db, student_id)
-            except HTTPException as exc:
-                yield f"event: error\ndata: {json.dumps({'error': exc.detail})}\n\n"
-                return
+            current = _require_empty_roadmap(db, student_id)
+            _require_ready(db, student_id)
             brief = build_profile_brief(db, student_id)
-            base_id = current.id
             profile = db.get(StudentProfile, student_id)
             if profile is not None:
                 profile.onboarding_status = "generating"
                 db.commit()
+            return current.id, brief
         finally:
             db.close()
-        try:
-            plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
-        except Exception as exc:
-            _reset_to_chat(student_id)
-            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
-            return
-        job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
-        yield f"event: plan\ndata: {json.dumps({'job_id': job_id, 'plan': plan.model_dump()})}\n\n"
-        for item in plan.stages:
-            job = staged_store.get_job(job_id)
-            prior, used = staged_store.prior_node_summaries(job, item.id)
-            try:
-                nodes = await asyncio.to_thread(
-                    roadmap_stage.generate_stage_nodes,
-                    brief, plan, item.id, prior, used, job["confirmed"], hermes,
-                )
-            except Exception as exc:
-                _reset_to_chat(student_id)
-                yield f"event: error\ndata: {json.dumps({'error': str(exc), 'stage_id': item.id})}\n\n"
-                return
-            merged = {**staged_store.get_job(job_id)["completed"], item.id: nodes}
-            wiring_error = roadmap_stitch.check_wiring(plan, merged)
-            if wiring_error:
-                _reset_to_chat(student_id)
-                yield f"event: error\ndata: {json.dumps({'error': wiring_error, 'stage_id': item.id})}\n\n"
-                return
-            staged_store.append_stage(job_id, item.id, nodes)
-            snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(job_id)["completed"])
-            yield f"event: stage\ndata: {json.dumps({'job_id': job_id, 'stage_id': item.id, 'nodes': [n.model_dump() for n in nodes], 'snapshot': snapshot.model_dump()})}\n\n"
+
+    def finish(base_id: str, snapshot: RoadmapSnapshot) -> dict:
         db = SessionLocal()
         try:
+            return _store_initial_proposal(db, student_id, base_id, snapshot)
+        finally:
+            db.close()
+
+    async def stream():
+        try:
+            base_id, brief = await asyncio.to_thread(prepare)
+        except HTTPException as exc:
+            yield event("error", {"error": exc.detail})
+            return
+        job_id: str | None = None
+        done = False
+        try:
+            plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
+            job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
+            yield event("plan", {"job_id": job_id, "plan": plan.model_dump()})
+            for item in plan.stages:
+                job = staged_store.get_job(job_id)
+                if job is None:
+                    raise RuntimeError("This generation job expired; try again")
+                prior, used = staged_store.prior_node_summaries(job, item.id)
+                try:
+                    nodes = await asyncio.to_thread(
+                        roadmap_stage.generate_stage_nodes,
+                        brief, plan, item.id, prior, used, job["confirmed"], hermes,
+                    )
+                except Exception as exc:
+                    yield event("error", {"error": str(exc), "stage_id": item.id})
+                    return
+                wiring_error = roadmap_stitch.check_wiring(plan, {**job["completed"], item.id: nodes})
+                if wiring_error:
+                    yield event("error", {"error": wiring_error, "stage_id": item.id})
+                    return
+                staged_store.append_stage(job_id, item.id, nodes)
+                snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(job_id)["completed"])
+                yield event("stage", {"job_id": job_id, "stage_id": item.id, "nodes": [n.model_dump() for n in nodes], "snapshot": snapshot.model_dump()})
             job = staged_store.get_job(job_id)
             snapshot = roadmap_stitch.merge_stages(plan.title, plan, job["completed"])
             try:
                 finished = validate_generated(snapshot, job["confirmed"])
             except ValueError as exc:
-                _reset_to_chat(student_id)
-                yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+                yield event("error", {"error": str(exc)})
                 return
-            proposal = _store_initial_proposal(db, student_id, base_id, finished)
-            staged_store.drop_job(job_id)
-            yield f"event: done\ndata: {json.dumps({'job_id': job_id, 'proposal_id': proposal['id']})}\n\n"
+            proposal = await asyncio.to_thread(finish, base_id, finished)
+            done = True
+            yield event("done", {"job_id": job_id, "proposal_id": proposal["id"]})
+        except Exception as exc:
+            logger.exception("Staged roadmap generation failed")
+            yield event("error", {"error": str(exc) or "Roadmap generation failed"})
         finally:
-            db.close()
+            # Runs on errors and when the client disconnects (the generator is closed).
+            if job_id is not None:
+                staged_store.drop_job(job_id)
+            if not done:
+                await asyncio.to_thread(_reset_to_chat, student_id)
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
@@ -855,7 +890,7 @@ def _reset_to_chat(student_id: str) -> None:
     db = SessionLocal()
     try:
         profile = db.get(StudentProfile, student_id)
-        if profile is not None:
+        if profile is not None and profile.onboarding_status == "generating":
             profile.onboarding_status = "chat"
             db.commit()
     finally:
@@ -863,9 +898,12 @@ def _reset_to_chat(student_id: str) -> None:
 
 
 @app.get("/api/students/{student_id}/context")
-def student_context(student_id: str, db: Db) -> dict:
-    student = require_resolved_student(db, student_id)
-    facts = db.scalars(select(StudentFact).where(StudentFact.student_id == student_id, StudentFact.active.is_(True)).order_by(StudentFact.created_at)).all()
+def student_context(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
+    return _context_dict(db, require_student(db, student_id))
+
+
+def _context_dict(db: Session, student: Student) -> dict:
+    facts = db.scalars(select(StudentFact).where(StudentFact.student_id == student.id, StudentFact.active.is_(True)).order_by(StudentFact.created_at)).all()
     return {
         "id": student.id,
         "display_name": student.display_name,
@@ -877,14 +915,17 @@ def student_context(student_id: str, db: Db) -> dict:
 
 
 @app.get("/api/students/{student_id}/roadmap")
-def get_roadmap(student_id: str, db: Db) -> dict:
-    student = require_resolved_student(db, student_id)
-    item = active_roadmap(db, student.id)
+def get_roadmap(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
+    return _roadmap_dict(db, student_id)
+
+
+def _roadmap_dict(db: Session, student_id: str) -> dict:
+    item = active_roadmap(db, student_id)
     return {"version_id": item.id, "version": item.version, "reason": item.reason, "snapshot": json.loads(item.snapshot_json)}
 
 
 @app.put("/api/students/{student_id}/roadmap/nodes/{node_id}")
-def update_progress(student_id: str, node_id: str, body: dict, db: Db) -> dict:
+def update_progress(student_id: str, _owner: OwnedStudent, node_id: str, body: dict, db: Db) -> dict:
     status = body.get("status")
     if status not in {"not-started", "in-progress", "done"}:
         raise HTTPException(422, "Invalid status")
@@ -899,14 +940,32 @@ def update_progress(student_id: str, node_id: str, body: dict, db: Db) -> dict:
     return {"node_id": node_id, "status": status}
 
 
+@app.put("/api/students/{student_id}/roadmap/progress")
+def update_progress_bulk(student_id: str, _owner: OwnedStudent, body: ProgressUpdate, db: Db) -> dict:
+    """Set many node statuses in one read-modify-write (Reset progress used to send one PUT per
+    node, and the parallel writes overwrote each other)."""
+    item = active_roadmap(db, student_id)
+    snapshot = RoadmapSnapshot.model_validate_json(item.snapshot_json)
+    known = {node.id: node for node in snapshot.nodes}
+    missing = [node_id for node_id in body.statuses if node_id not in known]
+    if missing:
+        raise HTTPException(404, f"Unknown node(s): {', '.join(missing[:5])}")
+    for node_id, status in body.statuses.items():
+        known[node_id].status = status
+    item.snapshot_json = snapshot.model_dump_json()
+    db.commit()
+    return {"updated": len(body.statuses)}
+
+
 @app.get("/api/students/{student_id}/roadmap/proposals")
-def list_proposals(student_id: str, db: Db) -> list[dict]:
+def list_proposals(student_id: str, _owner: OwnedStudent, db: Db) -> list[dict]:
     items = db.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id).order_by(RoadmapProposal.created_at.desc())).all()
     return [proposal_dict(item) for item in items]
 
 
 @app.get("/api/chat/threads/{thread_id}/messages")
-def messages(thread_id: str, db: Db) -> list[dict]:
+def messages(thread_id: str, db: Db, user: CurrentUser) -> list[dict]:
+    owned_thread(db, thread_id, user)
     items = db.scalars(select(ChatMessage).where(ChatMessage.thread_id == thread_id).order_by(ChatMessage.created_at)).all()
     return [{
         "id": item.id,
@@ -919,11 +978,10 @@ def messages(thread_id: str, db: Db) -> list[dict]:
 
 
 @app.get("/api/chat/threads/{thread_id}/runs/latest")
-def latest_run(thread_id: str, db: Db) -> dict:
+def latest_run(thread_id: str, db: Db, user: CurrentUser) -> dict:
     """Most recent agent run for a thread, so a remounted client can resume
     watching a run that is still generating after navigation."""
-    if db.get(ChatThread, thread_id) is None:
-        raise HTTPException(404, "Thread not found")
+    owned_thread(db, thread_id, user)
     run = db.scalar(select(AgentRun).where(AgentRun.thread_id == thread_id).order_by(AgentRun.created_at.desc(), AgentRun.id.desc()))
     if run is None:
         return {"run": None}
@@ -1002,11 +1060,12 @@ def send_message(
     request: Request,
     background: BackgroundTasks,
     db: Db,
+    user: CurrentUser,
     x_hermes_api_key: Annotated[str | None, Header()] = None,
 ) -> dict:
-    thread = db.get(ChatThread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Thread not found")
+    thread = owned_thread(db, thread_id, user)
+    if _live_run_count(db, thread_id):
+        raise HTTPException(409, "Hermes is still answering; wait for it to finish or press Stop")
     try:
         resolve_hermes_selection(body.provider, body.model)
     except ValueError as exc:
@@ -1032,8 +1091,14 @@ def send_message(
     return {"run_id": run.id, "message_id": message.id, "status": run.status}
 
 
+def _live_run_count(db: Session, thread_id: str) -> int:
+    return db.scalar(select(func.count()).select_from(AgentRun).where(
+        AgentRun.thread_id == thread_id, AgentRun.status.notin_(["completed", "failed", "cancelled"]),
+    )) or 0
+
+
 @app.post("/api/chat/threads/{thread_id}/rewind")
-def rewind_thread(thread_id: str, body: RewindInput, db: Db) -> dict:
+def rewind_thread(thread_id: str, body: RewindInput, db: Db, user: CurrentUser) -> dict:
     """Edit-and-resend: drop a user message and everything after it.
 
     The edited prompt is then sent as a fresh message, so the thread reads
@@ -1041,13 +1106,8 @@ def rewind_thread(thread_id: str, body: RewindInput, db: Db) -> dict:
     Rejected while a run is still live (it would append onto the rewind).
     Gateway-side session memory is not rewound — only the stored history.
     """
-    thread = db.get(ChatThread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Thread not found")
-    live = db.scalar(select(func.count()).select_from(AgentRun).where(
-        AgentRun.thread_id == thread_id, AgentRun.status.notin_(["completed", "failed", "cancelled"]),
-    ))
-    if live:
+    owned_thread(db, thread_id, user)
+    if _live_run_count(db, thread_id):
         raise HTTPException(409, "Hermes is still answering — wait for it to finish before editing")
     items = db.scalars(select(ChatMessage).where(ChatMessage.thread_id == thread_id).order_by(ChatMessage.created_at, ChatMessage.id)).all()
     index = next((i for i, item in enumerate(items) if item.id == body.message_id), None)
@@ -1061,14 +1121,30 @@ def rewind_thread(thread_id: str, body: RewindInput, db: Db) -> dict:
     return {"status": "rewound", "deleted": len(items) - index}
 
 
+LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _require_local_request(request: Request) -> None:
+    """Writing the server's .env is for the person at this computer, not anyone on the network."""
+    host = request.client.host if request.client else ""
+    origin = request.headers.get("origin")
+    if host not in LOOPBACK_HOSTS:
+        raise HTTPException(403, "Settings can only be applied from this computer")
+    if origin:
+        from urllib.parse import urlparse
+        if (urlparse(origin).hostname or "") not in LOOPBACK_HOSTS:
+            raise HTTPException(403, "Settings can only be applied from this computer")
+
+
 @app.post("/api/settings/hermes")
-def apply_hermes_settings(body: HermesSettingsApply) -> dict:
+def apply_hermes_settings(body: HermesSettingsApply, request: Request) -> dict:
     """Persist Settings-pane Hermes key/model to .env (takes effect on restart).
 
     The native runner watches .env and restarts its isolated API + gateway, so
     Apply in the UI is enough there. Other deployments must be restarted
-    manually after a successful apply.
+    manually after a successful apply. Loopback callers only.
     """
+    _require_local_request(request)
     key = body.key.strip()
     updates = {"HERMES_API_KEY": key}
     if body.provider is not None or body.model is not None:
@@ -1117,6 +1193,7 @@ async def suggest_slide_topics(
     body: SlidesSuggestInput,
     db: Db,
     x_hermes_api_key: Annotated[str | None, Header()] = None,
+    x_waypoint_user: Annotated[str | None, Header()] = None,
 ) -> dict:
     """Suggest extension topics for a deck through the Hermes gateway.
 
@@ -1129,8 +1206,10 @@ async def suggest_slide_topics(
     """
     learner_context = ""
     if body.student_id:
-        student = resolve_student(db, body.student_id.strip())
-        if student is not None:
+        # Learner context is private: include it only for the caller's own record.
+        caller = resolve_user(db, x_waypoint_user)
+        student = db.get(Student, body.student_id.strip())
+        if student is not None and caller is not None and caller.student_id == student.id:
             try:
                 brief = build_profile_brief(db, student.id)
             except Exception:
@@ -1197,9 +1276,14 @@ def export_slides(body: SlidesExportInput) -> Response:
             [slide.model_dump() for slide in body.slides],
             original_bytes,
             original_images,
+            body.divider_title,
+            body.divider_note,
         )
     except SlidesRunError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Slide export failed")
+        raise HTTPException(422, "This deck could not be exported. Try fewer slides or re-upload the original file.") from exc
     safe = "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in body.original_filename)
     return Response(
         content=data,
@@ -1219,7 +1303,8 @@ async def transcribe_voice(audio: UploadFile = File(...)) -> dict:
     transcript is a composer draft until the student presses Send through
     the normal chat path.
     """
-    data = await audio.read()
+    # Bounded read: the size check in transcribe_audio must not come after buffering an unlimited body.
+    data = await audio.read(MAX_AUDIO_BYTES + 1)
     try:
         text = await asyncio.to_thread(transcribe_audio, data, audio.content_type, audio.filename)
     except TranscribeError as exc:
@@ -1228,10 +1313,8 @@ async def transcribe_voice(audio: UploadFile = File(...)) -> dict:
 
 
 @app.get("/api/agent-runs/{run_id}")
-def get_run(run_id: str, db: Db) -> dict:
-    run = db.get(AgentRun, run_id)
-    if run is None:
-        raise HTTPException(404, "Run not found")
+def get_run(run_id: str, db: Db, user: CurrentUser) -> dict:
+    run = owned_run(db, run_id, user)
     return {"id": run.id, "hermes_run_id": run.hermes_run_id, "status": run.status, "stage": run.stage, "error": run.error}
 
 
@@ -1252,67 +1335,71 @@ def cancel_run_row(db: Session, run: AgentRun) -> dict:
 
 
 @app.post("/api/agent-runs/{run_id}/cancel")
-def cancel_run(run_id: str, db: Db) -> dict:
+def cancel_run(run_id: str, db: Db, user: CurrentUser) -> dict:
     """Stop a generating Hermes run. Safe to call when it already finished."""
-    run = db.get(AgentRun, run_id)
-    if run is None:
-        raise HTTPException(404, "Run not found")
+    run = owned_run(db, run_id, user)
     return cancel_run_row(db, run)
 
 
 @app.post("/api/chat/threads/{thread_id}/runs/cancel")
-def cancel_latest_run(thread_id: str, db: Db) -> dict:
+def cancel_latest_run(thread_id: str, db: Db, user: CurrentUser) -> dict:
     """Stop the thread's live run without the client tracking its id.
 
     Used by the global background indicator after the chat unmounted, and
     when Stop is pressed during the tiny window before the new run id arrives.
     """
-    if db.get(ChatThread, thread_id) is None:
-        raise HTTPException(404, "Thread not found")
+    owned_thread(db, thread_id, user)
     run = db.scalar(select(AgentRun).where(AgentRun.thread_id == thread_id).order_by(AgentRun.created_at.desc(), AgentRun.id.desc()))
     if run is None or run.status in {"completed", "failed", "cancelled"}:
         return {"run": None}
     return {"run": cancel_run_row(db, run)}
 
 
+def _run_status(run_id: str) -> tuple[str, bool] | None:
+    db = SessionLocal()
+    try:
+        run = db.get(AgentRun, run_id)
+        if run is None:
+            return None
+        return json.dumps({"status": run.status, "stage": run.stage, "error": run.error}), run.status in {"completed", "failed", "cancelled"}
+    finally:
+        db.close()
+
+
 @app.get("/api/agent-runs/{run_id}/events")
-def run_events(run_id: str) -> StreamingResponse:
-    def stream():
+def run_events(run_id: str, db: Db, user: StreamUser) -> StreamingResponse:
+    owned_run(db, run_id, user)
+
+    async def stream():
+        # Async with to_thread reads: an open stream holds no worker thread while it waits.
         last = None
         # Room for several fallback models (see app.hermes.execute_with_fallback).
         deadline = time.monotonic() + 420
         while time.monotonic() < deadline:
-            db = SessionLocal()
-            run = db.get(AgentRun, run_id)
-            if run is None:
-                db.close()
+            state = await asyncio.to_thread(_run_status, run_id)
+            if state is None:
                 yield 'event: error\ndata: {"error":"Run not found"}\n\n'
                 return
-            payload = json.dumps({"status": run.status, "stage": run.stage, "error": run.error})
-            terminal = run.status in {"completed", "failed", "cancelled"}
-            db.close()
+            payload, terminal = state
             if payload != last:
                 yield f"event: status\ndata: {payload}\n\n"
                 last = payload
             if terminal:
                 return
-            time.sleep(0.5)
+            await asyncio.sleep(0.5)
         yield 'event: error\ndata: {"error":"Event stream timed out"}\n\n'
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/roadmap-proposals/{proposal_id}")
-def get_proposal(proposal_id: str, db: Db) -> dict:
-    item = db.get(RoadmapProposal, proposal_id)
-    if item is None:
-        raise HTTPException(404, "Proposal not found")
-    return proposal_dict(item)
+def get_proposal(proposal_id: str, db: Db, user: CurrentUser) -> dict:
+    return proposal_dict(owned_proposal(db, proposal_id, user))
 
 
 @app.post("/api/roadmap-proposals/{proposal_id}/accept")
-def accept_proposal(proposal_id: str, db: Db, body: AcceptInput = Body(default_factory=AcceptInput)) -> dict:
-    proposal = db.get(RoadmapProposal, proposal_id)
-    if proposal is None or proposal.status != "pending":
+def accept_proposal(proposal_id: str, db: Db, user: CurrentUser, body: AcceptInput = Body(default_factory=AcceptInput)) -> dict:
+    proposal = owned_proposal(db, proposal_id, user)
+    if proposal.status != "pending":
         raise HTTPException(409, "Proposal is no longer pending")
     current = active_roadmap(db, proposal.student_id)
     if current.id != proposal.base_version_id:
@@ -1342,11 +1429,21 @@ def accept_proposal(proposal_id: str, db: Db, body: AcceptInput = Body(default_f
             updated = apply_operations(RoadmapSnapshot.model_validate_json(current.snapshot_json), operations)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-    current.active = False
+    # Claim the proposal and retire the base version with conditional updates, so two
+    # concurrent accepts (a double click, or two proposals on one base) cannot both win.
+    claimed = db.execute(
+        update(RoadmapProposal).where(RoadmapProposal.id == proposal.id, RoadmapProposal.status == "pending")
+        .values(status="accepted", decided_at=now()).execution_options(synchronize_session=False)
+    ).rowcount
+    retired = db.execute(
+        update(RoadmapVersion).where(RoadmapVersion.id == current.id, RoadmapVersion.active.is_(True))
+        .values(active=False).execution_options(synchronize_session=False)
+    ).rowcount
+    if not claimed or not retired:
+        db.rollback()
+        raise HTTPException(409, "This proposal was already decided or the roadmap changed; refresh and try again")
     version = RoadmapVersion(student_id=proposal.student_id, version=current.version + 1, snapshot_json=updated.model_dump_json(), reason=proposal.summary, active=True)
     db.add(version)
-    proposal.status = "accepted"
-    proposal.decided_at = now()
     for node in updated.nodes:
         if node.nodeType == "opportunity" and node.opportunity:
             recommendation = db.scalar(select(StudentOpportunity).where(
@@ -1367,25 +1464,28 @@ def accept_proposal(proposal_id: str, db: Db, body: AcceptInput = Body(default_f
 
 
 @app.post("/api/roadmap-proposals/{proposal_id}/reject")
-def reject_proposal(proposal_id: str, db: Db) -> dict:
-    proposal = db.get(RoadmapProposal, proposal_id)
-    if proposal is None or proposal.status != "pending":
+def reject_proposal(proposal_id: str, db: Db, user: CurrentUser) -> dict:
+    proposal = owned_proposal(db, proposal_id, user)
+    rejected = db.execute(
+        update(RoadmapProposal).where(RoadmapProposal.id == proposal.id, RoadmapProposal.status == "pending")
+        .values(status="rejected", decided_at=now()).execution_options(synchronize_session=False)
+    ).rowcount
+    if not rejected:
         raise HTTPException(409, "Proposal is no longer pending")
-    proposal.status = "rejected"
-    proposal.decided_at = now()
     db.commit()
     return {"status": "rejected"}
 
 
-@app.get("/internal/hermes/students/{student_id}/context", dependencies=[Depends(require_internal)])
-def internal_context(student_id: str, db: Db) -> dict:
-    return student_context(student_id, db)
+# Every student tool below is authorized by the run's grant (app.tool_grants): the student is the
+# grant's, and a model-supplied id naming anyone else is refused.
+@app.get("/internal/hermes/students/{student_id}/context")
+def internal_context(student_id: str, db: Db, grant: ReadGrant) -> dict:
+    return _context_dict(db, require_student(db, student_for(db, grant, student_id)))
 
 
-@app.get("/internal/hermes/students/{student_id}/hackathons", dependencies=[Depends(require_internal)])
-def internal_hackathons(student_id: str, db: Db, query: str = "", limit: int = 5) -> dict:
-    student = require_resolved_student(db, student_id)
-    return find_hackathons(db, student.id, query, limit)
+@app.get("/internal/hermes/students/{student_id}/hackathons")
+def internal_hackathons(student_id: str, db: Db, grant: ReadGrant, query: str = "", limit: int = 5) -> dict:
+    return find_hackathons(db, student_for(db, grant, student_id), query, max(1, min(limit, 5)))
 
 
 @app.post("/internal/opportunities/sync/hackathonat", dependencies=[Depends(require_internal)])
@@ -1396,16 +1496,22 @@ def internal_sync_hackathonat(db: Db) -> dict:
         raise HTTPException(502, str(exc)) from exc
 
 
-@app.get("/internal/hermes/students/{student_id}/roadmap", dependencies=[Depends(require_internal)])
-def internal_roadmap(student_id: str, db: Db) -> dict:
-    return get_roadmap(student_id, db)
+@app.get("/internal/hermes/students/{student_id}/roadmap")
+def internal_roadmap(student_id: str, db: Db, grant: ReadGrant) -> dict:
+    return _roadmap_dict(db, student_for(db, grant, student_id))
 
 
-@app.post("/internal/hermes/facts", dependencies=[Depends(require_internal)])
-def record_fact(body: FactCreate, db: Db) -> dict:
+@app.post("/internal/hermes/facts")
+def record_fact(body: FactCreate, db: Db, grant: FactsGrant) -> dict:
     if not body.explicit:
         raise HTTPException(422, "Only explicit student facts may be stored")
-    student = require_resolved_student(db, body.user_id)
+    student = require_student(db, student_for(db, grant, body.user_id))
+    if body.source_message_id:
+        # A fact must point at something the student actually said in their own thread.
+        source = db.get(ChatMessage, body.source_message_id)
+        thread = db.get(ChatThread, source.thread_id) if source is not None else None
+        if source is None or source.role != "user" or thread is None or thread.student_id != student.id:
+            raise HTTPException(422, "source_message_id must be one of this student's own messages")
     existing = db.scalars(select(StudentFact).where(StudentFact.student_id == student.id, StudentFact.category == body.category, StudentFact.key == body.key, StudentFact.active.is_(True))).all()
     for fact in existing:
         fact.active = False
@@ -1417,27 +1523,41 @@ def record_fact(body: FactCreate, db: Db) -> dict:
     return {"success": True, "fact_id": fact.id}
 
 
-@app.get("/internal/hermes/students/{student_id}/profile", dependencies=[Depends(require_internal)])
-def internal_profile(student_id: str, db: Db) -> dict:
-    student = require_resolved_student(db, student_id)
-    return build_profile_brief(db, student.id)
+@app.get("/internal/hermes/students/{student_id}/profile")
+def internal_profile(student_id: str, db: Db, grant: ReadGrant) -> dict:
+    return build_profile_brief(db, student_for(db, grant, student_id))
 
 
-@app.post("/internal/hermes/evidence", dependencies=[Depends(require_internal)])
-def submit_evidence(body: EvidenceSubmit, db: Db) -> dict:
+@app.post("/internal/hermes/evidence")
+def submit_evidence(body: EvidenceSubmit, db: Db, grant: EvidenceGrant) -> dict:
     """Hermes' folder scan results. Stored as `suggested` until the student confirms."""
-    student = require_resolved_student(db, body.user_id)
+    student_id = student_for(db, grant, body.user_id)
     source = db.get(DataSource, body.source_id)
-    if source is None or source.student_id != student.id:
+    if source is None or source.student_id != student_id or (grant.source_id and grant.source_id != source.id):
         raise HTTPException(404, "Source not found for this student")
+    if source.kind != "folder":
+        raise HTTPException(422, "Hermes may only submit evidence for folder sources")
+    if body.root and not _same_folder(body.root, json.loads(source.config_json).get("path", "")):
+        raise HTTPException(422, "These results are for a different folder than the student typed")
+    student = require_student(db, student_id)
     added = store_evidence(db, student.id, source.id, body.items)
     db.commit()
     return {"success": True, "added": added, "status": "awaiting student review"}
 
 
-@app.post("/internal/hermes/roadmap-proposals", dependencies=[Depends(require_internal)])
-def create_proposal(body: ProposalCreate, db: Db) -> dict:
-    student = require_resolved_student(db, body.user_id)
+def _same_folder(scanned_root: str, typed_path: str) -> bool:
+    """The scan ran on the student's machine (paths may differ from this server's view):
+    compare the last two folder names, case-insensitively."""
+    def tail(path: str) -> list[str]:
+        parts = [part for part in path.replace("\\", "/").rstrip("/").split("/") if part and part != "~"]
+        return [part.lower() for part in parts[-2:]]
+    typed = tail(typed_path)
+    return bool(typed) and tail(scanned_root)[-len(typed):] == typed
+
+
+@app.post("/internal/hermes/roadmap-proposals")
+def create_proposal(body: ProposalCreate, db: Db, grant: ProposalsGrant) -> dict:
+    student = require_student(db, student_for(db, grant, body.user_id))
     current = active_roadmap(db, student.id)
     if current.id != body.base_version_id:
         raise HTTPException(409, "The proposal base version is stale")

@@ -1,7 +1,7 @@
 "use client"
 
 import type { RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap"
-import { API_BASE, httpErrorMessage } from "@/lib/waypoint-api"
+import { API_BASE, httpErrorMessage, identityHeaders } from "@/lib/waypoint-api"
 import { translate } from "@/lib/i18n/context"
 
 export interface StagedPlanStage {
@@ -42,7 +42,7 @@ export async function streamStagedRoadmap(
 ): Promise<void> {
   const params = new URLSearchParams({ provider: body.provider, model: body.model })
   const response = await fetch(`${API_BASE}/api/students/${studentId}/onboarding/generate/stream?${params}`, {
-    headers,
+    headers: { ...identityHeaders(), ...headers },
     signal,
   }).catch((reason: unknown) => {
     if (signal.aborted) throw reason

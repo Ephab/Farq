@@ -12,18 +12,19 @@ import {
   MapPin,
   X,
 } from "lucide-react";
-import {
-  NODE_MAP,
-  type NodeStatus,
-  type RoadmapNodeData,
-} from "@/data/computer-vision-roadmap";
+import { useEffect, useRef } from "react";
+import type { NodeStatus, RoadmapNodeData } from "@/data/computer-vision-roadmap";
 import { RoadmapNodeIcon } from "@/components/roadmap/RoadmapNode";
 import { cn } from "@/lib/utils";
 import { useI18n, type MessageKey } from "@/lib/i18n/context";
 
 interface NodeDetailPanelProps {
   node: RoadmapNodeData | null;
+  /** The roadmap this node belongs to (prerequisites are looked up here, not in the demo seed). */
+  nodeMap: Record<string, RoadmapNodeData>;
   status: NodeStatus;
+  /** Which statuses may be chosen; the onboarding preview only allows toggling evidence-backed done. */
+  allowedStatuses?: NodeStatus[];
   hasPrev: boolean;
   hasNext: boolean;
   onStatus: (status: NodeStatus) => void;
@@ -41,7 +42,9 @@ const STATUS_OPTIONS: { value: NodeStatus; label: MessageKey; icon: typeof Check
 
 export function NodeDetailPanel({
   node,
+  nodeMap,
   status,
+  allowedStatuses,
   hasPrev,
   hasNext,
   onStatus,
@@ -52,6 +55,13 @@ export function NodeDetailPanel({
 }: NodeDetailPanelProps) {
   const { t, dir } = useI18n();
   const slide = dir === "rtl" ? -32 : 32;
+  const panelRef = useRef<HTMLElement>(null);
+  // Focus the panel when a different node opens, not after every status click
+  // (an inline ref callback re-ran on each render and yanked focus off the buttons).
+  const nodeId = node?.id;
+  useEffect(() => {
+    if (nodeId) panelRef.current?.focus({ preventScroll: true });
+  }, [nodeId]);
   return (
     <AnimatePresence>
       {node ? (
@@ -66,12 +76,14 @@ export function NodeDetailPanel({
           aria-label={t("roadmap.detail.ariaLabel", { title: node.title })}
           tabIndex={-1}
           onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose() } }}
-          ref={(el) => { el?.focus({ preventScroll: true }) }}
+          ref={panelRef}
           className="absolute bottom-4 end-4 top-4 z-20 flex w-[min(340px,calc(100%-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-xl outline-none"
         >
           <DetailBody
             node={node}
+            nodeMap={nodeMap}
             status={status}
+            allowedStatuses={allowedStatuses}
             hasPrev={hasPrev}
             hasNext={hasNext}
             onStatus={onStatus}
@@ -88,7 +100,9 @@ export function NodeDetailPanel({
 
 function DetailBody({
   node,
+  nodeMap,
   status,
+  allowedStatuses,
   hasPrev,
   hasNext,
   onStatus,
@@ -98,7 +112,9 @@ function DetailBody({
   onNext,
 }: {
   node: RoadmapNodeData;
+  nodeMap: Record<string, RoadmapNodeData>;
   status: NodeStatus;
+  allowedStatuses?: NodeStatus[];
   hasPrev: boolean;
   hasNext: boolean;
   onStatus: (s: NodeStatus) => void;
@@ -109,7 +125,7 @@ function DetailBody({
 }) {
   const { t, fmt } = useI18n();
   const prereqs = node.deps
-    .map((id) => NODE_MAP[id])
+    .map((id) => nodeMap[id])
     .filter((n) => n !== undefined);
 
   return (
@@ -165,10 +181,12 @@ function DetailBody({
           {STATUS_OPTIONS.map((opt) => {
             const OptIcon = opt.icon;
             const active = status === opt.value;
+            const allowed = !allowedStatuses || allowedStatuses.includes(opt.value);
             return (
               <button
                 key={opt.value}
                 type="button"
+                disabled={!allowed}
                 onClick={() => onStatus(opt.value)}
                 aria-pressed={active}
                 className={cn(
@@ -179,7 +197,7 @@ function DetailBody({
                       : opt.value === "in-progress"
                         ? "bg-amber-500 text-white"
                         : "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted-foreground",
                 )}
               >
                 <OptIcon className="size-3.5" aria-hidden="true" />

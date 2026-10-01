@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Deterministic parse of a LinkedIn "Get a copy of your data" export ZIP."""
+
+from __future__ import annotations
 
 import csv
 import io

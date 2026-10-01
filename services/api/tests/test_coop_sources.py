@@ -82,3 +82,66 @@ def test_failed_source_sync_records_failure_and_keeps_cached_posting():
     run = db.query(OpportunitySyncRun).filter_by(source="coop:telegram").order_by(OpportunitySyncRun.started_at.desc()).first()
     assert run.status == "failed"
     db.close()
+
+
+def test_coop_keywords_are_whole_words_and_arabic_deadlines_parse():
+    from app.coop_sources import _deadline, is_coop_text
+
+    assert is_coop_text("Summer internship for students")
+    assert is_coop_text("فرصة تدريب تعاوني")
+    assert not is_coop_text("International conference on internal audit")
+    assert _deadline("آخر موعد للتقديم: ١٥/١٠/٢٠٢٦") == "2026-10-15"
+    assert _deadline("Deadline: 2026-15-10") is None
+    assert _deadline("Deadline: 10/25/2026") == "2026-10-25"
+
+
+def test_company_matching_uses_names_and_aliases_not_substrings():
+    from app.coop import _company_for_candidate
+    from app.models import CoopCompany
+
+    db = SessionLocal()
+    try:
+        ai_startup = _company_for_candidate(db, CoopCandidate(source="telegram", external_id="x1", title="Intern", company="AI", skills=["design"]))
+        assert ai_startup.slug not in {"sdaia-jrcai", "mozn"}
+        aramco = _company_for_candidate(db, CoopCandidate(source="telegram", external_id="x2", title="Intern", company="Saudi Aramco", skills=["welding"]))
+        assert aramco.slug == "aramco"
+        assert "welding" not in db.get(CoopCompany, "aramco").skills_json  # curated profiles are not rewritten
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_generic_careers_links_do_not_merge_different_roles():
+    db = SessionLocal()
+    try:
+        first = CoopCandidate(source="telegram", external_id="g1", title="Data intern", company="Example Co", apply_url="https://example.sa/careers")
+        second = CoopCandidate(source="linkedin", external_id="g2", title="Design intern", company="Other Co", apply_url="https://example.sa/careers/")
+        _, a = _upsert_candidate(db, first)
+        _, b = _upsert_candidate(db, second)
+        assert a.id != b.id
+        job_a = CoopCandidate(source="telegram", external_id="q1", title="Role A", company="Q Co", apply_url="https://jobs.example.sa/apply?job=1")
+        job_b = CoopCandidate(source="telegram", external_id="q2", title="Role B", company="Q Co", apply_url="https://jobs.example.sa/apply?job=2")
+        assert _upsert_candidate(db, job_a)[1].id != _upsert_candidate(db, job_b)[1].id
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_empty_linkedin_fetch_keeps_cached_postings(monkeypatch):
+    from datetime import timedelta
+
+    from app.models import now
+
+    db = SessionLocal()
+    try:
+        _, posting = _upsert_candidate(db, CoopCandidate(source="linkedin", external_id="old-li", title="Old intern", company="Li Co"))
+        source = db.query(CoopPostingSource).filter(CoopPostingSource.external_id == "old-li").one()
+        source.last_seen_at = now() - timedelta(days=30)
+        db.commit()
+        monkeypatch.setattr("app.coop.fetch_linkedin_candidates", lambda client=None: [])
+        result = sync_coop_source(db, "linkedin")
+        assert result["status"] == "empty"
+        db.refresh(posting)
+        assert posting.active is True
+    finally:
+        db.close()

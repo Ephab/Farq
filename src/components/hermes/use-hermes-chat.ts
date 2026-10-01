@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { API_BASE, api, hermesRequestParts } from "@/lib/waypoint-api"
+import { API_BASE, api, hermesRequestParts, withIdentityQuery } from "@/lib/waypoint-api"
+import { parseServerTime } from "@/lib/server-time"
 
 export interface OpportunityCard {
   id: string
@@ -59,8 +60,8 @@ const STALE_RUN_MS = 10 * 60 * 1000
 
 export function isLiveRun(run: ActiveRun | null): run is ActiveRun {
   if (!run || !ACTIVE_RUN_STATUSES.has(run.status)) return false
-  const started = Date.parse(run.created_at)
-  if (Number.isNaN(started)) return true
+  const started = parseServerTime(run.created_at)
+  if (started === null) return true
   return Date.now() - started < STALE_RUN_MS
 }
 
@@ -72,6 +73,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
   const [error, setError] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const streamRef = useRef<EventSource | null>(null)
+  const pollRef = useRef<number | null>(null)
   // In-flight guard as a ref: `busy` state can still read stale inside a
   // second invoke from the same tick (double click/Enter), which would send
   // twice and stack duplicate turns. The ref makes double-dispatch impossible.
@@ -88,6 +90,10 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
   const closeStream = useCallback(() => {
     streamRef.current?.close()
     streamRef.current = null
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = null
+    }
   }, [])
 
   useEffect(() => () => { closeStream(); busyRef.current = false }, [closeStream])
@@ -96,6 +102,12 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     if (!threadId) return
     setMessages(await api<ChatMessage[]>(`/api/chat/threads/${threadId}/messages`))
   }, [threadId])
+
+  /** The error banner's Try again: clear the banner once the thread reloads. */
+  const retry = useCallback(async () => {
+    await refresh()
+    setError(null)
+  }, [refresh])
 
   const finishRun = useCallback((terminalError: string | null, terminalStatus: string) => {
     closeStream()
@@ -116,18 +128,41 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     runIdRef.current = runIdToWatch
     setRunId(runIdToWatch)
     setBusy(true)
-    const source = new EventSource(`${API_BASE}/api/agent-runs/${runIdToWatch}/events`)
-    streamRef.current = source
-    source.addEventListener("status", (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as { status: string; stage: string; error?: string }
+    const handle = (payload: { status: string; stage: string; error?: string | null }) => {
       setStage(payload.stage)
       if (TERMINAL_RUN_STATUSES.has(payload.status)) {
         finishRun(payload.error ?? null, payload.status)
         refresh().catch(() => undefined)
         onRunFinishedRef.current?.()
       }
+    }
+    const source = new EventSource(withIdentityQuery(`${API_BASE}/api/agent-runs/${runIdToWatch}/events`))
+    streamRef.current = source
+    source.addEventListener("status", (event) => {
+      try {
+        handle(JSON.parse((event as MessageEvent).data) as { status: string; stage: string; error?: string })
+      } catch {
+        // A malformed frame is skipped; the next status (or the poll fallback) carries the truth.
+      }
     })
-    source.onerror = () => { closeStream(); busyRef.current = false; runIdRef.current = null; setRunId(null); setBusy(false); setError("coach.errors.streamLost") }
+    // The run keeps going on the server when the stream drops (proxy timeout, sleep, Wi-Fi):
+    // keep following it by polling instead of declaring it lost and re-enabling Send.
+    source.onerror = () => {
+      source.close()
+      if (streamRef.current === source) streamRef.current = null
+      if (pollRef.current !== null || runIdRef.current !== runIdToWatch) return
+      let failures = 0
+      pollRef.current = window.setInterval(() => {
+        api<{ status: string; stage: string; error: string | null }>(`/api/agent-runs/${runIdToWatch}`)
+          .then((run) => { failures = 0; handle(run) })
+          .catch(() => {
+            failures += 1
+            if (failures >= 5) {
+              closeStream(); busyRef.current = false; runIdRef.current = null; setRunId(null); setBusy(false); setError("coach.errors.streamLost")
+            }
+          })
+      }, 2000)
+    }
   }, [closeStream, refresh, finishRun])
 
   // Load history, then resume watching a run that is still generating —
@@ -280,7 +315,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     }
   }, [closeStream, refresh])
 
-  return { messages, busy, stage, error, setError, send, sendInteraction, refresh, editAndResend, stop, runId }
+  return { messages, busy, stage, error, setError, send, sendInteraction, refresh, retry, editAndResend, stop, runId }
 }
 
 /** Live run for a thread, polled so any section can show Hermes is generating. */
@@ -293,7 +328,9 @@ export function useActiveRun(threadId: string | null, pollMs = 2000): ActiveRun 
       if (document.hidden) return
       try {
         const { run: latest } = await api<{ run: ActiveRun | null }>(`/api/chat/threads/${threadId}/runs/latest`)
-        if (!cancelled) setRun(isLiveRun(latest) ? latest : null)
+        const next = isLiveRun(latest) ? latest : null
+        // Keep the same object while nothing changed, so the whole app does not re-render every poll.
+        if (!cancelled) setRun((current) => (current && next && current.id === next.id && current.status === next.status && current.stage === next.stage ? current : next))
       } catch {
         // Keep the last known state; the next poll retries.
       }

@@ -173,14 +173,10 @@ function solidFillOf(spPr: Element | null, scheme: Scheme): string | null {
   if (solid) return resolveFillColor(solid, scheme, "#000000");
   const grad = directChild(spPr, "a:gradFill");
   if (grad) {
-    // Approximate gradients with their first stop.
+    // Approximate gradients with their first stop. A stop holds its color element directly,
+    // exactly like a:solidFill, so it resolves the same way (no synthetic wrapper element).
     const stop = grad.getElementsByTagName("a:gs")[0];
-    const inner = stop ? directChild(stop, "a:srgbClr") ?? directChild(stop, "a:schemeClr") ?? directChild(stop, "a:sysClr") : null;
-    if (stop && inner) {
-      const wrapper = document.createElementNS("", "a:solidFill");
-      wrapper.appendChild(inner.cloneNode(true));
-      return resolveFillColor(wrapper, scheme, "#000000");
-    }
+    if (stop) return resolveFillColor(stop, scheme, "#000000");
   }
   return null;
 }
@@ -270,6 +266,29 @@ function readXfrm(spPr: Element | null): Geom | null {
 
 export interface GroupFrame { offX: number; offY: number; extCx: number; extCy: number; chCx: number; chCy: number; }
 
+/** Position of a placeholder that has none of its own: the matching placeholder on the slide's
+ *  layout, then on its master (matched by idx, else by type). */
+export type PlaceholderLookup = (ph: Element) => Geom | null;
+
+function findPlaceholderGeom(docs: (Document | null)[], ph: Element): Geom | null {
+  const idx = ph.getAttribute("idx");
+  const type = ph.getAttribute("type") ?? "body";
+  const sameType = (other: string) =>
+    other === type || ((type === "title" || type === "ctrTitle") && (other === "title" || other === "ctrTitle"));
+  for (const doc of docs) {
+    if (!doc) continue;
+    const candidates = Array.from(doc.getElementsByTagName("p:sp"))
+      .map((sp) => ({ sp, ph: sp.getElementsByTagName("p:ph")[0] }))
+      .filter((item) => item.ph);
+    const match =
+      (idx !== null ? candidates.find((item) => item.ph.getAttribute("idx") === idx) : undefined) ??
+      candidates.find((item) => sameType(item.ph.getAttribute("type") ?? "body"));
+    const geom = match ? readXfrm(directChild(match.sp, "p:spPr")) : null;
+    if (geom) return geom;
+  }
+  return null;
+}
+
 function parseShape(
   sp: Element,
   scheme: Scheme,
@@ -278,6 +297,7 @@ function parseShape(
   defaultColor: string,
   bodyFont: string,
   group?: GroupFrame,
+  inherit?: PlaceholderLookup,
 ): PptxShape | null {
   const nvPr = sp.getElementsByTagName("p:nvPr")[0];
   const ph = nvPr ? directChild(nvPr, "p:ph") : null;
@@ -290,7 +310,8 @@ function parseShape(
   if (!hasText && ph) return null;
 
   const spPr = directChild(sp, "p:spPr");
-  let geom = readXfrm(spPr);
+  // Title and body placeholders usually take their position from the layout.
+  let geom = readXfrm(spPr) ?? (ph && inherit ? inherit(ph) : null);
   if (!geom) return null;
   if (group && group.chCx > 0 && group.chCy > 0 && group.extCx > 0 && group.extCy > 0) {
     // Child coords live in the group's child-extents space.
@@ -367,7 +388,7 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
       if (id && target) relTarget[id] = target.replace(/^ppt\//, "").replace(/^\.\.\//, "").replace(/^\//, "");
     }
   }
-  const sldIdLst = presentation?.getElementsByTagName("p:sldId")[0];
+  const sldIdLst = presentation?.getElementsByTagName("p:sldIdLst")[0];
   const slidePaths: string[] = [];
   if (sldIdLst) {
     for (const sldId of directChildren(sldIdLst, "p:sldId")) {
@@ -385,11 +406,46 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
   }
   const limited = slidePaths.slice(0, MAX_SLIDES);
 
+  // Layout/master chain for inherited placeholder positions, cached per file.
+  const docCache = new Map<string, Promise<Document | null>>();
+  const cachedXml = (path: string) => {
+    if (!docCache.has(path)) docCache.set(path, readXml(path));
+    return docCache.get(path)!;
+  };
+  const relTargetOf = async (relsPath: string, typeSuffix: string, baseDir: string): Promise<string | null> => {
+    const rels = await cachedXml(relsPath);
+    if (!rels) return null;
+    for (const rel of Array.from(rels.getElementsByTagName("Relationship"))) {
+      if ((rel.getAttribute("Type") ?? "").endsWith(typeSuffix)) {
+        const target = rel.getAttribute("Target") ?? "";
+        if (target.startsWith("/")) return target.slice(1);
+        const parts = `${baseDir}/${target}`.split("/");
+        const resolved: string[] = [];
+        for (const part of parts) {
+          if (part === "..") resolved.pop();
+          else if (part && part !== ".") resolved.push(part);
+        }
+        return resolved.join("/");
+      }
+    }
+    return null;
+  };
+  const layoutChain = async (slidePath: string): Promise<(Document | null)[]> => {
+    const name = slidePath.split("/").pop() ?? "";
+    const layoutPath = await relTargetOf(`ppt/slides/_rels/${name}.rels`, "/slideLayout", "ppt/slides");
+    if (!layoutPath) return [];
+    const layoutName = layoutPath.split("/").pop() ?? "";
+    const masterPath = await relTargetOf(`ppt/slideLayouts/_rels/${layoutName}.rels`, "/slideMaster", "ppt/slideLayouts");
+    return [await cachedXml(layoutPath), masterPath ? await cachedXml(masterPath) : null];
+  };
+
   const slides: PptxSlide[] = [];
   for (const path of limited) {
     const num = path.match(/slide(\d+)\.xml/)?.[1] ?? "";
     const doc = await readXml(path);
     if (!doc) continue;
+    const chain = await layoutChain(path);
+    const inherit: PlaceholderLookup = (ph) => findPlaceholderGeom(chain, ph);
     // Background first: runs without an explicit color inherit a
     // contrasting default so theme-styled text stays readable.
     let background: string | null = null;
@@ -405,7 +461,7 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
     if (tree) {
       for (const node of Array.from(tree.children)) {
         if (node.tagName === "p:sp" || node.tagName === "p:cxnSp") {
-          const shape = parseShape(node, scheme, slideW, slideH, defaultColor, minorFont);
+          const shape = parseShape(node, scheme, slideW, slideH, defaultColor, minorFont, undefined, inherit);
           if (shape) shapes.push(shape);
         } else if (node.tagName === "p:grpSp") {
           const grpSpPr = node.getElementsByTagName("p:grpSpPr")[0];
@@ -425,7 +481,7 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
                 }
               : undefined;
           for (const sub of Array.from(node.getElementsByTagName("p:sp"))) {
-            const shape = parseShape(sub, scheme, slideW, slideH, defaultColor, minorFont, frame);
+            const shape = parseShape(sub, scheme, slideW, slideH, defaultColor, minorFont, frame, inherit);
             if (shape) shapes.push(shape);
           }
         } else if (node.tagName === "p:pic") {

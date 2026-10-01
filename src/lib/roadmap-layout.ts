@@ -397,3 +397,9 @@ function roundedOrthogonalPath(pts: Array<[number, number]>, radius: number): st
   d += ` L ${last[0]} ${last[1]}`;
   return d;
 }
+
+/** Models sometimes number stage titles ("Stage 2 · Deep learning", "المرحلة ٢ - …"); the UI shows
+ *  "Stage x of y" itself, so drop the duplicate in either language. */
+export function stripStagePrefix(title: string): string {
+  return title.replace(/^\s*(?:stage|المرحلة)\s*[\d٠-٩]+\s*[·:\-–—]\s*/i, "")
+}

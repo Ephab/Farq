@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """In-memory staged-generation jobs.
 
 A job holds the plan plus one node batch per completed stage. Stage
@@ -9,20 +7,33 @@ cannot corrupt each other. Jobs are short-lived: created by plan,
 consumed by finalize, and never survive a restart (regeneration is cheap).
 """
 
+from __future__ import annotations
+
 import threading
+import time
 import uuid
 
 from ..schemas import RoadmapNode, RoadmapPlan
 
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
+# Abandoned jobs (closed tab, failed stream) hold a brief and the tab's key; drop them after this.
+JOB_TTL_SECONDS = 60 * 60
+
+
+def _evict_expired() -> None:
+    cutoff = time.monotonic() - JOB_TTL_SECONDS
+    for job_id in [key for key, job in _jobs.items() if job["created"] < cutoff]:
+        _jobs.pop(job_id, None)
 
 
 def create_job(student_id: str, base_version_id: str, brief: dict, plan: RoadmapPlan, hermes: dict) -> str:
     job_id = str(uuid.uuid4())
     confirmed = {row["evidence_id"] for rows in brief.get("confirmed_evidence", {}).values() for row in rows}
     with _lock:
+        _evict_expired()
         _jobs[job_id] = {
+            "created": time.monotonic(),
             "student_id": student_id,
             "base_version_id": base_version_id,
             "brief": brief,
@@ -36,6 +47,7 @@ def create_job(student_id: str, base_version_id: str, brief: dict, plan: Roadmap
 
 def get_job(job_id: str) -> dict | None:
     with _lock:
+        _evict_expired()
         job = _jobs.get(job_id)
         if job is None:
             return None

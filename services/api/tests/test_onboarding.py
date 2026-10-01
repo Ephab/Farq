@@ -194,7 +194,7 @@ def generated_roadmap(done_evidence: str) -> dict:
 def test_generate_preview_and_accept_initial_roadmap(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     sid = new_student(client)["student_id"]
     client.put(f"/api/students/{sid}/profile", json={"program": "Medicine", "onboarding_status": "chat"})
-    source = client.post(f"/api/students/{sid}/sources", json={"kind": "linkedin_zip"}).json()
+    source = client.post(f"/api/students/{sid}/sources", json={"kind": "folder", "value": "C:/work/courses", "purpose": "coursework"}).json()
     client.post("/internal/hermes/evidence", headers=INTERNAL, json={"user_id": sid, "source_id": source["id"], "items": [{"kind": "course", "title": "Anatomy", "data": {"code": "MED 101", "grade": "A"}}]})
     evidence_id = client.get(f"/api/students/{sid}/evidence").json()[0]["id"]
     client.post(f"/api/students/{sid}/evidence/decide", json={"confirm": [evidence_id]})
@@ -230,12 +230,22 @@ def test_generate_preview_and_accept_initial_roadmap(client: TestClient, monkeyp
 
 def test_generation_failure_is_reported_not_faked(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     sid = new_student(client)["student_id"]
-    client.put(f"/api/students/{sid}/profile", json={"onboarding_status": "chat"})
+    client.put(f"/api/students/{sid}/profile", json={"program": "Medicine", "onboarding_status": "chat"})
+    source = client.post(f"/api/students/{sid}/sources", json={"kind": "folder", "value": "C:/work/courses", "purpose": "coursework"}).json()
+    client.post("/internal/hermes/evidence", headers=INTERNAL, json={"user_id": sid, "source_id": source["id"], "items": [{"kind": "course", "title": "Anatomy"}]})
+    client.post(f"/api/students/{sid}/evidence/decide", json={"confirm": [client.get(f"/api/students/{sid}/evidence").json()[0]["id"]]})
     monkeypatch.setattr("app.hermes.httpx.Client", fake_gateway(["not json at all"], []))
     response = client.post(f"/api/students/{sid}/onboarding/generate", json={}, headers=HERMES)
     assert response.status_code == 502
     assert client.get(f"/api/students/{sid}/profile").json()["onboarding_status"] == "chat"
     assert client.get(f"/api/students/{sid}/roadmap/proposals").json() == []
+
+
+def test_generation_waits_for_the_readiness_gate(client: TestClient):
+    sid = new_student(client)["student_id"]
+    response = client.post(f"/api/students/{sid}/onboarding/generate", json={}, headers=HERMES)
+    assert response.status_code == 409
+    assert "basics" in response.json()["detail"]
 
 
 def test_validate_generated_requires_consistent_layout():

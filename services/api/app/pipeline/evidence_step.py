@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Step 2: evidence ingest. One adapter per source kind.
 
 Every adapter returns normalized evidence stored as `suggested`.
@@ -7,7 +5,10 @@ Nothing here creates a StudentFact — only the student's explicit
 review (review_step) promotes items.
 """
 
+from __future__ import annotations
+
 import json
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,10 +20,11 @@ from ..sources.extract import extract_items
 from ..sources.linkedin_zip import parse_linkedin_zip
 from ..sources.pdf_text import extract_pdf_text
 from ..sources.web import fetch_github, fetch_orcid, fetch_page_text
+from ..tool_grants import EVIDENCE, issue_grant, revoke_grant
 
 FOLDER_INSTRUCTIONS = """
 You are Hermes indexing one folder on the student's own computer for Waypoint onboarding.
-Call waypoint_index_folder exactly once with the user_id, source_id, path and purpose given below.
+Call waypoint_index_folder exactly once with the user_id, grant, source_id, path and purpose given below.
 It scans the folder and submits the evidence itself. Do not call any other tool, do not read
 files, and never try to open .env files, keys, credentials or secrets.
 Then reply with one short sentence stating how many items were submitted for review.
@@ -54,22 +56,35 @@ def sync_remote(db: Session, source: DataSource, hermes: dict) -> int:
 
 
 def run_folder_ingest(db: Session, source: DataSource, hermes: dict) -> int:
-    """Ask Hermes (on the student's machine) to scan a folder and submit evidence."""
+    """Ask Hermes (on the student's machine) to scan a folder and submit evidence.
+
+    The grant lets this one run submit evidence for this one source and nothing else.
+    """
     config = json.loads(source.config_json)
     before = _evidence_count(db, source.id)
+    grant = issue_grant(db, source.student_id, (EVIDENCE,), source_id=source.id, ttl_seconds=600)
+    db.commit()
     prompt = (
-        f"Waypoint user_id={source.student_id}; source_id={source.id}.\n"
+        f"Waypoint user_id={source.student_id}; grant={grant}; source_id={source.id}.\n"
         f"Scan this folder: path={json.dumps(config['path'])} purpose={config.get('purpose') or 'projects'}"
     )
     try:
-        run_json_prompt("ingest", prompt, FOLDER_INSTRUCTIONS, timeout_seconds=300, **_hermes_args(hermes))
+        output = run_json_prompt("ingest", prompt, FOLDER_INSTRUCTIONS, timeout_seconds=300, **_hermes_args(hermes))
     except HermesJsonError as exc:
         raise SourceError(str(exc), status=exc.status) from exc
+    finally:
+        revoke_grant(db, grant)
+        db.commit()
     db.expire_all()
     added = _evidence_count(db, source.id) - before
-    if added <= 0:
+    if added <= 0 and not _reported_submissions(output):
         raise SourceError("Hermes finished but submitted no evidence for this folder", status=502)
-    return added
+    return max(added, 0)
+
+
+def _reported_submissions(output: str) -> bool:
+    """Re-indexing a folder whose items already exist adds no rows but still succeeded."""
+    return bool(re.search(r"\b([1-9]\d*)\s+(items?|projects?|courses?)\b", output or "", re.IGNORECASE))
 
 
 def _evidence_count(db: Session, source_id: str) -> int:

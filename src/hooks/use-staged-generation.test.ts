@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { streamStagedRoadmap } from "./use-staged-generation"
 
 vi.mock("@/lib/i18n/context", () => ({ translate: (key: string) => `localized:${key}` }))
-vi.mock("@/lib/waypoint-api", () => ({ API_BASE: "", httpErrorMessage: (status: number) => `localized:http:${status}` }))
+vi.mock("@/lib/waypoint-api", () => ({ API_BASE: "", httpErrorMessage: (status: number) => `localized:http:${status}`, identityHeaders: () => ({ "X-Waypoint-User": "student" }) }))
 
 afterEach(() => vi.unstubAllGlobals())
 

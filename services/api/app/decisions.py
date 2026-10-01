@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Fail-open decision gate: Jev, then Span-01 Lite, then local Laya (see decision_engines).
 
 Jev observes narrow, redacted states. It never writes product state, creates a
 StudentFact, or talks to Hermes directly. Callers keep their deterministic
 behavior unless a purpose is explicitly activated after evaluation.
 """
+
+from __future__ import annotations
 
 import hashlib
 import json

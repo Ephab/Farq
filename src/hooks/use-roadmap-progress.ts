@@ -1,27 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeStatus, RoadmapNodeData } from "@/data/computer-vision-roadmap";
 
 export function useRoadmapProgress(
   nodes: RoadmapNodeData[],
   initial: Record<string, NodeStatus>,
   persist: (id: string, status: NodeStatus) => Promise<void>,
+  /** One write for many nodes (Reset). Parallel single writes overwrote each other on the server. */
+  persistMany?: (statuses: Record<string, NodeStatus>) => Promise<void>,
 ) {
   const [statuses, setStatuses] = useState<Record<string, NodeStatus>>(initial);
+  const statusesRef = useRef(statuses);
+  statusesRef.current = statuses;
 
   useEffect(() => setStatuses(initial), [initial]);
 
   const setStatus = useCallback((id: string, status: NodeStatus) => {
-    setStatuses((previous) => ({ ...previous, [id]: status }));
-    persist(id, status).catch(() => setStatuses((previous) => ({ ...previous, [id]: initial[id] ?? "not-started" })));
-  }, [initial, persist]);
+    // Roll back to what the student saw just before this click, not to the last server load.
+    const previous = statusesRef.current[id] ?? "not-started";
+    setStatuses((current) => ({ ...current, [id]: status }));
+    persist(id, status).catch(() => setStatuses((current) => ({ ...current, [id]: previous })));
+  }, [persist]);
 
   const reset = useCallback(() => {
+    const before = statusesRef.current;
     const cleared = Object.fromEntries(nodes.map((node) => [node.id, "not-started" as NodeStatus]));
     setStatuses(cleared);
-    void Promise.all(nodes.map((node) => persist(node.id, "not-started")));
-  }, [nodes, persist]);
+    const write = persistMany
+      ? persistMany(cleared)
+      : nodes.reduce<Promise<void>>((chain, node) => chain.then(() => persist(node.id, "not-started")), Promise.resolve());
+    write.catch(() => setStatuses(before));
+  }, [nodes, persist, persistMany]);
 
   const summary = useMemo(() => {
     let done = 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw, X, Zap } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 import type { QuizDifficulty, QuizLiveStage, QuizQuestionType } from "@/lib/quiz-ai";
 import { useI18n } from "@/lib/i18n/context";
 
@@ -24,8 +24,6 @@ export interface GenJob {
   /** Stage of the Hermes run. */
   liveStage: QuizLiveStage;
   error: string | null;
-  /** Transient failure (e.g. 503) — offer the small fast model. */
-  showFallback: boolean;
   startedAt: number;
 }
 
@@ -83,11 +81,10 @@ interface ActiveJobListProps {
   jobs: GenJob[];
   onCancel: (id: string) => void;
   onRetry: (job: GenJob) => void;
-  onFallback: (job: GenJob) => void;
   onDismiss: (id: string) => void;
 }
 
-export function ActiveJobList({ jobs, onCancel, onRetry, onFallback, onDismiss }: ActiveJobListProps) {
+export function ActiveJobList({ jobs, onCancel, onRetry, onDismiss }: ActiveJobListProps) {
   const { t, fmt } = useI18n();
   if (jobs.length === 0) return null;
   const active = jobs.filter((j) => j.status === "generating").length;
@@ -146,15 +143,6 @@ export function ActiveJobList({ jobs, onCancel, onRetry, onFallback, onDismiss }
                 </button>
               ) : (
                 <div className="flex shrink-0 items-center gap-2">
-                  {job.showFallback ? (
-                    <button
-                      type="button"
-                      onClick={() => onFallback(job)}
-                      className="flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-[13px] font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <Zap className="size-3.5" aria-hidden="true" /> Lightning 30B
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     onClick={() => onRetry(job)}

@@ -36,8 +36,30 @@ def test_rejects_dependency_cycle():
 
 
 def test_rejects_identity_or_progress_rewrite():
-    with pytest.raises(ValueError, match="Identity and progress"):
-        apply_operations(snapshot(), [RoadmapOperation(type="update_node", node_id="a", changes={"status": "done"})])
+    for changes in ({"status": "done"}, {"id": "z"}, {"evidence": ["e1"]}, {"stageId": "two"}, {"nodeType": "opportunity"}, {"projectId": "p"}):
+        with pytest.raises(ValueError, match="cannot change"):
+            apply_operations(snapshot(), [RoadmapOperation(type="update_node", node_id="a", changes=changes)])
+
+
+def test_added_nodes_start_from_scratch():
+    node = RoadmapNode(id="c", stageId="one", title="C", status="done", evidence=["made-up"], projectId="p1")
+    result = apply_operations(snapshot(), [RoadmapOperation(type="add_node", node_id="c", node=node)])
+    added = next(item for item in result.nodes if item.id == "c")
+    assert (added.status, added.evidence, added.projectId) == ("not-started", [], None)
+
+
+def test_cannot_remove_a_prerequisite_of_started_work():
+    started = RoadmapSnapshot(
+        stages=[RoadmapStage(id="one", title="One", nodeIds=["a", "b"])],
+        nodes=[RoadmapNode(id="a", stageId="one", title="A"), RoadmapNode(id="b", stageId="one", title="B", deps=["a"], status="in-progress")],
+    )
+    with pytest.raises(ValueError, match="started work depends"):
+        apply_operations(started, [RoadmapOperation(type="remove_node", node_id="a")])
+
+
+def test_dependencies_must_exist():
+    with pytest.raises(ValueError, match="Unknown or self"):
+        apply_operations(snapshot(), [RoadmapOperation(type="set_dependencies", node_id="b", dependencies=["ghost"])])
 
 
 
@@ -148,3 +170,43 @@ def test_busy_gateway_waits_instead_of_skipping_models(monkeypatch):
     assert hermes.execute_with_fallback(Client(), {"Idempotency-Key": "k"}, {}, "gemini", None, 30)[1] == "gemini-3.8-flash"
     assert posts == ["gemini-3.8-flash"] * 3
     assert hermes._cooldown == {}
+
+
+def test_network_errors_move_to_the_next_rung_and_unused_cooldowns_pick_the_soonest(monkeypatch):
+    import app.hermes as hermes
+
+    monkeypatch.setattr(hermes, "_cooldown", {})
+    monkeypatch.setattr(hermes.time, "sleep", lambda _s: None)
+    tried = []
+
+    class Client:
+        def post(self, url, headers=None, json=None):
+            if url.endswith("/cancel"):
+                return _Resp({})
+            tried.append(json["model"])
+            if json["model"] == "gemini-3.8-flash":
+                raise hermes.httpx.ConnectError("refused")
+            return _Resp({"run_id": json["model"]})
+
+        def get(self, url, headers=None):
+            model = url.rsplit("/", 1)[1]
+            if model == "gemini-3.7-flash":
+                return _Resp({"status": "completed", "output": ""})
+            return _Resp({"status": "completed", "output": "ok"})
+
+    assert hermes.execute_with_fallback(Client(), {"Idempotency-Key": "k"}, {}, "gemini", None, 5)[1] == "gemini-3.6-flash"
+    assert tried == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+    # Neither a network error nor an empty answer benches the model for other runs.
+    assert hermes._cooldown == {}
+
+    now = hermes.time.monotonic()
+    hermes._cooldown.update({model: now + 100 + index for index, (model, _p) in enumerate(hermes.FALLBACK_CHAIN)})
+    hermes._cooldown["gemini-3.5-flash"] = now + 1
+    assert hermes.candidate_chain("gemini", None) == [("gemini-3.5-flash", "gemini")]
+
+
+def test_default_model_is_the_top_of_the_ladder():
+    import app.hermes as hermes
+
+    assert hermes.GEMINI_CHAIN[0] == "gemini-3.8-flash"
+    assert hermes.HERMES_MODEL in hermes.GEMINI_MODELS

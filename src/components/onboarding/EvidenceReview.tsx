@@ -77,7 +77,7 @@ export function EvidenceReview({ profile, onBack, onNext, onlyNew = false }: Evi
   if (items === null) return <div className="grid flex-1 place-items-center p-8">{error ? <p className="text-sm text-destructive">{error}</p> : <LoaderCircle className="size-5 animate-spin text-muted-foreground" />}</div>
 
   return (
-    <div className="h-[calc(100dvh-4rem)] overflow-y-auto bg-background">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -99,7 +99,7 @@ export function EvidenceReview({ profile, onBack, onNext, onlyNew = false }: Evi
                   </div>
                   <ul className="divide-y divide-border border-t border-border">
                     {group.items.map((item) => (
-                      <li key={item.id} className="px-4 py-3.5 transition-colors has-[:not(:checked)]:bg-muted/40">
+                      <li key={item.id} className="px-4 py-3.5 transition-colors has-[input[type=checkbox]:not(:checked)]:bg-muted/40">
                         <div className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-3">
                           <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} aria-label={t("onboarding.review.keep", { title: isolate(item.title) })} className="mt-1 size-[22px] accent-[var(--primary)]" />
                           <div className="min-w-0">

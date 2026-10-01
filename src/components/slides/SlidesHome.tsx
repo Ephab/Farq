@@ -75,6 +75,7 @@ interface SlidesHomeProps {
   topicsLoading: boolean;
   topicsProgress: SlidesProgress | null;
   topicsError: string | null;
+  onRetryTopics: () => void;
   selectedTopic: string;
   onSelectTopic: (title: string) => void;
   customTopic: string;
@@ -117,6 +118,7 @@ export function SlidesHome(props: SlidesHomeProps) {
     topicsLoading,
     topicsProgress,
     topicsError,
+    onRetryTopics,
     selectedTopic,
     onSelectTopic,
     customTopic,
@@ -259,6 +261,8 @@ export function SlidesHome(props: SlidesHomeProps) {
                   aria-label={t("slides.decks.extendAria", { name: deck.fileName })}
                   onClick={() => onSelectDeck(deck.id)}
                   onKeyDown={(e) => {
+                    // Keys pressed on the nested delete button belong to that button.
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onSelectDeck(deck.id);
@@ -398,9 +402,16 @@ export function SlidesHome(props: SlidesHomeProps) {
                   </p>
                 )
               ) : topicsError ? (
-                <p role="alert" className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[13px]">
-                  {topicsError}
-                </p>
+                <div role="alert" className="mt-2 flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[13px]">
+                  <p className="min-w-0 flex-1">{topicsError}</p>
+                  <button
+                    type="button"
+                    onClick={onRetryTopics}
+                    className="shrink-0 rounded-lg border border-border bg-background px-2.5 py-1 text-[13px] font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {t("slides.errors.retrySuggest")}
+                  </button>
+                </div>
               ) : topics.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">{t("slides.topics.analyzing")}</p>
               ) : (

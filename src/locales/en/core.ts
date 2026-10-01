@@ -11,8 +11,6 @@ export const core = {
     save: "Save",
     close: "Close",
     user: "User",
-    comingSoon: "This section is coming soon — check out the Roadmap tab.",
-    openRoadmap: "Open Roadmap",
     networkError: "Can't reach Waypoint. Check your connection and try again.",
     sourceKinds: {
       transcript_pdf: "Transcript",

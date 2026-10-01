@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """Step 1: basics. The student enters institution/program/year/graduation.
 
 Program text maps to a discipline (overridable). Pure helper so the
 API layer stays thin.
 """
+
+from __future__ import annotations
 
 from ..disciplines import classify_program
 

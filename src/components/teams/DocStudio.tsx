@@ -69,7 +69,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
   const [customTitle, setCustomTitle] = useState<string | null>(null)
   const create = (kind: DocumentKind, title?: string) => run(async () => {
     const created = await teams.createDocument(
-      store.team.id, kind, kind === "custom" ? { title: title ?? "Document", sections: [{ key: "1", title: "Introduction" }] } : undefined,
+      store.team.id, kind, kind === "custom" ? { title: title ?? t("teams.docs.defaultTitle"), sections: [{ key: "1", title: t("teams.docs.defaultSection") }] } : undefined,
     )
     setCustomTitle(null)
     update((current) => upsertDocument(current, created))

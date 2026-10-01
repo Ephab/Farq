@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Quiz generation through the local Hermes gateway.
 
 The browser never calls a model provider directly. This module sends a
@@ -13,7 +11,9 @@ The model returns raw text; the frontend keeps the battle-tested
 parse/salvage logic and turns it into UI-ready questions.
 """
 
-from .hermes import LAST_JSON_MODEL, HermesJsonError, effective_hermes_key, run_json_prompt
+from __future__ import annotations
+
+from .hermes import HermesJsonError, effective_hermes_key, run_json_prompt
 
 MAX_SOURCE_CHARS = 12_000
 RUN_TIMEOUT_SECONDS = 180
@@ -89,5 +89,4 @@ def run_quiz(
     except HermesJsonError as exc:
         message = "Hermes returned an empty answer — try fewer questions" if "empty answer" in str(exc) else str(exc)
         raise QuizRunError(message, status=exc.status) from exc
-    used_model, used_provider = LAST_JSON_MODEL["quiz"]
-    return {"output": output, "model": used_model, "provider": used_provider}
+    return {"output": str(output), "model": getattr(output, "model", ""), "provider": getattr(output, "provider", "")}

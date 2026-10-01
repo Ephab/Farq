@@ -9,14 +9,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   generateQuiz,
   getMockQuiz,
-  NIM_FALLBACK_MODEL,
+  MAX_SOURCE_CHARS,
   QUIZ_MODELS,
   QuizAIError,
   type QuizDifficulty,
   type QuizQuestion,
   type QuizQuestionType,
 } from "@/lib/quiz-ai";
-import { api } from "@/lib/waypoint-api";
+import { api, hermesRequestParts } from "@/lib/waypoint-api";
 import { extractSource, QuizExtractError } from "@/lib/quiz-extract";
 import { useI18n, type MessageKey } from "@/lib/i18n/context";
 import {
@@ -25,7 +25,7 @@ import {
   decksLabel,
   loadLibrary,
   makeId,
-  saveLibrary,
+  updateLibrary,
   type QuizLibrary,
   type SavedQuiz,
 } from "@/lib/quiz-store";
@@ -84,16 +84,12 @@ export function QuizView() {
   const [jobs, setJobs] = useState<GenJob[]>([]);
   const [newQuizIds, setNewQuizIds] = useState<string[]>([]);
   const abortControllers = useRef(new Map<string, AbortController>());
-  // Mirror of library for async job completions (avoids stale closures
-  // when several jobs finish around the same time).
-  const libraryRef = useRef(library);
-
-  const persist = useCallback((next: QuizLibrary) => {
-    libraryRef.current = next;
+  // Every write starts from what is in storage now (see updateLibrary): Slides shares this
+  // library, and a quiz job may finish after this tab was left and reopened.
+  const persist = useCallback((change: (lib: QuizLibrary) => QuizLibrary) => {
+    const { library: next, saved } = updateLibrary(change);
     setLibrary(next);
-    if (!saveLibrary(next)) {
-      setError(t("quiz.errors.storageFull"));
-    }
+    if (!saved) setError(t("quiz.errors.storageFull"));
   }, [t]);
 
   const uploadFile = useCallback(
@@ -102,7 +98,7 @@ export function QuizView() {
       setUploading(true);
       try {
         const deck = deckFromSource(await extractSource(file));
-        persist({ ...library, decks: [deck, ...library.decks] });
+        persist((lib) => ({ ...lib, decks: [deck, ...lib.decks] }));
         setSelectedDeckIds((sel) => (sel.includes(deck.id) ? sel : [...sel, deck.id]));
       } catch (e) {
         setError(errorText(e, t, "quiz.errors.readFailed"));
@@ -110,7 +106,7 @@ export function QuizView() {
         setUploading(false);
       }
     },
-    [library, persist, t],
+    [persist, t],
   );
 
   const toggleDeck = useCallback((id: string) => {
@@ -123,27 +119,27 @@ export function QuizView() {
 
   const deleteDeck = useCallback(
     (id: string) => {
-      persist({ ...library, decks: library.decks.filter((d) => d.id !== id) });
+      persist((lib) => ({ ...lib, decks: lib.decks.filter((d) => d.id !== id) }));
       setSelectedDeckIds((sel) => sel.filter((x) => x !== id));
     },
-    [library, persist],
+    [persist],
   );
 
   const deleteQuiz = useCallback(
     (id: string) => {
-      persist({ ...library, quizzes: library.quizzes.filter((q) => q.id !== id) });
+      persist((lib) => ({ ...lib, quizzes: lib.quizzes.filter((q) => q.id !== id) }));
       setNewQuizIds((prev) => prev.filter((x) => x !== id));
     },
-    [library, persist],
+    [persist],
   );
 
   const deleteQuizzes = useCallback(
     (ids: string[]) => {
       const gone = new Set(ids);
-      persist({ ...library, quizzes: library.quizzes.filter((q) => !gone.has(q.id)) });
+      persist((lib) => ({ ...lib, quizzes: lib.quizzes.filter((q) => !gone.has(q.id)) }));
       setNewQuizIds((prev) => prev.filter((x) => !gone.has(x)));
     },
-    [library, persist],
+    [persist],
   );
 
   const openGenerate = useCallback(() => {
@@ -157,24 +153,25 @@ export function QuizView() {
 
   const runJob = useCallback(
     async (job: GenJob, ctrl: AbortController) => {
-      const decks = libraryRef.current.decks.filter((d) => job.deckIds.includes(d.id));
+      const decks = loadLibrary().decks.filter((d) => job.deckIds.includes(d.id));
       if (decks.length === 0) {
         setJobs((prev) =>
           prev.map((j) =>
             j.id === job.id
-              ? { ...j, status: "failed" as const, error: t("quiz.errors.decksDeleted"), showFallback: false }
+              ? { ...j, status: "failed" as const, error: t("quiz.errors.decksDeleted") }
               : j,
           ),
         );
         return;
       }
       try {
-        const result = await generateQuiz(combineDeckTexts(decks), {
+        // Same budget the server applies, shared fairly so every selected deck is covered.
+        const result = await generateQuiz(combineDeckTexts(decks, MAX_SOURCE_CHARS).text, {
           count: job.count,
           difficulty: job.difficulty,
           types: job.types,
-          // Empty = server Hermes model; set only for the Lightning fallback.
-          model: job.model || undefined,
+          // The tab's Hermes choice, like the coach; the server descends its fallback ladder.
+          ...hermesRequestParts().body,
           signal: ctrl.signal,
           onProgress: (p) => {
             setJobs((prev) =>
@@ -201,8 +198,7 @@ export function QuizView() {
           model: modelLabelFor(result.model || hermesModel.id),
           createdAt: Date.now(),
         };
-        const lib = libraryRef.current;
-        persist({ ...lib, quizzes: [saved, ...lib.quizzes] });
+        persist((lib) => ({ ...lib, quizzes: [saved, ...lib.quizzes] }));
         setJobs((prev) => prev.filter((j) => j.id !== job.id));
         setNewQuizIds((prev) => [saved.id, ...prev]);
       } catch (e) {
@@ -211,12 +207,10 @@ export function QuizView() {
           return;
         }
         const msg = errorText(e, t, "quiz.errors.generationFailed");
-        const showFallback =
-          e instanceof QuizAIError && e.retryable === true && job.model !== NIM_FALLBACK_MODEL;
         setJobs((prev) =>
           prev.map((j) =>
             j.id === job.id
-              ? { ...j, status: "failed" as const, error: msg, showFallback }
+              ? { ...j, status: "failed" as const, error: msg }
               : j,
           ),
         );
@@ -242,16 +236,14 @@ export function QuizView() {
       count: shape.count,
       difficulty: shape.difficulty,
       types: [...shape.types],
-      // Empty model = the server's Hermes model.
-      model: "",
-      modelLabel: hermesModel.label,
+      model: hermesRequestParts().body.model,
+      modelLabel: modelLabelFor(hermesRequestParts().body.model),
       status: "generating",
       progress: 3,
       parsed: 0,
       total: shape.count,
       liveStage: "waiting",
       error: null,
-      showFallback: false,
       startedAt: Date.now(),
     };
     const ctrl = new AbortController();
@@ -259,37 +251,26 @@ export function QuizView() {
     setJobs((prev) => [job, ...prev]);
     setPhase("home");
     void runJob(job, ctrl);
-  }, [library, selectedDeckIds, shape, hermesModel, runJob, t]);
+  }, [library, selectedDeckIds, shape, runJob, t]);
 
   const retryJob = useCallback(
-    (job: GenJob, modelOverride?: string) => {
-      const m = modelOverride ?? job.model;
+    (job: GenJob) => {
       const ctrl = new AbortController();
       abortControllers.current.set(job.id, ctrl);
       const updated: GenJob = {
         ...job,
-        model: m,
-        modelLabel: m ? modelLabelFor(m) : job.modelLabel,
         status: "generating",
         progress: 3,
         parsed: 0,
         total: job.count,
         liveStage: "waiting",
         error: null,
-        showFallback: false,
         startedAt: Date.now(),
       };
       setJobs((prev) => prev.map((j) => (j.id === job.id ? updated : j)));
       void runJob(updated, ctrl);
     },
     [runJob],
-  );
-
-  const retryWithFallback = useCallback(
-    (job: GenJob) => {
-      retryJob(job, NIM_FALLBACK_MODEL);
-    },
-    [retryJob],
   );
 
   const cancelJob = useCallback((id: string) => {
@@ -392,7 +373,6 @@ export function QuizView() {
       newQuizIds={newQuizIds}
       onCancelJob={cancelJob}
       onRetryJob={(job) => retryJob(job)}
-      onFallbackJob={retryWithFallback}
       onDismissJob={dismissJob}
       quizzes={library.quizzes}
       onStartQuiz={startSavedQuiz}

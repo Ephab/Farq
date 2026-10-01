@@ -104,7 +104,7 @@ def prepare_student(client: TestClient) -> str:
     student = new_student(client)
     sid = student["student_id"]
     client.put(f"/api/students/{sid}/profile", json={"program": "Computer Science", "institution": "Test University"})
-    source = client.post(f"/api/students/{sid}/sources", json={"kind": "linkedin_zip"}).json()
+    source = client.post(f"/api/students/{sid}/sources", json={"kind": "folder", "value": "C:/work/courses", "purpose": "coursework"}).json()
     client.post("/internal/hermes/evidence", headers=INTERNAL, json={
         "user_id": sid, "source_id": source["id"],
         "items": [{"kind": "course", "title": "Intro to CS", "data": {"code": "CS 101", "grade": "A"}}],

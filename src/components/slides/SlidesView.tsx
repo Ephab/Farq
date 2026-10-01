@@ -8,7 +8,7 @@ import {
   deckFromSource,
   loadLibrary,
   makeId,
-  saveLibrary,
+  updateLibrary,
   type QuizLibrary,
   type SavedExtension,
 } from "@/lib/quiz-store";
@@ -77,21 +77,28 @@ export function SlidesView() {
   // Files (and their visuals) live in memory only — a reload keeps the
   // extracted text but needs a re-upload for visual preview/export.
   const [visuals, setVisuals] = useState<Record<string, DeckVisuals>>({});
-  const visualReq = useRef(0);
+  // Latest render request per deck: switching decks never discards another deck's result.
+  const visualReqs = useRef(new Map<string, number>());
+  const [suggestAttempt, setSuggestAttempt] = useState(0);
 
   const libraryRef = useRef(library);
+  const selectedDeckRef = useRef<string | null>(null);
   // Original files kept in memory only (never localStorage).
   const originalFiles = useRef(new Map<string, File>());
   const suggestCtrl = useRef<AbortController | null>(null);
   const extendCtrl = useRef<AbortController | null>(null);
 
-  const persist = useCallback((next: QuizLibrary) => {
+  // Writes merge with storage (Quizzes shares this library; see updateLibrary).
+  const persist = useCallback((change: (lib: QuizLibrary) => QuizLibrary) => {
+    const { library: next, saved } = updateLibrary(change);
     libraryRef.current = next;
     setLibrary(next);
-    if (!saveLibrary(next)) {
-      setError(t("slides.errors.storageFull"));
-    }
+    if (!saved) setError(t("slides.errors.storageFull"));
   }, [t]);
+
+  useEffect(() => {
+    selectedDeckRef.current = selectedDeckId;
+  }, [selectedDeckId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +114,14 @@ export function SlidesView() {
     };
   }, []);
 
+  /** Stop an in-flight extension: its slides belong to the deck it was started for. */
+  const cancelExtend = useCallback(() => {
+    extendCtrl.current?.abort();
+    extendCtrl.current = null;
+    setExtending(false);
+    setExtendProgress(null);
+  }, []);
+
   const uploadFile = useCallback(
     async (file: File) => {
       setError(null);
@@ -114,7 +129,8 @@ export function SlidesView() {
       try {
         const deck = deckFromSource(await extractSource(file));
         originalFiles.current.set(deck.id, file);
-        persist({ ...libraryRef.current, decks: [deck, ...libraryRef.current.decks] });
+        persist((lib) => ({ ...lib, decks: [deck, ...lib.decks] }));
+        cancelExtend();
         // Enter loading state synchronously so the workbench never flashes
         // an empty "no suggestions" state before analysis starts.
         setTopics([]);
@@ -133,13 +149,14 @@ export function SlidesView() {
         setUploading(false);
       }
     },
-    [persist, errorText],
+    [persist, errorText, cancelExtend],
   );
 
   /** Selecting a deck immediately shows the analyzing state (no empty flash). */
   const handleSelectDeck = useCallback((id: string) => {
     setSelectedDeckId((prev) => {
       if (prev !== id) {
+        cancelExtend();
         setTopics([]);
         setTopicsError(null);
         setTopicsProgress({ percent: 2, stage: "waiting", charsReceived: 0 });
@@ -152,16 +169,16 @@ export function SlidesView() {
       }
       return id;
     });
-  }, []);
+  }, [cancelExtend]);
 
   const deleteDeck = useCallback(
     (id: string) => {
       originalFiles.current.delete(id);
-      persist({
-        ...libraryRef.current,
-        decks: libraryRef.current.decks.filter((d) => d.id !== id),
-        extensions: libraryRef.current.extensions.filter((e) => e.deckId !== id),
-      });
+      persist((lib) => ({
+        ...lib,
+        decks: lib.decks.filter((d) => d.id !== id),
+        extensions: lib.extensions.filter((e) => e.deckId !== id),
+      }));
       setSelectedDeckId((sel) => (sel === id ? null : sel));
     },
     [persist],
@@ -173,6 +190,7 @@ export function SlidesView() {
   useEffect(() => {
     if (!selectedDeckId) {
       suggestCtrl.current?.abort();
+      cancelExtend();
       setTopicsLoading(false);
       setTopicsProgress(null);
       setTopics([]);
@@ -192,7 +210,7 @@ export function SlidesView() {
     const ctrl = new AbortController();
     suggestCtrl.current = ctrl;
     setTopicsLoading(true);
-    suggestTopics(combineDeckTexts([deck]), {
+    suggestTopics(combineDeckTexts([deck]).text, {
       count: 5,
       studentId: getCurrentStudentId(),
       signal: ctrl.signal,
@@ -217,7 +235,15 @@ export function SlidesView() {
       });
     return () => ctrl.abort();
     // errorText is deliberately omitted: a locale change must not re-run the model call.
-  }, [selectedDeckId]);
+    // suggestAttempt re-runs it on Try again.
+  }, [selectedDeckId, suggestAttempt, cancelExtend]);
+
+  const retryTopics = useCallback(() => {
+    setTopicsError(null);
+    setTopicsProgress({ percent: 2, stage: "waiting", charsReceived: 0 });
+    setTopicsLoading(true);
+    setSuggestAttempt((n) => n + 1);
+  }, []);
 
   // Clear selection state when the deck list changes underneath us.
   useEffect(() => {
@@ -239,24 +265,26 @@ export function SlidesView() {
       setVisuals((prev) => (prev[deck.id]?.status === "unavailable" ? prev : { ...prev, [deck.id]: { status: "unavailable" } }));
       return;
     }
-    const req = ++visualReq.current;
+    const req = (visualReqs.current.get(deck.id) ?? 0) + 1;
+    visualReqs.current.set(deck.id, req);
+    const stale = () => visualReqs.current.get(deck.id) !== req;
     setVisuals((prev) => ({ ...prev, [deck.id]: { status: "loading" } }));
     (async () => {
       try {
         if (deck.kind === "pptx") {
           const parsed = await parsePptxDesign(file);
-          if (visualReq.current !== req) return;
+          if (stale()) return;
           setVisuals((prev) => ({ ...prev, [deck.id]: { status: "ready", parsed } }));
         } else {
           const rendered = await renderPdfPages(file);
-          if (visualReq.current !== req) return;
+          if (stale()) return;
           setVisuals((prev) => ({
             ...prev,
             [deck.id]: { status: "ready", pdfImages: rendered.images, pdfWidth: rendered.width, pdfHeight: rendered.height },
           }));
         }
       } catch (e) {
-        if (visualReq.current !== req) return;
+        if (stale()) return;
         setVisuals((prev) => ({
           ...prev,
           [deck.id]: { status: "error", error: e instanceof Error && e.message ? e.message : undefined },
@@ -377,7 +405,7 @@ export function SlidesView() {
     setExtendError(null);
     setExtendProgress({ percent: 2, stage: "waiting", charsReceived: 0 });
     try {
-      const slides = await extendSlides(combineDeckTexts([deck]), topic, {
+      const slides = await extendSlides(combineDeckTexts([deck]).text, topic, {
         length: extensionLength,
         designHint: designHintFor(deck.id),
         signal: ctrl.signal,
@@ -385,7 +413,8 @@ export function SlidesView() {
           if (!ctrl.signal.aborted) setExtendProgress(p);
         },
       });
-      if (ctrl.signal.aborted) return;
+      // Only show slides on the deck they were made for.
+      if (ctrl.signal.aborted || selectedDeckRef.current !== deck.id) return;
       setPreviewSlides(slides);
       setPreviewTopic(topic);
     } catch (e) {
@@ -411,7 +440,7 @@ export function SlidesView() {
       slides: previewSlides,
       createdAt: Date.now(),
     };
-    persist({ ...libraryRef.current, extensions: [saved, ...libraryRef.current.extensions] });
+    persist((lib) => ({ ...lib, extensions: [saved, ...lib.extensions] }));
     setNewExtensionIds((prev) => [saved.id, ...prev]);
     setPreviewSlides([]);
     setPreviewTopic("");
@@ -419,7 +448,7 @@ export function SlidesView() {
 
   const deleteExtension = useCallback(
     (id: string) => {
-      persist({ ...libraryRef.current, extensions: libraryRef.current.extensions.filter((e) => e.id !== id) });
+      persist((lib) => ({ ...lib, extensions: lib.extensions.filter((e) => e.id !== id) }));
       setNewExtensionIds((prev) => prev.filter((x) => x !== id));
     },
     [persist],
@@ -433,11 +462,17 @@ export function SlidesView() {
         let originalPptxBase64: string | undefined;
         let originalImagesBase64: string[] | undefined;
         const file = originalFiles.current.get(ext.deckId);
+        const visual = visuals[ext.deckId];
+        // The original file lives only in this page's memory. Without it the export would
+        // silently contain just the new slides, so ask for the file instead.
+        if (!file && !(ext.deckKind === "pdf" && visual?.pdfImages?.length)) {
+          setError(t("slides.errors.reuploadForExport", { name: ext.deckName }));
+          return;
+        }
         if (ext.deckKind === "pptx" && file) {
           originalPptxBase64 = await fileToBase64(file);
         } else if (ext.deckKind === "pdf") {
           // Reuse the rendered page images (full deck = pages + AI slides).
-          const visual = visuals[ext.deckId];
           if (visual?.pdfImages?.length) {
             originalImagesBase64 = visual.pdfImages;
           } else if (file) {
@@ -450,6 +485,8 @@ export function SlidesView() {
           slides: ext.slides,
           originalPptxBase64,
           originalImagesBase64,
+          dividerTitle: t("slides.exportDivider.title", { topic: ext.topic }),
+          dividerNote: t("slides.exportDivider.note", { count: ext.slides.length, name: ext.deckName }),
         });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -466,7 +503,7 @@ export function SlidesView() {
         setExportingId(null);
       }
     },
-    [visuals, errorText],
+    [visuals, errorText, t],
   );
 
   return (
@@ -483,6 +520,7 @@ export function SlidesView() {
       topicsLoading={topicsLoading}
       topicsProgress={topicsProgress}
       topicsError={topicsError}
+      onRetryTopics={retryTopics}
       selectedTopic={selectedTopic}
       onSelectTopic={(title) => {
         setSelectedTopic(title);

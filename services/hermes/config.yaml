@@ -33,7 +33,8 @@ tools:
 gateway:
   api_server:
     enabled: true
-    host: 0.0.0.0
+    # Loopback by default; Docker sets API_SERVER_HOST=0.0.0.0 inside its private network.
+    host: 127.0.0.1
     port: 8642
     model_name: waypoint-hermes
     max_concurrent_runs: 8

@@ -31,14 +31,20 @@ export function useTeamStream(teamId: string) {
       .then((initial) => {
         if (cancelled) return
         source = new EventSource(teams.eventsUrl(teamId, initial.lastSeq))
+        // One malformed frame is skipped instead of throwing out of the listener.
+        const parse = <T,>(raw: Event): T | null => {
+          try { return JSON.parse((raw as MessageEvent<string>).data) as T } catch { return null }
+        }
         const onEvent = (raw: Event) => {
-          const event = JSON.parse((raw as MessageEvent<string>).data) as TeamEvent
+          const event = parse<TeamEvent>(raw)
+          if (!event) return
           recent.current = [...recent.current.slice(-199), event]
           setStore((current) => (current ? applyEvent(current, event) : current))
         }
         for (const type of TEAM_EVENT_TYPES) source.addEventListener(type, onEvent)
         source.addEventListener("presence", (raw) => {
-          const presence = JSON.parse((raw as MessageEvent<string>).data) as PresenceEntry[]
+          const presence = parse<PresenceEntry[]>(raw)
+          if (!presence) return
           setStore((current) => (current ? { ...current, presence } : current))
         })
         source.onopen = () => setLive(true)

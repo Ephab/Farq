@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Stage 0: plan. One cheap LLM call producing titles + shapes only (no nodes)."""
+
+from __future__ import annotations
 
 import json
 

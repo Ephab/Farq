@@ -73,6 +73,14 @@ export function loadLibrary(): QuizLibrary {
   }
 }
 
+/** Apply a change to the library as it is in storage now, then save it.
+ *  Quizzes and Slides share this key and both outlive their tabs (jobs finish after a tab
+ *  switch), so every write re-reads storage instead of saving a stale in-memory copy. */
+export function updateLibrary(change: (lib: QuizLibrary) => QuizLibrary): { library: QuizLibrary; saved: boolean } {
+  const library = change(loadLibrary());
+  return { library, saved: saveLibrary(library) };
+}
+
 /** Returns false when the browser quota is exceeded. */
 export function saveLibrary(lib: QuizLibrary): boolean {
   try {
@@ -120,7 +128,18 @@ export function decksLabel(decks: SlideDeck[], t: Translate): string {
   return t("quiz.deckLabel", { name: decks[0].fileName, count: decks.length - 1 });
 }
 
-/** Join deck texts with file headers so the model can cite sources. */
-export function combineDeckTexts(decks: SlideDeck[]): string {
-  return decks.map((d) => `=== FILE: ${d.fileName} ===\n${d.text}`).join("\n\n");
+/** Join deck texts with file headers so the model can cite sources. With a budget, every deck
+ *  gets an equal share (unused share passes on), so the first deck cannot crowd out the rest. */
+export function combineDeckTexts(decks: SlideDeck[], budget = Infinity): { text: string; trimmed: boolean } {
+  let remaining = budget;
+  let trimmed = false;
+  const parts = decks.map((deck, index) => {
+    const header = `=== FILE: ${deck.fileName} ===\n`;
+    const share = Math.max(0, Math.floor(remaining / (decks.length - index)) - header.length);
+    const body = deck.text.length > share ? deck.text.slice(0, share) : deck.text;
+    if (body.length < deck.text.length) trimmed = true;
+    remaining -= header.length + body.length + 2;
+    return header + body;
+  });
+  return { text: parts.join("\n\n"), trimmed };
 }

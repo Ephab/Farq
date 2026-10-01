@@ -1,13 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowLeft, ChevronRight, Command, LoaderCircle } from "lucide-react"
 import { BasicsStep } from "@/components/onboarding/BasicsStep"
 import { EvidenceReview } from "@/components/onboarding/EvidenceReview"
 import { OnboardingChat } from "@/components/onboarding/OnboardingChat"
 import { RoadmapPreview } from "@/components/onboarding/RoadmapPreview"
 import { SourcesStep } from "@/components/onboarding/SourcesStep"
-import { DEMO_STUDENT_ID, api, getCurrentStudentId, getHermesApiKey, getHermesModel, getHermesProvider, hasChosenStudent, isNvapiKey, modelsFor, saveHermesApiKey, saveHermesModel, saveHermesProvider, setCurrentStudentId, type HermesProvider, type OnboardingStatus, type StudentProfile } from "@/lib/waypoint-api"
+import { ApiError, DEMO_STUDENT_ID, api, getCurrentStudentId, getHermesApiKey, getHermesModel, getHermesProvider, hasChosenStudent, isNvapiKey, modelsFor, saveHermesApiKey, saveHermesModel, saveHermesProvider, setCurrentStudentId, type HermesProvider, type OnboardingStatus, type StudentProfile } from "@/lib/waypoint-api"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n/context"
 
@@ -29,6 +29,12 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [loading, setLoading] = useState(hasChosenStudent())
   const [error, setError] = useState<string | null>(null)
+  // The profile could not be loaded for a reason other than "this student is gone" (offline,
+  // server restarting): keep the student and offer a retry instead of signing them out.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [stepError, setStepError] = useState<string | null>(null)
+  const onDoneRef = useRef(onDone)
+  useEffect(() => { onDoneRef.current = onDone }, [onDone])
   const [apiKey, setApiKey] = useState(getHermesApiKey())
   const [showKey, setShowKey] = useState(false)
   // Provider/model live here (not just footer Settings) so a saturated model
@@ -63,18 +69,26 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
 
   const load = useCallback(async () => {
     if (!hasChosenStudent()) { setLoading(false); return }
+    setLoadFailed(false)
     try {
       const next = await api<StudentProfile>(`/api/students/${getCurrentStudentId()}/profile`)
-      if (next.onboarding_status === "done") { onDone(); return }
+      if (next.onboarding_status === "done") { onDoneRef.current(); return }
       setProfile(next)
     } catch (reason) {
-      // A remembered student that no longer exists (e.g. database reset): start over.
-      setCurrentStudentId(null)
-      setError(reason instanceof Error ? reason.message : t("onboarding.loadProfileFailed"))
+      const message = reason instanceof Error ? reason.message : t("onboarding.loadProfileFailed")
+      if (reason instanceof ApiError && (reason.status === 401 || reason.status === 404)) {
+        // A remembered student that no longer exists (e.g. database reset): start over.
+        setCurrentStudentId(null)
+      } else {
+        setLoadFailed(true)
+      }
+      setError(message)
     } finally {
       setLoading(false)
     }
-  }, [onDone])
+    // t only formats the fallback message; a language switch must not reload the profile.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => { void load() }, [load])
 
@@ -83,6 +97,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
     setCurrentStudentId(null)
     setProfile(null)
     setError(null)
+    setLoadFailed(false)
   }
   const resume = (saved: SavedStudent) => {
     setCurrentStudentId(saved.student_id)
@@ -93,18 +108,36 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
 
   const setStatus = async (status: OnboardingStatus) => {
     if (!profile) return
-    const next = await api<StudentProfile>(`/api/students/${profile.student_id}/profile`, { method: "PUT", body: JSON.stringify({ onboarding_status: status }) })
-    setProfile(next)
+    setStepError(null)
+    try {
+      const next = await api<StudentProfile>(`/api/students/${profile.student_id}/profile`, { method: "PUT", body: JSON.stringify({ onboarding_status: status }) })
+      setProfile(next)
+    } catch (reason) {
+      setStepError(reason instanceof Error ? reason.message : t("common.errors.generic", { status: 0 }))
+    }
   }
 
-  if (loading) return <div className="grid min-h-svh place-items-center"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div>
-  if (!profile) return <SignIn error={error} onCreated={(created) => { setCurrentStudentId(created.student_id); setProfile(created) }} onDemo={() => { setCurrentStudentId(DEMO_STUDENT_ID); onDone() }} onResume={resume} />
+  if (loading) return <div className="grid min-h-svh place-items-center" role="status" aria-label={t("common.loading")}><LoaderCircle className="size-5 animate-spin text-muted-foreground" aria-hidden="true" /></div>
+  if (!profile && loadFailed) {
+    return (
+      <div className="grid min-h-svh place-items-center bg-background p-4 text-foreground">
+        <div role="alert" className="w-full max-w-md rounded-3xl border border-border bg-card p-6 text-center">
+          <p className="text-sm text-destructive">{error}</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button type="button" onClick={() => { setLoading(true); void load() }} className="h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("common.retry")}</button>
+            <button type="button" onClick={backToStart} className="h-9 rounded-xl border border-border px-4 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">{t("onboarding.backToStart")}</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (!profile) return <SignIn key={error ?? ""} error={error} onCreated={(created) => { setCurrentStudentId(created.student_id); setProfile(created) }} onDemo={() => { setCurrentStudentId(DEMO_STUDENT_ID); onDone() }} onResume={resume} />
 
   const stepIndex = STEPS.findIndex((step) => step.status.includes(profile.onboarding_status))
   return (
     <div className="flex min-h-svh flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center gap-4 border-b border-border px-4 py-3 sm:px-8">
-        <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" /></span><span className="text-sm font-semibold">Waypoint</span></div>
+        <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" aria-hidden="true" /></span><span className="text-sm font-semibold">{t("common.appName")}</span></div>
         <button type="button" onClick={backToStart} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
           <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden="true" /> {t("onboarding.backToStart")}
         </button>
@@ -138,6 +171,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
           </div>
         </details>
       </div>
+      {stepError ? <p role="alert" className="border-b border-border bg-destructive/5 px-4 py-2 text-center text-xs text-destructive sm:px-8">{stepError}</p> : null}
       <main className="flex min-h-0 flex-1 flex-col">
         {profile.onboarding_status === "basics" ? <BasicsStep profile={profile} onSaved={(next) => setProfile(next)} /> : null}
         {profile.onboarding_status === "sources" ? <SourcesStep profile={profile} onBack={() => void setStatus("basics")} onNext={() => void setStatus("review")} /> : null}

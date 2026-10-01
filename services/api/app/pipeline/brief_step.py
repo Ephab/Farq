@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Step 5: synthesis. Deterministic brief + readiness gate.
 
 The brief is the only thing the roadmap generator sees: confirmed
 evidence, stated facts, and basics. Suggested-but-unreviewed items
 never enter it.
 """
+
+from __future__ import annotations
 
 import json
 

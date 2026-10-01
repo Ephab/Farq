@@ -200,7 +200,11 @@ export function ProjectsView({ onNavigate, selectedProjectId = null, onSelectPro
                 ) : null}
                 <p className="mt-2 text-xs text-muted-foreground">
                   {stage ? <bdi>{stage.title}</bdi> : ""}
-                  {node.nodeType === "opportunity" ? t("dashboard.projects.kind.opportunity") : t("dashboard.projects.kind.project")}
+                  {(() => {
+                    const kind = t(node.nodeType === "opportunity" ? "dashboard.projects.kind.opportunity" : "dashboard.projects.kind.project")
+                    // The label carries its own " · " separator; without a stage there is nothing to separate.
+                    return stage ? kind : kind.replace(/^\s*·\s*/, "")
+                  })()}
                 </p>
                 {node.rationale ? (
                   <p className="mt-2 text-[13px] text-muted-foreground">

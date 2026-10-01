@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Stage N: generate the nodes of exactly one planned stage.
 
 The prompt carries the brief, the full plan, and the node IDs of all
 already-completed stages. Deps may only reference those IDs (or nodes
 within this same stage) — the wiring checker enforces it.
 """
+
+from __future__ import annotations
 
 import json
 
@@ -46,7 +46,8 @@ def build_stage_prompt(
         "project) shows the student already mastered it, and list those evidence_id values in `evidence`.",
         "Otherwise use \"not-started\". Weak grades or stated weaknesses should become review nodes, not done nodes.",
         "Only include resources you are confident exist (official docs, well-known courses or books); an empty list is fine.",
-        f"Legal dep targets for this stage: {json.dumps([node['id'] for node in prior_nodes]) or '[] (first stage: use [] or deps within this stage only)'}.",
+        (f"Legal dep targets for this stage: {json.dumps([node['id'] for node in prior_nodes])}." if prior_nodes
+         else "Legal dep targets for this stage: none yet (first stage: use [] or deps within this stage only)."),
         "Every dep MUST be one of those IDs or another node in THIS stage. Never invent other IDs.",
         ("This is a skill_sequence: make the FINAL node exactly one practical project that combines the stage skills, "
          "is suitable for this student's discipline, and depends on learning nodes in this stage."
@@ -90,10 +91,12 @@ def generate_stage_nodes(
         )
         try:
             raw = parse_json_output(output).get("nodes", [])
+            if not isinstance(raw, list) or not all(isinstance(item, dict) for item in raw):
+                raise ValueError("`nodes` must be a list of node objects")
             nodes = [RoadmapNode.model_validate({**item, "stageId": stage_id}) for item in raw]
             if len({node.id for node in nodes} & set(used_ids)) > 0:
                 raise ValueError("Stage reuses a node ID from an earlier stage")
             return validate_stage_nodes(nodes, stage_id, confirmed_evidence, legal, stage.stage_type)
-        except (ValidationError, ValueError, AttributeError) as exc:
+        except (ValidationError, ValueError, AttributeError, TypeError) as exc:
             error = str(exc)[:600]
     raise HermesJsonError(f"Hermes could not produce valid nodes for stage {stage_id}: {error}", status=502)

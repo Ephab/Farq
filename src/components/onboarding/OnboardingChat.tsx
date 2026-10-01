@@ -9,6 +9,7 @@ import { streamStagedRoadmap, type StagedPlan, type StagedSnapshot } from "@/hoo
 import type { NodeStatus } from "@/data/computer-vision-roadmap"
 import { api, hermesRequestParts, type StudentProfile } from "@/lib/waypoint-api"
 import { useI18n } from "@/lib/i18n/context"
+import { stripStagePrefix } from "@/lib/roadmap-layout"
 
 interface OnboardingChatProps {
   profile: StudentProfile
@@ -19,7 +20,9 @@ interface OnboardingChatProps {
 export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatProps) {
   const { t } = useI18n()
   const chat = useHermesChat(profile.thread_id)
-  const [generating, setGenerating] = useState(profile.onboarding_status === "generating")
+  // A reload during generation closes the stream and the server returns the student to chat,
+  // so always start idle: the Generate button is the way back in (never a dead spinner).
+  const [generating, setGenerating] = useState(false)
   const [plan, setPlan] = useState<StagedPlan | null>(null)
   const [snapshot, setSnapshot] = useState<StagedSnapshot | null>(null)
   const [doneStageIds, setDoneStageIds] = useState<Set<string>>(new Set())
@@ -101,7 +104,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
                     return (
                       <li key={stage.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${done ? "border-emerald-500/40 bg-emerald-500/10" : active ? "border-primary/40 bg-primary/5" : "border-border text-muted-foreground"}`}>
                         {done ? <Check className="size-3" /> : active ? <LoaderCircle className="size-3 animate-spin" /> : null}
-                        <bdi>{stage.title.replace(/^Stage \d+ · /, "")}</bdi>
+                        <bdi>{stripStagePrefix(stage.title)}</bdi>
                       </li>
                     )
                   })}
@@ -112,7 +115,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
               <p className="mt-2 text-[11px] text-muted-foreground">{t("onboarding.chat.stageHint")}</p>
             </div>
           </div>
-          <div className="relative flex min-h-[50svh] min-h-0 flex-1 flex-col">
+          <div className="relative flex min-h-[50svh] flex-1 flex-col">
             {snapshot ? (
               <RoadmapCanvas
                 nodes={snapshot.nodes}
@@ -140,7 +143,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
             error={chat.error}
             onSend={(text) => void chat.send(text)}
             onInteraction={(interaction, displayText) => void chat.sendInteraction(interaction, displayText)}
-            onRetry={() => { chat.refresh().catch(() => undefined) }}
+            onRetry={() => { chat.retry().catch(() => undefined) }}
             onEditResend={(messageId, text) => void chat.editAndResend(messageId, text)}
             onStop={() => void chat.stop()}
             placeholder={answered ? t("onboarding.chat.placeholderAnswered") : t("onboarding.chat.placeholderStart")}

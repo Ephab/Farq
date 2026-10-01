@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Stitch completed stages into one snapshot + the wiring logic check.
 
 The wiring check is the small dedicated step that guarantees connections
@@ -7,6 +5,8 @@ make sense: unique IDs, known stages, deps pointing only backwards
 (same or earlier stage), and an acyclic graph. Anything else rejects the
 stage so it is retried with the error instead of stored.
 """
+
+from __future__ import annotations
 
 from ..schemas import RoadmapNode, RoadmapPlan, RoadmapSnapshot, RoadmapStage
 
@@ -24,7 +24,6 @@ def merge_stages(title: str, plan: RoadmapPlan, completed: dict[str, list[Roadma
 def check_wiring(plan: RoadmapPlan, completed: dict[str, list[RoadmapNode]]) -> str | None:
     """Return an error message when cross-stage connections are wrong, else None."""
     order = [item.id for item in plan.stages]
-    position = {stage_id: index for index, stage_id in enumerate(order)}
     seen: dict[str, str] = {}  # node id -> stage id
     for stage_id in order:
         for node in completed.get(stage_id, []):
@@ -41,8 +40,6 @@ def check_wiring(plan: RoadmapPlan, completed: dict[str, list[RoadmapNode]]) -> 
                             f"{node.id} (stage {stage_id}) depends on unknown or future node {dep}. "
                             "Only nodes from this or earlier stages are allowed"
                         )
-                elif dep in seen and position[seen[dep]] > position[stage_id]:
-                    return f"{node.id} depends on future-stage node {dep}"
                 if dep == node.id:
                     return f"{node.id} depends on itself"
     # Cycle check over the merged graph.

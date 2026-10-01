@@ -9,34 +9,30 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .database import get_db
 from .decisions import DecisionItem, observe_items, rerank
+from .internal_auth import require_internal as _require_internal
+from .ownership import OwnedStudent
+from .tool_grants import ReadGrant, student_for
 from .models import BlackboardContentItem, BlackboardCourse, DataSource, Student, now
 
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-INTERNAL_TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 MAX_BODY_CHARS = 120_000
 READ_CHUNK_CHARS = 12_000
 CONTENT_TYPES = {"announcement", "syllabus", "lecture", "document", "assignment"}
 DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blackboard-demo.json"
-
-
-def _require_internal(x_waypoint_internal_token: Annotated[str | None, Header()] = None) -> None:
-    if x_waypoint_internal_token != INTERNAL_TOKEN:
-        raise HTTPException(401, "Invalid internal token")
 
 
 Internal = Annotated[None, Depends(_require_internal)]
@@ -221,7 +217,7 @@ def seed_demo_snapshot(db: Session, fixture_path: Path = DEMO_FIXTURE_PATH) -> b
 
 
 @router.get("/api/students/{student_id}/blackboard/status")
-def snapshot_status(student_id: str, db: Db) -> dict:
+def snapshot_status(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     _student(db, student_id)
     courses = db.scalars(select(BlackboardCourse).where(BlackboardCourse.student_id == student_id)).all()
     source = db.scalar(select(DataSource).where(DataSource.student_id == student_id, DataSource.kind == "blackboard_demo"))
@@ -234,8 +230,9 @@ def snapshot_status(student_id: str, db: Db) -> dict:
     }
 
 
-@router.get("/internal/hermes/students/{student_id}/blackboard/courses", dependencies=[Depends(_require_internal)])
-def list_courses(student_id: str, db: Db) -> dict:
+@router.get("/internal/hermes/students/{student_id}/blackboard/courses")
+def list_courses(student_id: str, db: Db, grant: ReadGrant) -> dict:
+    student_id = student_for(db, grant, student_id)
     _student(db, student_id)
     courses = db.scalars(select(BlackboardCourse).where(BlackboardCourse.student_id == student_id).order_by(BlackboardCourse.code, BlackboardCourse.title)).all()
     result = []
@@ -245,15 +242,16 @@ def list_courses(student_id: str, db: Db) -> dict:
     return {"mode": "preindexed_demo", "read_only": True, "courses": result}
 
 
-@router.get("/internal/hermes/students/{student_id}/blackboard/courses/{course_id}/content", dependencies=[Depends(_require_internal)])
+@router.get("/internal/hermes/students/{student_id}/blackboard/courses/{course_id}/content")
 def list_content(
     student_id: str,
     course_id: str,
     db: Db,
+    grant: ReadGrant,
     content_type: str | None = None,
     limit: int = Query(default=30, ge=1, le=50),
 ) -> dict:
-    course = _course(db, student_id, course_id)
+    course = _course(db, student_for(db, grant, student_id), course_id)
     query = select(BlackboardContentItem).where(BlackboardContentItem.course_id == course.id)
     if content_type:
         if content_type not in CONTENT_TYPES:
@@ -271,14 +269,16 @@ def _snippet(text: str, terms: list[str], width: int = 360) -> str:
     return compact[start:start + width]
 
 
-@router.get("/internal/hermes/students/{student_id}/blackboard/search", dependencies=[Depends(_require_internal)])
+@router.get("/internal/hermes/students/{student_id}/blackboard/search")
 def search_content(
     student_id: str,
     db: Db,
+    grant: ReadGrant,
     query: str = Query(min_length=2, max_length=160),
     course_id: str | None = None,
     limit: int = Query(default=8, ge=1, le=20),
 ) -> dict:
+    student_id = student_for(db, grant, student_id)
     _student(db, student_id)
     terms = [term.lower() for term in re.findall(r"[\w-]+", query) if len(term) > 1]
     if not terms:
@@ -309,8 +309,9 @@ def search_content(
     }
 
 
-@router.get("/internal/hermes/students/{student_id}/blackboard/items/{item_id}", dependencies=[Depends(_require_internal)])
-def read_item(student_id: str, item_id: str, db: Db, cursor: int = Query(default=0, ge=0)) -> dict:
+@router.get("/internal/hermes/students/{student_id}/blackboard/items/{item_id}")
+def read_item(student_id: str, item_id: str, db: Db, grant: ReadGrant, cursor: int = Query(default=0, ge=0)) -> dict:
+    student_id = student_for(db, grant, student_id)
     item = db.get(BlackboardContentItem, item_id)
     course = db.get(BlackboardCourse, item.course_id) if item else None
     if item is None or course is None or course.student_id != student_id:
@@ -321,13 +322,15 @@ def read_item(student_id: str, item_id: str, db: Db, cursor: int = Query(default
     return {**_item_meta(item, course), "untrusted_content": True, "text": chunk, "cursor": cursor, "next_cursor": next_cursor, "total_characters": len(body)}
 
 
-@router.get("/internal/hermes/students/{student_id}/blackboard/updates", dependencies=[Depends(_require_internal)])
+@router.get("/internal/hermes/students/{student_id}/blackboard/updates")
 def list_updates(
     student_id: str,
     db: Db,
+    grant: ReadGrant,
     since: datetime | None = None,
     limit: int = Query(default=15, ge=1, le=50),
 ) -> dict:
+    student_id = student_for(db, grant, student_id)
     _student(db, student_id)
     courses = db.scalars(select(BlackboardCourse).where(BlackboardCourse.student_id == student_id)).all()
     course_map = {course.id: course for course in courses}

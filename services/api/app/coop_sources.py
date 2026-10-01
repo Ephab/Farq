@@ -8,7 +8,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from urllib.parse import quote, urlparse
 
@@ -18,7 +18,17 @@ import httpx
 TELEGRAM_ARCHIVE_URL = os.getenv("COOP_TELEGRAM_ARCHIVE_URL", "https://t.me/s/nobthacv1")
 LINKEDIN_ACTOR_ID = os.getenv("APIFY_LINKEDIN_ACTOR_ID", "hKByXkMQaC5Qt9UMN")
 MAX_RESPONSE_BYTES = 2_000_000
-COOP_WORDS = ("co-op", "coop", "cooperative training", "intern", "internship", "تدريب تعاوني", "التدريب التعاوني", "تمهير")
+# Whole words for the Latin terms ("intern" must not match "international" or "internal");
+# Arabic phrases are matched as phrases.
+COOP_PATTERN = re.compile(
+    r"\b(?:co-?op|cooperative training|intern|interns|internships?)\b|تدريب تعاوني|التدريب التعاوني|تمهير",
+    re.IGNORECASE,
+)
+ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def is_coop_text(text: str) -> bool:
+    return bool(COOP_PATTERN.search(text or ""))
 SKILL_TERMS = {
     "software engineering": ("software", "developer", "programming", "برمجة", "تطوير البرمجيات"),
     "ai": ("artificial intelligence", "machine learning", "deep learning", "ذكاء اصطناعي", "تعلم الآلة"),
@@ -77,24 +87,38 @@ def _first_url(urls: list[str], *, exclude: tuple[str, ...] = ()) -> str:
     return ""
 
 
-def _label(text: str, labels: tuple[str, ...]) -> str:
+def _label(text: str, labels: tuple[str, ...], extra_words: int = 0) -> str:
+    """Value after "Label:" on its own line. With extra_words, up to that many words may sit
+    between the label and the separator ("آخر موعد للتقديم: …")."""
+    gap = rf"(?:\s+\S+){{0,{extra_words}}}" if extra_words else ""
     for label in labels:
-        match = re.search(rf"(?:^|\n)\s*{re.escape(label)}\s*[:：-]\s*([^\n]+)", text, re.IGNORECASE)
+        match = re.search(rf"(?:^|\n)\s*{re.escape(label)}{gap}\s*[:：-]\s*([^\n]+)", text, re.IGNORECASE)
         if match:
             return _clean(match.group(1))[:300]
     return ""
 
 
+def _valid_date(year: int, month: int, day: int) -> str | None:
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
 def _deadline(text: str) -> str | None:
-    line = _label(text, ("deadline", "last date", "آخر موعد", "موعد التقديم", "ينتهي"))
+    """An explicit deadline as YYYY-MM-DD, or None. Impossible dates (month 15) are rejected
+    rather than stored, since they would sort after every real date and never expire."""
+    line = _label(text.translate(ARABIC_DIGITS), ("deadline", "last date", "آخر موعد", "موعد التقديم", "ينتهي", "ينتهي التقديم"), extra_words=3)
     if not line:
         return None
     match = re.search(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", line)
     if match:
-        return f"{int(match.group(1)):04d}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
+        return _valid_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
     match = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})", line)
     if match:
-        return f"{int(match.group(3)):04d}-{int(match.group(2)):02d}-{int(match.group(1)):02d}"
+        first, second, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        # Saudi postings write day/month; fall back to month/day only when that is the only valid reading.
+        return _valid_date(year, second, first) or _valid_date(year, first, second)
     return None
 
 
@@ -179,7 +203,7 @@ def parse_telegram_archive(body: str, archive_url: str = TELEGRAM_ARCHIVE_URL) -
             continue
         raw_text = "\n".join(item["text"])
         text = "\n".join(part for part in (_clean(line) for line in raw_text.splitlines()) if part)
-        if not text or not any(word in text.lower() for word in COOP_WORDS):
+        if not text or not is_coop_text(text):
             continue
         channel_post = str(item["post"])
         message_id = channel_post.rsplit("/", 1)[-1]
@@ -214,10 +238,10 @@ def fetch_telegram_candidates(client: httpx.Client | None = None, archive_url: s
             if response.url.host not in {"t.me", "telegram.me"} or len(response.content) > MAX_RESPONSE_BYTES:
                 raise ValueError("invalid Telegram archive response")
             batch = parse_telegram_archive(response.text, archive_url)
-            if not batch:
-                break
             results.update({item.external_id: item for item in batch})
-            ids = [int(item.external_id.rsplit(":", 1)[-1]) for item in batch if item.external_id.rsplit(":", 1)[-1].isdigit()]
+            # Page by every message on the page, not only co-op ones: a page of unrelated posts
+            # must not end the walk, and the oldest message decides where the next page starts.
+            ids = [int(value) for value in re.findall(r'data-post="[^"]*/(\d+)"', response.text)]
             if not ids:
                 break
             separator = "&" if "?" in archive_url else "?"
@@ -236,7 +260,7 @@ def parse_linkedin_items(items: list[dict]) -> list[CoopCandidate]:
         if not title or not company:
             continue
         searchable = f"{title} {_clean(item.get('description'))}".lower()
-        if not any(word in searchable for word in COOP_WORDS):
+        if not is_coop_text(searchable):
             continue
         job_url = _clean(item.get("jobUrl") or item.get("link") or item.get("url"))
         external_id = _clean(item.get("id") or item.get("jobId") or item.get("linkedinJobId"))

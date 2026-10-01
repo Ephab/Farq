@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Onboarding orchestration (thin layer over the modular pipeline).
 
 Background collection lives in `app.pipeline` (one module per step);
@@ -7,6 +5,8 @@ staged roadmap generation lives in `app.roadmap_gen`. This module keeps
 the original whole-roadmap generator and re-exports the pipeline pieces
 so existing imports (`app.onboarding.*`, `app.main`) keep working.
 """
+
+from __future__ import annotations
 
 import json
 
@@ -61,7 +61,8 @@ def build_generate_prompt(brief: dict, error: str | None = None) -> str:
         "\"subtopics\": [str], \"resources\": [{\"label\": str, \"url\": https url}], \"duration\": \"e.g. 2 weeks\",",
         "\"level\": \"Beginner|Intermediate|Advanced\", \"deps\": [prerequisite node ids], \"status\": \"not-started|done\",",
         "\"evidence\": [evidence_id], \"rationale\": \"one sentence: why this node is here for THIS student\"}]}.",
-        f"Limits: 3-{MAX_GENERATED_STAGES} stages, 12-{MAX_GENERATED_NODES} nodes, 2-6 nodes per stage, deps must form a DAG and point to earlier work.",
+        f"Limits: aim for 3-{MAX_GENERATED_STAGES} stages and 12-{MAX_GENERATED_NODES} nodes (never fewer than 2 stages or 4 nodes), "
+        "2-6 nodes per stage, deps must form a DAG and point to earlier work.",
         f"icon must be one of: {', '.join(sorted(ROADMAP_ICONS))}.",
         "Mark a node status \"done\" ONLY when confirmed evidence (a passed course with a good grade, or a real project) shows",
         "the student already mastered it, and list those evidence_id values in `evidence`. Otherwise use \"not-started\".",

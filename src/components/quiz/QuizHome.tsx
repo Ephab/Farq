@@ -44,7 +44,6 @@ interface QuizHomeProps {
   newQuizIds: string[];
   onCancelJob: (id: string) => void;
   onRetryJob: (job: GenJob) => void;
-  onFallbackJob: (job: GenJob) => void;
   onDismissJob: (id: string) => void;
   quizzes: SavedQuiz[];
   onStartQuiz: (quiz: SavedQuiz) => void;
@@ -93,7 +92,6 @@ export function QuizHome({
   newQuizIds,
   onCancelJob,
   onRetryJob,
-  onFallbackJob,
   onDismissJob,
   quizzes,
   onStartQuiz,
@@ -266,6 +264,8 @@ export function QuizHome({
                   aria-label={t("quiz.home.selectDeck", { name: deck.fileName })}
                   onClick={() => onToggleDeck(deck.id)}
                   onKeyDown={(e) => {
+                    // Keys pressed on the nested delete button belong to that button.
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onToggleDeck(deck.id);
@@ -376,7 +376,6 @@ export function QuizHome({
         jobs={jobs}
         onCancel={onCancelJob}
         onRetry={onRetryJob}
-        onFallback={onFallbackJob}
         onDismiss={onDismissJob}
       />
 

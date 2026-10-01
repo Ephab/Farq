@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap";
-import { computeHorizontalRoadmapLayout, computeRoadmapLayout, HORIZ_COL_W, NODE_W, type RoadmapOrientation } from "@/lib/roadmap-layout";
+import { computeHorizontalRoadmapLayout, computeRoadmapLayout, HORIZ_COL_W, NODE_W, stripStagePrefix, type RoadmapOrientation } from "@/lib/roadmap-layout";
 import { RoadmapEdges } from "@/components/roadmap/RoadmapEdges";
 import { RoadmapNode } from "@/components/roadmap/RoadmapNode";
 import { useI18n } from "@/lib/i18n/context";
@@ -192,7 +192,7 @@ export function RoadmapCanvas({
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     {t("roadmap.canvas.stageOf", { index: fmt.number(si + 1), total: fmt.number(stages.length) })}
                   </p>
-                  <p dir="auto" className="truncate text-[15px] font-semibold">{stage.title.replace(/^Stage \d+ · /, "")}</p>
+                  <p dir="auto" className="truncate text-[15px] font-semibold">{stripStagePrefix(stage.title)}</p>
                   <p dir="auto" className="truncate text-[13px] text-muted-foreground">{stage.description}</p>
                   <div className="mx-auto mt-1.5 h-1 w-3/4 overflow-hidden rounded-full bg-muted">
                     <div
@@ -254,6 +254,7 @@ export function RoadmapCanvas({
           type="button"
           onClick={() => setZoom(1)}
           title={t("roadmap.canvas.resetZoom")}
+          aria-label={t("roadmap.canvas.resetZoom")}
           className="min-w-12 rounded-lg px-1 text-[13px] font-medium tabular-nums text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {fmt.percent(zoom)}

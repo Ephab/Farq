@@ -82,3 +82,20 @@ def test_batch_and_merge_tools_shape_their_payloads(monkeypatch):
     tools["waypoint_propose_batch"][1]({"team_id": "t", "run_id": "r", "ops": ops, "rationale": "compress", "summary": "Compress"})
     assert calls[0][2]["payload"] == {"task_ids": ["a", "b"], "into": merge, "rationale": "same"}
     assert calls[1] == ("POST", "/internal/hermes/teams/t/proposals", {"run_id": "r", "kind": "batch", "payload": {"ops": ops, "rationale": "compress"}, "summary": "Compress"})
+
+
+def test_student_tools_quote_ids_and_forward_the_run_grant(monkeypatch):
+    calls = []
+    monkeypatch.setattr(plugin, "request", lambda method, path, payload=None, grant=None: calls.append((method, path, payload, grant)) or json.dumps({"ok": True}))
+    ctx = Ctx()
+    plugin.register(ctx)
+    tools = ctx.tools
+    for name, (schema, _handler) in tools.items():
+        if "user_id" in schema["parameters"].get("properties", {}):
+            assert "grant" in schema["parameters"]["required"], name
+    tools["waypoint_get_student_context"][1]({"user_id": "x/../../teams", "grant": "g"})
+    tools["waypoint_record_explicit_fact"][1]({"user_id": "u", "grant": "g", "category": "goal", "key": "k", "value": 1, "source_message_id": "m", "explicit": True})
+    tools["waypoint_blackboard_read_item"][1]({"user_id": "u", "grant": "g", "item_id": "a?b"})
+    assert calls[0] == ("GET", "/internal/hermes/students/x%2F..%2F..%2Fteams/context", None, "g")
+    assert calls[1][3] == "g" and "grant" not in calls[1][2]
+    assert calls[2][1] == "/internal/hermes/students/u/blackboard/items/a%3Fb?cursor=0"

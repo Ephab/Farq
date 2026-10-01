@@ -327,6 +327,8 @@ export const teams = {
     title: "Documents",
     intro: "Start a deliverable. Each one gets the standard IEEE outline, and every section can have an owner.",
     custom: "Custom document…",
+    defaultTitle: "Document",
+    defaultSection: "Introduction",
     newCustom: "New custom document",
     docTitle: "Document title",
     docTitlePlaceholder: "e.g. Test plan",

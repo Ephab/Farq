@@ -1,13 +1,9 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { Fragment, type ReactNode } from "react"
 
-/** Escape raw HTML so model output can never inject markup. */
-function escape(text: string): string {
-  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
-}
-
-/** Inline `code`, **bold**, *italic* and [links](https://…) on escaped text. */
+/** Inline `code`, **bold**, *italic* and [links](https://…). Everything is rendered as React
+ *  text nodes, so model output can never inject markup and "&" in a URL stays a real "&". */
 function inline(text: string, keyPrefix: string): ReactNode[] {
   const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g
   const parts: ReactNode[] = []
@@ -16,15 +12,15 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
   let n = 0
   const push = (node: ReactNode) => { parts.push(node); n += 1 }
   while ((match = pattern.exec(text)) !== null) {
-    if (match.index > last) push(<span key={`${keyPrefix}-t${n}`} dangerouslySetInnerHTML={{ __html: text.slice(last, match.index) }} />)
+    if (match.index > last) push(<Fragment key={`${keyPrefix}-t${n}`}>{text.slice(last, match.index)}</Fragment>)
     const token = match[0]
     const key = `${keyPrefix}-i${n}`
     if (token.startsWith("`")) {
-      push(<code key={key} dir="ltr" className="rounded bg-muted px-1 py-0.5 text-[0.85em]" dangerouslySetInnerHTML={{ __html: token.slice(1, -1) }} />)
+      push(<code key={key} dir="ltr" className="rounded bg-muted px-1 py-0.5 text-[0.85em]">{token.slice(1, -1)}</code>)
     } else if (token.startsWith("**")) {
-      push(<strong key={key} dangerouslySetInnerHTML={{ __html: token.slice(2, -2) }} />)
+      push(<strong key={key}>{token.slice(2, -2)}</strong>)
     } else if (token.startsWith("*")) {
-      push(<em key={key} dangerouslySetInnerHTML={{ __html: token.slice(1, -1) }} />)
+      push(<em key={key}>{token.slice(1, -1)}</em>)
     } else {
       const label = token.slice(1, token.indexOf("]"))
       const href = token.slice(token.indexOf("](") + 2, -1)
@@ -32,13 +28,13 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     }
     last = match.index + token.length
   }
-  if (last < text.length) push(<span key={`${keyPrefix}-t${n}`} dangerouslySetInnerHTML={{ __html: text.slice(last) }} />)
+  if (last < text.length) push(<Fragment key={`${keyPrefix}-t${n}`}>{text.slice(last)}</Fragment>)
   return parts
 }
 
 /** Minimal markdown for Hermes answers: headings, bullets, numbered lists, paragraphs. */
 export function MarkdownText({ text }: { text: string }) {
-  const lines = escape(text).split("\n")
+  const lines = text.split("\n")
   const blocks: ReactNode[] = []
   let list: { ordered: boolean; items: string[] } | null = null
   const flush = () => {

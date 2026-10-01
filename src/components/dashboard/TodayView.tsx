@@ -27,6 +27,7 @@ import {
   type StudentProfile,
 } from "@/lib/waypoint-api"
 import { loadLibrary, type QuizLibrary } from "@/lib/quiz-store"
+import { parseServerTime } from "@/lib/server-time"
 import { EASE_OUT, SPRING_MOUSE } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 import { OutlookView } from "@/components/outlook/OutlookView"
@@ -105,11 +106,7 @@ function nextAction(status: NodeStatus): { label: MessageKey; next: NodeStatus }
   return { label: "dashboard.today.action.start", next: "in-progress" }
 }
 
-/** Backend timestamps are UTC ISO strings; SQLite can drop the offset. */
-function parseTime(value: string | number): number | null {
-  const raw = typeof value === "number" ? value : Date.parse(/[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`)
-  return Number.isFinite(raw) ? raw : null
-}
+const parseTime = parseServerTime
 
 /** A source saved without a value of its own is stored with the kind as its label. */
 function sourceName(source: DataSourceItem): string {
@@ -767,7 +764,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
     : t("dashboard.today.momentum.currentPlan")
 
   return (
-    <div className="h-[calc(100dvh-4rem)] overflow-y-auto bg-background">
+    <div className="h-[calc(100dvh-3.5rem)] overflow-y-auto bg-background">
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -790,6 +787,45 @@ export function TodayView({ onNavigate }: TodayViewProps) {
           >
             {error}
           </p>
+        ) : null}
+
+        {/* Only when something is genuinely waiting on the student: shown first, above the plan. */}
+        {attention.length > 0 ? (
+          <Reveal delay={0.05} className="mb-5">
+            <Panel label={t("dashboard.today.attention.title")}>
+              <PanelHead
+                title={t("dashboard.today.attention.title")}
+                tone="warning"
+                pill={fmt.number(attention.length)}
+              />
+              <ul className="mt-4 grid gap-2.5 md:grid-cols-2">
+                {attention.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-3 rounded-2xl bg-muted/60 p-3"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-background text-primary shadow-sm"
+                    >
+                      {item.icon}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <bdi className="block truncate text-start text-sm font-semibold" title={item.title}>
+                        {item.title}
+                      </bdi>
+                      <span className="block truncate text-xs text-muted-foreground" title={item.detail}>
+                        {item.detail}
+                      </span>
+                    </span>
+                    <RowLink onClick={() => onNavigate(item.tab)}>
+                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5 rtl:-scale-x-100" />
+                    </RowLink>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          </Reveal>
         ) : null}
 
         {/* Focus hero: asymmetric split, live stage ring on the right. */}
@@ -1018,44 +1054,6 @@ export function TodayView({ onNavigate }: TodayViewProps) {
           </Panel>
         </Reveal>
 
-        {/* Only when something is genuinely waiting on the student. */}
-        {attention.length > 0 ? (
-          <Reveal delay={0.2} className="mt-5">
-            <Panel label={t("dashboard.today.attention.title")}>
-              <PanelHead
-                title={t("dashboard.today.attention.title")}
-                tone="warning"
-                pill={fmt.number(attention.length)}
-              />
-              <ul className="mt-4 grid gap-2.5 md:grid-cols-2">
-                {attention.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center gap-3 rounded-2xl bg-muted/60 p-3"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-background text-primary shadow-sm"
-                    >
-                      {item.icon}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <bdi className="block truncate text-start text-sm font-semibold" title={item.title}>
-                        {item.title}
-                      </bdi>
-                      <span className="block truncate text-xs text-muted-foreground" title={item.detail}>
-                        {item.detail}
-                      </span>
-                    </span>
-                    <RowLink onClick={() => onNavigate(item.tab)}>
-                      {item.action} <ArrowRight aria-hidden="true" className="size-3.5 rtl:-scale-x-100" />
-                    </RowLink>
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-          </Reveal>
-        ) : null}
       </motion.div>
     </div>
   )

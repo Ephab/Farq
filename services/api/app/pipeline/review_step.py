@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """Step 3: review. The student's explicit confirm/dismiss decisions.
 
 Ticking an item is an explicit statement by the student, so it is the
 one non-chat path into StudentFact (source_kind="confirmed_evidence").
 """
+
+from __future__ import annotations
 
 import json
 
@@ -60,5 +60,9 @@ def decide_evidence(
             confidence=100,
         ))
         confirmed += 1
+    db.flush()
+    # Facts changed, so opportunity matches change too (record_fact does the same).
+    from ..opportunities import recompute_student
+    recompute_student(db, student_id)
     db.commit()
     return {"confirmed": confirmed, "dismissed": len([i for i in dismiss if i in items])}

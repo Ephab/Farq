@@ -84,6 +84,10 @@ export const slides = {
     counts: "{added} new, {date}",
     originalMissing: "Original file not in memory (re-upload to see it here). Showing new slides in deck style.",
   },
+  exportDivider: {
+    title: "New: {topic}",
+    note: "The following {count} slide(s) extend {name}. Generated with Hermes; review before presenting.",
+  },
   preview: {
     visual: "VISUAL",
     empty: "No slides to preview.",
@@ -125,5 +129,7 @@ export const slides = {
     exportUnreachable: "Couldn't reach the Waypoint backend for export.",
     exportStatus: "Export failed ({status}).",
     readForExport: "Couldn't read “{name}” for export.",
+    reuploadForExport: "Upload “{name}” again first: the original file is only kept while this page is open, and exporting now would leave its slides out.",
+    retrySuggest: "Try again",
   },
 } as const

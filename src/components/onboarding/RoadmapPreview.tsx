@@ -42,6 +42,7 @@ export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPre
   }, [profile.student_id])
 
   const nodes = useMemo(() => proposal?.snapshot?.nodes ?? [], [proposal])
+  const nodeMap = useMemo(() => Object.fromEntries(nodes.map((node) => [node.id, node])), [nodes])
   const statuses = useMemo(() => Object.fromEntries(nodes.map((node) => [node.id, notDone.has(node.id) ? "not-started" : (node.status ?? "not-started")])) as Record<string, NodeStatus>, [nodes, notDone])
   const preDone = nodes.filter((node) => node.status === "done")
   const selected = nodes.find((node) => node.id === selectedId) ?? null
@@ -96,9 +97,10 @@ export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPre
               const kept = !notDone.has(node.id)
               const because = (node.evidence ?? []).map((id) => evidence[id]?.title).filter(Boolean) as string[]
               return (
-                <label key={node.id} title={because.length ? t("onboarding.preview.because", { items: fmt.list(because) }) : undefined} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${kept ? "border-emerald-500/40 bg-emerald-500/10" : "border-border text-muted-foreground line-through"}`}>
+                <label key={node.id} title={because.length ? t("onboarding.preview.because", { items: fmt.list(because) }) : undefined} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${kept ? "border-emerald-500/40 bg-emerald-500/10" : "border-border text-muted-foreground"}`}>
                   <input type="checkbox" checked={kept} onChange={(event) => toggleDone(node.id, event.target.checked)} className="size-3.5" />
-                  <bdi>{node.title}</bdi>{because.length ? <span className="text-muted-foreground no-underline"> · <bdi>{because.join(", ")}</bdi></span> : null}
+                  {/* Strike only the title: text-decoration on the label would also cross out the evidence. */}
+                  <bdi className={kept ? undefined : "line-through"}>{node.title}</bdi>{because.length ? <span className="text-muted-foreground"> · <bdi>{because.join(", ")}</bdi></span> : null}
                 </label>
               )
             })}
@@ -120,7 +122,10 @@ export function RoadmapPreview({ profile, onRegenerate, onAccepted }: RoadmapPre
         />
         <NodeDetailPanel
           node={selected}
+          nodeMap={nodeMap}
           status={selectedId ? statuses[selectedId] : "not-started"}
+          // Only evidence-backed "done" topics can be switched (off, or back on) in the draft.
+          allowedStatuses={selected?.status === "done" ? ["not-started", "done"] : []}
           hasPrev={selectedIndex > 0}
           hasNext={selectedIndex >= 0 && selectedIndex < nodes.length - 1}
           // In the draft only evidence-backed "done" can be switched off (or back on).

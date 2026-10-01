@@ -16,7 +16,7 @@ import { EASE_OUT } from "@/lib/ease";
 import type { QuizQuestion } from "@/lib/quiz-ai";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/context";
-import type { QuizAnswer } from "./QuizRunner";
+import { isGraded, optionLabel, type QuizAnswer } from "@/lib/quiz-grading";
 
 interface QuizResultsProps {
   questions: QuizQuestion[];
@@ -31,17 +31,22 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
   const [openId, setOpenId] = useState<string | null>(null);
   const reduce = useReducedMotion();
 
-  const correct = questions.filter((q) => answers[q.id]?.correct).length;
-  const total = questions.length;
+  // Ungraded short answers are left out of the score; unanswered questions count as missed.
+  const ungraded = questions.filter((q) => answers[q.id]?.revealed && !isGraded(q, answers[q.id])).length;
+  const correct = questions.filter((q) => isGraded(q, answers[q.id]) && answers[q.id]?.correct).length;
+  const total = questions.length - ungraded;
   const pct = total === 0 ? 0 : Math.round((correct / total) * 100);
-  const bestStreak = questions.reduce(
-    (acc, q) => {
-      const ok = answers[q.id]?.correct;
-      const cur = ok ? acc.cur + 1 : 0;
-      return { cur, best: Math.max(acc.best, cur) };
-    },
-    { cur: 0, best: 0 },
-  ).best;
+  const bestStreak = questions
+    .filter((q) => isGraded(q, answers[q.id]))
+    .map((q) => answers[q.id] as QuizAnswer)
+    .sort((a, b) => (a.answeredAt ?? 0) - (b.answeredAt ?? 0))
+    .reduce(
+      (acc, a) => {
+        const cur = a.correct ? acc.cur + 1 : 0;
+        return { cur, best: Math.max(acc.best, cur) };
+      },
+      { cur: 0, best: 0 },
+    ).best;
 
   const headline =
     t(
@@ -95,6 +100,9 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
         </motion.div>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">{headline}</h1>
         <p className="ltr-value mt-1.5 truncate text-sm text-muted-foreground" dir="ltr">{sourceName}</p>
+        {ungraded > 0 ? (
+          <p className="mt-1.5 text-[13px] text-amber-700 dark:text-amber-400">{t("quiz.results.ungradedNote", { count: fmt.number(ungraded) })}</p>
+        ) : null}
 
         <div className="mt-5 grid grid-cols-3 gap-2">
           {[
@@ -103,7 +111,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
             {
               icon: Award,
               label: t("quiz.results.grade"),
-              value: pct >= 90 ? "A" : pct >= 70 ? "B" : pct >= 50 ? "C" : t("quiz.results.gradeRetry"),
+              value: t(pct >= 90 ? "quiz.results.gradeA" : pct >= 70 ? "quiz.results.gradeB" : pct >= 50 ? "quiz.results.gradeC" : "quiz.results.gradeRetry"),
             },
           ].map((s, i) => (
             <motion.div
@@ -145,7 +153,9 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
         <div className="mt-3 flex flex-col gap-4">
           {questions.map((q, i) => {
             const a = answers[q.id];
-            const ok = a?.correct ?? false;
+            const graded = isGraded(q, a);
+            const pending = Boolean(a?.revealed) && !graded;
+            const ok = graded && (a?.correct ?? false);
             const open = openId === q.id;
             const typeLabel = t(`quiz.types.${q.type}`);
             return (
@@ -160,12 +170,13 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                     <span
                       className={cn(
                         "grid size-8 shrink-0 place-items-center rounded-full text-white",
-                        ok ? "bg-emerald-500" : "bg-red-500",
+                        ok ? "bg-emerald-500" : pending ? "bg-amber-500" : "bg-red-500",
                       )}
                       aria-hidden="true"
                     >
-                      {ok ? <Check className="size-4" /> : <X className="size-4" />}
+                      {ok ? <Check className="size-4" /> : pending ? "?" : <X className="size-4" />}
                     </span>
+                    {pending ? <span className="sr-only">{t("quiz.results.ungraded")}</span> : null}
                     <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
                       {t("quiz.results.questionLabel", { n: i + 1, type: typeLabel })}
                       {q.source ? <>, <bdi>{q.source}</bdi></> : null}
@@ -183,17 +194,19 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                       "mt-4 block rounded-2xl border px-4 py-3 text-sm leading-relaxed",
                       ok
                         ? "border-emerald-500/40 bg-emerald-500/10"
-                        : "border-red-500/40 bg-red-500/10",
+                        : pending
+                          ? "border-amber-500/40 bg-amber-500/10"
+                          : "border-red-500/40 bg-red-500/10",
                     )}
                   >
                     <span className="block">
                       <span className="font-semibold">{t("quiz.results.yourAnswer")} </span>
-                      <bdi>{a?.given ?? "-"}</bdi>
+                      <bdi>{a?.given ? optionLabel(q, a.given, t) : "-"}</bdi>
                     </span>
                     {!ok ? (
                       <span className="mt-1.5 block">
                         <span className="font-semibold">{t("quiz.results.correctAnswer")} </span>
-                        <bdi>{q.answer}</bdi>
+                        <bdi>{optionLabel(q, q.answer, t)}</bdi>
                       </span>
                     ) : null}
                   </span>
@@ -213,7 +226,7 @@ export function QuizResults({ questions, answers, sourceName, onRetry, onHome }:
                                 : "text-muted-foreground",
                             )}
                           >
-                            {opt === q.answer ? "✓ " : null}{opt}
+                            {opt === q.answer ? <span aria-hidden="true">✓ </span> : null}{optionLabel(q, opt, t)}
                           </p>
                         ))}
                       </div>

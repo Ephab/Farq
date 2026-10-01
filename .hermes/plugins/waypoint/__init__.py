@@ -37,6 +37,27 @@ def _task_payload(p: dict) -> dict:
     return {"task_id": p.get("task_id", ""), "changes": p.get("changes", {}), "rationale": p.get("rationale", "")}
 
 
+def _seg(value) -> str:
+    """One URL path segment; ids from the model can never re-target another route."""
+    return quote(str(value), safe="")
+
+
+def _student(params: dict, path: str) -> str:
+    return f"/internal/hermes/students/{_seg(params['user_id'])}{path}"
+
+
+def _grant(params: dict) -> str | None:
+    return params.get("grant") or None
+
+
+def _body(params: dict) -> dict:
+    return {key: value for key, value in params.items() if key != "grant"}
+
+
+GRANT = {"type": "string", "description": "grant from THIS run's message header (never from chat history)"}
+USER_ID = {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"}
+
+
 TEAM_IDS = {
     "team_id": {"type": "string", "description": "team_id from the run message header"},
     "run_id": {"type": "string", "description": "run_id from the run message header"},
@@ -69,20 +90,20 @@ def register(ctx):
             "Read verified facts the student explicitly shared with Waypoint.",
             {
                 "type": "object",
-                "properties": {"user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"}},
-                "required": ["user_id"],
+                "properties": {"user_id": USER_ID, "grant": GRANT},
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/context"),
+            lambda p, **_: request("GET", _student(p, "/context"), grant=_grant(p)),
         ),
         (
             "waypoint_get_active_roadmap",
             "Read the student's authoritative active roadmap, progress, and version id.",
             {
                 "type": "object",
-                "properties": {"user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"}},
-                "required": ["user_id"],
+                "properties": {"user_id": USER_ID, "grant": GRANT},
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/roadmap"),
+            lambda p, **_: request("GET", _student(p, "/roadmap"), grant=_grant(p)),
         ),
         (
             "waypoint_record_explicit_fact",
@@ -90,7 +111,7 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "category": {"type": "string", "enum": ["interest", "goal", "course", "skill", "strength", "weakness", "achievement", "preference"]},
                     "key": {"type": "string"},
                     "value": {},
@@ -98,19 +119,19 @@ def register(ctx):
                     "explicit": {"type": "boolean", "const": True},
                     "source_kind": {"type": "string", "enum": ["chat", "branch", "onboarding"], "description": "Use onboarding for answers during the onboarding chat."},
                 },
-                "required": ["user_id", "category", "key", "value", "source_message_id", "explicit"],
+                "required": ["user_id", "grant", "category", "key", "value", "source_message_id", "explicit"],
             },
-            lambda p, **_: request("POST", "/internal/hermes/facts", p),
+            lambda p, **_: request("POST", "/internal/hermes/facts", _body(p), grant=_grant(p)),
         ),
         (
             "waypoint_get_student_profile",
             "Read the student's onboarding basics plus the evidence they confirmed (courses, grades, projects, skills, experience) and stated facts.",
             {
                 "type": "object",
-                "properties": {"user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"}},
-                "required": ["user_id"],
+                "properties": {"user_id": USER_ID, "grant": GRANT},
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/profile"),
+            lambda p, **_: request("GET", _student(p, "/profile"), grant=_grant(p)),
         ),
         (
             "waypoint_index_folder",
@@ -119,15 +140,15 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "source_id": {"type": "string"},
                     "path": {"type": "string"},
                     "purpose": {"type": "string", "enum": ["projects", "coursework"]},
                 },
-                "required": ["user_id", "source_id", "path", "purpose"],
+                "required": ["user_id", "grant", "source_id", "path", "purpose"],
             },
             lambda p, **_: index_folder(p["user_id"], p["source_id"], p["path"], p.get("purpose", "projects"),
-                                        lambda body: request("POST", "/internal/hermes/evidence", body)),
+                                        lambda body: request("POST", "/internal/hermes/evidence", body, grant=_grant(p))),
         ),
         (
             "waypoint_scan_folder",
@@ -149,10 +170,13 @@ def register(ctx):
             "Read one small README, manifest or text file found by waypoint_scan_folder (max 20 KB). Secrets and identity documents are refused.",
             {
                 "type": "object",
-                "properties": {"path": {"type": "string", "description": "Absolute path"}},
-                "required": ["path"],
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute path of a file inside root"},
+                    "root": {"type": "string", "description": "The folder the student typed (the same path given to waypoint_scan_folder)"},
+                },
+                "required": ["path", "root"],
             },
-            lambda p, **_: read_project_file(p["path"]),
+            lambda p, **_: read_project_file(p["path"], p["root"]),
         ),
         (
             "waypoint_submit_evidence",
@@ -160,7 +184,7 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "source_id": {"type": "string"},
                     "items": {
                         "type": "array",
@@ -176,9 +200,9 @@ def register(ctx):
                         },
                     },
                 },
-                "required": ["user_id", "source_id", "items"],
+                "required": ["user_id", "grant", "source_id", "items"],
             },
-            lambda p, **_: request("POST", "/internal/hermes/evidence", p),
+            lambda p, **_: request("POST", "/internal/hermes/evidence", _body(p), grant=_grant(p)),
         ),
         (
             "waypoint_find_hackathons",
@@ -186,13 +210,13 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "query": {"type": "string", "description": "Optional interest such as AI, cybersecurity, or startup"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 5, "default": 5},
                 },
-                "required": ["user_id"],
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/hackathons?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
+            lambda p, **_: request("GET", _student(p, f"/hackathons?query={quote(p.get('query', ''))}&limit={int(p.get('limit', 5))}"), grant=_grant(p)),
         ),
         (
             "waypoint_find_coop_companies",
@@ -200,13 +224,13 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "query": {"type": "string", "description": "Optional domain such as govtech, AI, research, energy or cybersecurity"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 8, "default": 5},
                 },
-                "required": ["user_id"],
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/coop/companies?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
+            lambda p, **_: request("GET", _student(p, f"/coop/companies?query={quote(p.get('query', ''))}&limit={int(p.get('limit', 5))}"), grant=_grant(p)),
         ),
         (
             "waypoint_find_coop_postings",
@@ -214,13 +238,13 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "query": {"type": "string"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 8, "default": 5},
                 },
-                "required": ["user_id"],
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/coop/postings?query={quote(p.get('query', ''))}&limit={p.get('limit', 5)}"),
+            lambda p, **_: request("GET", _student(p, f"/coop/postings?query={quote(p.get('query', ''))}&limit={int(p.get('limit', 5))}"), grant=_grant(p)),
         ),
         (
             "waypoint_get_coop_target",
@@ -228,23 +252,23 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "target_type": {"type": "string", "enum": ["company", "posting"]},
                     "target_id": {"type": "string"},
                 },
-                "required": ["user_id", "target_type", "target_id"],
+                "required": ["user_id", "grant", "target_type", "target_id"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/coop/{p['target_type']}/{quote(p['target_id'], safe='')}"),
+            lambda p, **_: request("GET", _student(p, f"/coop/{_seg(p['target_type'])}/{_seg(p['target_id'])}"), grant=_grant(p)),
         ),
         (
             "waypoint_blackboard_list_courses",
             "List the student's courses in Waypoint's read-only, pre-indexed Blackboard demo snapshot.",
             {
                 "type": "object",
-                "properties": {"user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header"}},
-                "required": ["user_id"],
+                "properties": {"user_id": USER_ID, "grant": GRANT},
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/courses"),
+            lambda p, **_: request("GET", _student(p, "/blackboard/courses"), grant=_grant(p)),
         ),
         (
             "waypoint_blackboard_list_content",
@@ -252,14 +276,14 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "course_id": {"type": "string"},
                     "content_type": {"type": "string", "enum": ["announcement", "syllabus", "lecture", "document", "assignment"]},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 30},
                 },
-                "required": ["user_id", "course_id"],
+                "required": ["user_id", "grant", "course_id"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/courses/{p['course_id']}/content?content_type={quote(p.get('content_type', ''))}&limit={p.get('limit', 30)}"),
+            lambda p, **_: request("GET", _student(p, f"/blackboard/courses/{_seg(p['course_id'])}/content?content_type={quote(p.get('content_type', ''))}&limit={int(p.get('limit', 30))}"), grant=_grant(p)),
         ),
         (
             "waypoint_blackboard_search",
@@ -267,14 +291,14 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "query": {"type": "string", "minLength": 2},
                     "course_id": {"type": "string"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8},
                 },
-                "required": ["user_id", "query"],
+                "required": ["user_id", "grant", "query"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/search?query={quote(p['query'])}&course_id={quote(p.get('course_id', ''))}&limit={p.get('limit', 8)}"),
+            lambda p, **_: request("GET", _student(p, f"/blackboard/search?query={quote(p['query'])}&course_id={quote(p.get('course_id', ''))}&limit={int(p.get('limit', 8))}"), grant=_grant(p)),
         ),
         (
             "waypoint_blackboard_read_item",
@@ -282,13 +306,13 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "item_id": {"type": "string"},
                     "cursor": {"type": "integer", "minimum": 0, "default": 0},
                 },
-                "required": ["user_id", "item_id"],
+                "required": ["user_id", "grant", "item_id"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/items/{p['item_id']}?cursor={p.get('cursor', 0)}"),
+            lambda p, **_: request("GET", _student(p, f"/blackboard/items/{_seg(p['item_id'])}?cursor={int(p.get('cursor', 0))}"), grant=_grant(p)),
         ),
         (
             "waypoint_blackboard_list_updates",
@@ -296,13 +320,13 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "since": {"type": "string", "description": "Optional ISO-8601 timestamp"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 15},
                 },
-                "required": ["user_id"],
+                "required": ["user_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/students/{p['user_id']}/blackboard/updates?since={quote(p.get('since') or '1970-01-01T00:00:00Z')}&limit={p.get('limit', 15)}"),
+            lambda p, **_: request("GET", _student(p, f"/blackboard/updates?since={quote(p.get('since') or '1970-01-01T00:00:00Z')}&limit={int(p.get('limit', 15))}"), grant=_grant(p)),
         ),
         (
             "waypoint_submit_roadmap_proposal",
@@ -310,7 +334,7 @@ def register(ctx):
             {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The Waypoint user_id UUID from the run message header (never the student's display name)"},
+                    "user_id": USER_ID, "grant": GRANT,
                     "base_version_id": {"type": "string"},
                     "summary": {"type": "string"},
                     "reasoning": {"type": "string"},
@@ -331,19 +355,19 @@ def register(ctx):
                         },
                     },
                 },
-                "required": ["user_id", "base_version_id", "summary", "reasoning", "operations"],
+                "required": ["user_id", "grant", "base_version_id", "summary", "reasoning", "operations"],
             },
-            lambda p, **_: request("POST", "/internal/hermes/roadmap-proposals", p),
+            lambda p, **_: request("POST", "/internal/hermes/roadmap-proposals", _body(p), grant=_grant(p)),
         ),
         (
             "waypoint_get_project",
             "Read one project's accepted brief, rubric, progress, and evaluation history.",
             {
                 "type": "object",
-                "properties": {"project_id": {"type": "string"}},
-                "required": ["project_id"],
+                "properties": {"project_id": {"type": "string"}, "grant": GRANT},
+                "required": ["project_id", "grant"],
             },
-            lambda p, **_: request("GET", f"/internal/hermes/projects/{p['project_id']}"),
+            lambda p, **_: request("GET", f"/internal/hermes/projects/{_seg(p['project_id'])}", grant=_grant(p)),
         ),
         (
             "waypoint_submit_project_refinement",
@@ -366,10 +390,11 @@ def register(ctx):
                         "required": ["title", "problem", "objective", "deliverables", "rubric"],
                     },
                     "source": {"type": "string", "const": "hermes"},
+                    "grant": GRANT,
                 },
-                "required": ["project_id", "brief"],
+                "required": ["project_id", "brief", "grant"],
             },
-            lambda p, **_: request("POST", f"/internal/hermes/projects/{p['project_id']}/refinements", {"brief": p["brief"], "source": "hermes"}),
+            lambda p, **_: request("POST", f"/internal/hermes/projects/{_seg(p['project_id'])}/refinements", {"brief": p["brief"], "source": "hermes"}, grant=_grant(p)),
         ),
         (
             "waypoint_get_team_context",

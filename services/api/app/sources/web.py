@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Public web sources: GitHub, ORCID, and one portfolio page.
 
 GitHub and ORCID use fixed API hosts. The portfolio fetch is the only
 arbitrary-URL request in Waypoint, so it is guarded against SSRF: https only,
 every hop's host must resolve to public addresses, bounded size and time.
 """
+
+from __future__ import annotations
 
 import ipaddress
 import os

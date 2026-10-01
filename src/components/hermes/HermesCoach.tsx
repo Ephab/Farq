@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { parseServerTime } from "@/lib/server-time"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { RotateCcw, Sparkles, Trophy } from "lucide-react"
 import { ChatThreadView, type SuggestedPrompt } from "@/components/hermes/ChatThreadView"
@@ -101,11 +102,20 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
   // the student opts in below) — rise-and-dissolve, sped up 1.6x:
   // loading (0.55s) -> leave (0.65s) -> done.
   const [introEveryVisit, setIntroEveryVisit] = useState(readIntroEveryVisit)
-  const [portal, setPortal] = useState<PortalPhase | "done">(() => (reduce || (portalPlayed && !readIntroEveryVisit()) ? "done" : "loading"))
+  // The coach is mounted hidden at startup: only start the veil once it is actually shown,
+  // otherwise it plays unseen and the first real visit never gets it.
+  const [portal, setPortal] = useState<PortalPhase | "done">(() => (!visible || reduce || (portalPlayed && !readIntroEveryVisit()) ? "done" : "loading"))
   const dismissPortal = useCallback(() => {
     portalPlayed = true
     setPortal("done")
   }, [])
+  const firstShown = useRef(visible)
+  useEffect(() => {
+    if (visible && !firstShown.current) {
+      firstShown.current = true
+      if (!reduce && !portalPlayed) setPortal("loading")
+    }
+  }, [visible, reduce])
   useEffect(() => {
     if (reduce || portal === "done") return
     const timer = window.setTimeout(() => {
@@ -130,13 +140,14 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
   // The intro advertises "press Esc to skip" — wire it while the overlay is
   // up so keyboard users are never stuck behind it.
   useEffect(() => {
-    if (portal === "done") return
+    // Only while the coach is on screen: other tabs keep their own Escape.
+    if (portal === "done" || !visible) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") dismissPortal()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [portal, dismissPortal])
+  }, [portal, dismissPortal, visible])
   const toggleIntroEveryVisit = useCallback((value: boolean) => {
     setIntroEveryVisit(value)
     try {
@@ -180,17 +191,20 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
   }, [pendingProposals, currentTopic, facts, t])
 
   const refreshSide = useCallback(async () => {
-    const [context, nextProposals, health, opportunitySummary, roadmap] = await Promise.all([
+    // Each panel updates on its own: one failing request (health flapping, opportunities
+    // cache down) must not blank facts and proposals too.
+    const [context, nextProposals, health, opportunitySummary, roadmapResult] = await Promise.allSettled([
       api<{ facts: Fact[] }>(`/api/students/${studentId}/context`),
       api<Proposal[]>(`/api/students/${studentId}/roadmap/proposals`),
       api<{ agent: string }>("/api/health"),
       api<OpportunitySummary>(`/api/students/${studentId}/opportunities/summary`),
-      api<RoadmapResponse>(`/api/students/${studentId}/roadmap`).catch(() => null),
+      api<RoadmapResponse>(`/api/students/${studentId}/roadmap`),
     ])
-    setFacts(context.facts)
-    setProposals(nextProposals.filter((proposal) => proposal.kind !== "initial"))
-    setAgent(health.agent)
-    setOpportunities(opportunitySummary)
+    if (context.status === "fulfilled") setFacts(context.value.facts)
+    if (nextProposals.status === "fulfilled") setProposals(nextProposals.value.filter((proposal) => proposal.kind !== "initial"))
+    setAgent(health.status === "fulfilled" ? health.value.agent : "unavailable")
+    if (opportunitySummary.status === "fulfilled") setOpportunities(opportunitySummary.value)
+    const roadmap = roadmapResult.status === "fulfilled" ? roadmapResult.value : null
     if (roadmap) {
       setRoadmapTitle(roadmap.snapshot.title || "")
       const nodes = roadmap.snapshot.nodes ?? []
@@ -237,22 +251,32 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
     const unseen = [...new Set(ids)].filter((id) => !markedSeen.current.has(id))
     if (!unseen.length) return
     unseen.forEach((id) => markedSeen.current.add(id))
-    api<{ updated: number }>(`/api/students/${studentId}/opportunities/mark-seen`, { method: "POST", body: JSON.stringify({ ids: unseen }) })
+    // The endpoint takes at most 20 ids per call (schemas.OpportunityIds).
+    const batches: string[][] = []
+    for (let start = 0; start < unseen.length; start += 20) batches.push(unseen.slice(start, start + 20))
+    Promise.all(batches.map((ids) => api<{ updated: number }>(`/api/students/${studentId}/opportunities/mark-seen`, { method: "POST", body: JSON.stringify({ ids }) })))
       .then(() => refreshSide())
       .catch(() => unseen.forEach((id) => markedSeen.current.delete(id)))
   }, [chat.messages, studentId, refreshSide])
 
+  const [deciding, setDeciding] = useState<string | null>(null)
   const decide = async (proposal: Proposal, decision: "accept" | "reject") => {
+    if (deciding) return  // a double click must not send a second decision (409 banner)
+    setDeciding(proposal.id)
     chat.setError(null)
     try {
       await api(`/api/roadmap-proposals/${proposal.id}/${decision}`, { method: "POST" })
       if (decision === "accept") notifyRoadmapChanged()
       await refreshSide()
-    } catch (reason) { chat.setError(reason instanceof Error ? reason.message : "coach.errors.proposalFailed") }
+    } catch (reason) {
+      chat.setError(reason instanceof Error ? reason.message : "coach.errors.proposalFailed")
+    } finally {
+      setDeciding(null)
+    }
   }
 
   const retryAll = () => {
-    chat.refresh().catch(() => undefined)
+    chat.retry().catch(() => undefined)
     refreshSide().catch(() => undefined)
   }
 
@@ -268,9 +292,8 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
   const subtitle = roadmapTitle ? t("coach.subtitleGoal", { title: roadmapTitle }) : t("coach.subtitleDefault")
 
   const recentDecision = recentDecisions[0] ?? null
-  const recentDecisionAgo = recentDecision?.created_at && !Number.isNaN(Date.parse(recentDecision.created_at))
-    ? fmt.relative(Math.min(Date.parse(recentDecision.created_at), Date.now()))
-    : null
+  const recentDecisionTime = parseServerTime(recentDecision?.created_at)
+  const recentDecisionAgo = recentDecisionTime !== null ? fmt.relative(Math.min(recentDecisionTime, Date.now())) : null
   const factParts = factCounts(facts)
   const latestFact = facts[facts.length - 1] ?? null
 
@@ -352,8 +375,8 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true 
                         })}
                         {proposal.operations.length > 4 ? <p>{t("coach.proposal.more", { count: proposal.operations.length - 4 })}</p> : null}
                         <div className="button-row" style={{ marginTop: 14 }}>
-                          <button type="button" onClick={() => void decide(proposal, "reject")} className="button secondary small">{t("coach.proposal.notNow")}</button>
-                          <button type="button" onClick={() => void decide(proposal, "accept")} className="button small">
+                          <button type="button" disabled={deciding !== null} onClick={() => void decide(proposal, "reject")} className="button secondary small">{t("coach.proposal.notNow")}</button>
+                          <button type="button" disabled={deciding !== null} onClick={() => void decide(proposal, "accept")} className="button small">
                             {t("coach.proposal.accept", { count: proposal.operations.length })}
                           </button>
                         </div>

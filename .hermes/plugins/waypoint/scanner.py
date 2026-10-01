@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Deterministic, secret-safe folder indexing for onboarding.
 
 Hermes runs on the student's machine, so these helpers read local folders the
@@ -8,6 +6,8 @@ prompt: secret-like files are never opened, dependency/build trees are skipped,
 and every read is bounded. A full threat model is still future work
 (docs/future-work.md).
 """
+
+from __future__ import annotations
 
 import configparser
 import json
@@ -18,6 +18,7 @@ from collections import Counter
 from pathlib import Path
 
 MAX_ENTRIES = 4000          # files visited per scan
+MAX_PROJECT_FILES = 3000    # files stat'ed inside one project (large datasets stay bounded)
 MAX_PROJECTS = 80
 MAX_READ_BYTES = 20_000
 MAX_OUTPUT_CHARS = 60_000
@@ -32,6 +33,8 @@ SECRET_NAME = re.compile(
     r"^id_(rsa|dsa|ecdsa|ed25519)|^appsettings.*\.json$|\.kdbx$|token|\.keystore$|\.jks$)",
     re.IGNORECASE,
 )
+# Directories that hold credentials; nothing under them is ever opened, whatever its name.
+SECRET_DIRS = {".ssh", ".aws", ".azure", ".gnupg", ".docker", ".kube", ".config", ".gcloud", ".password-store", "secrets", "credentials"}
 IDENTITY_NAME = re.compile(r"(passport|national.?id|^id\.(pdf|jpe?g|png)$|iqama|driver.?licen[cs]e|birth.?cert)", re.IGNORECASE)
 TEXT_EXT = {".md", ".txt", ".rst", ".json", ".toml", ".yaml", ".yml", ".cfg", ".ini", ".xml", ".gradle", ".kts", ".csproj", ".mod", ".py", ".ipynb"}
 MANIFESTS = {
@@ -78,7 +81,17 @@ def _resolve(path: str) -> Path:
         raise ScanRefused(f"Folder not found: {path}")
     if root == Path(root.anchor):
         raise ScanRefused("Refusing to scan a whole drive; choose a specific folder")
+    home = Path.home().resolve()
+    if root == home or home.is_relative_to(root):
+        raise ScanRefused("Refusing to scan your whole home folder; choose the folder that holds your projects or courses")
+    if any(_secret_dir(part) for part in root.parts):
+        raise ScanRefused("Refused: this folder may hold credentials")
     return root
+
+
+def _secret_dir(part: str) -> bool:
+    # Exact names only: a project called "token-bucket" is not a credential store.
+    return part.lower() in SECRET_DIRS
 
 
 def _walk(root: Path):
@@ -89,11 +102,19 @@ def _walk(root: Path):
         yield current, dirnames, filenames
 
 
-def read_text_file(path: str, root: str | None = None) -> str:
-    """Read a small text file, refusing secrets, identity documents and binaries."""
+def read_text_file(path: str, root: str | Path | None = None) -> str:
+    """Read a small text file, refusing secrets, identity documents and binaries.
+
+    With a root, the file must sit inside it and no folder between them may look like a
+    credential store (`secrets/db.yaml`, `.aws/config`).
+    """
     target = Path(os.path.expanduser(path.strip().strip('"'))).resolve()
-    if root is not None and not target.is_relative_to(Path(root).resolve()):
-        raise ScanRefused("File is outside the scanned folder")
+    if root is not None:
+        base = Path(root).resolve()
+        if not target.is_relative_to(base):
+            raise ScanRefused("File is outside the scanned folder")
+        if any(_secret_dir(part) for part in target.relative_to(base).parts[:-1]):
+            raise ScanRefused("Refused: this file is inside a folder that may hold credentials")
     if is_secret(target.name) or IDENTITY_NAME.search(target.name):
         raise ScanRefused("Refused: this file may contain secrets or personal identity data")
     if not target.is_file():
@@ -207,8 +228,10 @@ def scan_projects(root: Path) -> dict:
             seen_remotes.add(remote)
         extensions: Counter = Counter()
         newest = 0.0
-        for sub, _dirs, files in _walk(current):
+        project_files = 0
+        for sub, sub_dirs, files in _walk(current):
             for name in files[:400]:
+                project_files += 1
                 suffix = Path(name).suffix.lower()
                 if suffix:
                     extensions[suffix] += 1
@@ -216,6 +239,10 @@ def scan_projects(root: Path) -> dict:
                     newest = max(newest, (sub / name).stat().st_mtime)
                 except OSError:
                     pass
+            if project_files >= MAX_PROJECT_FILES:
+                sub_dirs[:] = []
+                break
+        visited += project_files
         manifests = [_manifest_summary(current / name) for name in filenames if name.lower() in MANIFESTS or name.lower().endswith(".csproj")]
         projects.append({
             "path": str(current.relative_to(root)),
@@ -309,9 +336,11 @@ def scan_folder(path: str, purpose: str = "projects") -> str:
     return text
 
 
-def read_project_file(path: str) -> str:
+def read_project_file(path: str, root: str) -> str:
+    """Read one file inside a folder the student typed (the same root given to scan_folder)."""
     try:
-        return json.dumps({"success": True, "content": read_text_file(path)}, ensure_ascii=False)
+        base = _resolve(root)
+        return json.dumps({"success": True, "content": read_text_file(path, base)}, ensure_ascii=False)
     except ScanRefused as exc:
         return json.dumps({"success": False, "error": str(exc)})
 
@@ -381,7 +410,7 @@ def index_folder(user_id: str, source_id: str, path: str, purpose: str, submit) 
         return json.dumps({"success": False, "error": "Nothing recognizable was found in this folder"})
     response = {}
     for start in range(0, len(items), 200):
-        response = json.loads(submit({"user_id": user_id, "source_id": source_id, "items": items[start:start + 200]}))
+        response = json.loads(submit({"user_id": user_id, "source_id": source_id, "root": raw.get("root", ""), "items": items[start:start + 200]}))
         if response.get("success") is False:
             return json.dumps(response)
     return json.dumps({"success": True, "submitted": len(items), "kind": purpose, "truncated": raw.get("truncated", False),

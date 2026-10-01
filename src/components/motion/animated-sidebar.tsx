@@ -49,7 +49,7 @@ const MOBILE_QUERY = "(max-width: 767px)";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 const PANEL_TRANSITION = {
-  duration: 0.36,
+  duration: 0.5,
   ease: EASE_DRAWER,
 } as const;
 
@@ -58,24 +58,23 @@ const PANEL_TRANSITION = {
 // then snap back during the final frame.
 const SIDEBAR_MORPH_TRANSITION = {
   type: "spring",
-  stiffness: 380,
-  damping: 35,
-  mass: 0.75,
+  visualDuration: 0.52,
+  bounce: 0,
 } as const;
 
 const LABEL_ENTER_TRANSITION = {
-  duration: 0.2,
-  delay: 0.08,
+  duration: 0.34,
+  delay: 0.12,
   ease: EASE_OUT,
 } as const;
 
 const LABEL_EXIT_TRANSITION = {
-  duration: 0.12,
+  duration: 0.18,
   ease: EASE_OUT,
 } as const;
 
 const REDUCED_TRANSITION = {
-  duration: 0.16,
+  duration: 0.2,
   ease: EASE_OUT,
 } as const;
 
@@ -828,12 +827,19 @@ export function AnimatedSidebarMenuButton({
   const content = (
     <>
       {isActive ? (
-        <motion.span
-          layoutId={context.layoutId}
-          transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
-          // The active page takes the theme accent: a soft tint plus a short bar on the leading edge.
-          className="absolute inset-0 rounded-xl bg-primary/10 before:absolute before:inset-y-2 before:start-0 before:w-[3px] before:rounded-full before:bg-primary"
-        />
+        <>
+          {/* The active page: a quiet ground, and a waypoint bead that travels the nav's leading edge. */}
+          <motion.span
+            layoutId={`${context.layoutId}-ground`}
+            transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
+            className="absolute inset-0 rounded-lg bg-foreground/[0.06]"
+          />
+          <motion.span
+            layoutId={context.layoutId}
+            transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
+            className="absolute start-1 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-primary"
+          />
+        </>
       ) : null}
       {icon ? (
         <span
@@ -889,7 +895,7 @@ export function AnimatedSidebarMenuButton({
   );
 
   const interactiveClassName = cn(
-    "relative flex min-h-9 w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-xl px-3 text-start text-sm font-medium outline-none",
+    "relative flex min-h-9 w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-lg px-3 ps-4 text-start text-sm font-medium outline-none",
     "text-muted-foreground transition-colors hover:text-foreground",
     "focus-visible:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring",
     isActive && "text-foreground",

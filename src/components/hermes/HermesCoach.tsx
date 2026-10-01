@@ -12,7 +12,7 @@ import { useI18n, type MessageKey } from "@/lib/i18n/context"
 import "./coach-concept.css"
 
 interface Fact { id: string; category: string; key: string; value: unknown }
-interface ProposalOperation { type: string; node_id: string; changes?: Record<string, unknown> }
+interface ProposalOperation { type: string; node_id: string; changes?: Record<string, unknown>; node?: { title?: unknown } }
 interface Proposal {
   id: string; summary: string; reasoning: string; status: "pending" | "accepted" | "rejected"; kind?: "ops" | "initial"
   operations: ProposalOperation[]; created_at?: string
@@ -35,11 +35,10 @@ function opMeta(type: string): { symbol: string; label: MessageKey } {
   }
 }
 
-function opDetail(operation: ProposalOperation): string {
-  const changes = operation.changes ?? {}
-  const title = typeof changes.title === "string" && changes.title.trim() ? changes.title.trim() : null
-  if (title) return title
-  return humanizeId(operation.node_id)
+/** The step's title: a new node's own, a changed title, or the existing node's; the id only as a last resort. */
+function opDetail(operation: ProposalOperation, titles: ReadonlyMap<string, string>): string {
+  const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null)
+  return text(operation.node?.title) ?? text(operation.changes?.title) ?? titles.get(operation.node_id) ?? humanizeId(operation.node_id)
 }
 
 const FACT_CATEGORIES = new Set(["interest", "goal", "course", "skill", "strength", "weakness", "achievement", "preference"])
@@ -75,6 +74,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true,
   const [agent, setAgent] = useState("checking")
   const [opportunities, setOpportunities] = useState<OpportunitySummary | null>(null)
   const [roadmapTitle, setRoadmapTitle] = useState("")
+  const [nodeTitles, setNodeTitles] = useState<ReadonlyMap<string, string>>(new Map())
   const [currentTopic, setCurrentTopic] = useState<{ title: string; status: string } | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number; next: { id: string; title: string; status: string; duration?: string }[] } | null>(null)
   // One-shot handoff from another tab (e.g. Projects "Refine with Hermes").
@@ -194,6 +194,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true,
     if (roadmap) {
       setRoadmapTitle(roadmap.snapshot.title || "")
       const nodes = roadmap.snapshot.nodes ?? []
+      setNodeTitles(new Map(nodes.map((node) => [node.id, node.title])))
       const done = new Set(nodes.filter((node) => (node.status ?? "not-started") === "done").map((node) => node.id))
       const current = nodes.find((node) => (node.status ?? "not-started") === "in-progress")
         ?? nodes.find((node) => (node.status ?? "not-started") === "not-started" && (node.deps ?? []).every((dep) => done.has(dep)))
@@ -347,7 +348,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true,
                       initial={reduce ? false : { opacity: 0, y: 12, scale: 0.99 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
-                      transition={{ duration: 0.3, ease: EASE_OUT }}
+                      transition={{ duration: 0.42, ease: EASE_OUT }}
                       className="message assistant"
                       aria-label={t("coach.proposal.ariaLabel", { summary: proposal.summary })}
                     >
@@ -361,7 +362,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true,
                           return (
                             <div className="change-row" key={`${operation.node_id}-${index}`}>
                               <span aria-hidden="true">{meta.symbol}</span>
-                              <span><strong>{t(meta.label)}</strong><span className="change-sub" dir="auto">{opDetail(operation)}</span></span>
+                              <span><strong>{t(meta.label)}</strong><span className="change-sub" dir="auto">{opDetail(operation, nodeTitles)}</span></span>
                             </div>
                           )
                         })}

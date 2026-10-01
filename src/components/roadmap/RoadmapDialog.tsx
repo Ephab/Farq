@@ -27,9 +27,9 @@ export function RoadmapDialog({ title, children, confirmLabel, danger, busy, err
     return () => window.removeEventListener("keydown", onKey);
   }, [busy, onCancel]);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => { if (!busy) onCancel(); }}>
-      <div role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-2xl border border-border bg-background p-5 shadow-xl">
-        <h2 className="text-base font-semibold">{title}</h2>
+    <div className="wp-overlay fixed inset-0 z-50 grid place-items-center bg-black/45 p-4 backdrop-blur-[2px]" onClick={() => { if (!busy) onCancel(); }}>
+      <div role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()} className="wp-panel w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-2xl">
+        <h2 className="text-lg font-semibold">{title}</h2>
         <div className="mt-2 space-y-2 text-sm text-muted-foreground">{children}</div>
         {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
         <div className="mt-5 flex justify-end gap-2">

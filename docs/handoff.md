@@ -14,6 +14,8 @@
   score questions are rewritten per option/level and folded back. With Laya installed and no keys,
   the gate now observes locally; the first call cold-loads the model (~6 s), including in rerank
   request paths.
+- Settings is a wide dialog with three sections in a side rail (General, Models & connections, Your data);
+  on phones the rail becomes a tab row.
 - Engine switch (Settings > Models & connections): `auto` (default, full chain), `jev` (cloud only, Laya is
   never loaded, email classification raises instead of falling back to it) and `laya` (local only). Stored in
   the `app_settings` table (`decision_engine`), read by `decision_engines.engine_choice()`, applied without a
@@ -33,8 +35,8 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
   a central spine, topics hang off both sides (one column on narrow containers, mirrored in RTL). It is
   plain DOM (no pan/zoom canvas); `RoadmapCanvas` keeps its props so onboarding previews reuse it.
 - Header actions: **Ask coach to change it** (prefills Hermes Coach), and a **Roadmap options** menu with
-  Generate new roadmap, Version history, Reset progress and Remove this roadmap. A collapsible
-  "How your roadmap works" explainer sits under the header. Pending coach proposals render inline with a
+  Generate new roadmap, Version history, Reset progress and Remove this roadmap. (The old "How your roadmap works"
+  explainer was removed.) Pending coach proposals render inline with a
   per-operation diff and Accept/Reject (`PendingChanges.tsx`); stale or protected-node proposals cannot be accepted.
 - Backend (all owner-checked): `GET /api/students/{id}/roadmap/versions`, `GET .../versions/{version_id}`,
   `POST .../roadmap/archive` (removes the roadmap: the active version becomes an empty one, the old version
@@ -216,12 +218,21 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 
 ### 5. Models and fallback (`services/api/app/hermes.py`)
 - Providers: Gemini, NVIDIA NIM, Hugging Face (`HF_TOKEN` in server `.env`, provider slug
-  `huggingface`, model ids like `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`).
+  `huggingface`, model ids like `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`) and OpenRouter
+  (`OPENROUTER_API_KEY`, the same key Span-01 Lite uses; `OPENROUTER_CHAIN`, currently the free
+  `stealth/space-bunny-alpha`, which may log prompts). The gateway reads the key from its own
+  environment, so it must be exported or saved in Settings > Models & connections (OpenRouter row),
+  then the gateway restarted.
+- The provider and model are chosen per browser tab (onboarding "Advanced" or Settings) and sent with
+  every request; the server default (`HERMES_PROVIDER`/`HERMES_MODEL`) applies only to callers that send
+  none. Settings shows the tab's choice and notes when it differs from the saved default.
 - Every gateway run (chat, ingest, roadmap, quiz, slides) goes through `execute_with_fallback`:
   any model-side failure (429/quota, 503, failed/cancelled run, empty answer, >120 s) moves to
   the next rung of `FALLBACK_CHAIN`: Gemini 3.8 → 3.7 → 3.6 → 3.5 → 3 → 2.5 Flash → Flash-Lite
-  (3.5, 3.1, 2.5) → Gemma 4 → Hugging Face (DeepSeek V4.1 Flash, Gemma 26B novita, gpt-oss-20b,
-  Gemma 26B deepinfra, Llama 3.1 8B). Failing models cool down (30 s / 65 s / 30 min for daily quota).
+  (3.5, 3.1, 2.5) → Gemma 4 → OpenRouter → Hugging Face (DeepSeek V4.1 Flash, Gemma 26B novita,
+  gpt-oss-20b, Gemma 26B deepinfra, Llama 3.1 8B). An explicit OpenRouter choice tries its model first,
+  then the whole chain. Rungs whose optional key (`OPENROUTER_API_KEY`, `HF_TOKEN`) is unset are skipped.
+  Model-busy errors reach the student as one plain sentence (`runErrorMessage`). Failing models cool down (30 s / 65 s / 30 min for daily quota).
 - A 429 on **run creation** is the gateway's own concurrency cap: we wait for a slot, we do not
   skip models. Only a rejected Waypoint gateway key (401) stops immediately.
 - Hermes runtime config (`services/hermes/config.yaml`): `agent.api_max_retries: 1` (Waypoint does

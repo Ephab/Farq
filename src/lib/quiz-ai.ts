@@ -1,4 +1,5 @@
-import { API_BASE, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_NIM_MODELS, formatErrorDetail, hermesRequestParts } from "./waypoint-api";
+import { API_BASE, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_OPENROUTER_MODELS,
+  HERMES_NIM_MODELS, formatErrorDetail, hermesRequestParts } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // quiz-ai.ts — THE swappable AI backbone for Waypoint quizzes.
@@ -59,9 +60,8 @@ export interface QuizProgress {
 }
 
 /** Quiz models served through the Hermes gateway (allowlisted server-side).
- * Used for display labels only — generation uses the server's Hermes model
- * unless a fallback override is passed per-run. */
-export const QUIZ_MODELS = [...HERMES_GEMINI_MODELS, ...HERMES_NIM_MODELS, ...HERMES_HF_MODELS];
+ * Used for display labels only — generation sends this tab's provider and model. */
+export const QUIZ_MODELS = [...HERMES_GEMINI_MODELS, ...HERMES_NIM_MODELS, ...HERMES_OPENROUTER_MODELS, ...HERMES_HF_MODELS];
 
 /** Max chars of slide text sent for generation — keeps it fast + cheap. */
 export const MAX_SOURCE_CHARS = 12_000;

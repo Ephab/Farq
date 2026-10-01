@@ -152,7 +152,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
       <div className="border-b border-border bg-muted/40 px-4 py-2 sm:px-8">
         <details className="mx-auto w-full max-w-4xl">
           <summary className="cursor-pointer text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-            {t("onboarding.advanced.summary")}<span className="underline">{t("onboarding.advanced.toggle")}</span>
+            {hermesProvider === "gemini" && hermesModel === modelOptions[0].id ? t("onboarding.advanced.summary") : t("onboarding.advanced.summaryModel", { model: modelChoices.find((m) => m.id === hermesModel)?.label ?? hermesModel })}<span className="underline">{t("onboarding.advanced.toggle")}</span>
           </summary>
           <div className="flex w-full flex-wrap items-center gap-2 pt-2">
           <label htmlFor="onboarding-hermes-provider" className="sr-only">{t("onboarding.advanced.provider")}</label>
@@ -160,6 +160,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
             <option value="gemini">Gemini</option>
             <option value="nim">NVIDIA</option>
             <option value="hf">Hugging Face</option>
+            <option value="openrouter">OpenRouter</option>
           </select>
           <label htmlFor="onboarding-hermes-model" className="sr-only">{t("onboarding.advanced.model")}</label>
           <select id="onboarding-hermes-model" value={hermesModel} onChange={(event) => onModelChange(event.target.value)} className="h-8 max-w-44 rounded-lg border border-border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" aria-label={t("onboarding.advanced.model")}>

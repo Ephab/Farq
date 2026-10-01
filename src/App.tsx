@@ -55,7 +55,7 @@ const VIEW_LABELS: Record<string, MessageKey> = {
 
 // Gentle app-wide startup veil, once per page load. It lives outside the view
 // branches below so loading -> onboarding -> app swaps never remount (and so
-// replay) it: loading (0.65s) -> leave (0.7s) -> done, skippable with Esc/click.
+// replay) it: loading (0.8s) -> leave (0.85s) -> done, skippable with Esc/click.
 function AppIntro() {
   const { t } = useI18n()
   const reduceMotion = useReducedMotion()
@@ -65,7 +65,7 @@ function AppIntro() {
     if (reduceMotion || phase === "done") return
     const timer = window.setTimeout(
       () => setPhase((previous) => (previous === "loading" ? "leave" : "done")),
-      phase === "loading" ? 650 : 700,
+      phase === "loading" ? 800 : 850,
     )
     return () => window.clearTimeout(timer)
   }, [phase, reduceMotion])
@@ -81,7 +81,7 @@ function AppIntro() {
     <AnimatePresence>
       {phase !== "done" ? (
         <div className="fixed inset-0 z-[70]">
-          <CoachPortalIntro phase={phase} speed={1.3} word={t("common.appName")} tone="gentle" onSkip={dismiss} />
+          <CoachPortalIntro phase={phase} speed={1.1} word={t("common.appName")} tone="gentle" onSkip={dismiss} />
         </div>
       ) : null}
     </AnimatePresence>
@@ -97,10 +97,21 @@ export default function App() {
   )
 }
 
+const ACTIVE_VIEW_KEY = "waypoint.active-view"
+
 function AppShell() {
   const { t, fmt } = useI18n()
   const viewLabel = (id: string) => (VIEW_LABELS[id] ? t(VIEW_LABELS[id]) : id)
-  const [active, setActive] = useState("Home")
+  // A refresh (or a dev reload) keeps the student on the section they were reading.
+  const [active, setActive] = useState(() => {
+    try {
+      const saved = window.sessionStorage.getItem(ACTIVE_VIEW_KEY)
+      return saved && VIEW_LABELS[saved] ? saved : "Home"
+    } catch { return "Home" }
+  })
+  useEffect(() => {
+    try { window.sessionStorage.setItem(ACTIVE_VIEW_KEY, active) } catch { /* storage blocked: this page load only */ }
+  }, [active])
   const [coachDraft, setCoachDraft] = useState("")
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
@@ -281,6 +292,8 @@ function AppShell() {
             </header>
 
             <main className="flex min-h-0 flex-1 flex-col bg-background">
+              {/* Each page comes into focus as it opens. Hermes Coach is outside: it never remounts. */}
+              <div key={active} className={active === "Hermes Coach" ? "hidden" : "wp-view flex min-h-0 flex-1 flex-col"}>
               {active === "Home" ? (
                 <TodayView onNavigate={(tab) => setActive(tab)} />
               ) : active === "Roadmap" ? (
@@ -300,6 +313,7 @@ function AppShell() {
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
               ) : null}
+              </div>
               {/* Hermes Coach stays mounted while hidden so an in-progress
                   reply survives tab switches instead of unmounting mid-stream. */}
               <div className={active === "Hermes Coach" ? "contents" : "hidden"}>

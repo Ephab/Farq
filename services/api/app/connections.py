@@ -138,7 +138,7 @@ def _hint(value: str) -> str | None:
 
 
 # Browser provider ids -> (server provider slug, the connection that holds that provider's key).
-HERMES_PROVIDERS = {"gemini": ("gemini", "gemini"), "nim": ("nvidia", "nvidia"), "hf": ("huggingface", "huggingface")}
+HERMES_PROVIDERS = {"gemini": ("gemini", "gemini"), "nim": ("nvidia", "nvidia"), "hf": ("huggingface", "huggingface"), "openrouter": ("openrouter", "span")}
 _UI_PROVIDER = {slug: ui for ui, (slug, _c) in HERMES_PROVIDERS.items()}
 
 

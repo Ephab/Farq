@@ -294,7 +294,7 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
     <div className="mx-auto w-full max-w-6xl p-4 sm:p-8">
       <header className="mb-7 grid gap-4 border-b border-border pb-7 md:grid-cols-[1fr_auto] md:items-end">
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("dashboard.coop.eyebrow")}</p>
+          <p className="mb-2 text-sm font-medium text-muted-foreground">{t("dashboard.coop.eyebrow")}</p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">{t("dashboard.coop.title")}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{t("dashboard.coop.intro")}</p>
         </div>
@@ -407,8 +407,8 @@ function DetailSheet({ selected, reasons, onClose, onState, onAsk }: { selected:
   useModalFocus(sheetRef, () => closeHandler.current(), closeRef)
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/45" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>
-      <aside ref={sheetRef} className="h-full w-full overflow-y-auto bg-background p-5 shadow-2xl sm:max-w-lg sm:p-7">
+    <div className="wp-overlay fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>
+      <aside ref={sheetRef} className="wp-sheet h-full w-full overflow-y-auto bg-background p-5 shadow-2xl sm:max-w-lg sm:p-7">
         <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{company ? t("dashboard.coop.detail.companyMatch") : <bdi>{posting?.company_name}</bdi>}</p><h2 dir="auto" className="mt-2 text-start text-3xl font-semibold tracking-tight">{title}</h2></div><button ref={closeRef} type="button" onClick={onClose} aria-label={t("dashboard.coop.detail.close")} className="grid size-9 place-items-center rounded-full border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="size-4" aria-hidden="true" /></button></div>
         {posting?.closes_at ? <p className="mt-3 text-sm font-medium text-amber-700 dark:text-amber-300">{t("dashboard.coop.detail.deadline", { date: fmt.date(posting.closes_at, { dateStyle: "medium", timeZone: "UTC" }) })}</p> : null}
         <div className="mt-5 flex flex-wrap gap-2"><FitPill item={item} />{posting && !posting.is_demo ? posting.sources.map((source) => <a key={`${source.name}-${source.detail_url}`} href={source.detail_url || undefined} target="_blank" rel="noreferrer" className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"><bdi>{source.label}</bdi></a>) : <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", sourceTone(company?.source_status ?? posting?.status ?? "unknown", posting?.is_demo))}>{t(sourceLabel(company?.source_status ?? posting?.status ?? "unknown", posting?.is_demo))}</span>}</div>

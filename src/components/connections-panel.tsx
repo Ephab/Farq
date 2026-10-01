@@ -1,10 +1,9 @@
 "use client"
 
-import { Check, ExternalLink, Eye, EyeOff, LoaderCircle, X } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { api, modelsFor, saveHermesModel, saveHermesProvider, type HermesProvider } from "@/lib/waypoint-api"
+import { Check, ExternalLink, Eye, EyeOff, LoaderCircle } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { api, hermesRequestParts, modelsFor, saveHermesModel, saveHermesProvider, type HermesProvider } from "@/lib/waypoint-api"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
-import { useModalFocus } from "@/lib/use-modal-focus"
 import { cn } from "@/lib/utils"
 
 type Source = "env_file" | "environment" | "none"
@@ -41,15 +40,11 @@ interface TestResult { ok: boolean; code: string; detail: string; latency_ms: nu
 const SOURCE_KEY = { env_file: "connections.keys.sourceEnvFile", environment: "connections.keys.sourceEnvironment", none: "connections.keys.sourceNone" } as const
 const ENGINE_OPTIONS: EngineChoice[] = ["jev", "laya", "auto"]
 
-export function ConnectionsDialog({ onClose }: { onClose: () => void }) {
+/** Models & connections, embedded as a section of the Settings dialog. */
+export function ConnectionsPanel() {
   const { t } = useI18n()
   const [status, setStatus] = useState<ConnectionsStatus | null>(null)
   const [error, setError] = useState(false)
-  const sheetRef = useRef<HTMLDivElement>(null)
-  const closeRef = useRef<HTMLButtonElement>(null)
-  const closeHandler = useRef(onClose)
-  useEffect(() => { closeHandler.current = onClose }, [onClose])
-  useModalFocus(sheetRef, () => closeHandler.current(), closeRef)
 
   const load = useCallback(() => {
     setError(false)
@@ -58,38 +53,18 @@ export function ConnectionsDialog({ onClose }: { onClose: () => void }) {
   useEffect(load, [load])
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3"
-      onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}
-    >
-      <div
-        ref={sheetRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="connections-title"
-        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-background p-5 shadow-2xl sm:p-6"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 id="connections-title" className="text-xl font-semibold tracking-tight">{t("connections.title")}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t("connections.subtitle")}</p>
-          </div>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label={t("connections.close")} className="grid size-9 shrink-0 place-items-center rounded-full border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <X className="size-4" aria-hidden="true" />
-          </button>
+    <div>
+      <p className="max-w-[60ch] text-sm text-muted-foreground">{t("connections.subtitle")}</p>
+      {error ? (
+        <div role="alert" className="mt-6 text-sm text-destructive">
+          {t("connections.loadFailed")}{" "}
+          <button type="button" onClick={load} className="font-medium underline underline-offset-4">{t("connections.retry")}</button>
         </div>
-
-        {error ? (
-          <div role="alert" className="mt-6 text-sm text-destructive">
-            {t("connections.loadFailed")}{" "}
-            <button type="button" onClick={load} className="font-medium underline underline-offset-4">{t("connections.retry")}</button>
-          </div>
-        ) : !status ? (
-          <p role="status" className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />{t("connections.loading")}</p>
-        ) : (
-          <Body status={status} reload={load} />
-        )}
-      </div>
+      ) : !status ? (
+        <p role="status" className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />{t("connections.loading")}</p>
+      ) : (
+        <Body status={status} reload={load} />
+      )}
     </div>
   )
 }
@@ -107,10 +82,10 @@ function Body({ status, reload }: { status: ConnectionsStatus; reload: () => voi
 
       <EngineSection status={status} jevKeySet={jevKeySet} reload={reload} />
 
-      <section className="mt-6 border-t border-border pt-5" aria-labelledby="connections-features">
-        <h3 id="connections-features" className="text-sm font-semibold">{t("connections.features.title")}</h3>
+      <section className="mt-4 rounded-xl border border-border p-4 sm:p-5" aria-labelledby="connections-features">
+        <h3 id="connections-features" className="text-[15px] font-semibold">{t("connections.features.title")}</h3>
         <dl className="mt-3 grid gap-2 text-sm">
-          {status.models.map((item) => (
+          {status.models.map((item) => (item.feature === "coach" ? { ...item, ...coachUse() } : item)).map((item) => (
             <div key={item.feature} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
               <dt className="text-muted-foreground">{t(`connections.features.${item.feature}` as MessageKey)}</dt>
               <dd className="text-end font-medium">
@@ -121,10 +96,10 @@ function Body({ status, reload }: { status: ConnectionsStatus; reload: () => voi
         </dl>
       </section>
 
-      <section className="mt-6 border-t border-border pt-5" aria-labelledby="connections-keys">
-        <h3 id="connections-keys" className="text-sm font-semibold">{t("connections.keys.title")}</h3>
+      <section className="mt-4 rounded-xl border border-border p-4 sm:p-5" aria-labelledby="connections-keys">
+        <h3 id="connections-keys" className="text-[15px] font-semibold">{t("connections.keys.title")}</h3>
         {canSave ? <p className="mt-1 text-xs text-muted-foreground">{t("connections.envNote")}</p> : null}
-        <ul className="mt-3 divide-y divide-border">
+        <ul className="mt-2 divide-y divide-border">
           {status.connections.map((item) => <KeyRow key={item.id} item={item} canSave={canSave} local={status.can_edit} reload={reload} />)}
         </ul>
       </section>
@@ -132,24 +107,27 @@ function Body({ status, reload }: { status: ConnectionsStatus; reload: () => voi
   )
 }
 
-const HERMES_PROVIDER_IDS: HermesProvider[] = ["gemini", "nim", "hf"]
-const HERMES_KEY_CONNECTION: Record<HermesProvider, string> = { gemini: "gemini", nim: "nvidia", hf: "huggingface" }
+const HERMES_PROVIDER_IDS: HermesProvider[] = ["gemini", "nim", "hf", "openrouter"]
+const HERMES_KEY_CONNECTION: Record<HermesProvider, string> = { gemini: "gemini", nim: "nvidia", hf: "huggingface", openrouter: "span" }
 
 function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: () => void }) {
   const { t } = useI18n()
-  const [provider, setProvider] = useState<HermesProvider>(status.hermes.provider)
-  const [model, setModel] = useState(status.hermes.model)
+  // Every request from this tab carries its own choice, so start from that, not the server default.
+  const tab = hermesRequestParts().body
+  const [provider, setProvider] = useState<HermesProvider>(tab.provider)
+  const [model, setModel] = useState(tab.model)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null)
   const options = modelsFor(provider)
   const choices = model && !options.some((option) => option.id === model) ? [{ id: model, label: model }, ...options] : options
   const keyConnection = status.connections.find((item) => item.id === HERMES_KEY_CONNECTION[provider])
-  const dirty = provider !== status.hermes.provider || model !== status.hermes.model
+  const dirty = provider !== tab.provider || model !== tab.model || provider !== status.hermes.provider || model !== status.hermes.model
+  const tabDiffers = tab.provider !== status.hermes.provider || tab.model !== status.hermes.model
   const selectClass = "mt-1 h-9 w-full rounded-lg border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
 
   const changeProvider = (next: HermesProvider) => {
     setProvider(next)
-    setModel(next === status.hermes.provider ? status.hermes.model : modelsFor(next)[0].id)
+    setModel(next === tab.provider ? tab.model : next === status.hermes.provider ? status.hermes.model : modelsFor(next)[0].id)
     setMessage(null)
   }
 
@@ -171,8 +149,8 @@ function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: 
   }
 
   return (
-    <section className="mt-6 border-t border-border pt-5" aria-labelledby="connections-hermes">
-      <h3 id="connections-hermes" className="text-sm font-semibold">{t("connections.hermes.title")}</h3>
+    <section className="mt-6 rounded-xl border border-border p-4 sm:p-5" aria-labelledby="connections-hermes">
+      <h3 id="connections-hermes" className="text-[15px] font-semibold">{t("connections.hermes.title")}</h3>
       <p className="mt-1 text-xs text-muted-foreground">{t("connections.hermes.help")}</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
@@ -191,6 +169,11 @@ function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: 
       <p className={cn("mt-2 text-xs", keyConnection?.set ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
         {t(keyConnection?.set ? "connections.hermes.keyReady" : "connections.hermes.keyMissing", { env: keyEnvFor(provider) })}
       </p>
+      {tabDiffers ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t("connections.hermes.tabDiffers", { model: modelLabel(status.hermes.provider, status.hermes.model), provider: providerName(status.hermes.provider) })}
+        </p>
+      ) : null}
       {status.can_edit ? (
         <button type="button" disabled={!dirty || saving} onClick={() => void save()} className={cn(buttonClass, "mt-3 bg-primary text-primary-foreground hover:bg-primary/90")}>
           {saving ? t("connections.keys.saving") : t("connections.hermes.save")}
@@ -201,10 +184,20 @@ function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: 
   )
 }
 
-const KEY_ENV: Record<HermesProvider, string> = { gemini: "GEMINI_API_KEY", nim: "NVIDIA_API_KEY", hf: "HF_TOKEN" }
+/** What Coach uses in this tab: the tab's own provider and model. */
+function coachUse() {
+  const { provider, model } = hermesRequestParts().body
+  return { provider, model }
+}
+
+function modelLabel(provider: HermesProvider, model: string) {
+  return modelsFor(provider).find((option) => option.id === model)?.label ?? model
+}
+
+const KEY_ENV: Record<HermesProvider, string> = { gemini: "GEMINI_API_KEY", nim: "NVIDIA_API_KEY", hf: "HF_TOKEN", openrouter: "OPENROUTER_API_KEY" }
 function keyEnvFor(provider: HermesProvider) { return KEY_ENV[provider] }
 
-const PROVIDER_NAMES: Record<string, string> = { gemini: "Gemini", nim: "NVIDIA NIM", nvidia: "NVIDIA NIM", hf: "Hugging Face" }
+const PROVIDER_NAMES: Record<string, string> = { gemini: "Gemini", nim: "NVIDIA NIM", nvidia: "NVIDIA NIM", hf: "Hugging Face", huggingface: "Hugging Face", openrouter: "OpenRouter" }
 function providerName(provider: string | null) {
   return provider ? PROVIDER_NAMES[provider] ?? provider : ""
 }
@@ -238,8 +231,8 @@ function EngineSection({ status, jevKeySet, reload }: { status: ConnectionsStatu
   else noteKeys.push(status.local_model.loaded ? "connections.engine.layaLoaded" : "connections.engine.layaIdle")
 
   return (
-    <section className="mt-6 border-t border-border pt-5" aria-labelledby="connections-engine">
-      <h3 id="connections-engine" className="text-sm font-semibold">{t("connections.engine.title")}</h3>
+    <section className="mt-4 rounded-xl border border-border p-4 sm:p-5" aria-labelledby="connections-engine">
+      <h3 id="connections-engine" className="text-[15px] font-semibold">{t("connections.engine.title")}</h3>
       <p className="mt-1 text-xs text-muted-foreground">{t("connections.engine.help")}</p>
       <div role="radiogroup" aria-labelledby="connections-engine" className="mt-3 grid gap-2 sm:grid-cols-3">
         {ENGINE_OPTIONS.map((option) => {
@@ -319,7 +312,7 @@ function KeyRow({ item, canSave, local, reload }: { item: Connection; canSave: b
 
   const inputId = `connection-key-${item.id}`
   return (
-    <li className="py-4">
+    <li className="py-4 last:pb-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">

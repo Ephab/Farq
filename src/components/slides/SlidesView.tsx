@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, getCurrentStudentId } from "@/lib/waypoint-api";
+import { api, getCurrentStudentId, getHermesModel, getHermesProvider, modelsFor } from "@/lib/waypoint-api";
 import { extractSource } from "@/lib/quiz-extract";
 import {
   combineDeckTexts,
@@ -38,6 +38,15 @@ export interface DeckVisuals {
   pdfWidth?: number;
   pdfHeight?: number;
   error?: string;
+}
+
+/** The model this tab picked in Settings or onboarding, when it is not the server default. */
+function tabModelLabel(): string | null {
+  const provider = getHermesProvider();
+  const model = getHermesModel(provider);
+  const options = modelsFor(provider);
+  if (provider === "gemini" && model === options[0].id) return null;
+  return options.find((option) => option.id === model)?.label ?? model;
 }
 
 export function SlidesView() {
@@ -353,10 +362,10 @@ export function SlidesView() {
 
   const workbenchSlides: ViewerSlide[] | null = (() => {
     if (!selectedDeck) return null;
+    // Without a rendered preview (e.g. after a reload) the new slides still show, on their own.
     const originals = buildOriginalSlides(selectedDeck.id);
-    if (!originals) return null;
     if (previewSlides.length === 0) return originals;
-    return [...originals, ...buildAiSlides(selectedDeck.id, previewSlides, 0)];
+    return [...(originals ?? []), ...buildAiSlides(selectedDeck.id, previewSlides, 0)];
   })();
 
   const getExtensionSlides = useCallback(
@@ -508,7 +517,7 @@ export function SlidesView() {
 
   return (
     <SlidesHome
-      modelLabel={hermesModel.id ? t("slides.modelDefault") : "Hermes"}
+      modelLabel={tabModelLabel() ?? (hermesModel.id ? t("slides.modelDefault") : "Hermes")}
       decks={library.decks}
       selectedDeckId={selectedDeckId}
       onSelectDeck={handleSelectDeck}

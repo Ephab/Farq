@@ -5,7 +5,7 @@
 // expanded question/review rounded-3xl (24px), status pills
 // rounded-full, checkboxes rounded-md/lg. No other radii here.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   generateQuiz,
   getMockQuiz,
@@ -16,7 +16,7 @@ import {
   type QuizQuestion,
   type QuizQuestionType,
 } from "@/lib/quiz-ai";
-import { api, hermesRequestParts } from "@/lib/waypoint-api";
+import { hermesRequestParts } from "@/lib/waypoint-api";
 import { extractSource, QuizExtractError } from "@/lib/quiz-extract";
 import { useI18n, type MessageKey } from "@/lib/i18n/context";
 import {
@@ -66,21 +66,8 @@ export function QuizView() {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, QuizAnswer>>({});
   const [genMeta, setGenMeta] = useState({ sourceName: "", model: "", difficulty: "" });
-  // The server's Hermes model (single source of truth — no picker).
-  const [hermesModel, setHermesModel] = useState({ id: "", label: "Hermes" });
-
-  useEffect(() => {
-    let cancelled = false;
-    api<{ model?: string; provider?: string }>("/api/health")
-      .then((health) => {
-        if (cancelled || !health.model) return;
-        setHermesModel({ id: health.model, label: modelLabelFor(health.model) });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // The model this tab sends with every request (chosen in Settings or onboarding).
+  const tabModel = hermesRequestParts().body.model;
   const [jobs, setJobs] = useState<GenJob[]>([]);
   const [newQuizIds, setNewQuizIds] = useState<string[]>([]);
   const abortControllers = useRef(new Map<string, AbortController>());
@@ -195,7 +182,7 @@ export function QuizView() {
           deckName: job.label,
           questions: result.questions,
           difficulty: job.difficulty,
-          model: modelLabelFor(result.model || hermesModel.id),
+          model: modelLabelFor(result.model || job.model),
           createdAt: Date.now(),
         };
         persist((lib) => ({ ...lib, quizzes: [saved, ...lib.quizzes] }));
@@ -218,7 +205,7 @@ export function QuizView() {
         abortControllers.current.delete(job.id);
       }
     },
-    [persist, hermesModel, t],
+    [persist, t],
   );
 
   /** Fire a generation job and return straight to home. Safe to call in parallel. */
@@ -313,7 +300,7 @@ export function QuizView() {
         decks={generateDecks}
         shape={shape}
         onShape={setShape}
-        modelLabel={hermesModel.label}
+        modelLabel={modelLabelFor(tabModel)}
         error={error}
         onGenerate={startGeneration}
         onBack={() => {
@@ -358,7 +345,7 @@ export function QuizView() {
 
   return (
     <QuizHome
-      modelLabel={hermesModel.label}
+      modelLabel={modelLabelFor(tabModel)}
       decks={library.decks}
       selectedDeckIds={selectedDeckIds}
       onToggleDeck={toggleDeck}

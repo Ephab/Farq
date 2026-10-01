@@ -191,6 +191,19 @@
   --color-destructive: var(--destructive);
 }
 
+/* Type and motion tokens. Interface text is Instrument Sans; page and section titles use Bricolage
+   Grotesque; the roadmap diagram alone is hand-lettered in Balsamiq Sans, as on roadmap.sh.
+   Motion is unhurried and never bounces: things glide into place along one shared curve. */
+@theme {
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-hand: "Balsamiq Sans", "Comic Neue", ui-rounded, system-ui, sans-serif;
+  --ease-glide: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-trace: cubic-bezier(0.65, 0, 0.35, 1);
+  --default-transition-duration: 260ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 html,
 body,
 #root {
@@ -201,8 +214,20 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+}
+
+h1 {
+  letter-spacing: -0.025em;
 }
 
 /* Arabic needs a face with real joining forms and 500/600/700 weights, plus room for
@@ -224,9 +249,147 @@ header,
 aside,
 main {
   transition:
-    background-color 0.25s ease,
-    border-color 0.25s ease,
-    color 0.25s ease;
+    background-color 0.45s var(--ease-glide),
+    border-color 0.45s var(--ease-glide),
+    color 0.45s var(--ease-glide);
+}
+
+/* ---- Motion language --------------------------------------------------------------------------
+   One curve (glide), three lengths: 0.42s for controls and menus, 0.56s for panels and pages,
+   1.2s for the single drawn moment on the roadmap. Entrances rise a little and come into focus;
+   menus unfold from their trigger; nothing overshoots. */
+@keyframes wp-fade {
+  from { opacity: 0; }
+}
+
+@keyframes wp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    filter: blur(6px);
+  }
+}
+
+@keyframes wp-view {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+}
+
+@keyframes wp-unfold {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0 round 14px);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 14px);
+  }
+}
+
+@keyframes wp-sheet {
+  from { transform: translateX(var(--wp-sheet-from, 24px)); opacity: 0; }
+}
+
+.wp-overlay {
+  animation: wp-fade 0.42s var(--ease-glide) both;
+}
+
+.wp-panel {
+  animation: wp-rise 0.56s var(--ease-glide) both;
+}
+
+.wp-view {
+  animation: wp-view 0.56s var(--ease-glide) both;
+}
+
+.wp-menu {
+  transform-origin: top;
+  animation: wp-unfold 0.42s var(--ease-glide) both;
+}
+
+.wp-sheet {
+  animation: wp-sheet 0.56s var(--ease-glide) both;
+}
+
+[dir="rtl"] .wp-sheet {
+  --wp-sheet-from: -24px;
+}
+
+/* ---- Roadmap (roadmap.sh idiom) ---------------------------------------------------------------- */
+.rm-hand {
+  font-family: var(--font-hand);
+  letter-spacing: 0;
+}
+
+.rm-node {
+  transition:
+    background-color 0.42s var(--ease-glide),
+    box-shadow 0.42s var(--ease-glide),
+    transform 0.42s var(--ease-glide),
+    opacity 0.42s var(--ease-glide);
+}
+
+.rm-node:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+[dir="rtl"] .rm-node:hover {
+  transform: translate(2px, -2px);
+  box-shadow: -4px 4px 0 #000;
+}
+
+.rm-node:active {
+  transform: none;
+  box-shadow: 0 0 0 #000;
+  transition-duration: 0.12s;
+}
+
+.rm-spine {
+  transform-origin: top;
+  animation: rm-trace 1.2s var(--ease-trace) both;
+}
+
+.rm-curves {
+  animation: wp-fade 0.7s var(--ease-glide) 0.35s both;
+}
+
+.rm-enter {
+  animation: wp-rise 0.56s var(--ease-glide) both;
+}
+
+.rm-badge {
+  animation: rm-pop 0.42s var(--ease-glide) both;
+}
+
+/* Tailwind's translate utilities use the separate "translate" property, so this only scales. */
+@keyframes rm-trace {
+  from { transform: scaleY(0); }
+}
+
+@keyframes rm-pop {
+  from { transform: scale(0.4); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-overlay,
+  .wp-panel,
+  .wp-view,
+  .wp-menu,
+  .wp-sheet,
+  .rm-spine,
+  .rm-curves,
+  .rm-enter,
+  .rm-badge {
+    animation: none;
+  }
+
+  .rm-node:hover {
+    transform: none;
+  }
 }
 
 /* Quiz generation fluid tube */

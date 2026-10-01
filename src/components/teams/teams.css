@@ -67,7 +67,7 @@
  * info; the white body (front) sits close to the top and slides down on
  * hover / focus to reveal it. The flap runs flush to the inline-end edge with a
  * smooth scooped curve on its inline-start side. */
-.fq .tm-folder { position: relative; display: block; height: 312px; padding: 0; overflow: hidden; border: 1px solid var(--fq-line); border-radius: 20px; background: var(--fq-surface-solid); color: var(--fq-text); text-align: start; box-shadow: var(--fq-shadow-sm); cursor: pointer; transition: transform 0.25s var(--fq-ease-out), box-shadow 0.25s; }
+.fq .tm-folder { position: relative; display: block; height: 312px; padding: 0; overflow: hidden; border: 1px solid var(--fq-line); border-radius: 20px; background: var(--fq-surface-solid); color: var(--fq-text); text-align: start; box-shadow: var(--fq-shadow-sm); cursor: pointer; transition: transform 0.4s var(--fq-ease-out), box-shadow 0.4s var(--fq-ease-out); }
 .fq .tm-folder:hover { transform: translateY(-3px); box-shadow: var(--fq-shadow-lg); }
 .fq .tm-folder:focus-visible { outline: 2px solid var(--fq-accent); outline-offset: 2px; }
 .fq .tm-folder-cover { position: absolute; top: 0; inset-inline: 0; z-index: 0; display: flex; flex-direction: column; gap: 8px; height: 220px; padding: 14px; background-size: 160% 160%; background-position: 0% 0%; color: #fff; transition: background-position 3s ease; }
@@ -83,7 +83,7 @@
 .fq .tm-folder-info-bar i { display: block; height: 100%; border-radius: inherit; background: #fff; }
 .fq .tm-folder-info-next { overflow: hidden; font-size: 11px; color: rgba(255, 255, 255, 0.9); text-overflow: ellipsis; white-space: nowrap; }
 /* White front: parked near the top, slides down on hover / keyboard focus. */
-.fq .tm-folder-body { position: absolute; top: 72px; inset-inline: 0; bottom: 0; z-index: 2; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 16px 16px 6px; background: var(--fq-surface-solid); transition: top 0.38s var(--fq-ease-out); }
+.fq .tm-folder-body { position: absolute; top: 72px; inset-inline: 0; bottom: 0; z-index: 2; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 16px 16px 6px; background: var(--fq-surface-solid); transition: top 0.52s var(--fq-ease-out); }
 .fq .tm-folder:hover .tm-folder-body, .fq .tm-folder:focus-visible .tm-folder-body, .fq .tm-folder:focus-within .tm-folder-body { top: 170px; }
 .fq .tm-folder-tab { position: absolute; top: -14px; inset-inline-end: 0; width: 46%; height: 15px; background: var(--fq-surface-solid); border-start-start-radius: 10px; pointer-events: none; }
 .fq .tm-folder-tab::before { content: ""; position: absolute; bottom: 0; inset-inline-start: -12px; width: 12px; height: 12px; background: radial-gradient(circle at 0 0, transparent 12px, var(--fq-surface-solid) 12.5px); }
@@ -162,7 +162,7 @@
 
 /* Sheet */
 .fq .tm-sheet-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; justify-content: flex-end; background: rgba(10, 14, 24, 0.28); }
-.fq .tm-sheet { display: flex; flex-direction: column; width: min(460px, 100%); height: 100%; background: var(--fq-surface-solid); box-shadow: var(--fq-shadow-lg); animation: tm-slide 0.28s var(--fq-ease-out); }
+.fq .tm-sheet { display: flex; flex-direction: column; width: min(460px, 100%); height: 100%; background: var(--fq-surface-solid); box-shadow: var(--fq-shadow-lg); animation: tm-slide 0.5s var(--fq-ease-out); }
 @keyframes tm-slide { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 /* The sheet sits at the inline end, so in RTL it slides in from the left. */
 @keyframes tm-slide-rtl { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }

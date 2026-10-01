@@ -644,7 +644,9 @@ def _fit(company: CoopCompany, signals: tuple[set[str], set[str], str, set[str]]
     interest_hits = sorted(interests.intersection(domains | wanted))
     if skill_hits:
         score += min(35, 12 + len(skill_hits) * 6)
-        reasons.append(_reason("skill", items=", ".join(skill_hits[:2])))
+        # Name the matches in the company's own words ("machine learning", "AI"), not split tokens ("learning").
+        matched = [item for item in _json(company.skills_json) if _tokens(item).intersection(skills)] or skill_hits
+        reasons.append(_reason("skill", items=", ".join(matched[:2])))
     if interest_hits:
         score += min(25, 8 + len(interest_hits) * 5)
         reasons.append(_reason("interest", items=", ".join(interest_hits[:2])))

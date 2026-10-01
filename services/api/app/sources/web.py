@@ -27,6 +27,17 @@ MAX_REDIRECTS = 3
 TOP_README_REPOS = 8
 
 
+def readme_plain_text(markdown: str) -> str:
+    """A README's opening prose without Markdown syntax: images, HTML, headings, emphasis, links, code fences."""
+    text = re.sub(r"```.*?```", " ", markdown, flags=re.S)
+    text = re.sub(r"<[^>]+>|!\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"(?m)^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+", "", text)
+    text = re.sub(r"(?m)^\s*([-*_=|:]\s*){3,}$", " ", text)
+    text = re.sub(r"(\*\*|__|\*|`)", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _github_headers() -> dict:
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "waypoint-onboarding"}
     token = os.getenv("GITHUB_TOKEN", "").strip()
@@ -60,7 +71,7 @@ def fetch_github(username: str) -> list[EvidenceIn]:
                             languages = list(lang.json().keys())[:6]
                         head = client.get(f"{GITHUB_API}/repos/{repo['full_name']}/readme", headers={"Accept": "application/vnd.github.raw"})
                         if head.status_code == 200:
-                            readme = re.sub(r"\s+", " ", re.sub(r"<[^>]+>|!\[[^\]]*\]\([^)]*\)", " ", head.text))[:500].strip()
+                            readme = readme_plain_text(head.text)[:500].strip()
                     except httpx.HTTPError:
                         pass  # a repo's extras are optional; the repo itself is still listed
                 return languages, readme

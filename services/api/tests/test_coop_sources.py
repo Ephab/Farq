@@ -46,6 +46,18 @@ def test_parse_arabic_telegram_coop_post():
     assert item.apply_url == "https://example.sa/apply"
 
 
+def test_a_bare_label_line_is_never_taken_as_the_company():
+    html = '''
+    <div class="tgme_widget_message js-widget_message" data-post="nobthacv1/322">
+      <div class="tgme_widget_message_text js-message_text" dir="auto">
+        المسمى:<br/>متدرب تعاوني<br/>شركة الأفق التقنية تعلن عن فتح التدريب التعاوني
+      </div>
+    </div>'''
+    item = parse_telegram_archive(html)[0]
+    assert item.title == "متدرب تعاوني"
+    assert item.company == "شركة الأفق التقنية"
+
+
 def test_parse_linkedin_items_filters_non_internships_and_keeps_provenance():
     results = parse_linkedin_items([
         {"id": "991", "title": "Software Engineering Intern", "companyName": "Example", "location": "Riyadh", "jobUrl": "https://linkedin.com/jobs/view/991", "postedAt": "2026-09-25T00:00:00Z"},

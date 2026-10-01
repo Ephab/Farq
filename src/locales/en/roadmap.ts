@@ -22,6 +22,7 @@ export const roadmap = {
     optional: "Optional",
   },
   node: {
+    lockedHint: "Builds on topics you have not finished yet.",
     topics: { one: "{count} topic", other: "{count} topics" },
     ariaProject: "{title} — {status}. Press Enter for details; double-click opens the project workspace.",
     ariaMarkDone: "{title} — {status}. Press Enter for details and progress.",
@@ -30,6 +31,7 @@ export const roadmap = {
   canvas: {
     ariaLabel: "Roadmap, grouped by stage. Select a topic for details.",
     stageOf: "Stage {index} of {total}",
+    stageDone: "{done} of {total} done",
     otherTopics: "Other topics",
     building: "Building this stage…",
     noMatchTitle: "No topics match",
@@ -47,18 +49,6 @@ export const roadmap = {
     resetHint: "Mark every topic as not started.",
     remove: "Remove this roadmap",
     removeHint: "Moves it to history. You can bring it back.",
-  },
-  explainer: {
-    title: "How your roadmap works",
-    suggestTitle: "Your coach suggests",
-    suggestBody: "Ask the coach for a change, or generate a new roadmap. The coach only proposes; it cannot edit your roadmap.",
-    reviewTitle: "You review",
-    reviewBody: "Every suggestion appears here with exactly what would be added, changed or removed.",
-    applyTitle: "Only you apply it",
-    applyBody: "Nothing changes until you press Accept. Reject it and your roadmap stays as it is.",
-    protectTitle: "Your progress is protected",
-    protectBody: "Topics you finished or started can never be changed or removed by a suggestion.",
-    footer: "Every accepted change becomes a new version in your history. Removing a roadmap keeps it there too.",
   },
   pending: {
     title: "Suggested changes waiting for you",

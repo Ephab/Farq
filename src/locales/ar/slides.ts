@@ -88,7 +88,7 @@ export const slides: CatalogShape<typeof en> = {
     aria: "{label} {percent} بالمئة",
     hint: "{percent}: قد يستغرق هذا دقيقة كاملة مع العروض الكبيرة",
     waiting: "في انتظار النموذج",
-    receiving: "يحلل Hermes",
+    receiving: "جارٍ التحليل",
     validating: "جارٍ التحقق",
     done: "تم",
   },

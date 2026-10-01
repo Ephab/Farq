@@ -14,6 +14,7 @@ from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from .blackboard import router as blackboard_router, seed_demo_snapshot
@@ -1018,16 +1019,21 @@ def update_progress_bulk(student_id: str, _owner: OwnedStudent, body: ProgressUp
 
 
 def _version_summary(item: RoadmapVersion) -> dict:
-    snapshot = RoadmapSnapshot.model_validate_json(item.snapshot_json)
+    # History lists every version ever saved, so read it leniently: one old snapshot must not break the list.
+    try:
+        snapshot = json.loads(item.snapshot_json)
+    except json.JSONDecodeError:
+        snapshot = {}
+    nodes = [node for node in snapshot.get("nodes") or [] if isinstance(node, dict)]
     return {
         "id": item.id,
         "version": item.version,
         "reason": item.reason,
         "active": item.active,
         "created_at": item.created_at.isoformat(),
-        "title": snapshot.title,
-        "nodes": len(snapshot.nodes),
-        "done": sum(1 for node in snapshot.nodes if node.status == "done"),
+        "title": snapshot.get("title") or "",
+        "nodes": len(nodes),
+        "done": sum(1 for node in nodes if node.get("status") == "done"),
     }
 
 
@@ -1054,8 +1060,18 @@ def _replace_active_roadmap(db: Session, student_id: str, current: RoadmapVersio
     version = RoadmapVersion(student_id=student_id, version=latest + 1, snapshot_json=snapshot.model_dump_json(), reason=reason, active=True)
     db.add(version)
     db.flush()
-    recompute_student(db, student_id)
-    db.commit()
+    # Opportunity matching is a side effect: a failure there must never block removing or restoring a roadmap.
+    try:
+        with db.begin_nested():
+            recompute_student(db, student_id)
+    except Exception:
+        logger.exception("Opportunity recompute failed after a roadmap change for %s", student_id)
+    try:
+        db.commit()
+    except (IntegrityError, OperationalError) as failure:
+        db.rollback()
+        logger.warning("Roadmap replace for %s failed at commit: %s", student_id, failure)
+        raise HTTPException(409, "The roadmap is being changed somewhere else; refresh and try again") from None
     return version
 
 
@@ -1078,7 +1094,12 @@ def archive_roadmap(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     empty, which is the one state a newly generated roadmap (a Hermes `initial` proposal) may
     replace, and it still takes an explicit accept."""
     current = active_roadmap(db, student_id)
-    if not RoadmapSnapshot.model_validate_json(current.snapshot_json).nodes:
+    # Read the raw node list: an older snapshot that no longer passes today's graph checks must still be removable.
+    try:
+        has_nodes = bool(json.loads(current.snapshot_json).get("nodes"))
+    except (json.JSONDecodeError, AttributeError):
+        has_nodes = True
+    if not has_nodes:
         raise HTTPException(409, "There is no roadmap to remove")
     version = _replace_active_roadmap(db, student_id, current, EMPTY_ROADMAP, f"Removed version {current.version}")
     return {"status": "archived", "version_id": version.id, "version": version.version}

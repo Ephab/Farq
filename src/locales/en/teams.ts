@@ -58,6 +58,7 @@ export const teams = {
     yourTeams: "Your teams",
     courseTeams: "Teams in your courses",
     noTeamsStudent: "You're not on a team yet. Create one below.",
+    noTeamsNoAssignment: "You're not on a team yet. When a course you're enrolled in sets a group assignment, you can create a team or accept an invite here.",
     needsTeam: "Needs a team",
     insights: "Hermes insights",
     invitedYou: "{inviter} invited you to {team}",

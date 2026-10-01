@@ -45,7 +45,7 @@ export function TeamsHome({ onOpenTeam }: { onOpenTeam: (teamId: string) => void
             {home.teams.map((card) => <TeamCover key={card.id} card={card} onOpen={() => onOpenTeam(card.id)} />)}
           </div>
         ) : (
-          <p className="tm-muted">{instructor ? t("teams.briefing.instructorNone") : t("teams.home.noTeamsStudent")}</p>
+          <p className="tm-muted">{instructor ? t("teams.briefing.instructorNone") : home.needs_team.length ? t("teams.home.noTeamsStudent") : t("teams.home.noTeamsNoAssignment")}</p>
         )}
       </section>
       {home.needs_team.length > 0 ? (

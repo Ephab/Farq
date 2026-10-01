@@ -143,3 +143,24 @@ def test_generate_after_archive_is_a_pending_initial_proposal_and_stays_in_the_a
     assert client.get(f"/api/students/{sid}/profile").json()["onboarding_status"] == "done"
     accepted = client.post(f"/api/roadmap-proposals/{proposal.json()['id']}/accept", json={"not_done": []})
     assert accepted.status_code == 200 and accepted.json()["version"] == 3
+
+
+def test_archive_survives_a_failing_opportunity_recompute_and_an_invalid_old_snapshot(client: TestClient, monkeypatch):
+    sid = student_with_roadmap(client, "Fragile")
+    db = SessionLocal()
+    try:
+        # A snapshot saved under older rules: a node in a stage that no longer exists fails today's validation.
+        current = db.query(RoadmapVersion).filter_by(student_id=sid, active=True).one()
+        current.snapshot_json = '{"title": "Old", "stages": [], "nodes": [{"id": "x", "stageId": "gone", "title": "X"}]}'
+        db.commit()
+    finally:
+        db.close()
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("matching failed")
+
+    monkeypatch.setattr("app.main.recompute_student", broken)
+    archived = client.post(f"/api/students/{sid}/roadmap/archive")
+    assert archived.status_code == 200
+    versions = client.get(f"/api/students/{sid}/roadmap/versions").json()
+    assert [(item["active"], item["nodes"]) for item in versions[:2]] == [(True, 0), (False, 1)]

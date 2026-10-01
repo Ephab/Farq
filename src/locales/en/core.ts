@@ -29,6 +29,7 @@ export const core = {
       timeout: "The server took too long to respond. Try again.",
       server: "Something went wrong on the server (error {status}). Try again shortly.",
       generic: "The request failed (error {status}).",
+      modelBusy: "The AI model is overloaded right now. Nothing you entered was lost; try again in a few minutes.",
     },
   },
   nav: {
@@ -59,6 +60,13 @@ export const core = {
     stopRun: "Stop Hermes run",
   },
   settings: {
+    close: "Close settings",
+    sections: { general: "General", connections: "Models & connections", data: "Your data" },
+    generalHelp: "Language and colours for this browser.",
+    dataHelp: "Switch students, or start this demo over.",
+    switchStudentHelp: "Pick another student record, or create a new one through onboarding.",
+    restoreHelp: "Erase your coach memory, chat, roadmap changes, proposals and local app data.",
+    resetTeamHelp: "Return the Group 1 demo team's chat, tasks and documents to the starting point.",
     open: "Open settings",
     title: "Settings",
     language: "Language",

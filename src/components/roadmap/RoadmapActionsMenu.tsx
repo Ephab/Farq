@@ -52,7 +52,7 @@ export function RoadmapActionsMenu({ hasRoadmap, hasHistory, onGenerate, onHisto
         {t("roadmap.actions.menu")}<ChevronDown className="size-3.5" aria-hidden="true" />
       </button>
       {open && anchor ? (
-        <div role="menu" className="fixed z-40 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl" style={dir === "rtl" ? { top: anchor.top, left: Math.max(8, anchor.edge) } : { top: anchor.top, right: Math.max(8, anchor.edge) }}>
+        <div role="menu" className="wp-menu fixed z-40 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl" style={dir === "rtl" ? { top: anchor.top, left: Math.max(8, anchor.edge) } : { top: anchor.top, right: Math.max(8, anchor.edge) }}>
           {items.map((item) => {
             const Icon = item.icon;
             return (

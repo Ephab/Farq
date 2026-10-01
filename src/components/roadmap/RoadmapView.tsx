@@ -10,7 +10,6 @@ import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas";
 import { RoadmapHeader, type LevelFilter } from "@/components/roadmap/RoadmapHeader";
 import { NodeDetailPanel } from "@/components/roadmap/NodeDetailPanel";
 import { AskCoachButton, RoadmapActionsMenu } from "@/components/roadmap/RoadmapActionsMenu";
-import { RoadmapExplainer } from "@/components/roadmap/RoadmapExplainer";
 import { PendingChanges } from "@/components/roadmap/PendingChanges";
 import { RoadmapHistory } from "@/components/roadmap/RoadmapHistory";
 import { RoadmapDialog } from "@/components/roadmap/RoadmapDialog";
@@ -274,7 +273,6 @@ export function RoadmapView({ onOpenProject, onAskCoach }: { onOpenProject?: (pr
           <>
             <RoadmapHeader title={title ?? t("roadmap.defaultTitle")} versionLine={version !== null && hasRoadmap ? (reason ? t("roadmap.versionLine", { version: fmt.number(version), reason }) : t("roadmap.personalVersion", { version: fmt.number(version) })) : null} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} actions={actions} />
             {loadError !== null ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">{t("roadmap.backendUnavailable", { error: loadError || t("roadmap.loadError") })}</div> : null}
-            <RoadmapExplainer />
             {showHistory ? <RoadmapHistory versions={versions} onView={(item) => void viewVersion(item)} onRestore={(item) => { setActionError(null); setDialog({ kind: "restore", version: item }); }} onClose={() => setShowHistory(false)} /> : null}
             <PendingChanges proposals={pendingOps} currentVersionId={versionId} nodeMap={currentNodeMap} stages={stages} busyId={busyProposalId} error={proposalError} onAccept={(proposal) => void decide(proposal, "accept")} onReject={(proposal) => void decide(proposal, "reject")} onReview={openProposalPreview} onSelectNode={setSelectedId} />
           </>
@@ -301,6 +299,7 @@ export function RoadmapView({ onOpenProject, onAskCoach }: { onOpenProject?: (pr
           </div>
         ) : null}
         {showCanvas ? <RoadmapCanvas
+          title={shown.title || undefined}
           nodes={shown.nodes}
           stages={shown.stages}
           statuses={shownStatuses}

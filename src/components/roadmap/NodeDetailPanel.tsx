@@ -16,6 +16,7 @@ import { useEffect, useRef } from "react";
 import type { NodeStatus, RoadmapNodeData } from "@/data/computer-vision-roadmap";
 import { RoadmapNodeIcon } from "@/components/roadmap/RoadmapNode";
 import { cn } from "@/lib/utils";
+import { SPRING_PANEL } from "@/lib/ease";
 import { useI18n, type MessageKey } from "@/lib/i18n/context";
 
 interface NodeDetailPanelProps {
@@ -70,7 +71,7 @@ export function NodeDetailPanel({
           initial={{ opacity: 0, x: slide }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: slide }}
-          transition={{ type: "spring", stiffness: 380, damping: 34 }}
+          transition={SPRING_PANEL}
           role="dialog"
           aria-modal="false"
           aria-label={t("roadmap.detail.ariaLabel", { title: node.title })}

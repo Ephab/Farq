@@ -347,7 +347,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true,
                       initial={reduce ? false : { opacity: 0, y: 12, scale: 0.99 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
-                      transition={{ duration: 0.3, ease: EASE_OUT }}
+                      transition={{ duration: 0.42, ease: EASE_OUT }}
                       className="message assistant"
                       aria-label={t("coach.proposal.ariaLabel", { summary: proposal.summary })}
                     >

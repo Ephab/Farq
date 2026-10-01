@@ -194,7 +194,7 @@ export function QuizRunner({
             className="h-full rounded-full bg-primary"
             initial={false}
             animate={{ width: `${(answeredCount / questions.length) * 100}%` }}
-            transition={{ duration: reduce ? 0 : 0.35, ease: EASE_OUT }}
+            transition={{ duration: reduce ? 0 : 0.45, ease: EASE_OUT }}
           />
         </div>
         <span className="shrink-0 text-sm font-medium tabular-nums text-muted-foreground">
@@ -258,7 +258,7 @@ export function QuizRunner({
           <motion.div
             key={shakeKey}
             animate={shakeKey && !reduce ? { x: [0, -10, 10, -6, 6, 0] } : undefined}
-            transition={{ duration: 0.35 }}
+            transition={{ duration: 0.45, ease: EASE_OUT }}
           >
             <h2 className="mt-2 text-2xl font-semibold leading-snug tracking-tight sm:text-3xl" dir="auto">
               {q.question}

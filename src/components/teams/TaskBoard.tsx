@@ -80,7 +80,7 @@ export function TaskBoard({ store, canEdit, update, onError, onOpenTask, onNewTa
           >
             <header><span>{t(`teams.status.${column.status}`)}</span><span className="tm-count">{columns[column.status].length}</span></header>
             {columns[column.status].map((task) => (
-              <motion.div key={task.id} layout={!reduceMotion} transition={{ duration: 0.28, ease: EASE_OUT }}>
+              <motion.div key={task.id} layout={!reduceMotion} transition={{ duration: 0.42, ease: EASE_OUT }}>
                 <div
                   className="tm-task"
                   role="button"

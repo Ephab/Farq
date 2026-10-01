@@ -403,3 +403,6 @@ function roundedOrthogonalPath(pts: Array<[number, number]>, radius: number): st
 export function stripStagePrefix(title: string): string {
   return title.replace(/^\s*(?:stage|المرحلة)\s*[\d٠-٩]+\s*[·:\-–—]\s*/i, "")
 }
+
+/** Optional work (a hackathon, a loose resource) is drawn as a white box, like an alternative on roadmap.sh. */
+export const isOptionalNode = (node: { nodeType?: string }) => node.nodeType === "opportunity" || node.nodeType === "resource";

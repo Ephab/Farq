@@ -24,6 +24,7 @@ export const roadmap: CatalogShape<typeof en> = {
     optional: "اختياري",
   },
   node: {
+    lockedHint: "يعتمد على مواضيع لم تُنهها بعد.",
     topics: {
       zero: "لا مواضيع",
       one: "موضوع واحد",
@@ -39,6 +40,7 @@ export const roadmap: CatalogShape<typeof en> = {
   canvas: {
     ariaLabel: "خارطة الطريق مقسّمة إلى مراحل. اختر موضوعًا لعرض تفاصيله.",
     stageOf: "المرحلة {index} من {total}",
+    stageDone: "أُنجز {done} من {total}",
     otherTopics: "مواضيع أخرى",
     building: "جارٍ بناء هذه المرحلة…",
     noMatchTitle: "لا توجد مواضيع مطابقة",
@@ -56,18 +58,6 @@ export const roadmap: CatalogShape<typeof en> = {
     resetHint: "ضع علامة «لم يبدأ» على كل المواضيع.",
     remove: "إزالة خارطة الطريق هذه",
     removeHint: "تنتقل إلى السجل ويمكنك استعادتها.",
-  },
-  explainer: {
-    title: "كيف تعمل خارطة طريقك",
-    suggestTitle: "المدرّب يقترح",
-    suggestBody: "اطلب من المدرّب تعديلًا أو أنشئ خارطة جديدة. المدرّب يقترح فقط ولا يستطيع تعديل خارطتك.",
-    reviewTitle: "أنت تراجع",
-    reviewBody: "يظهر كل اقتراح هنا مع ما سيُضاف أو يتغيّر أو يُحذف بالضبط.",
-    applyTitle: "أنت وحدك من يطبّق",
-    applyBody: "لا يتغيّر شيء حتى تضغط «قبول». وإن رفضته تبقى خارطتك كما هي.",
-    protectTitle: "تقدّمك محمي",
-    protectBody: "المواضيع التي أنجزتها أو بدأتها لا يمكن لأي اقتراح تغييرها أو حذفها.",
-    footer: "كل تغيير تقبله يصبح إصدارًا جديدًا في سجلك. وإزالة الخارطة تُبقيها في السجل أيضًا.",
   },
   pending: {
     title: "تغييرات مقترحة بانتظارك",

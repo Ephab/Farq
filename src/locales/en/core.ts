@@ -59,6 +59,13 @@ export const core = {
     stopRun: "Stop Hermes run",
   },
   settings: {
+    close: "Close settings",
+    sections: { general: "General", connections: "Models & connections", data: "Your data" },
+    generalHelp: "Language and colours for this browser.",
+    dataHelp: "Switch students, or start this demo over.",
+    switchStudentHelp: "Pick another student record, or create a new one through onboarding.",
+    restoreHelp: "Erase your coach memory, chat, roadmap changes, proposals and local app data.",
+    resetTeamHelp: "Return the Group 1 demo team's chat, tasks and documents to the starting point.",
     open: "Open settings",
     title: "Settings",
     language: "Language",

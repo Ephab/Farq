@@ -222,7 +222,7 @@ function MagneticButton({
       onClick={onClick}
       style={reduce ? undefined : { x: sx, y: sy }}
       whileTap={reduce ? undefined : { scale: 0.98 }}
-      transition={{ duration: 0.3, ease: EASE_OUT }}
+      transition={{ duration: 0.42, ease: EASE_OUT }}
       onMouseMove={(event) => {
         if (reduce) return
         const rect = event.currentTarget.getBoundingClientRect()

@@ -30,7 +30,13 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and
   `teams/events.py`, never only in the UI or prompt.
 - Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Waypoint-User`
-  header; the SSE stream alone takes `?as=`). Replace that function, not its callers, for real sign-in.
+  header; event streams take `?as=` via `ownership.stream_user`). Replace that function, not its
+  callers, for real sign-in. Every `/api/students/{id}/*`, chat thread, run, proposal, project and
+  evaluation route checks the caller owns the record (`services/api/app/ownership.py`).
+- Hermes student tools (`/internal/hermes/*` outside teams) need the internal token AND a per-run
+  grant from `services/api/app/tool_grants.py`; the student comes from the grant, never from a
+  model-supplied id. Never issue a grant for a JSON-only prompt that reads untrusted documents.
+  There is no default `WAYPOINT_INTERNAL_TOKEN`.
 - Team activity never creates `StudentFact` rows.
 - Group Projects Hermes is a proposer only: its team tools create `TeamProposal` rows. Only
   `POST /api/proposals/{id}/vote|accept|reject` by a member applies one (personal → the affected

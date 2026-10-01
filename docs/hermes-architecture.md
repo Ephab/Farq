@@ -214,8 +214,9 @@ missing-key states show actionable errors. True live streaming
 - `waypoint_get_student_profile(user_id)` reads onboarding basics, confirmed evidence and stated facts.
 - `waypoint_find_hackathons(user_id, query, limit)` reads current personalized Hackathonat matches;
   it cannot navigate arbitrary URLs.
-- `waypoint_scan_folder(path, purpose)` / `waypoint_read_project_file(path)` index a student-typed local
-  folder; secrets, keys and identity documents are refused in code.
+- `waypoint_scan_folder(path, purpose)` / `waypoint_read_project_file(path, root)` index a student-typed
+  local folder; reads stay inside `root`, credential folders, secrets, keys and identity documents are
+  refused in code, and a home folder (or its parents) cannot be scanned.
 - `waypoint_submit_evidence(user_id, source_id, items)` stores suggested evidence for review.
 - `waypoint_blackboard_list_courses(user_id)` lists the student's indexed courses.
 - `waypoint_blackboard_list_content(user_id, course_id, content_type, limit)` lists metadata only.
@@ -226,6 +227,16 @@ missing-key states show actionable errors. True live streaming
 
 The plugin calls only `/internal/hermes/*` endpoints with `WAYPOINT_INTERNAL_TOKEN`. It never opens
 SQLite. Hermes cannot accept proposals; the student-facing endpoint performs that transaction.
+
+Every student tool also sends `grant` (`X-Waypoint-Grant`), a per-run capability from
+`services/api/app/tool_grants.py`. `run_agent` issues one for each coach/onboarding run (scopes read,
+facts, proposals, projects; dies with the run) and folder ingest issues one for a single folder
+source (scope evidence). The API takes the student from the grant and refuses a `user_id` naming
+anyone else. JSON-only prompts (CV/transcript/portfolio extraction, quizzes, slides, team imports,
+roadmap generation) get no grant, so text injected into those documents cannot record facts,
+submit evidence or propose roadmap changes even though the gateway still exposes the toolset.
+Recorded facts must cite one of the student's own messages. There is no default internal token:
+setup writes one, and without it internal routes are closed.
 
 The `waypoint-student-coach` Hermes skill defines when these tools must be used, how explicit branch
 choices become durable facts, and when Hermes must pause for a student decision. Its behavior can

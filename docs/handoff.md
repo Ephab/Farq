@@ -196,8 +196,10 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
-- Automated: 248 backend tests (`.venv/Scripts/python -m pytest services/api/tests`) and
-  `npm run build` pass.
+- Automated (2026-10-01): 395 backend tests (`.venv/Scripts/python -m pytest services/api/tests`),
+  70 Vitest tests, `npm run build` and `npm run lint` (warnings only) pass. The app was driven in
+  Chromium (demo student across every view; a new student through sign-in, reload and resume in
+  Arabic with a dark theme) with no failed API calls.
 - Verified live: the Telegram public archive returned and parsed 18 current co-op posts on
   2026-09-27. The Apify actor was separately smoke-tested with real Saudi internship results.
 - Verified live: sign-in, basics, GitHub import (37 repos), transcript/CV/LinkedIn PDF/portfolio
@@ -206,9 +208,32 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
   restart, the onboarding chat, roadmap generation + preview + accept, My data → Hermes
   proposal, Hugging Face through the gateway (the running gateway lacked `HF_TOKEN`).
 
+## Audit remediation (2026-10-01)
+A full audit fixed these areas; see the commit messages on `claude/loving-noether-0dehzi` for detail.
+- **Security:** per-run Hermes tool grants (`tool_grants.py`), ownership checks on every student
+  route through `current_user()` (`ownership.py`; the browser sends `X-Waypoint-User`, event
+  streams `?as=`), one constant-time internal-token check with no public default
+  (`internal_auth.py`), scanner path containment, loopback-only `/api/settings/hermes`, bounded
+  upload/voice reads, gateway bound to loopback for native runs.
+- **Roadmap:** proposals cannot add started/evidence-linked nodes, edit structure/type/opportunity
+  fields through `update_node`, or remove prerequisites of started work; accept/reject/complete are
+  conditional updates plus a unique active-version index; the readiness gate is enforced by the API;
+  the staged SSE stream always cleans up; a bulk progress endpoint backs Reset.
+- **Model fallback:** default model is the top Gemini rung; network errors and lost polls descend the
+  chain; only rate limits/overload cool a model; abandoned gateway runs are cancelled (best effort).
+- **Quizzes, slides, co-op, UI:** see the per-area commits (answer-key resolution, shared library
+  merge-writes, PPTX parsing, export aspect/sanitizing, co-op matching/dedupe/expiry, theme tokens,
+  UTC timestamps, chat stream fallback, accessibility and i18n).
+
 ## Known gaps
-- No authentication; any client can act as any student id. `POST /api/settings/hermes` writes
-  `.env` unauthenticated.
+- Demo identity only: `current_user()` trusts the `X-Waypoint-User` header (and `/api/students`
+  lists local profiles for the welcome page). Ownership is enforced, but real sign-in must replace
+  `current_user()` before Waypoint leaves a single machine.
+- SQLite foreign keys are still not enforced (`PRAGMA foreign_keys` is off): turning them on needs a
+  review of every delete path (reset, rewind, source removal) first.
+- The gateway cancel call (`POST /v1/runs/{id}/cancel`) is best effort; confirm the Hermes version
+  supports it, otherwise an abandoned run still finishes in the background (it can no longer write
+  without a live grant).
 - Folder tool threat model not written (symlinks, path allowlist, prompt injection via READMEs).
   Protection today = code denylist + prompt rules.
 - Portfolio fetch: DNS-rebinding window between the IP check and the request.
@@ -216,13 +241,11 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - Folder evidence cannot tell a student's own repo from a clone except by git remote/authors;
   the student filters it on Review.
 - Gemma rungs on the Gemini API cannot call tools, so coach/folder runs that land there fail over.
-- Existing quiz/slides frontends still show their own model labels; fallback happens server-side.
-- UI brand says "SmartLearn"; product is "Waypoint". Home, Dashboard, Projects are placeholders.
 - No visual diff for proposals; quiz results do not feed the roadmap yet.
-- Project import extraction runs on a throwaway session that is told not to call tools (same as
-  CV ingest), but the gateway does not strip tools from it. Worst case is still only a proposal the
-  team must accept; a real tool-less session type would close it. Live extraction quality is untested
-  (the tests stub Hermes).
+- JSON-only runs (CV ingest, quiz, slides, project import) still run on a gateway session that has
+  the toolset; student tools are closed to them by the grant check, and team tools need a running
+  team run. A real tool-less session type would remove the toolset entirely. Live extraction quality
+  is untested (the tests stub Hermes).
 
 ## Next steps (in order)
 1. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.
@@ -230,7 +253,8 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 3. Put `HF_TOKEN` in `.env`, restart, confirm a Hugging Face run through the gateway.
 4. Replace placeholders (Home/Dashboard) with roadmap progress + recent proposals for the demo.
 5. Proposal visual diff in Hermes Coach; feed quiz scores into proposals.
-6. Auth, then the folder-tool threat model, then OCR and the "coming soon" sources.
+6. Real sign-in (replace `current_user()`), then the folder-tool threat model, then OCR and the
+   "coming soon" sources.
 
 ## Key files
 - Backend: `services/api/app/{main,onboarding,disciplines,hermes,schemas,models,database}.py`,

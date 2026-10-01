@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Deterministic, secret-safe folder indexing for onboarding.
 
 Hermes runs on the student's machine, so these helpers read local folders the
@@ -8,6 +6,8 @@ prompt: secret-like files are never opened, dependency/build trees are skipped,
 and every read is bounded. A full threat model is still future work
 (docs/future-work.md).
 """
+
+from __future__ import annotations
 
 import configparser
 import json

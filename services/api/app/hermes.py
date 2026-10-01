@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 
 from .database import SessionLocal
 from .models import AgentRun, ChatMessage, ChatThread, StudentProfile
@@ -565,10 +565,17 @@ def run_agent(
         if ui_json:
             from .opportunities import enrich_chat_ui
             ui_json = enrich_chat_ui(db, student_id, ChatMessageUi.model_validate_json(ui_json)).model_dump_json()
+        # Conditional: if the student pressed Stop after the refresh above, the stop wins and the
+        # late answer is dropped instead of resurrecting a cancelled run.
+        finished = db.execute(
+            update(AgentRun).where(AgentRun.id == run.id, AgentRun.status != "cancelled")
+            .values(status="completed", stage="Complete", finished_at=datetime.now(timezone.utc))
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        if not finished:
+            db.rollback()
+            return
         db.add(ChatMessage(thread_id=thread.id, role="assistant", content=visible, metadata_json=ui_json, agent_run_id=run.id))
-        run.status = "completed"
-        run.stage = "Complete"
-        run.finished_at = datetime.now(timezone.utc)
         db.commit()
     except RunCancelled as exc:
         # Preserve the student's stop; never overwrite it with a failure.

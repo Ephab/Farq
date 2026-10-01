@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Step 2: evidence ingest. One adapter per source kind.
 
 Every adapter returns normalized evidence stored as `suggested`.
 Nothing here creates a StudentFact — only the student's explicit
 review (review_step) promotes items.
 """
+
+from __future__ import annotations
 
 import json
 import re

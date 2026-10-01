@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Slide extension through the local Hermes gateway.
 
 Mirrors ``app.quiz``: the browser never calls a model provider directly.
@@ -22,6 +20,8 @@ them identifiably differently from plain ``source="deck"`` topics.
   layouts with matching backgrounds and text styling. PDF originals are
   embedded as full-bleed page images first (rendered client-side).
 """
+
+from __future__ import annotations
 
 import base64
 import binascii

@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Model-based extraction of evidence from untrusted document text."""
+
+from __future__ import annotations
 
 from pydantic import ValidationError
 

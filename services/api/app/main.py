@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -11,12 +12,12 @@ import httpx
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from .blackboard import router as blackboard_router, seed_demo_snapshot
 from .coop import router as coop_router, seed_coop_catalog, sync_all_coop_sources, sync_coop_source
-from .database import Base, SessionLocal, engine, ensure_added_columns, get_db
+from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
 from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
@@ -39,7 +40,7 @@ from .outlook.router import router as outlook_router
 from .outlook.sync import sync_loop as outlook_sync_loop
 from .teams import router as teams_router
 from .teams.seed import seed_teammate_roadmaps, seed_teams
-from .schemas import AcceptInput, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
+from .schemas import AcceptInput, ProgressUpdate, ChatInput, ChatMessageUi, EvidenceDecision, EvidenceSubmit, FactCreate, FinalizeInput, GenerateInput, HermesSettingsApply, OpportunityIds, ProfileUpdate, ProposalCreate, QuizGenerateInput, ResetInput, RewindInput, RoadmapPlan, RoadmapSnapshot, SlidesExtendInput, SlidesExportInput, SlidesSuggestInput, SourceCreate, StageGenerateInput, StudentCreate, validate_generated
 from .sources import SourceError, normalize_value, store_evidence
 from .sources.pdf_text import MAX_UPLOAD_BYTES
 from .settings_env import ENV_PATH, write_env_values
@@ -48,6 +49,7 @@ from .slides import SlidesRunError, build_full_deck_pptx, decode_image_list, dec
 from .transcribe import MAX_AUDIO_BYTES, TranscribeError, transcribe_audio
 
 
+logger = logging.getLogger(__name__)
 STARTED_AT = time.time()
 OPPORTUNITY_SYNC_ENABLED = os.getenv("OPPORTUNITY_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}
 OPPORTUNITY_SYNC_SECONDS = 30 * 60
@@ -192,6 +194,7 @@ def _store_initial_proposal(db: Session, student_id: str, base_id: str, snapshot
 async def startup() -> None:
     Base.metadata.create_all(engine)
     ensure_added_columns()
+    ensure_indexes()
     db = SessionLocal()
     try:
         if db.get(Student, DEMO_STUDENT_ID) is None:
@@ -216,27 +219,27 @@ async def startup() -> None:
         _opportunity_sync_task = asyncio.create_task(_opportunity_sync_loop())
 
 
+def _sync_job(name: str, job, *args) -> None:
+    """One sync on its own session: a failure in one source never poisons the next one's
+    transaction, and the previous cache stays usable."""
+    db = SessionLocal()
+    try:
+        job(db, *args)
+    except Exception:
+        db.rollback()
+        logger.exception("Opportunity sync failed: %s", name)
+    finally:
+        db.close()
+
+
 async def _opportunity_sync_loop() -> None:
     cycle = 0
     while True:
-        db = SessionLocal()
-        try:
-            try:
-                await asyncio.to_thread(sync_hackathonat, db)
-            except Exception:
-                pass
-            try:
-                if cycle == 0:
-                    await asyncio.to_thread(sync_all_coop_sources, db)
-                else:
-                    await asyncio.to_thread(sync_coop_source, db, "telegram")
-            except Exception:
-                pass
-        except Exception:
-            # A failed run is persisted and the previous cache remains usable.
-            pass
-        finally:
-            db.close()
+        await asyncio.to_thread(_sync_job, "hackathonat", sync_hackathonat)
+        if cycle == 0:
+            await asyncio.to_thread(_sync_job, "coop:all", sync_all_coop_sources)
+        else:
+            await asyncio.to_thread(_sync_job, "coop:telegram", sync_coop_source, "telegram")
         cycle = (cycle + 1) % 12
         await asyncio.sleep(OPPORTUNITY_SYNC_SECONDS)
 
@@ -519,16 +522,24 @@ def _run_source_job(source_id: str, job) -> dict:
     db = SessionLocal()
     try:
         source = db.get(DataSource, source_id)
+        if source is None:
+            raise SourceError("Source not found", status=404)
         source.status = "syncing"
         db.commit()
         try:
             added = job(db, source)
-        except SourceError as exc:
+        except Exception as exc:
+            # Any failure (not only SourceError) must leave the source failed, never "syncing" forever.
             db.rollback()
             source = db.get(DataSource, source_id)
-            mark_synced(source, str(exc))
-            db.commit()
-            raise
+            message = str(exc) if isinstance(exc, SourceError) else "Reading this source failed unexpectedly; try again"
+            if source is not None:
+                mark_synced(source, message)
+                db.commit()
+            if isinstance(exc, SourceError):
+                raise
+            logger.exception("Source sync failed for %s", source_id)
+            raise SourceError(message, status=502) from exc
         mark_synced(source)
         db.commit()
         return {**source_dict(source), "added": added}
@@ -620,10 +631,8 @@ async def generate_roadmap(
     Only the accept endpoint activates it. Allowed while the active roadmap is
     still the empty v0.
     """
-    require_student(db, student_id)
-    current = active_roadmap(db, student_id)
-    if RoadmapSnapshot.model_validate_json(current.snapshot_json).nodes:
-        raise HTTPException(409, "This student already has a roadmap; ask Hermes Coach to revise it instead")
+    current = _require_empty_roadmap(db, student_id)
+    _require_ready(db, student_id)
     profile = db.get(StudentProfile, student_id)
     base_id = current.id
     hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
@@ -632,21 +641,7 @@ async def generate_roadmap(
         session = SessionLocal()
         try:
             snapshot = generate_initial_roadmap(session, student_id, hermes)
-            for stale in session.scalars(select(RoadmapProposal).where(RoadmapProposal.student_id == student_id, RoadmapProposal.kind == "initial", RoadmapProposal.status == "pending")).all():
-                stale.status = "rejected"
-                stale.decided_at = now()
-            proposal = RoadmapProposal(
-                student_id=student_id, base_version_id=base_id, kind="initial",
-                summary=f"First roadmap: {snapshot.title}"[:240],
-                reasoning="Generated from your confirmed evidence and onboarding answers.",
-                operations_json="[]", snapshot_json=snapshot.model_dump_json(),
-            )
-            session.add(proposal)
-            saved_profile = session.get(StudentProfile, student_id)
-            if saved_profile is not None:
-                saved_profile.onboarding_status = "preview"
-            session.commit()
-            return proposal_dict(proposal)
+            return _store_initial_proposal(session, student_id, base_id, snapshot)
         finally:
             session.close()
 
@@ -678,6 +673,13 @@ def _require_empty_roadmap(db: Session, student_id: str):
     return current
 
 
+def _require_ready(db: Session, student_id: str) -> None:
+    """The readiness gate is a server rule, not just a disabled button."""
+    state = readiness_for(db, student_id)
+    if not state["ready"]:
+        raise HTTPException(409, "; ".join(state["blockers"]))
+
+
 @app.post("/api/students/{student_id}/onboarding/roadmap/plan")
 async def plan_staged_roadmap(
     student_id: str,
@@ -691,8 +693,8 @@ async def plan_staged_roadmap(
     Returns a job_id used by the per-stage endpoints. The plan fixes stage
     IDs upfront so later wiring checks can enforce backwards-only deps.
     """
-    require_student(db, student_id)
     current = _require_empty_roadmap(db, student_id)
+    _require_ready(db, student_id)
     hermes = _hermes_opts(body.provider, body.model, x_hermes_api_key)
     brief = build_profile_brief(db, student_id)
     base_id = current.id
@@ -746,7 +748,12 @@ async def generate_roadmap_stage(
         staged_store.append_stage(body.job_id, stage_id, nodes)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
-    snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(body.job_id)["completed"])
+    except KeyError as exc:
+        raise HTTPException(409, "This generation job was finished or expired; plan again") from exc
+    finished = staged_store.get_job(body.job_id)
+    if finished is None:
+        raise HTTPException(409, "This generation job was finished or expired; plan again")
+    snapshot = roadmap_stitch.merge_stages(plan.title, plan, finished["completed"])
     return {
         "job_id": body.job_id,
         "stage_id": stage_id,
@@ -792,70 +799,87 @@ async def generate_staged_stream(
 ) -> StreamingResponse:
     """Sequential staged generation as SSE: plan, then each finished stage
     with the snapshot so far, then done. The canvas renders each stage as
-    it arrives. Only the finalize step writes the proposal."""
+    it arrives. Only the finalize step writes the proposal.
+
+    Whatever happens (an error, a closed tab), the student is never left in
+    `generating` and the in-memory job is dropped."""
     hermes = _hermes_opts(provider, model, x_hermes_api_key)
 
-    async def stream():
+    def event(name: str, payload: dict) -> str:
+        return f"event: {name}\ndata: {json.dumps(payload)}\n\n"
+
+    def prepare() -> tuple[str, dict]:
         db = SessionLocal()
         try:
-            require_student(db, student_id)
-            try:
-                current = _require_empty_roadmap(db, student_id)
-            except HTTPException as exc:
-                yield f"event: error\ndata: {json.dumps({'error': exc.detail})}\n\n"
-                return
+            current = _require_empty_roadmap(db, student_id)
+            _require_ready(db, student_id)
             brief = build_profile_brief(db, student_id)
-            base_id = current.id
             profile = db.get(StudentProfile, student_id)
             if profile is not None:
                 profile.onboarding_status = "generating"
                 db.commit()
+            return current.id, brief
         finally:
             db.close()
-        try:
-            plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
-        except Exception as exc:
-            _reset_to_chat(student_id)
-            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
-            return
-        job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
-        yield f"event: plan\ndata: {json.dumps({'job_id': job_id, 'plan': plan.model_dump()})}\n\n"
-        for item in plan.stages:
-            job = staged_store.get_job(job_id)
-            prior, used = staged_store.prior_node_summaries(job, item.id)
-            try:
-                nodes = await asyncio.to_thread(
-                    roadmap_stage.generate_stage_nodes,
-                    brief, plan, item.id, prior, used, job["confirmed"], hermes,
-                )
-            except Exception as exc:
-                _reset_to_chat(student_id)
-                yield f"event: error\ndata: {json.dumps({'error': str(exc), 'stage_id': item.id})}\n\n"
-                return
-            merged = {**staged_store.get_job(job_id)["completed"], item.id: nodes}
-            wiring_error = roadmap_stitch.check_wiring(plan, merged)
-            if wiring_error:
-                _reset_to_chat(student_id)
-                yield f"event: error\ndata: {json.dumps({'error': wiring_error, 'stage_id': item.id})}\n\n"
-                return
-            staged_store.append_stage(job_id, item.id, nodes)
-            snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(job_id)["completed"])
-            yield f"event: stage\ndata: {json.dumps({'job_id': job_id, 'stage_id': item.id, 'nodes': [n.model_dump() for n in nodes], 'snapshot': snapshot.model_dump()})}\n\n"
+
+    def finish(base_id: str, snapshot: RoadmapSnapshot) -> dict:
         db = SessionLocal()
         try:
+            return _store_initial_proposal(db, student_id, base_id, snapshot)
+        finally:
+            db.close()
+
+    async def stream():
+        try:
+            base_id, brief = await asyncio.to_thread(prepare)
+        except HTTPException as exc:
+            yield event("error", {"error": exc.detail})
+            return
+        job_id: str | None = None
+        done = False
+        try:
+            plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
+            job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
+            yield event("plan", {"job_id": job_id, "plan": plan.model_dump()})
+            for item in plan.stages:
+                job = staged_store.get_job(job_id)
+                if job is None:
+                    raise RuntimeError("This generation job expired; try again")
+                prior, used = staged_store.prior_node_summaries(job, item.id)
+                try:
+                    nodes = await asyncio.to_thread(
+                        roadmap_stage.generate_stage_nodes,
+                        brief, plan, item.id, prior, used, job["confirmed"], hermes,
+                    )
+                except Exception as exc:
+                    yield event("error", {"error": str(exc), "stage_id": item.id})
+                    return
+                wiring_error = roadmap_stitch.check_wiring(plan, {**job["completed"], item.id: nodes})
+                if wiring_error:
+                    yield event("error", {"error": wiring_error, "stage_id": item.id})
+                    return
+                staged_store.append_stage(job_id, item.id, nodes)
+                snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(job_id)["completed"])
+                yield event("stage", {"job_id": job_id, "stage_id": item.id, "nodes": [n.model_dump() for n in nodes], "snapshot": snapshot.model_dump()})
             job = staged_store.get_job(job_id)
             snapshot = roadmap_stitch.merge_stages(plan.title, plan, job["completed"])
             try:
                 finished = validate_generated(snapshot, job["confirmed"])
             except ValueError as exc:
-                _reset_to_chat(student_id)
-                yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+                yield event("error", {"error": str(exc)})
                 return
-            proposal = _store_initial_proposal(db, student_id, base_id, finished)
-            staged_store.drop_job(job_id)
-            yield f"event: done\ndata: {json.dumps({'job_id': job_id, 'proposal_id': proposal['id']})}\n\n"
+            proposal = await asyncio.to_thread(finish, base_id, finished)
+            done = True
+            yield event("done", {"job_id": job_id, "proposal_id": proposal["id"]})
+        except Exception as exc:
+            logger.exception("Staged roadmap generation failed")
+            yield event("error", {"error": str(exc) or "Roadmap generation failed"})
         finally:
-            db.close()
+            # Runs on errors and when the client disconnects (the generator is closed).
+            if job_id is not None:
+                staged_store.drop_job(job_id)
+            if not done:
+                await asyncio.to_thread(_reset_to_chat, student_id)
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
@@ -864,7 +888,7 @@ def _reset_to_chat(student_id: str) -> None:
     db = SessionLocal()
     try:
         profile = db.get(StudentProfile, student_id)
-        if profile is not None:
+        if profile is not None and profile.onboarding_status == "generating":
             profile.onboarding_status = "chat"
             db.commit()
     finally:
@@ -912,6 +936,23 @@ def update_progress(student_id: str, _owner: OwnedStudent, node_id: str, body: d
     item.snapshot_json = snapshot.model_dump_json()
     db.commit()
     return {"node_id": node_id, "status": status}
+
+
+@app.put("/api/students/{student_id}/roadmap/progress")
+def update_progress_bulk(student_id: str, _owner: OwnedStudent, body: ProgressUpdate, db: Db) -> dict:
+    """Set many node statuses in one read-modify-write (Reset progress used to send one PUT per
+    node, and the parallel writes overwrote each other)."""
+    item = active_roadmap(db, student_id)
+    snapshot = RoadmapSnapshot.model_validate_json(item.snapshot_json)
+    known = {node.id: node for node in snapshot.nodes}
+    missing = [node_id for node_id in body.statuses if node_id not in known]
+    if missing:
+        raise HTTPException(404, f"Unknown node(s): {', '.join(missing[:5])}")
+    for node_id, status in body.statuses.items():
+        known[node_id].status = status
+    item.snapshot_json = snapshot.model_dump_json()
+    db.commit()
+    return {"updated": len(body.statuses)}
 
 
 @app.get("/api/students/{student_id}/roadmap/proposals")
@@ -1381,11 +1422,21 @@ def accept_proposal(proposal_id: str, db: Db, user: CurrentUser, body: AcceptInp
             updated = apply_operations(RoadmapSnapshot.model_validate_json(current.snapshot_json), operations)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-    current.active = False
+    # Claim the proposal and retire the base version with conditional updates, so two
+    # concurrent accepts (a double click, or two proposals on one base) cannot both win.
+    claimed = db.execute(
+        update(RoadmapProposal).where(RoadmapProposal.id == proposal.id, RoadmapProposal.status == "pending")
+        .values(status="accepted", decided_at=now()).execution_options(synchronize_session=False)
+    ).rowcount
+    retired = db.execute(
+        update(RoadmapVersion).where(RoadmapVersion.id == current.id, RoadmapVersion.active.is_(True))
+        .values(active=False).execution_options(synchronize_session=False)
+    ).rowcount
+    if not claimed or not retired:
+        db.rollback()
+        raise HTTPException(409, "This proposal was already decided or the roadmap changed; refresh and try again")
     version = RoadmapVersion(student_id=proposal.student_id, version=current.version + 1, snapshot_json=updated.model_dump_json(), reason=proposal.summary, active=True)
     db.add(version)
-    proposal.status = "accepted"
-    proposal.decided_at = now()
     for node in updated.nodes:
         if node.nodeType == "opportunity" and node.opportunity:
             recommendation = db.scalar(select(StudentOpportunity).where(
@@ -1408,10 +1459,12 @@ def accept_proposal(proposal_id: str, db: Db, user: CurrentUser, body: AcceptInp
 @app.post("/api/roadmap-proposals/{proposal_id}/reject")
 def reject_proposal(proposal_id: str, db: Db, user: CurrentUser) -> dict:
     proposal = owned_proposal(db, proposal_id, user)
-    if proposal.status != "pending":
+    rejected = db.execute(
+        update(RoadmapProposal).where(RoadmapProposal.id == proposal.id, RoadmapProposal.status == "pending")
+        .values(status="rejected", decided_at=now()).execution_options(synchronize_session=False)
+    ).rowcount
+    if not rejected:
         raise HTTPException(409, "Proposal is no longer pending")
-    proposal.status = "rejected"
-    proposal.decided_at = now()
     db.commit()
     return {"status": "rejected"}
 

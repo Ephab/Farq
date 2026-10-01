@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Server-side voice dictation via Gemini 3.5 Transcribe.
 
 The browser records audio with MediaRecorder and POSTs the finished clip to
@@ -17,6 +15,8 @@ returned transcript is a composer draft: it becomes a chat message (and
 possibly a StudentFact) only after the student presses Send through the
 normal chat path.
 """
+
+from __future__ import annotations
 
 import logging
 import os

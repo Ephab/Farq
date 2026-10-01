@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Evidence sources: turn a student's existing records into reviewable evidence.
 
 Every adapter returns normalized `EvidenceIn` items. Nothing here creates a
@@ -8,14 +6,17 @@ confirmation (POST /evidence/decide) promotes it. All fetched or uploaded
 content is untrusted data.
 """
 
+from __future__ import annotations
+
 import json
 import re
+import threading
 import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..decisions import DecisionItem, observe_items
+from ..decisions import DecisionItem, observe_independently
 from ..models import EvidenceItem
 from ..schemas import EvidenceIn
 
@@ -72,8 +73,10 @@ def fingerprint_for(item: EvidenceIn) -> str:
 def store_evidence(db: Session, student_id: str, source_id: str, items: list[EvidenceIn]) -> int:
     """Insert new suggested evidence, merging duplicates across sources.
 
-    A duplicate of an existing item gains extra provenance instead of a new
-    row, so a GitHub repo and the same local folder show up once.
+    A duplicate of a still-suggested item gains extra data and provenance instead of a new
+    row, so a GitHub repo and the same local folder show up once. Reviewed items keep what
+    the student saw: a confirmed item only records the extra provenance (unreviewed data must
+    not reach the roadmap brief), and a dismissed item stays dismissed.
     """
     existing = {item.fingerprint: item for item in db.scalars(select(EvidenceItem).where(EvidenceItem.student_id == student_id)).all()}
     added = 0
@@ -81,9 +84,12 @@ def store_evidence(db: Session, student_id: str, source_id: str, items: list[Evi
         fingerprint = fingerprint_for(item)
         current = existing.get(fingerprint)
         if current is not None:
+            if current.status == "dismissed":
+                continue
             data = json.loads(current.data_json)
-            for key, value in item.data.items():
-                data.setdefault(key, value)
+            if current.status == "suggested":
+                for key, value in item.data.items():
+                    data.setdefault(key, value)
             refs = set(filter(None, data.get("also_from", []) + [item.source_ref]))
             if item.source_ref and item.source_ref != current.source_ref:
                 data["also_from"] = sorted(refs)
@@ -101,8 +107,11 @@ def store_evidence(db: Session, student_id: str, source_id: str, items: list[Evi
         db.add(row)
         existing[fingerprint] = row
         added += 1
-    observe_items(db, [DecisionItem(
+    # Observation can call remote engines for seconds; run it on its own session in the
+    # background so this transaction (and SQLite's write lock) is not held open meanwhile.
+    observed = [DecisionItem(
         entity_type="onboarding_evidence", entity_id=fingerprint_for(item), title=item.title,
         text=json.dumps(item.data, ensure_ascii=False), student_id=student_id,
-    ) for item in items], purpose="evidence_ingestion")
+    ) for item in items]
+    threading.Thread(target=observe_independently, args=(observed, "evidence_ingestion"), daemon=True).start()
     return added

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Quiz generation through the local Hermes gateway.
 
 The browser never calls a model provider directly. This module sends a
@@ -12,6 +10,8 @@ or proposal.
 The model returns raw text; the frontend keeps the battle-tested
 parse/salvage logic and turns it into UI-ready questions.
 """
+
+from __future__ import annotations
 
 from .hermes import HermesJsonError, effective_hermes_key, run_json_prompt
 

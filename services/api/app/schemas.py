@@ -238,6 +238,10 @@ class RoadmapOperation(BaseModel):
     dependencies: list[str] | None = None
 
 
+class ProgressUpdate(BaseModel):
+    statuses: dict[str, NodeStatus] = Field(min_length=1, max_length=200)
+
+
 class ProposalCreate(BaseModel):
     user_id: str
     base_version_id: str

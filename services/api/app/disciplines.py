@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Discipline registry: how onboarding adapts to a student's field.
 
 Each entry tells the UI which evidence sources to offer (and which are only
@@ -7,6 +5,8 @@ Each entry tells the UI which evidence sources to offer (and which are only
 gives the roadmap generator a stage-shape hint. Implemented source kinds are
 the same for everyone; the registry only changes ordering and emphasis.
 """
+
+from __future__ import annotations
 
 import re
 

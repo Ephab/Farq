@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import uuid
@@ -825,3 +826,20 @@ def test_students_list_offers_profiles_made_here_for_resuming(client):
     # Seeded demo people have their own entry points and are not listed.
     assert not any(item["student_id"].startswith("demo-") for item in listed)
     assert listed[0]["student_id"] == created["student_id"]  # newest first
+
+
+def test_bulk_progress_sets_every_node_in_one_write(client: TestClient):
+    student = client.post("/api/students", json={"display_name": "Bulk Progress"}).json()
+    sid = student["student_id"]
+    db = SessionLocal()
+    version = db.query(RoadmapVersion).filter(RoadmapVersion.student_id == sid, RoadmapVersion.active.is_(True)).one()
+    version.snapshot_json = json.dumps({"title": "T", "stages": [{"id": "s", "title": "S", "nodeIds": ["a", "b"]}],
+                                        "nodes": [{"id": "a", "stageId": "s", "title": "A", "status": "done"},
+                                                  {"id": "b", "stageId": "s", "title": "B", "deps": ["a"], "status": "in-progress"}]})
+    db.commit(); db.close()
+    response = client.put(f"/api/students/{sid}/roadmap/progress", json={"statuses": {"a": "not-started", "b": "not-started"}})
+    assert response.json() == {"updated": 2}
+    nodes = client.get(f"/api/students/{sid}/roadmap").json()["snapshot"]["nodes"]
+    assert {node["status"] for node in nodes} == {"not-started"}
+    assert client.put(f"/api/students/{sid}/roadmap/progress", json={"statuses": {"ghost": "done"}}).status_code == 404
+    assert client.put(f"/api/students/{sid}/roadmap/progress", json={"statuses": {"a": "finished"}}).status_code == 422

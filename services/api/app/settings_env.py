@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Persist Settings-pane Hermes choices to the repo-root .env file.
 
 The Windows/macOS native runners and the documented Docker flow read this file, and only at process startup. After a
@@ -7,6 +5,8 @@ successful write the caller is responsible for restarting the Waypoint API and
 gateway (the native runner watches .env and restarts its own isolated
 children; other deployments need a manual restart).
 """
+
+from __future__ import annotations
 
 import os
 from pathlib import Path

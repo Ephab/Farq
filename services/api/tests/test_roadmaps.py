@@ -36,8 +36,30 @@ def test_rejects_dependency_cycle():
 
 
 def test_rejects_identity_or_progress_rewrite():
-    with pytest.raises(ValueError, match="Identity and progress"):
-        apply_operations(snapshot(), [RoadmapOperation(type="update_node", node_id="a", changes={"status": "done"})])
+    for changes in ({"status": "done"}, {"id": "z"}, {"evidence": ["e1"]}, {"stageId": "two"}, {"nodeType": "opportunity"}, {"projectId": "p"}):
+        with pytest.raises(ValueError, match="cannot change"):
+            apply_operations(snapshot(), [RoadmapOperation(type="update_node", node_id="a", changes=changes)])
+
+
+def test_added_nodes_start_from_scratch():
+    node = RoadmapNode(id="c", stageId="one", title="C", status="done", evidence=["made-up"], projectId="p1")
+    result = apply_operations(snapshot(), [RoadmapOperation(type="add_node", node_id="c", node=node)])
+    added = next(item for item in result.nodes if item.id == "c")
+    assert (added.status, added.evidence, added.projectId) == ("not-started", [], None)
+
+
+def test_cannot_remove_a_prerequisite_of_started_work():
+    started = RoadmapSnapshot(
+        stages=[RoadmapStage(id="one", title="One", nodeIds=["a", "b"])],
+        nodes=[RoadmapNode(id="a", stageId="one", title="A"), RoadmapNode(id="b", stageId="one", title="B", deps=["a"], status="in-progress")],
+    )
+    with pytest.raises(ValueError, match="started work depends"):
+        apply_operations(started, [RoadmapOperation(type="remove_node", node_id="a")])
+
+
+def test_dependencies_must_exist():
+    with pytest.raises(ValueError, match="Unknown or self"):
+        apply_operations(snapshot(), [RoadmapOperation(type="set_dependencies", node_id="b", dependencies=["ghost"])])
 
 
 

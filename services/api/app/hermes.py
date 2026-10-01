@@ -56,11 +56,20 @@ HF_CHAIN = [
     "meta-llama/Llama-3.1-8B-Instruct:nscale",     # no tool support, invalid JSON: last resort
 ]
 HF_MODEL = HF_CHAIN[0]
+# OpenRouter, billed to OPENROUTER_API_KEY. Space Bunny Alpha is a free stealth model with tool calls
+# and a 1M context; OpenRouter stealth models may log prompts, so it is a rung only when the key is set.
+OPENROUTER_CHAIN = [
+    "stealth/space-bunny-alpha",
+]
 # Default to the top of the ladder so no better rung is skipped when HERMES_MODEL is unset
 # (matches services/hermes/config.yaml, .env.example and docker-compose.yml).
 HERMES_MODEL = os.getenv("HERMES_MODEL", "").strip() or GEMINI_CHAIN[0]
-# Hugging Face (paid credit) is the last resort after every Google rung.
-FALLBACK_CHAIN: list[tuple[str, str]] = [(m, "gemini") for m in GEMINI_CHAIN] + [(m, "huggingface") for m in HF_CHAIN]
+# OpenRouter (when configured) catches a Google overload; Hugging Face (paid credit) is the last resort.
+FALLBACK_CHAIN: list[tuple[str, str]] = (
+    [(m, "gemini") for m in GEMINI_CHAIN]
+    + ([(m, "openrouter") for m in OPENROUTER_CHAIN] if os.getenv("OPENROUTER_API_KEY", "").strip() else [])
+    + [(m, "huggingface") for m in HF_CHAIN]
+)
 
 # Keep in sync with src/lib/waypoint-api.ts model lists.
 # The env default is always allowed so custom server deployments keep working.
@@ -69,6 +78,7 @@ FALLBACK_CHAIN: list[tuple[str, str]] = [(m, "gemini") for m in GEMINI_CHAIN] + 
 GEMINI_MODELS = frozenset({*GEMINI_CHAIN, "gemini-2.5-pro", HERMES_MODEL})
 NIM_MODELS = frozenset({*NIM_CHAIN, "nvidia/llama-3.1-nemotron-ultra-253b-v1"})
 HF_MODELS = frozenset(HF_CHAIN)
+OPENROUTER_MODELS = frozenset(OPENROUTER_CHAIN)
 
 RATE_LIMIT = re.compile(r"\b429\b|\b402\b|resource.?exhausted|rate.?limit|quota|too many requests|insufficient.?(credit|balance)", re.IGNORECASE)
 # model -> monotonic time it may be tried again (process-local).
@@ -238,6 +248,12 @@ def resolve_hermes_selection(provider: str | None, model: str | None = None) -> 
         if candidate not in HF_MODELS:
             raise ValueError(f"Unknown Hugging Face model: {candidate}")
         return candidate, "huggingface"
+    if provider == "openrouter":
+        if not candidate:
+            return OPENROUTER_CHAIN[0], "openrouter"
+        if candidate not in OPENROUTER_MODELS:
+            raise ValueError(f"Unknown OpenRouter model: {candidate}")
+        return candidate, "openrouter"
     if provider == "gemini":
         if not candidate:
             return GEMINI_CHAIN[0], "gemini"
@@ -251,6 +267,8 @@ def resolve_hermes_selection(provider: str | None, model: str | None = None) -> 
             return candidate, "gemini"
         if candidate in HF_MODELS:
             return candidate, "huggingface"
+        if candidate in OPENROUTER_MODELS:
+            return candidate, "openrouter"
         raise ValueError(f"Unknown Hermes model: {candidate}")
     return HERMES_MODEL, HERMES_PROVIDER
 

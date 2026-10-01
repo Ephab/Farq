@@ -97,10 +97,21 @@ export default function App() {
   )
 }
 
+const ACTIVE_VIEW_KEY = "waypoint.active-view"
+
 function AppShell() {
   const { t, fmt } = useI18n()
   const viewLabel = (id: string) => (VIEW_LABELS[id] ? t(VIEW_LABELS[id]) : id)
-  const [active, setActive] = useState("Home")
+  // A refresh (or a dev reload) keeps the student on the section they were reading.
+  const [active, setActive] = useState(() => {
+    try {
+      const saved = window.sessionStorage.getItem(ACTIVE_VIEW_KEY)
+      return saved && VIEW_LABELS[saved] ? saved : "Home"
+    } catch { return "Home" }
+  })
+  useEffect(() => {
+    try { window.sessionStorage.setItem(ACTIVE_VIEW_KEY, active) } catch { /* storage blocked: this page load only */ }
+  }, [active])
   const [coachDraft, setCoachDraft] = useState("")
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.

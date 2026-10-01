@@ -10,13 +10,21 @@ const GROUPS = ["education", "course", "project", "experience", "skill", "certif
 /** Unicode first-strong isolate: keeps a file name or title from reordering the sentence around it. */
 const isolate = (text: string) => `⁨${text}⁩`
 
+/** Records imported before README text was cleaned can still carry Markdown syntax. */
+const plain = (text: string) => text
+  .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+  .replace(/(^|\s)(#{1,6}|>|[-*+])\s+/g, "$1")
+  .replace(/\*\*|__|`/g, "")
+  .replace(/\s+/g, " ")
+  .trim()
+
 function detail(item: EvidenceItem): string {
   const d = item.data
   const pick = (...keys: string[]) => keys.map((key) => d[key]).flat().filter((value) => value !== undefined && value !== null && value !== "").map(String)
   switch (item.kind) {
     case "course": return pick("code", "term", "grade").join(" · ")
     case "education": return pick("program", "gpa").join(" · ")
-    case "project": return [...pick("summary").slice(0, 1), pick("languages", "frameworks").slice(0, 5).join(", ")].filter(Boolean).join(" — ")
+    case "project": return [...pick("summary").slice(0, 1).map(plain), pick("languages", "frameworks").slice(0, 5).join(", ")].filter(Boolean).join(" — ")
     case "experience": return [pick("org")[0], [pick("start")[0], pick("end")[0]].filter(Boolean).join("–")].filter(Boolean).join(" · ")
     case "certificate": return pick("issuer", "date").join(" · ")
     case "publication": return pick("venue", "year").join(" · ")

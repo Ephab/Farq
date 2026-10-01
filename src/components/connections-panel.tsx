@@ -107,8 +107,8 @@ function Body({ status, reload }: { status: ConnectionsStatus; reload: () => voi
   )
 }
 
-const HERMES_PROVIDER_IDS: HermesProvider[] = ["gemini", "nim", "hf"]
-const HERMES_KEY_CONNECTION: Record<HermesProvider, string> = { gemini: "gemini", nim: "nvidia", hf: "huggingface" }
+const HERMES_PROVIDER_IDS: HermesProvider[] = ["gemini", "nim", "hf", "openrouter"]
+const HERMES_KEY_CONNECTION: Record<HermesProvider, string> = { gemini: "gemini", nim: "nvidia", hf: "huggingface", openrouter: "span" }
 
 function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: () => void }) {
   const { t } = useI18n()
@@ -176,10 +176,10 @@ function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: 
   )
 }
 
-const KEY_ENV: Record<HermesProvider, string> = { gemini: "GEMINI_API_KEY", nim: "NVIDIA_API_KEY", hf: "HF_TOKEN" }
+const KEY_ENV: Record<HermesProvider, string> = { gemini: "GEMINI_API_KEY", nim: "NVIDIA_API_KEY", hf: "HF_TOKEN", openrouter: "OPENROUTER_API_KEY" }
 function keyEnvFor(provider: HermesProvider) { return KEY_ENV[provider] }
 
-const PROVIDER_NAMES: Record<string, string> = { gemini: "Gemini", nim: "NVIDIA NIM", nvidia: "NVIDIA NIM", hf: "Hugging Face" }
+const PROVIDER_NAMES: Record<string, string> = { gemini: "Gemini", nim: "NVIDIA NIM", nvidia: "NVIDIA NIM", hf: "Hugging Face", openrouter: "OpenRouter" }
 function providerName(provider: string | null) {
   return provider ? PROVIDER_NAMES[provider] ?? provider : ""
 }

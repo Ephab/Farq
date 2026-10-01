@@ -11,6 +11,7 @@ export const onboarding = {
   back: "Back",
   advanced: {
     summary: "Using the Waypoint default model · ",
+    summaryModel: "Using {model} · ",
     toggle: "Advanced",
     provider: "Hermes provider",
     model: "Hermes model",

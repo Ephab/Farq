@@ -34,7 +34,7 @@ export const connections = {
     help: "The model that answers in Coach and reads your documents. Its key is entered below under the provider's own name.",
     provider: "Provider",
     model: "Model",
-    providers: { gemini: "Google Gemini", nim: "NVIDIA NIM", hf: "Hugging Face" },
+    providers: { gemini: "Google Gemini", nim: "NVIDIA NIM", hf: "Hugging Face", openrouter: "OpenRouter" },
     keyReady: "Uses {env}, which is set.",
     keyMissing: "Needs {env}. Add it in the API keys list below.",
     save: "Use this model",

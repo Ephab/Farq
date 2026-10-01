@@ -1,7 +1,7 @@
 import { translate } from "@/lib/i18n/context"
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ""
 
-export type HermesProvider = "gemini" | "nim" | "hf"
+export type HermesProvider = "gemini" | "nim" | "hf" | "openrouter"
 
 const HERMES_PROVIDER_STORAGE_KEY = "waypoint.hermes-provider"
 // Tab-only (sessionStorage) so Waypoint Hermes settings never leak into another
@@ -9,6 +9,7 @@ const HERMES_PROVIDER_STORAGE_KEY = "waypoint.hermes-provider"
 const HERMES_GEMINI_MODEL_STORAGE_KEY = "waypoint.hermes-model-gemini"
 const HERMES_NIM_MODEL_STORAGE_KEY = "waypoint.hermes-model-nim"
 const HERMES_HF_MODEL_STORAGE_KEY = "waypoint.hermes-model-hf"
+const HERMES_OPENROUTER_MODEL_STORAGE_KEY = "waypoint.hermes-model-openrouter"
 const HERMES_API_KEY_STORAGE_KEY = "waypoint.hermes-api-key"
 
 /** Header carrying the tab-only Waypoint Hermes gateway key override to Waypoint API. */
@@ -48,12 +49,23 @@ export const HERMES_HF_MODELS = [
   { id: "meta-llama/Llama-3.1-8B-Instruct:nscale", label: "Llama 3.1 8B · nscale (no tools)" },
 ] as const
 
+// OpenRouter; billed to OPENROUTER_API_KEY in the server .env (see OPENROUTER_CHAIN in hermes.py).
+export const HERMES_OPENROUTER_MODELS = [
+  { id: "stealth/space-bunny-alpha", label: "Space Bunny Alpha (free, stealth)" },
+] as const
+
 export const DEFAULT_HERMES_GEMINI_MODEL = HERMES_GEMINI_MODELS[0].id
 export const DEFAULT_HERMES_NIM_MODEL = HERMES_NIM_MODELS[0].id
 export const DEFAULT_HERMES_HF_MODEL = HERMES_HF_MODELS[0].id
+export const DEFAULT_HERMES_OPENROUTER_MODEL = HERMES_OPENROUTER_MODELS[0].id
+
+const PROVIDER_MODELS = { gemini: HERMES_GEMINI_MODELS, nim: HERMES_NIM_MODELS, hf: HERMES_HF_MODELS, openrouter: HERMES_OPENROUTER_MODELS } as const
+const PROVIDER_MODEL_KEYS: Record<HermesProvider, string> = {
+  gemini: HERMES_GEMINI_MODEL_STORAGE_KEY, nim: HERMES_NIM_MODEL_STORAGE_KEY, hf: HERMES_HF_MODEL_STORAGE_KEY, openrouter: HERMES_OPENROUTER_MODEL_STORAGE_KEY,
+}
 
 export function modelsFor(provider: HermesProvider): readonly { id: string; label: string }[] {
-  return provider === "nim" ? HERMES_NIM_MODELS : provider === "hf" ? HERMES_HF_MODELS : HERMES_GEMINI_MODELS
+  return PROVIDER_MODELS[provider] ?? HERMES_GEMINI_MODELS
 }
 
 /** sessionStorage that never throws: blocked storage (privacy mode) must not break the app. */
@@ -68,7 +80,7 @@ function writeSession(key: string, value: string): void {
 export function getHermesProvider(): HermesProvider {
   if (typeof window === "undefined") return "gemini"
   const saved = readSession(HERMES_PROVIDER_STORAGE_KEY)
-  return saved === "nim" || saved === "hf" ? saved : "gemini"
+  return saved === "nim" || saved === "hf" || saved === "openrouter" ? saved : "gemini"
 }
 
 export function saveHermesProvider(provider: HermesProvider): void {
@@ -76,11 +88,11 @@ export function saveHermesProvider(provider: HermesProvider): void {
 }
 
 function modelKeyFor(provider: HermesProvider): string {
-  return provider === "nim" ? HERMES_NIM_MODEL_STORAGE_KEY : provider === "hf" ? HERMES_HF_MODEL_STORAGE_KEY : HERMES_GEMINI_MODEL_STORAGE_KEY
+  return PROVIDER_MODEL_KEYS[provider] ?? HERMES_GEMINI_MODEL_STORAGE_KEY
 }
 
 function defaultModelFor(provider: HermesProvider): string {
-  return provider === "nim" ? DEFAULT_HERMES_NIM_MODEL : provider === "hf" ? DEFAULT_HERMES_HF_MODEL : DEFAULT_HERMES_GEMINI_MODEL
+  return modelsFor(provider)[0].id
 }
 
 export function getHermesModel(provider: HermesProvider): string {
@@ -123,6 +135,7 @@ export function clearLocalWaypointState(): void {
     window.sessionStorage.removeItem(HERMES_GEMINI_MODEL_STORAGE_KEY)
     window.sessionStorage.removeItem(HERMES_NIM_MODEL_STORAGE_KEY)
     window.sessionStorage.removeItem(HERMES_HF_MODEL_STORAGE_KEY)
+    window.sessionStorage.removeItem(HERMES_OPENROUTER_MODEL_STORAGE_KEY)
     window.sessionStorage.removeItem(HERMES_API_KEY_STORAGE_KEY)
     window.localStorage.removeItem("waypoint-quiz-library-v1")
     window.localStorage.removeItem("waypoint-nim-key")
@@ -143,6 +156,13 @@ export function httpErrorMessage(status: number): string {
   if (status === 408 || status === 504) return translate("common.errors.timeout")
   if (status >= 500) return translate("common.errors.server", { status })
   return translate("common.errors.generic", { status })
+}
+
+/** A model-run failure in the student's words: provider overload and timeouts read as "busy, try again". */
+export function runErrorMessage(message: string): string {
+  return /models tried failed|did not finish within|\b(429|503)\b|overloaded|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(message)
+    ? translate("common.errors.modelBusy")
+    : message
 }
 
 /** Who this browser acts as. The API checks it on every student record (see services/api/app/ownership.py). */

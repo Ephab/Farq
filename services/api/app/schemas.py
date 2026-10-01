@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 FactCategory = Literal["interest", "goal", "course", "skill", "strength", "weakness", "achievement", "preference"]
-HermesProvider = Literal["gemini", "nim", "hf"]
+HermesProvider = Literal["gemini", "nim", "hf", "openrouter"]
 NodeStatus = Literal["not-started", "in-progress", "done"]
 
 

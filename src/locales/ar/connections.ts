@@ -36,7 +36,7 @@ export const connections: CatalogShape<typeof en> = {
     help: "النموذج الذي يجيب في المدرّب ويقرأ مستنداتك. يُدخَل مفتاحه أدناه تحت اسم المزوّد نفسه.",
     provider: "المزوّد",
     model: "النموذج",
-    providers: { gemini: "Google Gemini", nim: "NVIDIA NIM", hf: "Hugging Face" },
+    providers: { gemini: "Google Gemini", nim: "NVIDIA NIM", hf: "Hugging Face", openrouter: "OpenRouter" },
     keyReady: "يستخدم {env} وهو مضبوط.",
     keyMissing: "يحتاج إلى {env}. أضفه في قائمة مفاتيح API أدناه.",
     save: "استخدام هذا النموذج",

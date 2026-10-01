@@ -7,7 +7,7 @@ import { useHermesChat } from "@/components/hermes/use-hermes-chat"
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas"
 import { streamStagedRoadmap, type StagedPlan, type StagedSnapshot } from "@/hooks/use-staged-generation"
 import type { NodeStatus } from "@/data/computer-vision-roadmap"
-import { api, hermesRequestParts, type StudentProfile } from "@/lib/waypoint-api"
+import { api, hermesRequestParts, runErrorMessage, type StudentProfile } from "@/lib/waypoint-api"
 import { useI18n } from "@/lib/i18n/context"
 import { stripStagePrefix } from "@/lib/roadmap-layout"
 
@@ -71,7 +71,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
         await api(`/api/students/${profile.student_id}/onboarding/generate`, { method: "POST", body: JSON.stringify(body), headers })
         onGenerated()
       } catch (fallbackReason) {
-        setGenError(fallbackReason instanceof Error ? fallbackReason.message : reason instanceof Error ? reason.message : t("onboarding.chat.generateFailed"))
+        setGenError(fallbackReason instanceof Error ? runErrorMessage(fallbackReason.message) : reason instanceof Error ? runErrorMessage(reason.message) : t("onboarding.chat.generateFailed"))
         setGenerating(false)
       }
     }
@@ -154,7 +154,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
                 </button>
               </div>
             ) : undefined}
-            empty={<div className="rounded-3xl border border-dashed border-border p-8 text-center"><Sparkles className="mx-auto size-7 text-primary" /><h2 className="mt-3 font-semibold">{t("onboarding.chat.emptyTitle")}</h2><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{t("onboarding.chat.emptyBody")}</p><button type="button" onClick={() => void chat.send(t("onboarding.chat.kickoff"))} className="mt-5 h-9 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground">{t("onboarding.chat.start")}</button></div>}
+            empty={<div className="p-6 text-center"><Sparkles className="mx-auto size-7 text-primary" /><h2 className="mt-3 font-semibold">{t("onboarding.chat.emptyTitle")}</h2><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{t("onboarding.chat.emptyBody")}</p><button type="button" onClick={() => void chat.send(t("onboarding.chat.kickoff"))} className="mt-5 h-9 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground">{t("onboarding.chat.start")}</button></div>}
           />
         </>
       )}

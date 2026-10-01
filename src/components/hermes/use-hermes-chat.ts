@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { API_BASE, api, hermesRequestParts, withIdentityQuery } from "@/lib/waypoint-api"
+import { API_BASE, api, hermesRequestParts, runErrorMessage, withIdentityQuery } from "@/lib/waypoint-api"
 import { parseServerTime } from "@/lib/server-time"
 
 export interface OpportunityCard {
@@ -118,7 +118,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     setStage("")
     // A student stop is intentional, never an error banner.
     if (terminalStatus === "cancelled") setError(null)
-    else if (terminalError) setError(terminalError)
+    else if (terminalError) setError(runErrorMessage(terminalError))
   }, [closeStream])
 
   /** Attach to a run's progress stream; survives as long as this hook is mounted. */

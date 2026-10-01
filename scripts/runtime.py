@@ -9,10 +9,11 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_VARS = {"VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "__PYVENV_LAUNCHER__"}
 MAIL_SECRETS = {"WAYPOINT_TOKEN_ENCRYPTION_KEY", "OUTLOOK_LOCAL_TOKEN", "MICROSOFT_CLIENT_SECRET"}
-PROVIDER_SECRETS = {"GEMINI_API_KEY", "NVIDIA_API_KEY", "HF_TOKEN", "HERMES_API_KEY", "API_SERVER_KEY", "WAYPOINT_INTERNAL_TOKEN"}
+PROVIDER_SECRETS = {"GEMINI_API_KEY", "NVIDIA_API_KEY", "HF_TOKEN", "OPENROUTER_API_KEY", "HERMES_API_KEY", "API_SERVER_KEY", "WAYPOINT_INTERNAL_TOKEN"}
 
 # The Hermes gateway reads provider secrets and its own HERMES_*/API_SERVER_*/WAYPOINT_* settings;
-# every other .env key (TypeSafe, OpenRouter, Apify, Jev/Span tuning, ...) is read by the API alone.
+# every other .env key (TypeSafe, Apify, Jev/Span tuning, ...) is read by the API alone. OPENROUTER_API_KEY
+# is shared: Span decisions in the API, and the openrouter Hermes provider in the gateway.
 GATEWAY_PREFIXES = ("HERMES_", "API_SERVER_", "WAYPOINT_")
 
 

@@ -29,6 +29,7 @@ export const core = {
       timeout: "The server took too long to respond. Try again.",
       server: "Something went wrong on the server (error {status}). Try again shortly.",
       generic: "The request failed (error {status}).",
+      modelBusy: "The AI model is overloaded right now. Nothing you entered was lost; try again in a few minutes.",
     },
   },
   nav: {

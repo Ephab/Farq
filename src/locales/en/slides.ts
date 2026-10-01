@@ -68,7 +68,7 @@ export const slides = {
     aria: "{label} {percent} percent",
     hint: "{percent}: this can take up to a minute on large decks",
     waiting: "Waiting for model",
-    receiving: "Hermes is analyzing",
+    receiving: "Analyzing",
     validating: "Validating",
     done: "Done",
   },

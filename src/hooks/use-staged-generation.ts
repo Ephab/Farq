@@ -1,7 +1,7 @@
 "use client"
 
 import type { RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap"
-import { API_BASE, httpErrorMessage, identityHeaders } from "@/lib/waypoint-api"
+import { API_BASE, httpErrorMessage, identityHeaders, runErrorMessage } from "@/lib/waypoint-api"
 import { translate } from "@/lib/i18n/context"
 
 export interface StagedPlanStage {
@@ -78,7 +78,7 @@ export async function streamStagedRoadmap(
       callbacks.onDone(data.proposal_id ?? "")
     } else if (type === "error") {
       finished = true
-      callbacks.onError(data.error ?? translate("onboarding.chat.generateFailed"), data.stage_id)
+      callbacks.onError(data.error ? runErrorMessage(data.error) : translate("onboarding.chat.generateFailed"), data.stage_id)
     }
   }
 

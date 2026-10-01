@@ -12,6 +12,7 @@ export const onboarding: CatalogShape<typeof en> = {
   back: "رجوع",
   advanced: {
     summary: "يُستخدم نموذج Waypoint الافتراضي · ",
+    summaryModel: "يُستخدم {model} · ",
     toggle: "خيارات متقدمة",
     provider: "مزوّد Hermes",
     model: "نموذج Hermes",

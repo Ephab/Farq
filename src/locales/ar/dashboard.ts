@@ -263,6 +263,7 @@ export const dashboard: CatalogShape<typeof en> = {
         save: "الحفظ في خريطة التعلّم",
         keepRefining: "واصل التحسين مع Hermes",
         refine: "التحسين مع Hermes",
+        prompt: "ساعدني في تحسين المشروع {id}: {title}. حمّل مهارة waypoint-project-coach وابدأ بسؤالي عمّا يجعلني مهتمًا ببنائه.",
       },
       submit: {
         title: "قيّم العمل الفعلي",
@@ -284,6 +285,7 @@ export const dashboard: CatalogShape<typeof en> = {
           high: "{adapter} · تغطية عالية",
         },
         complete: "اكتمل التقييم",
+        failed: "تعذّر إكمال التقييم",
         strengths: "نقاط القوة",
         improve: "ما يُحسَّن لاحقًا",
         retake: "إعادة التقييم",

@@ -82,7 +82,7 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
   const busy = sources.some((source) => source.status === "syncing")
 
   return (
-    <div className="h-[calc(100dvh-4rem)] overflow-y-auto bg-background">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -215,9 +215,15 @@ function StatusPill({ status }: { status: KindStatus }) {
 /** Compact per-source status rows with remove actions. */
 function SourceStatusList({ kind, items, studentId, onChange }: { kind: SourceKind; items: DataSourceItem[]; studentId: string; onChange: () => Promise<void> }) {
   const { t } = useI18n()
+  const [removeError, setRemoveError] = useState<string | null>(null)
   if (!items.length) return null
   const remove = async (source: DataSourceItem) => {
-    await api(`/api/students/${studentId}/sources/${source.id}`, { method: "DELETE" }).catch(() => undefined)
+    setRemoveError(null)
+    try {
+      await api(`/api/students/${studentId}/sources/${source.id}`, { method: "DELETE" })
+    } catch (reason) {
+      setRemoveError(reason instanceof Error ? reason.message : t("onboarding.sources.remove"))
+    }
     await onChange()
   }
   return (
@@ -229,9 +235,10 @@ function SourceStatusList({ kind, items, studentId, onChange }: { kind: SourceKi
             <p className="truncate font-medium"><bdi>{source.label !== source.kind ? source.label : sourceKindLabel(kind)}</bdi>{source.config.purpose ? ` · ${PURPOSE_KEYS[String(source.config.purpose)] ? t(PURPOSE_KEYS[String(source.config.purpose)]) : source.config.purpose}` : ""}</p>
             <p className="text-muted-foreground">{source.status === "ready" ? t("onboarding.sources.readOk") : source.status === "failed" ? source.error : source.status === "pending" ? t("onboarding.sources.notReadYet") : kind === "folder" ? t("onboarding.sources.indexingFolder") : t("onboarding.sources.readingEllipsis")}</p>
           </div>
-          <button type="button" aria-label={t("onboarding.sources.remove")} onClick={() => void remove(source)} className="text-muted-foreground hover:text-foreground"><Trash2 className="size-3.5" /></button>
+          <button type="button" aria-label={t("onboarding.sources.remove")} onClick={() => void remove(source)} className="-m-1.5 grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><Trash2 className="size-3.5" aria-hidden="true" /></button>
         </div>
       ))}
+      {removeError ? <p role="alert" className="text-xs text-destructive">{removeError}</p> : null}
     </div>
   )
 }

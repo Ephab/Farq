@@ -843,3 +843,17 @@ def test_bulk_progress_sets_every_node_in_one_write(client: TestClient):
     assert {node["status"] for node in nodes} == {"not-started"}
     assert client.put(f"/api/students/{sid}/roadmap/progress", json={"statuses": {"ghost": "done"}}).status_code == 404
     assert client.put(f"/api/students/{sid}/roadmap/progress", json={"statuses": {"a": "finished"}}).status_code == 422
+
+
+def test_identity_resolution_survives_parallel_first_requests(client: TestClient):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.identity import User
+
+    student = client.post("/api/students", json={"display_name": "Parallel Student"}).json()
+    db = SessionLocal()
+    db.query(User).filter(User.id == student["student_id"]).delete()
+    db.commit(); db.close()
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        codes = list(pool.map(lambda _: client.get(f"/api/students/{student['student_id']}/profile").status_code, range(6)))
+    assert codes == [200] * 6

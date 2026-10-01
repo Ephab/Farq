@@ -2,9 +2,10 @@ import type { CatalogShape } from "@/lib/i18n/core"
 import type { roadmap as en } from "../en/roadmap"
 
 export const roadmap: CatalogShape<typeof en> = {
-  defaultTitle: "خارطة طريق الرؤية الحاسوبية",
+  defaultTitle: "خارطة طريقك",
+  empty: "خارطة طريقك فارغة. أكمل الإعداد أو اطلب من مدرّب Hermes اقتراح خارطة.",
   loadError: "تعذّر تحميل خارطة الطريق المحفوظة",
-  backendUnavailable: "الخادم غير متاح: تُعرض خارطة الطريق المضمّنة. {error}",
+  backendUnavailable: "تعذّر الوصول إلى Waypoint. {error}",
   personalVersion: "خارطة الطريق الشخصية · الإصدار {version}",
   levels: { All: "الكل", Beginner: "مبتدئ", Intermediate: "متوسط", Advanced: "متقدم" },
   status: { "not-started": "للإنجاز", "in-progress": "قيد التنفيذ", done: "مكتمل" },
@@ -18,6 +19,7 @@ export const roadmap: CatalogShape<typeof en> = {
     vertical: "عمودي",
     horizontal: "أفقي",
     reset: "إعادة تعيين كل التقدم",
+    resetConfirm: "هل تريد إعادة كل المواضيع إلى «لم يبدأ»؟ لا يمكن التراجع عن ذلك.",
     progressLabel: "التقدم الكلي في خارطة الطريق",
     legendHint: "اسحب اللوحة للتنقل · مرّر للتحرك · استخدم الأزرار للتكبير",
   },
@@ -32,10 +34,10 @@ export const roadmap: CatalogShape<typeof en> = {
       other: "{count} موضوع",
     },
     titleProject: "انقر للتفاصيل · انقر نقرًا مزدوجًا أو بالزر الأيمن لفتح مساحة المشروع",
-    titleTopic: "انقر للتفاصيل · انقر نقرًا مزدوجًا أو بالزر الأيمن لوضع علامة مكتمل",
-    ariaProject: "{title} — {status}. انقر نقرًا مزدوجًا أو بالزر الأيمن لفتح مساحة المشروع.",
-    ariaMarkDone: "{title} — {status}. انقر نقرًا مزدوجًا أو بالزر الأيمن لوضع علامة مكتمل.",
-    ariaMarkNotStarted: "{title} — {status}. انقر نقرًا مزدوجًا أو بالزر الأيمن لإلغاء الإكمال.",
+    titleTopic: "انقر للتفاصيل · انقر نقرًا مزدوجًا لوضع علامة مكتمل",
+    ariaProject: "{title} — {status}. اضغط Enter للتفاصيل؛ النقر المزدوج يفتح مساحة المشروع.",
+    ariaMarkDone: "{title} — {status}. اضغط Enter للتفاصيل والتقدم.",
+    ariaMarkNotStarted: "{title} — {status}. اضغط Enter للتفاصيل والتقدم.",
   },
   canvas: {
     ariaLabel: "لوحة خارطة الطريق. مرّر للاستكشاف، واسحب للتنقل، وانقر على عقدة للتفاصيل.",

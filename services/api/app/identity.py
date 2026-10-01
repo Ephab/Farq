@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import DateTime, ForeignKey, String, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .database import Base, get_db
@@ -37,7 +38,12 @@ def resolve_user(db: Session, user_id: str | None) -> User | None:
         return None
     user = User(id=student.id, display_name=student.display_name, role="student", student_id=student.id)
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A parallel request (the app loads several panels at once) created it first.
+        db.rollback()
+        return db.get(User, user_id)
     return user
 
 

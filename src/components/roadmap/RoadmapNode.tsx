@@ -69,10 +69,11 @@ export const RoadmapNode = memo(function RoadmapNode({
         else onToggleDone(node.id);
       }}
       onContextMenu={(event) => {
+        // A long-press on touch screens is a context menu: it must never silently change progress.
         event.preventDefault();
         event.stopPropagation();
         if (node.nodeType === "project" && node.projectId) onOpenProject?.(node.projectId);
-        else onToggleDone(node.id);
+        else onSelect(node.id);
       }}
       title={node.nodeType === "project" ? t("roadmap.node.titleProject") : t("roadmap.node.titleTopic")}
       aria-label={t(

@@ -171,7 +171,7 @@ export function QuizRunner({
   const typeLabel = t(`quiz.types.${q.type}`);
 
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col px-4 py-6 sm:px-8">
+    <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-3xl flex-col px-4 py-6 sm:px-8">
       {/* Top bar */}
       <div className="flex items-center gap-3">
         <button

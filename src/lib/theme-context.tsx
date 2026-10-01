@@ -22,8 +22,12 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 function getInitialTheme(): ThemeId {
   if (typeof window === "undefined") return DEFAULT_THEME_ID
-  const stored = window.localStorage.getItem(STORAGE_KEY)
-  if (stored) return getTheme(stored).id
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY)
+    if (stored) return getTheme(stored).id
+  } catch {
+    // Storage blocked (privacy mode): use the default theme rather than a blank page.
+  }
   return DEFAULT_THEME_ID
 }
 
@@ -35,7 +39,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement
     root.setAttribute("data-theme", theme.id)
     root.style.colorScheme = theme.dark ? "dark" : "light"
-    window.localStorage.setItem(STORAGE_KEY, theme.id)
+    try { window.localStorage.setItem(STORAGE_KEY, theme.id) } catch { /* storage blocked: this page load only */ }
   }, [themeId])
 
   const setThemeId = useCallback((id: ThemeId) => {

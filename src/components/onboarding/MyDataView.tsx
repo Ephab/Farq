@@ -33,7 +33,7 @@ export function MyDataView({ onAskHermes }: MyDataViewProps) {
     ? t("onboarding.myData.draft", { titles: fmt.list(kept.length > 15 ? [...kept.slice(0, 15), t("onboarding.myData.more", { count: kept.length - 15 })] : kept) })
     : ""
   return (
-    <div className="h-[calc(100dvh-4rem)] overflow-y-auto bg-background">
+    <div className="h-[calc(100dvh-3.5rem)] overflow-y-auto bg-background">
       <div className="mx-auto w-full max-w-[760px] px-4 py-10 sm:px-8">
         <section className="rounded-[32px] border border-border bg-card p-8 text-center shadow-sm sm:p-14">
           <span className="mx-auto mb-5 grid size-[52px] place-items-center rounded-full bg-emerald-500/10 text-xl font-bold text-emerald-600">✓</span>

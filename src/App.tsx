@@ -32,6 +32,7 @@ import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
+import { LoaderCircle } from "lucide-react"
 import { api, getCurrentStudentId, hasChosenStudent, type DecisionStatus, type StudentProfile } from "@/lib/waypoint-api"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
 import { cn } from "@/lib/utils"
@@ -61,6 +62,9 @@ export default function App() {
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [onboarding, setOnboarding] = useState(!hasChosenStudent())
+  // A remembered student's profile decides between the app and onboarding: wait for it instead
+  // of flashing the app (and firing its requests) for someone who is still onboarding.
+  const [profileChecked, setProfileChecked] = useState(!hasChosenStudent())
   const [jev, setJev] = useState<DecisionStatus | null>(null)
   // Live Hermes run for this student's coach thread — polled so any section
   // can show that Hermes is still generating after navigating away.
@@ -110,13 +114,17 @@ export default function App() {
   const clearCoachDraft = useCallback(() => setCoachDraft(""), [])
 
   const loadProfile = useCallback(() => {
-    if (!hasChosenStudent()) { setOnboarding(true); return }
+    if (!hasChosenStudent()) { setOnboarding(true); setProfileChecked(true); return }
     api<StudentProfile>(`/api/students/${getCurrentStudentId()}/profile`)
       .then((next) => { setProfile(next); setOnboarding(next.onboarding_status !== "done") })
+      // Onboarding owns recovery: it retries, and forgets the student only if they no longer exist.
       .catch(() => setOnboarding(true))
+      .finally(() => setProfileChecked(true))
   }, [])
 
   useEffect(() => { loadProfile() }, [loadProfile])
+  // Stable so OnboardingView's profile load does not re-run on every App render.
+  const finishOnboarding = useCallback(() => { setActive("Roadmap"); loadProfile() }, [loadProfile])
   useEffect(() => {
     let stopped = false
     const load = () => api<DecisionStatus>("/api/decisions/status").then((value) => { if (!stopped) setJev(value) }).catch(() => undefined)
@@ -124,10 +132,21 @@ export default function App() {
     return () => { stopped = true; window.clearInterval(timer) }
   }, [])
 
+  if (!profileChecked) {
+    return (
+      <ThemeProvider>
+        <div className="grid min-h-svh place-items-center bg-background" role="status" aria-label={t("common.loading")}>
+          <LoaderCircle className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
+        </div>
+        {appIntroOverlay}
+      </ThemeProvider>
+    )
+  }
+
   if (onboarding) {
     return (
       <ThemeProvider>
-        <OnboardingView onDone={() => { setActive("Roadmap"); loadProfile() }} />
+        <OnboardingView onDone={finishOnboarding} />
         {appIntroOverlay}
       </ThemeProvider>
     )
@@ -211,7 +230,8 @@ export default function App() {
 
             <AnimatedSidebarFooter>
               <div className="flex items-center gap-2 overflow-hidden rounded-xl p-1">
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-foreground">
+                {/* Collapsed to icons, the settings gear (language, theme, reset) stays reachable instead of the avatar. */}
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-foreground group-data-[state=collapsed]/sidebar:hidden" aria-hidden="true">
                   {(profile?.display_name ?? "S").slice(0, 1).toUpperCase()}
                 </span>
                 <bdi dir="auto" className="min-w-0 flex-1 truncate text-sm font-medium group-data-[state=collapsed]/sidebar:hidden">
@@ -225,12 +245,13 @@ export default function App() {
           </AnimatedSidebar>
 
           <AnimatedSidebarInset className="bg-background">
-            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+            <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
               <AnimatedSidebarTrigger className="text-muted-foreground hover:bg-muted hover:text-foreground">
                 <PanelLeft aria-hidden="true" className="size-4 rtl:-scale-x-100" />
               </AnimatedSidebarTrigger>
               <div className="h-5 w-px bg-border" />
-              <h1 className="text-sm font-medium">{viewLabel(active)}</h1>
+              {/* Each view has its own h1; this is the shell's section label. */}
+              <p className="min-w-0 truncate text-sm font-medium">{viewLabel(active)}</p>
               {jev ? (
                 <span
                   title={[
@@ -238,7 +259,7 @@ export default function App() {
                     ...(jev.last_success_at ? [t("header.lastDecision", { time: fmt.time(jev.last_success_at) })] : []),
                     ...(jev.last_error ? [t("header.fallback", { error: jev.last_error })] : []),
                   ].join(" · ")}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${jev.state === "degraded" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : jev.state === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
+                  className={`hidden shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex ${jev.state === "degraded" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : jev.state === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
                 >
                   <span className={`size-1.5 rounded-full ${jev.state === "degraded" ? "bg-amber-500" : jev.state === "active" ? "bg-emerald-500" : "bg-muted-foreground"}`} />
                   <bdi>{jev.engine_label ?? t("header.decisions")}</bdi> · {t(`header.decisionState.${jev.state}` as MessageKey)}
@@ -287,23 +308,7 @@ export default function App() {
                 <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
-              ) : (
-                <div className="grid flex-1 place-items-center p-8">
-                  <div className="text-center">
-                    <p className="text-sm font-semibold">{viewLabel(active)}</p>
-                    <p className="mt-1 text-[13px] text-muted-foreground">
-                      {t("common.comingSoon")}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setActive("Roadmap")}
-                      className="mt-3 h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {t("common.openRoadmap")}
-                    </button>
-                  </div>
-                </div>
-              )}
+              ) : null}
               {/* Hermes Coach stays mounted while hidden so an in-progress
                   reply survives tab switches instead of unmounting mid-stream. */}
               <div className={active === "Hermes Coach" ? "contents" : "hidden"}>

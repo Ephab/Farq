@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Bookmark, BriefcaseBusiness, Building2, ExternalLink, FlaskConical, MapPin, Search, Sparkles, X } from "lucide-react"
 import { api, getCurrentStudentId } from "@/lib/waypoint-api"
+import { useModalFocus } from "@/lib/use-modal-focus"
 import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
 
@@ -260,35 +261,9 @@ function DetailSheet({ selected, reasons, onClose, onState, onAsk }: { selected:
   const sheetRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
-  // Modal behavior: focus moves in, Escape closes, Tab stays inside, focus returns on close.
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    closeRef.current?.focus()
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        onClose()
-        return
-      }
-      if (event.key !== "Tab" || !sheetRef.current) return
-      const focusable = Array.from(sheetRef.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"))
-      if (focusable.length === 0) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener("keydown", onKey)
-    return () => {
-      document.removeEventListener("keydown", onKey)
-      previous?.focus?.()
-    }
-  }, [onClose])
+  const closeHandler = useRef(onClose)
+  useEffect(() => { closeHandler.current = onClose }, [onClose])
+  useModalFocus(sheetRef, () => closeHandler.current(), closeRef)
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/45" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>

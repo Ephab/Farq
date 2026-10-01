@@ -13,8 +13,6 @@ export const core: CatalogShape<typeof en> = {
     save: "حفظ",
     close: "إغلاق",
     user: "مستخدم",
-    comingSoon: "هذا القسم قادم قريبًا، ويمكنك الآن زيارة خريطة التعلّم.",
-    openRoadmap: "فتح خريطة التعلّم",
     networkError: "تعذّر الاتصال بـ Waypoint. تحقّق من اتصالك وحاول مرة أخرى.",
     sourceKinds: {
       transcript_pdf: "السجل الأكاديمي",

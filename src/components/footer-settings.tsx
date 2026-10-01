@@ -24,7 +24,7 @@ import {
   setCurrentStudentId,
   type HermesProvider,
 } from "@/lib/waypoint-api"
-import { getActingUserId } from "@/lib/teams-api"
+import { getActingUserId, setActingUserId } from "@/lib/teams-api"
 import { useTheme } from "@/lib/theme-context"
 import { THEMES } from "@/lib/themes"
 import { cn } from "@/lib/utils"
@@ -164,7 +164,7 @@ export function FooterSettings() {
         <button
           type="button"
           aria-label={t("settings.open")}
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring group-data-[state=collapsed]/sidebar:hidden [&[data-state=open]_svg]:rotate-90 [&_svg]:transition-transform"
+          className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&[data-state=open]_svg]:rotate-90 [&_svg]:transition-transform"
         >
           <Settings className="size-4" aria-hidden="true" />
         </button>
@@ -353,7 +353,7 @@ export function FooterSettings() {
           </p>
           <button
             type="button"
-            onClick={() => { setCurrentStudentId(null); window.location.reload() }}
+            onClick={() => { setCurrentStudentId(null); setActingUserId(null); window.location.reload() }}
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border px-2 py-2 text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           >
             <UserPlus className="size-3.5" aria-hidden="true" />

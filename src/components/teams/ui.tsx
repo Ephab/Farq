@@ -6,6 +6,7 @@ import { avatarColor, initials } from "@/lib/team-cover"
 import { DOCK_DEFAULT, DOCK_MIN } from "@/lib/team-layout"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n/context"
+import { useModalFocus } from "@/lib/use-modal-focus"
 
 interface AvatarProps { userId: string; name: string; size?: number; online?: boolean; typing?: boolean }
 
@@ -46,14 +47,14 @@ interface SheetProps { title: string; onClose: () => void; children: ReactNode; 
 
 export function Sheet({ title, onClose, children, footer }: SheetProps) {
   const { t } = useI18n()
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose() }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  const sheetRef = useRef<HTMLElement>(null)
+  // Latest onClose without re-running the focus setup when the parent re-renders.
+  const closeRef = useRef(onClose)
+  useEffect(() => { closeRef.current = onClose }, [onClose])
+  useModalFocus(sheetRef, () => closeRef.current())
   return (
     <div className="tm-sheet-backdrop" onClick={onClose}>
-      <aside className="tm-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
+      <aside ref={sheetRef} className="tm-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
         <header className="tm-sheet-head">
           <h2>{title}</h2>
           <button type="button" className="tm-icon-btn" onClick={onClose} aria-label={t("teams.common.close")}><X className="size-4" /></button>

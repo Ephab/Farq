@@ -377,6 +377,8 @@ export const teams: CatalogShape<typeof en> = {
     title: "المستندات",
     intro: "ابدأ أحد المخرجات. يحصل كل مستند على مخطط IEEE القياسي، ويمكن تعيين مسؤول لكل قسم.",
     custom: "مستند مخصّص…",
+    defaultTitle: "مستند",
+    defaultSection: "مقدمة",
     newCustom: "مستند مخصّص جديد",
     docTitle: "عنوان المستند",
     docTitlePlaceholder: "مثال: خطة الاختبار",

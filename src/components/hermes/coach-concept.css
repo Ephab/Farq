@@ -497,6 +497,22 @@ html[data-theme="deep-ocean"] .fq {
   text-underline-offset: 3px;
 }
 
+.fq .choice-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  margin-inline-start: 12px;
+  color: var(--fq-accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.fq .choice-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .fq .choice-continue {
   display: flex;
   align-items: center;

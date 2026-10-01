@@ -3,7 +3,8 @@
 import { matchesSearch } from "@/lib/i18n/core";
 import { useI18n } from "@/lib/i18n/context";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { NODES, STAGES, type NodeStatus, type RoadmapNodeData, type RoadmapStage } from "@/data/computer-vision-roadmap";
+import { LoaderCircle } from "lucide-react";
+import type { NodeStatus, RoadmapNodeData, RoadmapStage } from "@/data/computer-vision-roadmap";
 import type { RoadmapOrientation } from "@/lib/roadmap-layout";
 import { useRoadmapProgress } from "@/hooks/use-roadmap-progress";
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas";
@@ -18,8 +19,10 @@ interface RoadmapResponse {
 
 export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: string) => void }) {
   const { t, fmt } = useI18n();
-  const [nodes, setNodes] = useState<RoadmapNodeData[]>(NODES);
-  const [stages, setStages] = useState<RoadmapStage[]>(STAGES);
+  // Empty until this student's roadmap arrives: never flash (or let anyone edit) the demo seed.
+  const [nodes, setNodes] = useState<RoadmapNodeData[]>([]);
+  const [stages, setStages] = useState<RoadmapStage[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [version, setVersion] = useState<number | null>(null);
   const [title, setTitle] = useState<string | null>(null);
   const studentId = getCurrentStudentId();
@@ -31,14 +34,21 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
 
   const initialStatuses = useMemo(() => Object.fromEntries(nodes.map((node) => [node.id, node.status ?? "not-started"])) as Record<string, NodeStatus>, [nodes]);
   const persist = useCallback(async (id: string, status: NodeStatus) => {
-    await api(`/api/students/${studentId}/roadmap/nodes/${id}`, { method: "PUT", body: JSON.stringify({ status }) });
+    await api(`/api/students/${studentId}/roadmap/nodes/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ status }) });
   }, [studentId]);
-  const { statuses, setStatus, reset, summary } = useRoadmapProgress(nodes, initialStatuses, persist);
+  const persistMany = useCallback(async (next: Record<string, NodeStatus>) => {
+    await api(`/api/students/${studentId}/roadmap/progress`, { method: "PUT", body: JSON.stringify({ statuses: next }) });
+  }, [studentId]);
+  const { statuses, setStatus, reset, summary } = useRoadmapProgress(nodes, initialStatuses, persist, persistMany);
+  const confirmReset = useCallback(() => {
+    // Wipes every node's progress on the server: ask first.
+    if (window.confirm(t("roadmap.header.resetConfirm"))) reset();
+  }, [reset, t]);
 
   useEffect(() => {
     const load = () => api<RoadmapResponse>(`/api/students/${studentId}/roadmap`).then((response) => {
       setNodes(response.snapshot.nodes); setStages(response.snapshot.stages); setVersion(response.version); setTitle(response.snapshot.title); setLoadError(null);
-    }).catch((reason: unknown) => setLoadError(reason instanceof Error ? reason.message : ""));
+    }).catch((reason: unknown) => setLoadError(reason instanceof Error ? reason.message : "")).finally(() => setLoaded(true));
     void load();
     // Accepting a proposal anywhere (Hermes Coach, onboarding) creates a new version.
     window.addEventListener(ROADMAP_CHANGED_EVENT, load);
@@ -72,12 +82,17 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
   };
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] min-h-0 flex-none flex-col overflow-hidden bg-background">
-      <RoadmapHeader title={title ?? t("roadmap.defaultTitle")} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} view={view} onView={setView} onReset={reset} />
+    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-none flex-col overflow-hidden bg-background">
+      <RoadmapHeader title={title ?? t("roadmap.defaultTitle")} done={summary.done} total={summary.total} percent={summary.percent} query={query} onQuery={setQuery} level={level} onLevel={setLevel} view={view} onView={setView} onReset={confirmReset} />
       {version ? <div className="border-b border-border px-6 py-1.5 text-end text-[11px] text-muted-foreground">{t("roadmap.personalVersion", { version: fmt.number(version) })}</div> : null}
       {loadError !== null ? <div className="border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-xs text-amber-700">{t("roadmap.backendUnavailable", { error: loadError || t("roadmap.loadError") })}</div> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <RoadmapCanvas
+        {!loaded ? (
+          <div className="grid flex-1 place-items-center" role="status" aria-label={t("common.loading")}><LoaderCircle className="size-5 animate-spin text-muted-foreground" aria-hidden="true" /></div>
+        ) : nodes.length === 0 ? (
+          <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">{loadError !== null ? t("roadmap.loadError") : t("roadmap.empty")}</div>
+        ) : null}
+        {loaded && nodes.length > 0 ? <RoadmapCanvas
           nodes={nodes}
           stages={stages}
           statuses={statuses}
@@ -87,8 +102,8 @@ export function RoadmapView({ onOpenProject }: { onOpenProject?: (projectId: str
           onSelect={setSelectedId}
           onToggleDone={(id) => setStatus(id, statuses[id] === "done" ? "not-started" : "done")}
           onOpenProject={onOpenProject}
-        />
-        <NodeDetailPanel node={selectedNode} status={selectedId ? (statuses[selectedId] ?? "not-started") : "not-started"} hasPrev={selectedIndex > 0} hasNext={selectedIndex >= 0 && selectedIndex < nodes.length - 1} onStatus={(status) => selectedId && setStatus(selectedId, status)} onClose={() => setSelectedId(null)} onNavigate={setSelectedId} onPrev={() => step(-1)} onNext={() => step(1)} />
+        /> : null}
+        <NodeDetailPanel node={selectedNode} nodeMap={nodeMap} status={selectedId ? (statuses[selectedId] ?? "not-started") : "not-started"} hasPrev={selectedIndex > 0} hasNext={selectedIndex >= 0 && selectedIndex < nodes.length - 1} onStatus={(status) => selectedId && setStatus(selectedId, status)} onClose={() => setSelectedId(null)} onNavigate={setSelectedId} onPrev={() => step(-1)} onNext={() => step(1)} />
       </div>
     </div>
   );

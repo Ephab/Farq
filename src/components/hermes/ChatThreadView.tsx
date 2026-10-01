@@ -1,6 +1,7 @@
 "use client"
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { parseServerTime } from "@/lib/server-time"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, LoaderCircle, MapPin, Mic, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
@@ -48,7 +49,10 @@ const isCoachKey = (value: string): value is MessageKey => /^coach\.[\w.]+$/.tes
 export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [] }: ChatThreadViewProps) {
   const { t, fmt } = useI18n()
   const display = (value: string) => (isCoachKey(value) ? t(value) : value)
-  const formatTime = (iso: string) => (Number.isNaN(new Date(iso).getTime()) ? "" : fmt.time(iso))
+  const formatTime = (iso: string) => {
+    const time = parseServerTime(iso)
+    return time === null ? "" : fmt.time(time)
+  }
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -189,9 +193,9 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
   }
 
   /** The user prompt that produced the assistant message at `index`. */
-  const promptFor = (index: number): string | null => {
+  const promptFor = (index: number): { id: string; content: string } | null => {
     for (let i = index - 1; i >= 0; i--) {
-      if (messages[i].role === "user") return messages[i].content
+      if (messages[i].role === "user") return { id: messages[i].id, content: messages[i].content }
     }
     return null
   }
@@ -301,20 +305,21 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                                     <span className="opp-fit">{t("coach.thread.fit", { score: fmt.percent(opportunity.score / 100) })}</span>
                                     {opportunity.source_date ? <span className="opp-meta"><CalendarDays size={12} /><bdi>{opportunity.source_date}</bdi></span> : null}
                                     {opportunity.locations.length ? <span className="opp-meta"><MapPin size={12} /><bdi>{opportunity.locations.join(" · ")}</bdi></span> : null}
-                                    {(opportunity.registration_url || opportunity.detail_url) ? (
-                                      <a
-                                        href={opportunity.registration_url || opportunity.detail_url}
-                                        target="_blank"
-                                        rel="noreferrer noopener"
-                                        onClick={(event) => event.stopPropagation()}
-                                      >
-                                        {t("coach.thread.viewEvent")}<ExternalLink size={12} />
-                                      </a>
-                                    ) : null}
                                   </span>
                                 ) : null}
                               </span>
                             </button>
+                            {/* A link may not live inside a button (invalid HTML, unreliable clicks and focus). */}
+                            {opportunity && (opportunity.registration_url || opportunity.detail_url) ? (
+                              <a
+                                className="choice-link"
+                                href={opportunity.registration_url || opportunity.detail_url}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                              >
+                                {t("coach.thread.viewEvent")}<ExternalLink size={12} aria-hidden="true" />
+                              </a>
+                            ) : null}
                           </div>
                         )
                       })}
@@ -354,7 +359,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
                     <PencilLine size={12} />
                   </button>
                 ) : prompt ? (
-                  <button type="button" aria-label={t("coach.thread.regenerateLabel")} title={t("coach.thread.regenerate")} disabled={busy || disabled} onClick={() => submit(prompt)}>
+                  <button type="button" aria-label={t("coach.thread.regenerateLabel")} title={t("coach.thread.regenerate")} disabled={busy || disabled || prompt.id.startsWith("optimistic-")} onClick={() => onEditResend(prompt.id, prompt.content)}>
                     <RotateCcw size={12} />
                   </button>
                 ) : null}

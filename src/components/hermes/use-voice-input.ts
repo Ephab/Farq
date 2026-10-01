@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { API_BASE } from "@/lib/waypoint-api"
+import { API_BASE, httpErrorMessage } from "@/lib/waypoint-api"
 
 export type VoiceStatus = "idle" | "recording" | "transcribing"
 
@@ -114,7 +114,7 @@ export function useVoiceInput(onTranscribed: (text: string) => void) {
       form.append("audio", blob, `voice.${extensionFor(blob.type || "audio/webm")}`)
       const response = await fetch(`${API_BASE}/api/transcribe`, { method: "POST", body: form })
       if (!response.ok) {
-        let message = `Transcription failed (${response.status})`
+        let message = httpErrorMessage(response.status)
         try {
           const payload = await response.json() as { detail?: string }
           if (payload.detail) message = payload.detail

@@ -158,6 +158,7 @@ export const dashboard = {
         save: "Save to roadmap",
         keepRefining: "Keep refining with Hermes",
         refine: "Refine with Hermes",
+        prompt: "Help me refine project {id}: {title}. Load the waypoint-project-coach skill and begin by asking what would make me care about building it.",
       },
       submit: {
         title: "Evaluate the real artifact",
@@ -179,6 +180,7 @@ export const dashboard = {
           high: "{adapter} · high coverage",
         },
         complete: "Evaluation complete",
+        failed: "The evaluation could not finish",
         strengths: "Strengths",
         improve: "Improve next",
         retake: "Retake evaluation",

@@ -56,14 +56,23 @@ export function modelsFor(provider: HermesProvider): readonly { id: string; labe
   return provider === "nim" ? HERMES_NIM_MODELS : provider === "hf" ? HERMES_HF_MODELS : HERMES_GEMINI_MODELS
 }
 
+/** sessionStorage that never throws: blocked storage (privacy mode) must not break the app. */
+function readSession(key: string): string | null {
+  try { return window.sessionStorage.getItem(key) } catch { return null }
+}
+
+function writeSession(key: string, value: string): void {
+  try { window.sessionStorage.setItem(key, value) } catch { /* storage blocked: this page load only */ }
+}
+
 export function getHermesProvider(): HermesProvider {
   if (typeof window === "undefined") return "gemini"
-  const saved = window.sessionStorage.getItem(HERMES_PROVIDER_STORAGE_KEY)
+  const saved = readSession(HERMES_PROVIDER_STORAGE_KEY)
   return saved === "nim" || saved === "hf" ? saved : "gemini"
 }
 
 export function saveHermesProvider(provider: HermesProvider): void {
-  window.sessionStorage.setItem(HERMES_PROVIDER_STORAGE_KEY, provider)
+  writeSession(HERMES_PROVIDER_STORAGE_KEY, provider)
 }
 
 function modelKeyFor(provider: HermesProvider): string {
@@ -77,7 +86,7 @@ function defaultModelFor(provider: HermesProvider): string {
 export function getHermesModel(provider: HermesProvider): string {
   if (typeof window === "undefined") return defaultModelFor(provider)
   const options = modelsFor(provider)
-  const saved = window.sessionStorage.getItem(modelKeyFor(provider))
+  const saved = readSession(modelKeyFor(provider))
   if (saved && (options as readonly { id: string }[]).some((m) => m.id === saved)) return saved
   // Preserve a previously saved custom id so allowlisted backend values keep working.
   if (saved && saved.trim().length > 0) return saved
@@ -85,7 +94,7 @@ export function getHermesModel(provider: HermesProvider): string {
 }
 
 export function saveHermesModel(provider: HermesProvider, model: string): void {
-  window.sessionStorage.setItem(modelKeyFor(provider), model)
+  writeSession(modelKeyFor(provider), model)
 }
 
 /** True when the value is an NVIDIA API key, not a Waypoint gateway key. */
@@ -104,7 +113,7 @@ export function getHermesApiKey(): string {
 }
 
 export function saveHermesApiKey(key: string): void {
-  window.sessionStorage.setItem(HERMES_API_KEY_STORAGE_KEY, key)
+  writeSession(HERMES_API_KEY_STORAGE_KEY, key)
 }
 
 export function clearLocalWaypointState(): void {
@@ -119,7 +128,10 @@ export function clearLocalWaypointState(): void {
     window.localStorage.removeItem("waypoint-nim-key")
     window.localStorage.removeItem("waypoint-theme")
     window.localStorage.removeItem(CURRENT_STUDENT_STORAGE_KEY)
+    // Group Projects "Viewing as" (teams-api.ts) must not keep acting as the previous student.
+    window.sessionStorage.removeItem("waypoint.current-user")
   } catch {
+    // Storage blocked: nothing persisted to clear.
   }
 }
 
@@ -143,6 +155,16 @@ export function identityHeaders(): Record<string, string> {
 /** EventSource cannot send headers, so event streams take the same identity as `?as=`. */
 export function withIdentityQuery(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}as=${encodeURIComponent(getCurrentStudentId())}`
+}
+
+/** A failed API call that keeps its HTTP status, so callers can tell "not found" from "offline". */
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+  }
 }
 
 /** FastAPI `detail` as readable text: a string as-is, a validation error list as its messages. */
@@ -179,7 +201,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Keep the HTTP status when the server did not return JSON.
     }
-    throw new Error(message)
+    throw new ApiError(message, response.status)
   }
   return response.json() as Promise<T>
 }

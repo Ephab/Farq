@@ -388,6 +388,8 @@ def create_student(body: StudentCreate, db: Db) -> dict:
         RoadmapVersion(student_id=student.id, version=0, snapshot_json=EMPTY_ROADMAP.model_dump_json(), reason="Awaiting onboarding", active=True),
         ChatThread(student_id=student.id, title="My Hermes Coach"),
     ])
+    # The identity row exists from the start, so the app's first parallel requests never race to create it.
+    db.add(User(id=student.id, display_name=student.display_name, role="student", student_id=student.id))
     db.flush()
     recompute_student(db, student.id)
     db.commit()

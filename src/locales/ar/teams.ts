@@ -84,6 +84,7 @@ export const teams: CatalogShape<typeof en> = {
     yourTeams: "فرقك",
     courseTeams: "الفرق في مقرراتك",
     noTeamsStudent: "لست في أي فريق بعد. أنشئ فريقًا من الأسفل.",
+    noTeamsNoAssignment: "لست في أي فريق بعد. عندما يطرح مقرر مسجّل فيه مشروعًا جماعيًا، يمكنك إنشاء فريق أو قبول دعوة من هنا.",
     needsTeam: "بحاجة إلى فريق",
     insights: "ملاحظات Hermes",
     invitedYou: "دعاك {inviter} للانضمام إلى {team}",

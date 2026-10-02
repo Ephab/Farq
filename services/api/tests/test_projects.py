@@ -1,6 +1,7 @@
 import os
 import io
 import tempfile
+import time
 import uuid
 import zipfile
 from pathlib import Path
@@ -119,3 +120,44 @@ def test_skill_sequence_requires_a_final_project():
         validate_stage_nodes([learning, RoadmapNode(id="practice", stageId="applied", title="Practice")], "applied", set(), set(), "skill_sequence")
     project = RoadmapNode(id="ship", stageId="applied", title="Ship", nodeType="project", deps=["learn"])
     assert validate_stage_nodes([learning, project], "applied", set(), set(), "skill_sequence")[-1].nodeType == "project"
+
+
+def test_parallel_loads_race_to_materialise_one_project(client: TestClient, monkeypatch):
+    """Two panels loading at once must not 500 on projects.student_id, roadmap_node_id."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app import projects as projects_module
+    from app.database import SessionLocal
+    from app.models import RoadmapVersion
+    from app.schemas import RoadmapNode, RoadmapSnapshot, RoadmapStage
+
+    sid = client.post("/api/students", json={"display_name": "Race"}).json()["student_id"]
+    snapshot = RoadmapSnapshot(
+        title="ML",
+        stages=[RoadmapStage(id="s1", title="Build", nodeIds=["project-race"])],
+        nodes=[RoadmapNode(id="project-race", stageId="s1", title="Ship it", nodeType="project")],
+    )
+    db = SessionLocal()
+    try:
+        current = db.query(RoadmapVersion).filter_by(student_id=sid, active=True).one()
+        current.active = False
+        db.add(RoadmapVersion(student_id=sid, version=1, snapshot_json=snapshot.model_dump_json(), reason="Seeded", active=True))
+        db.commit()
+    finally:
+        db.close()
+
+    # Hold every request in the window between reading "no project yet" and committing,
+    # so all four read the empty state and only one can win the insert.
+    real_brief = projects_module._default_brief
+
+    def slow_brief(node: dict) -> dict:
+        time.sleep(0.3)
+        return real_brief(node)
+
+    monkeypatch.setattr(projects_module, "_default_brief", slow_brief)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(lambda _: client.get(f"/api/students/{sid}/projects"), range(4)))
+
+    assert [item.status_code for item in responses] == [200, 200, 200, 200], [item.text for item in responses]
+    assert [item["roadmap_node_id"] for item in responses[0].json()] == ["project-race"]

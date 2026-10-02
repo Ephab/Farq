@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import get_db
@@ -59,6 +60,20 @@ def _default_brief(node: dict) -> dict:
 
 
 def _sync_projects(db: Session, student_id: str) -> list[Project]:
+    """One Project per roadmap project node, materialised on read.
+
+    The app loads several panels at once, so two requests can both read "no
+    project for this node yet"; the loser of the insert race rolls back and
+    re-reads the row the winner committed (same as `identity.resolve_user`).
+    """
+    try:
+        return _sync_projects_once(db, student_id)
+    except IntegrityError:
+        db.rollback()
+        return _sync_projects_once(db, student_id)
+
+
+def _sync_projects_once(db: Session, student_id: str) -> list[Project]:
     roadmap = _active_roadmap(db, student_id)
     snapshot = json.loads(roadmap.snapshot_json)
     profile = db.get(StudentProfile, student_id)

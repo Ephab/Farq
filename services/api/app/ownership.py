@@ -22,7 +22,7 @@ def require_own_message(db: Session, student_id: str, message_id: str) -> ChatMe
     message = db.get(ChatMessage, message_id)
     thread = db.get(ChatThread, message.thread_id) if message is not None else None
     if message is None or message.role != "user" or thread is None or thread.student_id != student_id:
-        raise HTTPException(422, "source_message_id must be one of this student's own messages")
+        raise HTTPException(422, "source_message_id must be one of this student's own messages; use the source_message_id from THIS run's header")
     return message
 
 

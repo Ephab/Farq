@@ -187,14 +187,9 @@ def test_slides_reject_bad_input(client: TestClient):
     assert client.post("/api/slides/suggest", headers=headers, json={"source_text": "x", "count": 99}).status_code == 422
     assert client.post("/api/slides/extend", headers=headers, json={"source_text": "x", "topic": "", "length": "short"}).status_code == 422
     assert client.post("/api/slides/extend", headers=headers, json={"source_text": "x", "topic": "t", "length": "enormous"}).status_code == 422
-    unknown = client.post(
-        "/api/slides/suggest", headers=headers,
-        json={"source_text": "x", "count": 2, "provider": "gemini", "model": "not-a-model"},
-    )
-    # Model allowlist is enforced against the gateway path; with a mocked
-    # gateway it surfaces as 422 only when the selection fails before HTTP.
-    # Without gateway mock, an unknown model fails fast in run_suggest.
-    assert unknown.status_code in {422, 502}
+    # A stale model sent by an old tab is ignored (the Settings choice is used), so it never 422s.
+    from app.schemas import SlidesSuggestInput
+    assert SlidesSuggestInput(source_text="x", provider="gemini", model="not-a-model").model is None
 
 
 def test_slides_map_gateway_failure(client: TestClient, monkeypatch: pytest.MonkeyPatch):

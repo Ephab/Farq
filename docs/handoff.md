@@ -271,6 +271,28 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
   API. Arbitrary MCP servers were deliberately not added: AGENTS.md forbids new tool surfaces without a
   threat model.
 
+### 5a-2. Live run progress, question cards, readiness (2026-10-02)
+- `execute_with_fallback` follows the gateway's `/v1/runs/{id}/events` SSE stream (keepalive 10 s)
+  instead of polling: a model that sends nothing for `STALL_SECONDS` (45 s) outside a tool call is
+  abandoned and benched for 60 s (was: wait out 120 s, bench 180 s). Test doubles without `stream`
+  still poll.
+- `hermes.RunProgress` keeps phase (thinking/tool/writing/queued), tool, model, steps with timings,
+  tokens and tok/s, the reply streamed so far and a fallback notice in `LIVE_PROGRESS` (in-process).
+  The run-status stream and `GET /api/agent-runs/{id}` include it as `progress`; `RunProgress.tsx`
+  renders it in place of "Thinking…".
+- NIM falls back to the nearest smaller model first, then larger (Lightning → Super → Ultra), never
+  straight from the fastest to the slowest.
+- Choice cards are a tool call now (`waypoint_ask_question`, 2-4 options, multi-select, follow-ups,
+  hackathon ids) instead of a fenced JSON block NIM models ignored; the block parser remains as a
+  fallback. Onboarding's Generate button appears only after `waypoint_ready_to_generate`; before
+  that the header offers a quiet "Skip the questions" once the student has answered.
+- Request schemas inherit `ServerChoosesModel`: a provider/model sent by an old tab is dropped, so
+  only the Settings choice applies (a stale tab had been forcing Ultra on roadmap generation).
+- Settings > Models & API keys has **Check speed** (`POST /api/settings/models/speed`, local only):
+  one tiny streamed prompt per model of the provider, showing first-token time and tok/s. On
+  2026-10-02 NVIDIA's hosted Lightning took 15-25 s to start while Super took 0.4-2.6 s, so static
+  "fastest" labels were removed.
+
 ### 5b. Speed profile (2026-10-02)
 - Coach turn: was ~3.5 min (Gemini 503 + Hermes auto-recovery sleeps + a title call + a retry on the
   same session) and later 75 s on NIM with 8 model calls (the fact tool was called up to 5x per fact).

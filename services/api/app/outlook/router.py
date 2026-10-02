@@ -16,6 +16,7 @@ from .. import decision_engines
 from ..database import get_db
 from ..identity import CurrentUser, User
 from ..models import uid
+from ..schemas import ServerChoosesModel
 from . import auth, desktop
 from .models import MailConnection, MailFolder, MailItem, MailSession, MailboxConsent, MailCoachGrant
 
@@ -336,12 +337,10 @@ def decide(item_id: str, body: ItemDecision, request: Request, user: CurrentUser
     return item_dict(item)
 
 
-class EmailQuestion(BaseModel):
+class EmailQuestion(ServerChoosesModel):
     ids: list[str] = Field(min_length=1, max_length=25)
     question: str = Field(min_length=1, max_length=2000)
     accepted: bool
-    provider: str | None = None
-    model: str | None = None
 
 
 @router.post("/chat")

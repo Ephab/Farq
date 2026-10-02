@@ -175,6 +175,8 @@ class AgentRun(Base):
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
     stage: Mapped[str] = mapped_column(String(80), default="Preparing context")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # UI Hermes staged with its chat tools during the run (app.chat_ui); attached to the reply at the end.
+    ui_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -326,6 +326,7 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true,
             messages={chat.messages}
             busy={chat.busy}
             stage={chat.stage}
+            progress={chat.progress}
             error={chat.error}
             onSend={(text) => void chat.send(text)}
             onInteraction={(interaction, displayText) => void chat.sendInteraction(interaction, displayText)}

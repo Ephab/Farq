@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { API_BASE, api, runErrorMessage, withIdentityQuery } from "@/lib/waypoint-api"
 import { parseServerTime } from "@/lib/server-time"
+import type { RunProgress } from "@/components/hermes/RunProgress"
 
 export interface OpportunityCard {
   id: string
@@ -40,6 +41,8 @@ export interface ChatMessageMetadata {
   choice_group?: ChatChoiceGroup | null
   follow_ups?: ChatFollowUp[]
   interaction?: ChatInteractionMetadata
+  /** Onboarding: Hermes said it knows enough (waypoint_ready_to_generate). */
+  ready_to_generate?: boolean
 }
 export interface ChatMessage { id: string; role: "user" | "assistant"; content: string; metadata?: ChatMessageMetadata | null; created_at: string }
 export interface ChatInteractionInput {
@@ -48,9 +51,13 @@ export interface ChatInteractionInput {
   selected_option_ids: string[]
 }
 
+export interface LiveProgress { value: RunProgress; receivedAt: number }
+interface RunStatusPayload { status: string; stage: string; error?: string | null; progress?: RunProgress | null }
+
 /** Newest agent run for a thread, for resume-after-navigation and global status. */
 /** Stage and error values this hook sets itself are `coach.*` catalog keys;
  * the view translates them. Server-sent stages/errors stay free text. */
+
 export interface ActiveRun { id: string; status: string; stage: string; error: string | null; created_at: string }
 
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled"])
@@ -70,6 +77,8 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [busy, setBusy] = useState(false)
   const [stage, setStage] = useState("")
+  // Live phase/tool/speed/reply-so-far of the current run, with the local time it arrived.
+  const [progress, setProgress] = useState<LiveProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const streamRef = useRef<EventSource | null>(null)
@@ -116,6 +125,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     setRunId(null)
     setBusy(false)
     setStage("")
+    setProgress(null)
     // A student stop is intentional, never an error banner.
     if (terminalStatus === "cancelled") setError(null)
     else if (terminalError) setError(runErrorMessage(terminalError))
@@ -128,8 +138,9 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     runIdRef.current = runIdToWatch
     setRunId(runIdToWatch)
     setBusy(true)
-    const handle = (payload: { status: string; stage: string; error?: string | null }) => {
+    const handle = (payload: RunStatusPayload) => {
       setStage(payload.stage)
+      setProgress(payload.progress ? { value: payload.progress, receivedAt: Date.now() } : null)
       if (TERMINAL_RUN_STATUSES.has(payload.status)) {
         finishRun(payload.error ?? null, payload.status)
         refresh().catch(() => undefined)
@@ -140,7 +151,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     streamRef.current = source
     source.addEventListener("status", (event) => {
       try {
-        handle(JSON.parse((event as MessageEvent).data) as { status: string; stage: string; error?: string })
+        handle(JSON.parse((event as MessageEvent).data) as RunStatusPayload)
       } catch {
         // A malformed frame is skipped; the next status (or the poll fallback) carries the truth.
       }
@@ -153,7 +164,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
       if (pollRef.current !== null || runIdRef.current !== runIdToWatch) return
       let failures = 0
       pollRef.current = window.setInterval(() => {
-        api<{ status: string; stage: string; error: string | null }>(`/api/agent-runs/${runIdToWatch}`)
+        api<RunStatusPayload>(`/api/agent-runs/${runIdToWatch}`)
           .then((run) => { failures = 0; handle(run) })
           .catch(() => {
             failures += 1
@@ -313,7 +324,7 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     }
   }, [closeStream, refresh])
 
-  return { messages, busy, stage, error, setError, send, sendInteraction, refresh, retry, editAndResend, stop, runId }
+  return { messages, busy, stage, progress, error, setError, send, sendInteraction, refresh, retry, editAndResend, stop, runId }
 }
 
 /** Fired when this tab starts a Hermes run, so useActiveRun checks at once instead of at its idle pace. */

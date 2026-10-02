@@ -143,6 +143,46 @@ def register(ctx):
             lambda p, **_: request("POST", "/internal/hermes/memory", _body(p), grant=_grant(p)),
         ),
         (
+            "waypoint_ask_question",
+            "Ask the student a question with clickable answer cards (like a multiple-choice prompt). Use it whenever a "
+            "question has natural answers or you offer branches/directions; the student can still type their own answer. "
+            "Call it at most once per reply, then end with one short lead-in sentence and never repeat the options in text.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": USER_ID, "grant": GRANT,
+                    "question": {"type": "string", "description": "The question, under 180 characters"},
+                    "options": {
+                        "type": "array", "minItems": 2, "maxItems": 4,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string", "description": "2-6 words"},
+                                "description": {"type": "string", "description": "One short sentence"},
+                                "opportunity_id": {"type": "string", "description": "Only for waypoint_find_hackathons results: its id"},
+                            },
+                            "required": ["title"],
+                        },
+                    },
+                    "multi_select": {"type": "boolean", "description": "True when several answers can apply together"},
+                    "follow_ups": {
+                        "type": "array", "maxItems": 3,
+                        "description": "Optional next-step buttons; prompt is sent as the student's message when clicked",
+                        "items": {"type": "object", "properties": {"label": {"type": "string"}, "prompt": {"type": "string"}}, "required": ["label", "prompt"]},
+                    },
+                },
+                "required": ["user_id", "grant", "question"],
+            },
+            lambda p, **_: request("POST", "/internal/hermes/ask", _body(p), grant=_grant(p)),
+        ),
+        (
+            "waypoint_ready_to_generate",
+            "Onboarding only: call once when you know enough to build the student's first roadmap. Shows them the "
+            "Generate my roadmap button. Then reply with a one or two sentence summary of what you learned.",
+            {"type": "object", "properties": {"user_id": USER_ID, "grant": GRANT}, "required": ["user_id", "grant"]},
+            lambda p, **_: request("POST", "/internal/hermes/onboarding/ready", _body(p), grant=_grant(p)),
+        ),
+        (
             "waypoint_forget",
             "Forget one of this student's listed memories, e.g. when they ask you to or it is no longer true.",
             {

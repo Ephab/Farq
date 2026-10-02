@@ -308,15 +308,27 @@ class EvidenceDecision(BaseModel):
     titles: dict[str, str] = Field(default_factory=dict)
 
 
-class GenerateInput(BaseModel):
-    provider: HermesProvider | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=200)
+class ServerChoosesModel(BaseModel):
+    """The Hermes model is a server setting (Settings > Models & API keys, app_settings `hermes_model`).
+
+    Older tabs still send `provider`/`model` from their retired per-tab choice. They are accepted and
+    dropped here, so a stale tab can neither fail validation nor override the saved choice."""
+    provider: str | None = None
+    model: str | None = None
+
+    @model_validator(mode="after")
+    def use_server_choice(self) -> "ServerChoosesModel":
+        self.provider = None
+        self.model = None
+        return self
 
 
-class StageGenerateInput(BaseModel):
+class GenerateInput(ServerChoosesModel):
+    pass
+
+
+class StageGenerateInput(ServerChoosesModel):
     job_id: str = Field(min_length=1, max_length=36)
-    provider: HermesProvider | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class FinalizeInput(BaseModel):
@@ -339,9 +351,9 @@ class ChatChoiceOption(BaseModel):
 class ChatChoiceGroup(BaseModel):
     mode: Literal["single", "multiple"]
     prompt: str = Field(min_length=1, max_length=180)
-    options: list[ChatChoiceOption] = Field(min_length=2, max_length=3)
-    min_selections: int = Field(default=1, ge=1, le=3)
-    max_selections: int = Field(default=1, ge=1, le=3)
+    options: list[ChatChoiceOption] = Field(min_length=2, max_length=4)
+    min_selections: int = Field(default=1, ge=1, le=4)
+    max_selections: int = Field(default=1, ge=1, le=4)
 
     @model_validator(mode="after")
     def valid_selection_limits(self) -> "ChatChoiceGroup":
@@ -363,10 +375,12 @@ class ChatFollowUp(BaseModel):
 class ChatMessageUi(BaseModel):
     choice_group: ChatChoiceGroup | None = None
     follow_ups: list[ChatFollowUp] = Field(default_factory=list, max_length=3)
+    # Onboarding: Hermes has what it needs (waypoint_ready_to_generate); the chat shows Generate.
+    ready_to_generate: bool = False
 
     @model_validator(mode="after")
     def has_controls(self) -> "ChatMessageUi":
-        if self.choice_group is None and not self.follow_ups:
+        if self.choice_group is None and not self.follow_ups and not self.ready_to_generate:
             raise ValueError("A chat interaction must contain choices or follow-ups")
         if len({item.id for item in self.follow_ups}) != len(self.follow_ups):
             raise ValueError("Follow-up IDs must be unique")
@@ -379,13 +393,9 @@ class ChatInteractionInput(BaseModel):
     selected_option_ids: list[str] = Field(min_length=1, max_length=3)
 
 
-class ChatInput(BaseModel):
+class ChatInput(ServerChoosesModel):
     content: str | None = Field(default=None, max_length=8000)
     interaction: ChatInteractionInput | None = None
-    provider: HermesProvider | None = None
-    # Optional per-run model override. Allowlisted in app.hermes so the
-    # gateway /v1/runs payload can switch models without mutating config.
-    model: str | None = Field(default=None, min_length=1, max_length=200)
 
     @model_validator(mode="after")
     def exactly_one_message_kind(self) -> "ChatInput":
@@ -483,21 +493,16 @@ QuizDifficulty = Literal["Easy", "Medium", "Hard", "Mixed"]
 QuizQuestionType = Literal["mcq", "true_false", "short_answer"]
 
 
-class QuizGenerateInput(BaseModel):
+class QuizGenerateInput(ServerChoosesModel):
     source_text: str = Field(min_length=1, max_length=20000)
     count: int = Field(ge=1, le=20)
     difficulty: QuizDifficulty = "Mixed"
     types: list[QuizQuestionType] = Field(min_length=1, max_length=3)
-    provider: HermesProvider | None = None
-    # Optional per-run model override, allowlisted in app.quiz like chat models.
-    model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
-class SlidesSuggestInput(BaseModel):
+class SlidesSuggestInput(ServerChoosesModel):
     source_text: str = Field(min_length=1, max_length=20000)
     count: int = Field(default=5, ge=1, le=8)
-    provider: HermesProvider | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=200)
     # Optional student whose verified profile + active roadmap are injected
     # server-side as prompt data. Omitted/unknown => deck-only suggestions.
     student_id: str | None = Field(default=None, min_length=1, max_length=120)
@@ -506,7 +511,7 @@ class SlidesSuggestInput(BaseModel):
 SlidesLength = Literal["short", "medium", "long"]
 
 
-class SlidesExtendInput(BaseModel):
+class SlidesExtendInput(ServerChoosesModel):
     source_text: str = Field(min_length=1, max_length=20000)
     topic: str = Field(min_length=1, max_length=300)
     # Length hint only — the model decides the exact slide count.
@@ -515,8 +520,6 @@ class SlidesExtendInput(BaseModel):
     # layout density, visuals) so new slides match its structure, tone, and
     # visual habits. Styling itself is applied locally at export/preview.
     design_hint: str = Field(default="", max_length=2000)
-    provider: HermesProvider | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class SlideColumn(BaseModel):

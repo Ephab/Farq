@@ -76,6 +76,9 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
   }
 
   const answered = chat.messages.filter((message) => message.role === "user").length
+  // Hermes calls waypoint_ready_to_generate once it knows enough; until then Generate is only a quiet skip.
+  const ready = chat.messages.some((message) => message.role === "assistant" && message.metadata?.ready_to_generate)
+  const canSkip = !ready && answered >= 2
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -83,9 +86,15 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
         <span className="grid size-9 place-items-center rounded-2xl bg-primary text-primary-foreground"><Bot className="size-4" /></span>
         <div className="min-w-0 flex-1"><h1 className="text-sm font-semibold">{t("onboarding.chat.title")}</h1><p className="text-xs text-muted-foreground">{t("onboarding.chat.subtitle")}</p></div>
         <button type="button" onClick={onBack} disabled={generating} className="h-9 rounded-xl border border-border px-3 text-xs disabled:opacity-40">{t("onboarding.chat.backToReview")}</button>
-        <button type="button" onClick={() => void generate()} disabled={generating || chat.busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40">
-          {generating ? <LoaderCircle className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}{t("onboarding.chat.generate")}
-        </button>
+        {ready || generating ? (
+          <button type="button" onClick={() => void generate()} disabled={generating || chat.busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40">
+            {generating ? <LoaderCircle className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}{t("onboarding.chat.generate")}
+          </button>
+        ) : canSkip ? (
+          <button type="button" onClick={() => void generate()} disabled={chat.busy} title={t("onboarding.chat.skipAheadTitle")} className="h-9 rounded-xl px-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline disabled:opacity-40">
+            {t("onboarding.chat.skipAhead")}
+          </button>
+        ) : null}
       </div></div>
       {generating ? (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -138,6 +147,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
             messages={chat.messages}
             busy={chat.busy}
             stage={chat.stage}
+            progress={chat.progress}
             error={chat.error}
             onSend={(text) => void chat.send(text)}
             onInteraction={(interaction, displayText) => void chat.sendInteraction(interaction, displayText)}
@@ -145,9 +155,11 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
             onEditResend={(messageId, text) => void chat.editAndResend(messageId, text)}
             onStop={() => void chat.stop()}
             placeholder={answered ? t("onboarding.chat.placeholderAnswered") : t("onboarding.chat.placeholderStart")}
-            afterMessages={chat.messages.length > 0 ? (
-              <div className="flex justify-center pt-1">
-                <button type="button" onClick={() => void generate()} disabled={generating || chat.busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground disabled:opacity-40">
+            afterMessages={ready && !chat.busy ? (
+              <div className="mx-auto flex w-full max-w-md flex-col items-center gap-2 rounded-2xl border border-primary/25 bg-primary/5 px-5 py-4 text-center">
+                <p className="flex items-center gap-1.5 text-sm font-semibold"><Check className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />{t("onboarding.chat.readyTitle")}</p>
+                <p className="text-xs text-muted-foreground">{t("onboarding.chat.readyBody")}</p>
+                <button type="button" onClick={() => void generate()} disabled={generating} className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground disabled:opacity-40">
                   {generating ? <LoaderCircle className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}{t("onboarding.chat.generate")}
                 </button>
               </div>

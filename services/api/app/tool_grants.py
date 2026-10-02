@@ -29,7 +29,8 @@ PROPOSALS = "proposals"
 EVIDENCE = "evidence"
 PROJECTS = "projects"
 MEMORY = "memory"
-COACH_SCOPES = (READ, FACTS, PROPOSALS, PROJECTS, MEMORY)
+ASK = "ask"  # stage choice cards / the onboarding "ready" signal on the run's own reply (app.chat_ui)
+COACH_SCOPES = (READ, FACTS, PROPOSALS, PROJECTS, MEMORY, ASK)
 GRANT_HEADER = "X-Waypoint-Grant"
 DEFAULT_TTL_SECONDS = 15 * 60
 
@@ -107,6 +108,7 @@ ProposalsGrant = Annotated[HermesToolGrant, Depends(grant_dependency(PROPOSALS))
 EvidenceGrant = Annotated[HermesToolGrant, Depends(grant_dependency(EVIDENCE))]
 ProjectsGrant = Annotated[HermesToolGrant, Depends(grant_dependency(PROJECTS))]
 MemoryGrant = Annotated[HermesToolGrant, Depends(grant_dependency(MEMORY))]
+AskGrant = Annotated[HermesToolGrant, Depends(grant_dependency(ASK))]
 
 
 def student_for(db: Session, grant: HermesToolGrant, claimed: str | None) -> str:

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..hermes import resolve_hermes_selection
 from ..identity import CurrentUser
 from ..models import now
-from ..schemas import HermesProvider
+from ..schemas import ServerChoosesModel
 from .common import Db, iso, loads, require, require_team
 from .events import emit
 from .models import Decision, MessageReaction, TeamMember, TeamMessage
@@ -23,12 +23,10 @@ from .policy import authorize
 router = APIRouter()
 
 
-class MessageCreate(BaseModel):
+class MessageCreate(ServerChoosesModel):
     content: str = Field(min_length=1, max_length=4000)
     reply_to_id: str | None = None
     poll_options: list[str] | None = Field(default=None, max_length=8)
-    provider: HermesProvider | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class MessageEdit(BaseModel):

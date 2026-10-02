@@ -41,6 +41,14 @@ export async function saveModelChoice(provider: HermesProvider, model: string): 
   return publish(result.catalog)
 }
 
+export interface SpeedResult { model: string; first_token?: number; seconds: number; tps?: number; error?: string }
+
+/** Time one tiny prompt on every model of a provider, right now (local-only; uses the server's key). */
+export async function checkModelSpeed(provider: HermesProvider): Promise<SpeedResult[]> {
+  const result = await api<{ results: SpeedResult[] }>("/api/settings/models/speed", { method: "POST", body: JSON.stringify({ provider }) })
+  return result.results
+}
+
 /** Display name of a model id, or the id itself when the catalog is not loaded or does not list it. */
 export function modelLabel(id: string | null | undefined, catalog: ModelCatalog | null = cached): string {
   if (!id) return ""

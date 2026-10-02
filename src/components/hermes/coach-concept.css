@@ -1450,3 +1450,31 @@ html[data-theme="deep-ocean"] .fq {
   color: var(--fq-accent);
   font-variant-numeric: tabular-nums;
 }
+
+/* Live run progress: phase, model, speed, finished steps and the reply as it streams in. */
+.fq .run-progress {
+  min-width: min(100%, 420px);
+}
+
+.fq .run-progress-preview {
+  color: var(--fq-text-soft);
+}
+
+.fq .run-progress-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-inline-start: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  opacity: 0.6;
+  animation: fq-caret 1s steps(2, start) infinite;
+}
+
+@keyframes fq-caret {
+  to { visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fq .run-progress-caret { animation: none; }
+}

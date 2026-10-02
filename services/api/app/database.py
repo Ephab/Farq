@@ -51,6 +51,9 @@ ADDED_COLUMNS = {
     "chat_messages": {
         "metadata_json": "TEXT",
     },
+    "agent_runs": {
+        "ui_json": "TEXT",
+    },
     "teams": {
         "size_limit": "INTEGER",
         "brief_json": "TEXT NOT NULL DEFAULT '{}'",

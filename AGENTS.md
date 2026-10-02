@@ -32,6 +32,9 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 - Learned skills (`<HERMES_HOME>/learned-skills`) are shared by everyone on the gateway and must
   never contain personal details; they can be changed only from the local machine.
 - Connector switches (`disabled_connectors`) are enforced in the internal API routes, not the prompt.
+- `waypoint_ask_question` / `waypoint_ready_to_generate` (`app/chat_ui.py`) only stage UI on the caller's
+  own running AgentRun (grant scope `ask`); it is attached to the reply when the run completes. A question
+  never becomes a fact; only the student's selection does, through the interaction endpoint.
 - Group Projects: every team write emits a `team_events` row in the same transaction; the SSE
   stream, catch-up and replay read only that log. Course instructors see every team except its
   chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and

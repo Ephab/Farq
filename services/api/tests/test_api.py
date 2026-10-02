@@ -53,7 +53,7 @@ def client():
     TEST_DB.unlink(missing_ok=True)
 
 
-def test_hermes_provider_choice_is_allowlisted_and_per_run(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_browser_sent_models_are_ignored_for_the_settings_choice(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     assert resolve_hermes_selection("nim") == (NIM_MODEL, "nvidia")
     calls = []
 
@@ -69,16 +69,17 @@ def test_hermes_provider_choice_is_allowlisted_and_per_run(client: TestClient, m
     monkeypatch.setattr("app.main.run_agent", finish_run)
     thread_id = client.get("/api/demo").json()["thread_id"]
 
-    selected = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Use NIM", "provider": "nim"})
+    # The model is a server setting: a stale tab's provider/model is accepted and dropped.
+    selected = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Use NIM", "provider": "nim", "model": "x"})
     assert selected.status_code == 202
-    assert calls[-1][2] == "nim"
+    assert calls[-1][2:4] == (None, None)
 
     default = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Use the default"})
     assert default.status_code == 202
     assert calls[-1][2] is None
 
     invalid = client.post(f"/api/chat/threads/{thread_id}/messages", json={"content": "Use anything", "provider": "custom"})
-    assert invalid.status_code == 422
+    assert invalid.status_code == 202 and calls[-1][2] is None
 
 
 def test_structured_chat_output_is_validated_and_hidden_from_visible_text():
@@ -375,7 +376,8 @@ def test_quiz_generate_uses_gateway_and_writes_nothing(client: TestClient, monke
     assert response.status_code == 200
     body = response.json()
     assert body["output"] == CANNED_QUIZ
-    assert body["model"] == "gemini-2.5-flash"
+    # The tab's old model is ignored: the run uses the Settings choice (the env default here).
+    assert body["model"] == "gemini-3.8-flash"
     assert body["provider"] == "gemini"
     assert calls["auth"] == "Bearer " + "k" * 64
     assert calls["session"].startswith("quiz-")
@@ -392,11 +394,8 @@ def test_quiz_generate_rejects_bad_input(client: TestClient):
     assert client.post("/api/quiz/generate", headers=headers, json={**base, "source_text": ""}).status_code == 422
     assert client.post("/api/quiz/generate", headers=headers, json={**base, "count": 0}).status_code == 422
     assert client.post("/api/quiz/generate", headers=headers, json={**base, "types": []}).status_code == 422
-    unknown = client.post(
-        "/api/quiz/generate", headers=headers,
-        json={**base, "provider": "gemini", "model": "not-a-model"},
-    )
-    assert unknown.status_code == 422
+    # A stale model from an old tab no longer fails the request; it is simply ignored.
+    assert client.post("/api/quiz/generate", headers=headers, json={**base, "count": 0, "model": "not-a-model"}).status_code == 422
 
 
 def test_quiz_generate_maps_gateway_failure(client: TestClient, monkeypatch: pytest.MonkeyPatch):

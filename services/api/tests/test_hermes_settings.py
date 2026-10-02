@@ -421,3 +421,191 @@ def test_a_rung_that_timed_out_rests_so_the_next_run_falls_back_at_once():
         _cooldown.pop("slow-model", None)
     cool_down("slow-model", "returned an empty answer")
     assert "slow-model" not in _cooldown
+
+
+# --- ask_question / ready tools, live progress, stall fallback ------------------------------------
+
+def _running_run(thread_id: str, message_id: str) -> str:
+    from app.models import AgentRun
+
+    with SessionLocal() as db:
+        run = AgentRun(thread_id=thread_id, user_message_id=message_id, status="running")
+        db.add(run)
+        db.commit()
+        return run.id
+
+
+def test_ask_question_stages_cards_on_the_run_and_lands_on_the_reply(client: TestClient):
+    from app.chat_ui import merge_staged_ui
+    from app.models import AgentRun
+
+    student_id, thread_id = _student(client, "Asker")
+    run_id = _running_run(thread_id, _say(thread_id, "Help me pick a direction"))
+    grant = issue_test_grant(student_id, ("ask",), agent_run_id=run_id)
+    headers = {**INTERNAL, "X-Waypoint-Grant": grant}
+    body = {"user_id": student_id, "question": "Which path fits you?",
+            "options": [{"title": "Machine learning", "description": "Models and data"}, {"title": "Machine learning"}, {"title": "Backend"}]}
+    reply = client.post("/internal/hermes/ask", json=body, headers=headers)
+    assert reply.status_code == 200 and "do not list" in reply.json()["note"]
+    # One option is not a question; neither is an empty ask.
+    assert client.post("/internal/hermes/ask", json={**body, "options": [{"title": "Only"}]}, headers=headers).status_code == 422
+    assert client.post("/internal/hermes/ask", json={"question": "Why?"}, headers=headers).status_code == 422
+
+    with SessionLocal() as db:
+        ui = __import__("json").loads(merge_staged_ui(db.get(AgentRun, run_id), None))
+    options = ui["choice_group"]["options"]
+    assert [item["id"] for item in options] == ["machine-learning", "machine-learning-2", "backend"]
+    assert options[1]["description"] == "Machine learning" and ui["choice_group"]["mode"] == "single"
+
+    # Without the ask scope, or once the run ended, the tool is refused.
+    assert client.post("/internal/hermes/ask", json=body, headers={**INTERNAL, "X-Waypoint-Grant": issue_test_grant(student_id, ("read",), agent_run_id=run_id)}).status_code == 403
+    with SessionLocal() as db:
+        db.get(AgentRun, run_id).status = "completed"
+        db.commit()
+    assert client.post("/internal/hermes/ask", json=body, headers=headers).status_code == 403
+
+
+def test_ready_to_generate_is_onboarding_only(client: TestClient):
+    from app.chat_ui import merge_staged_ui
+    from app.models import AgentRun, StudentProfile
+
+    student_id, thread_id = _student(client, "Ready")
+    run_id = _running_run(thread_id, _say(thread_id, "I think that's everything"))
+    headers = {**INTERNAL, "X-Waypoint-Grant": issue_test_grant(student_id, ("ask",), agent_run_id=run_id)}
+    with SessionLocal() as db:
+        db.get(StudentProfile, student_id).onboarding_status = "done"
+        db.commit()
+    assert client.post("/internal/hermes/onboarding/ready", json={}, headers=headers).status_code == 409
+    with SessionLocal() as db:
+        db.get(StudentProfile, student_id).onboarding_status = "chat"
+        db.commit()
+    assert client.post("/internal/hermes/onboarding/ready", json={}, headers=headers).status_code == 200
+    with SessionLocal() as db:
+        assert __import__("json").loads(merge_staged_ui(db.get(AgentRun, run_id), None))["ready_to_generate"] is True
+
+
+def test_nim_falls_back_to_the_nearest_faster_model_first():
+    from app.hermes import NIM_CHAIN, _nim_order
+
+    ultra, super_, lightning = NIM_CHAIN
+    assert _nim_order(lightning) == [lightning, super_, ultra]
+    assert _nim_order(super_) == [super_, lightning, ultra]
+    assert _nim_order(ultra) == [ultra, super_, lightning]
+
+
+class _Stream:
+    def __init__(self, lines, status_code=200):
+        self.lines, self.status_code = lines, status_code
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def iter_lines(self):
+        yield from self.lines
+
+
+class _EventsClient:
+    """A gateway whose event stream yields `lines` once, then final status `final`."""
+
+    def __init__(self, lines, final):
+        self.lines, self.final, self.opened = lines, final, 0
+
+    def stream(self, *_args, **_kwargs):
+        self.opened += 1
+        return _Stream(self.lines if self.opened == 1 else [])
+
+    def get(self, *_args, **_kwargs):
+        import httpx
+        return httpx.Response(200, json=self.final, request=httpx.Request("GET", "http://gateway"))
+
+
+def _data(event: dict) -> str:
+    return "data: " + __import__("json").dumps(event)
+
+
+def test_event_stream_reports_progress_and_returns_the_answer():
+    from app.hermes import LIVE_PROGRESS, RunProgress, _follow_events
+
+    progress = RunProgress("run-progress-test")
+    progress.model("nvidia/lightning", 0)
+    client = _EventsClient([
+        ": open",
+        _data({"event": "tool.started", "tool": "waypoint_get_student_profile", "seq": 0}),
+        _data({"event": "tool.completed", "tool": "waypoint_get_student_profile", "seq": 1}),
+        _data({"event": "message.delta", "delta": "Hello there. ", "seq": 2}),
+        _data({"event": "message.delta", "delta": "Pick one.\n```waypoint-ui\n{}", "seq": 3}),
+        _data({"event": "run.completed", "seq": 4}),
+    ], {"status": "completed", "output": "Hello there. Pick one."})
+    import time as _time
+    state = _follow_events(client, "http://gateway", "r1", {}, _time.monotonic() + 30, lambda: None, progress)
+    assert state["output"] == "Hello there. Pick one."
+    live = LIVE_PROGRESS["run-progress-test"]
+    assert live["phase"] == "writing" and live["model"] == "nvidia/lightning"
+    assert [step["tool"] for step in live["steps"]] == ["waypoint_get_student_profile"]
+    assert live["preview"] == "Hello there. Pick one.\n" and live["tokens"] > 0
+    progress.done()
+    assert "run-progress-test" not in LIVE_PROGRESS
+
+
+def test_a_silent_model_counts_as_stalled_but_a_long_tool_does_not(monkeypatch):
+    from app import hermes as hermes_module
+
+    clock = iter(range(0, 10_000, 30))
+    monkeypatch.setattr(hermes_module.time, "monotonic", lambda: next(clock))
+    silent = _EventsClient([": keepalive", ": keepalive", ": keepalive"], {"status": "running"})
+    assert hermes_module._follow_events(silent, "http://g", "r", {}, 10_000, lambda: None, None)["status"] == "stalled"
+
+    clock = iter(range(0, 10_000, 30))
+    busy_tool = _EventsClient([_data({"event": "tool.started", "tool": "waypoint_index_folder"}), ": keepalive", ": keepalive",
+                               _data({"event": "run.completed"})], {"status": "completed", "output": "Done"})
+    assert hermes_module._follow_events(busy_tool, "http://g", "r", {}, 10_000, lambda: None, None)["output"] == "Done"
+
+
+def test_a_stalled_rung_moves_on_and_rests_only_briefly(monkeypatch):
+    from app import hermes as hermes_module
+
+    monkeypatch.setattr(hermes_module, "candidate_chain", lambda *_a, **_k: [("slow", "nvidia"), ("quick", "nvidia")])
+    monkeypatch.setattr(hermes_module, "_cancel_gateway_run", lambda *_a, **_k: None)
+    calls = []
+
+    def follow(_client, _base, run_id, *_args):
+        calls.append(run_id)
+        return {"status": "stalled"} if run_id == "run-0" else {"status": "completed", "output": "Answer"}
+    monkeypatch.setattr(hermes_module, "_follow_events", follow)
+
+    class Gateway:
+        posts = 0
+
+        def stream(self):
+            pass
+
+        def post(self, *_args, **_kwargs):
+            import httpx
+            Gateway.posts += 1
+            return httpx.Response(202, json={"run_id": f"run-{Gateway.posts - 1}"}, request=httpx.Request("POST", "http://g"))
+
+    hermes_module._cooldown.pop("slow", None)
+    try:
+        output, model, _ = hermes_module.execute_with_fallback(Gateway(), {"Idempotency-Key": "k"}, {"session_id": "s"}, None, None, 60)
+        assert (output, model, calls) == ("Answer", "quick", ["run-0", "run-1"])
+        rest = hermes_module._cooldown["slow"] - hermes_module.time.monotonic()
+        assert 0 < rest <= 60
+    finally:
+        hermes_module._cooldown.pop("slow", None)
+
+
+def test_speed_check_times_every_model_of_a_provider(client: TestClient, monkeypatch):
+    from app import model_speed
+
+    monkeypatch.setattr(model_speed, "probe", lambda provider, model, key: {"model": model, "first_token": 0.5, "seconds": 1.0, "tps": 40.0})
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-" + "x" * 30)
+    result = client.post("/api/settings/models/speed", json={"provider": "nim"}).json()
+    assert [item["model"] for item in result["results"]] == [item.id for item in model_speed.PROVIDERS["nim"].models]
+    assert client.post("/api/settings/models/speed", json={"provider": "custom"}).status_code == 422
+    monkeypatch.delenv("NVIDIA_API_KEY")
+    assert client.post("/api/settings/models/speed", json={"provider": "nim"}).status_code == 409
+    remote = TestClient(client.app, base_url="http://waypoint.example")
+    assert remote.post("/api/settings/models/speed", json={"provider": "nim"}).status_code == 403

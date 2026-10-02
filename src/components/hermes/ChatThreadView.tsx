@@ -6,7 +6,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, LoaderCircle, MapPin, Mic, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
 import { CoachActivityIcon, type CoachActivity } from "@/components/hermes/CoachActivityIcon"
 import { MarkdownText } from "@/components/hermes/markdown"
-import { splitOptions, type ChatInteractionInput, type ChatMessage } from "@/components/hermes/use-hermes-chat"
+import { splitOptions, type ChatInteractionInput, type ChatMessage, type LiveProgress } from "@/components/hermes/use-hermes-chat"
+import { RunProgressCard } from "@/components/hermes/RunProgress"
 import { useVoiceInput } from "@/components/hermes/use-voice-input"
 import { VoiceWaveform } from "@/components/hermes/VoiceWaveform"
 import { cn } from "@/lib/utils"
@@ -21,6 +22,8 @@ interface ChatThreadViewProps {
   messages: ChatMessage[]
   busy: boolean
   stage: string
+  /** Live phase/tool/speed/reply-so-far while a run is going (null before the first report). */
+  progress?: LiveProgress | null
   error: string | null
   onSend: (text: string) => void
   onInteraction: (interaction: ChatInteractionInput, displayText: string) => void
@@ -61,8 +64,10 @@ export function activityFromStage(stage: string): CoachActivity {
 }
 
 /** Message list + composer in the coach concept language (chat-shell interior). */
-export function ChatThreadView({ messages, busy, stage, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [], dynamicPrompts = [], promptsLoading = false }: ChatThreadViewProps) {
+export function ChatThreadView({ messages, busy, stage, progress = null, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [], dynamicPrompts = [], promptsLoading = false }: ChatThreadViewProps) {
   const { t, fmt } = useI18n()
+  // Re-pin to the bottom as the live card grows (new step, streamed text), not on every tick.
+  const progressSize = progress ? `${progress.value.steps.length}:${progress.value.preview.length >> 6}:${progress.value.notice ? 1 : 0}` : ""
   const display = (value: string) => (isCoachKey(value) ? t(value) : value)
   const formatTime = (iso: string) => {
     const time = parseServerTime(iso)
@@ -126,7 +131,7 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
         pinTimerRef.current = null
       }
     }
-  }, [messages, stage, busy, afterMessages])
+  }, [messages, stage, busy, afterMessages, progressSize])
   useEffect(() => { if (draft) setInput(draft) }, [draft])
 
   // Auto-grow the composer like the concept's fluid textarea.
@@ -395,10 +400,14 @@ export function ChatThreadView({ messages, busy, stage, error, onSend, onInterac
             >
               <div className="message assistant">
                 <p className="message-meta">{t("coach.thread.hermes")}</p>
-                <div className="activity-row" role="status">
-                  <CoachActivityIcon activity={activity} size={20} />
-                  <span>{t(`coach.activity.${activity}`)}</span>
-                </div>
+                {progress ? (
+                  <RunProgressCard progress={progress.value} receivedAt={progress.receivedAt} />
+                ) : (
+                  <div className="activity-row" role="status">
+                    <CoachActivityIcon activity={activity} size={20} />
+                    <span>{t(`coach.activity.${activity}`)}</span>
+                  </div>
+                )}
               </div>
             </div>
           ) : null}

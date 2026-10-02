@@ -24,7 +24,7 @@ from .coop_refresh import router as coop_refresh_router, start_scheduler as star
 from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
-from .hermes import HERMES_API_KEY, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent, saved_choice
+from .hermes import HERMES_API_KEY, HERMES_URL, LIVE_PROGRESS, HermesJsonError, resolve_hermes_selection, run_agent, saved_choice
 from .models import AgentRun, ChatMessage, ChatThread, DataSource, DecisionRecord, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentHermesSettings, StudentMemory, StudentOpportunity, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
 from .opportunities import find_hackathons, mark_seen, normalize_opportunity_operations, opportunity_summary, recompute_student, sync_hackathonat
@@ -42,6 +42,8 @@ from .ownership import OwnedStudent, StreamUser, assert_owner, require_own_messa
 from .tool_grants import EvidenceGrant, FactsGrant, ProposalsGrant, ReadGrant, student_for
 from .hermes_connectors import HackathonsGrant, router as hermes_connectors_router
 from .hermes_skills import apply_learning_setting, router as hermes_skills_router
+from .chat_ui import router as chat_ui_router
+from .model_speed import router as model_speed_router
 from .student_memory import router as student_memory_router
 from .outlook.router import router as outlook_router
 from .outlook.sync import sync_loop as outlook_sync_loop
@@ -80,6 +82,8 @@ app.include_router(suggestions_router)
 app.include_router(connections_router)
 app.include_router(hermes_skills_router)
 app.include_router(student_memory_router)
+app.include_router(chat_ui_router)
+app.include_router(model_speed_router)
 app.include_router(hermes_connectors_router)
 app.add_middleware(
     CORSMiddleware,
@@ -624,6 +628,7 @@ async def upload_source(
 
     The file itself is never stored; only the extracted, redacted evidence is.
     """
+    provider = model = None  # older tabs still send these; the model is the Settings choice
     source = db.get(DataSource, source_id)
     if source is None or source.student_id != student_id:
         raise HTTPException(404, "Source not found")
@@ -1449,7 +1454,8 @@ async def transcribe_voice(audio: UploadFile = File(...)) -> dict:
 @app.get("/api/agent-runs/{run_id}")
 def get_run(run_id: str, db: Db, user: CurrentUser) -> dict:
     run = owned_run(db, run_id, user)
-    return {"id": run.id, "hermes_run_id": run.hermes_run_id, "status": run.status, "stage": run.stage, "error": run.error}
+    return {"id": run.id, "hermes_run_id": run.hermes_run_id, "status": run.status, "stage": run.stage, "error": run.error,
+            "progress": _live_progress(run)}
 
 
 def cancel_run_row(db: Session, run: AgentRun) -> dict:
@@ -1489,13 +1495,22 @@ def cancel_latest_run(thread_id: str, db: Db, user: CurrentUser) -> dict:
     return {"run": cancel_run_row(db, run)}
 
 
+def _live_progress(run: AgentRun) -> dict | None:
+    """What the run is doing right now (phase, tool, model, tokens/s, reply so far); see hermes.RunProgress.
+    `server_now` lets the browser tick elapsed times without trusting its own clock."""
+    live = LIVE_PROGRESS.get(run.id)
+    if live is None or run.status in {"completed", "failed", "cancelled"}:
+        return None
+    return {**live, "server_now": time.time()}
+
+
 def _run_status(run_id: str) -> tuple[str, bool] | None:
     db = SessionLocal()
     try:
         run = db.get(AgentRun, run_id)
         if run is None:
             return None
-        return json.dumps({"status": run.status, "stage": run.stage, "error": run.error}), run.status in {"completed", "failed", "cancelled"}
+        return json.dumps({"status": run.status, "stage": run.stage, "error": run.error, "progress": _live_progress(run)}), run.status in {"completed", "failed", "cancelled"}
     finally:
         db.close()
 

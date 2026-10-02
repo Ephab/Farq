@@ -11,6 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 # Tests stub the Hermes gateway; never let extraction reach a real model API with a developer's keys.
 os.environ["WAYPOINT_DIRECT_EXTRACT"] = "off"
+# Settings > Skills writes the learning switch into HERMES_HOME/config.yaml; never touch the real runtime.
+import tempfile  # noqa: E402
+
+os.environ["WAYPOINT_HERMES_HOME"] = tempfile.mkdtemp(prefix="waypoint-hermes-home-")
 
 OWNED_PREFIXES = ("/api/students/", "/api/chat/threads/", "/api/agent-runs/", "/api/roadmap-proposals/",
                   "/api/projects/", "/api/evaluations/")

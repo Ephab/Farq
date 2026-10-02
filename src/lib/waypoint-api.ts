@@ -3,140 +3,16 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ""
 
 export type HermesProvider = "gemini" | "nim" | "hf" | "openrouter"
 
-const HERMES_PROVIDER_STORAGE_KEY = "waypoint.hermes-provider"
-// Tab-only (sessionStorage) so Waypoint Hermes settings never leak into another
-// tab, never touch .env files, and never touch a system Hermes instance.
-const HERMES_GEMINI_MODEL_STORAGE_KEY = "waypoint.hermes-model-gemini"
-const HERMES_NIM_MODEL_STORAGE_KEY = "waypoint.hermes-model-nim"
-const HERMES_HF_MODEL_STORAGE_KEY = "waypoint.hermes-model-hf"
-const HERMES_OPENROUTER_MODEL_STORAGE_KEY = "waypoint.hermes-model-openrouter"
-const HERMES_API_KEY_STORAGE_KEY = "waypoint.hermes-api-key"
-
-/** Header carrying the tab-only Waypoint Hermes gateway key override to Waypoint API. */
-export const HERMES_API_KEY_HEADER = "X-Hermes-Api-Key"
-
-// Keep in sync with services/api/app/hermes.py allowlists.
-// Order = rate-limit fallback order (see GEMINI_CHAIN in services/api/app/hermes.py).
-export const HERMES_GEMINI_MODELS = [
-  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (default)" },
-  { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
-  { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
-  { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
-  { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite (higher daily limit)" },
-  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
-  { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
-  { id: "gemma-4-31b-it", label: "Gemma 4 31B (no tool calls)" },
-  { id: "gemma-4-26b-a4b-it", label: "Gemma 4 26B (no tool calls)" },
-] as const
-
-// Keep in sync with src/lib/quiz-ai.ts QUIZ_MODELS and the backend allowlist.
-// Order = NIM fallback order (see NIM_CHAIN in services/api/app/hermes.py).
-export const HERMES_NIM_MODELS = [
-  { id: "nvidia/nemotron-3-ultra-550b-a55b", label: "Nemotron 3 Ultra 550B (default)" },
-  { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super 120B" },
-  { id: "nvidia/nemotron-3.5-lightning-30b-a3b", label: "Nemotron 3.5 Lightning 30B (fast)" },
-] as const
-
-// Hugging Face Inference Providers; billed to the HF_TOKEN in the server .env.
-// Order = fallback order after Google, from the 2026-09 smoke test.
-export const HERMES_HF_MODELS = [
-  { id: "deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", label: "DeepSeek V4.1 Flash · DeepInfra (best)" },
-  { id: "google/gemma-4-26B-A4B-it:novita", label: "Gemma 4 26B · Novita" },
-  { id: "openai/gpt-oss-20b:groq", label: "gpt-oss-20b · Groq (fastest)" },
-  { id: "google/gemma-4-26B-A4B-it:deepinfra", label: "Gemma 4 26B · DeepInfra (slow)" },
-  { id: "meta-llama/Llama-3.1-8B-Instruct:nscale", label: "Llama 3.1 8B · nscale (no tools)" },
-] as const
-
-// OpenRouter; billed to OPENROUTER_API_KEY in the server .env (see OPENROUTER_CHAIN in hermes.py).
-export const HERMES_OPENROUTER_MODELS = [
-  { id: "stealth/space-bunny-alpha", label: "Space Bunny Alpha (free, stealth)" },
-] as const
-
-export const DEFAULT_HERMES_GEMINI_MODEL = HERMES_GEMINI_MODELS[0].id
-export const DEFAULT_HERMES_NIM_MODEL = HERMES_NIM_MODELS[0].id
-export const DEFAULT_HERMES_HF_MODEL = HERMES_HF_MODELS[0].id
-export const DEFAULT_HERMES_OPENROUTER_MODEL = HERMES_OPENROUTER_MODELS[0].id
-
-const PROVIDER_MODELS = { gemini: HERMES_GEMINI_MODELS, nim: HERMES_NIM_MODELS, hf: HERMES_HF_MODELS, openrouter: HERMES_OPENROUTER_MODELS } as const
-const PROVIDER_MODEL_KEYS: Record<HermesProvider, string> = {
-  gemini: HERMES_GEMINI_MODEL_STORAGE_KEY, nim: HERMES_NIM_MODEL_STORAGE_KEY, hf: HERMES_HF_MODEL_STORAGE_KEY, openrouter: HERMES_OPENROUTER_MODEL_STORAGE_KEY,
-}
-
-export function modelsFor(provider: HermesProvider): readonly { id: string; label: string }[] {
-  return PROVIDER_MODELS[provider] ?? HERMES_GEMINI_MODELS
-}
-
-/** sessionStorage that never throws: blocked storage (privacy mode) must not break the app. */
-function readSession(key: string): string | null {
-  try { return window.sessionStorage.getItem(key) } catch { return null }
-}
-
-function writeSession(key: string, value: string): void {
-  try { window.sessionStorage.setItem(key, value) } catch { /* storage blocked: this page load only */ }
-}
-
-export function getHermesProvider(): HermesProvider {
-  if (typeof window === "undefined") return "gemini"
-  const saved = readSession(HERMES_PROVIDER_STORAGE_KEY)
-  return saved === "nim" || saved === "hf" || saved === "openrouter" ? saved : "gemini"
-}
-
-export function saveHermesProvider(provider: HermesProvider): void {
-  writeSession(HERMES_PROVIDER_STORAGE_KEY, provider)
-}
-
-function modelKeyFor(provider: HermesProvider): string {
-  return PROVIDER_MODEL_KEYS[provider] ?? HERMES_GEMINI_MODEL_STORAGE_KEY
-}
-
-function defaultModelFor(provider: HermesProvider): string {
-  return modelsFor(provider)[0].id
-}
-
-export function getHermesModel(provider: HermesProvider): string {
-  if (typeof window === "undefined") return defaultModelFor(provider)
-  const options = modelsFor(provider)
-  const saved = readSession(modelKeyFor(provider))
-  if (saved && (options as readonly { id: string }[]).some((m) => m.id === saved)) return saved
-  // Preserve a previously saved custom id so allowlisted backend values keep working.
-  if (saved && saved.trim().length > 0) return saved
-  return defaultModelFor(provider)
-}
-
-export function saveHermesModel(provider: HermesProvider, model: string): void {
-  writeSession(modelKeyFor(provider), model)
-}
-
-/** True when the value is an NVIDIA API key, not a Waypoint gateway key. */
-export function isNvapiKey(key: string): boolean {
-  return key.trim().toLowerCase().startsWith("nvapi")
-}
-
-/** Tab-only Waypoint Hermes gateway key override. Empty string means "use server env". */
-export function getHermesApiKey(): string {
-  if (typeof window === "undefined") return ""
-  try {
-    return window.sessionStorage.getItem(HERMES_API_KEY_STORAGE_KEY) ?? ""
-  } catch {
-    return ""
-  }
-}
-
-export function saveHermesApiKey(key: string): void {
-  writeSession(HERMES_API_KEY_STORAGE_KEY, key)
-}
+// Removed per-tab model/key overrides (sessionStorage) are cleared once so old tabs do not keep them.
+const RETIRED_SESSION_KEYS = [
+  "waypoint.hermes-provider", "waypoint.hermes-model-gemini", "waypoint.hermes-model-nim",
+  "waypoint.hermes-model-hf", "waypoint.hermes-model-openrouter", "waypoint.hermes-api-key",
+]
 
 export function clearLocalWaypointState(): void {
   if (typeof window === "undefined") return
   try {
-    window.sessionStorage.removeItem(HERMES_PROVIDER_STORAGE_KEY)
-    window.sessionStorage.removeItem(HERMES_GEMINI_MODEL_STORAGE_KEY)
-    window.sessionStorage.removeItem(HERMES_NIM_MODEL_STORAGE_KEY)
-    window.sessionStorage.removeItem(HERMES_HF_MODEL_STORAGE_KEY)
-    window.sessionStorage.removeItem(HERMES_OPENROUTER_MODEL_STORAGE_KEY)
-    window.sessionStorage.removeItem(HERMES_API_KEY_STORAGE_KEY)
+    RETIRED_SESSION_KEYS.forEach((key) => window.sessionStorage.removeItem(key))
     window.localStorage.removeItem("waypoint-quiz-library-v1")
     window.localStorage.removeItem("waypoint-nim-key")
     window.localStorage.removeItem("waypoint-theme")
@@ -278,18 +154,6 @@ export function notifyRoadmapChanged(): void {
   window.dispatchEvent(new Event(ROADMAP_CHANGED_EVENT))
 }
 
-/** Provider/model/key for any call that runs Hermes, matching the chat composer.
- *
- * An nvapi key forces the nim provider: the backend routes it onto the NIM
- * ladder (ultra -> super -> lightning) and never forwards it as gateway
- * auth, so it is safe to keep sending it in the header.
- */
-export function hermesRequestParts(): { body: { provider: HermesProvider; model: string }; headers: Record<string, string> } {
-  const key = getHermesApiKey().trim()
-  const provider: HermesProvider = isNvapiKey(key) ? "nim" : getHermesProvider()
-  return { body: { provider, model: getHermesModel(provider) }, headers: key ? { [HERMES_API_KEY_HEADER]: key } : {} }
-}
-
 export type OnboardingStatus = "basics" | "sources" | "review" | "chat" | "generating" | "preview" | "done"
 
 export interface StudentProfile {
@@ -406,15 +270,12 @@ export interface Discipline {
 }
 
 export async function uploadSourceFile(studentId: string, sourceId: string, file: File, options: { background?: boolean } = {}): Promise<DataSourceItem> {
-  const { body, headers } = hermesRequestParts()
   const form = new FormData()
   form.append("file", file)
-  form.append("provider", body.provider)
-  form.append("model", body.model)
   // No JSON content-type: the browser sets the multipart boundary.
   let response: Response
   try {
-    response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload${options.background ? "?background=true" : ""}`, { method: "POST", body: form, headers: { ...identityHeaders(), ...headers } })
+    response = await fetch(`${API_BASE}/api/students/${studentId}/sources/${sourceId}/upload${options.background ? "?background=true" : ""}`, { method: "POST", body: form, headers: identityHeaders() })
   } catch {
     throw new Error(translate("common.networkError"))
   }

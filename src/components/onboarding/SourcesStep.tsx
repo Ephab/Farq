@@ -5,7 +5,7 @@ import { OutlookView } from "@/components/outlook/OutlookView"
 import { useCallback, useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import { AlertCircle, ArrowRight, BookOpen, Briefcase, CheckCircle2, FileText, FolderSearch, Globe, GraduationCap, Info, Link2, LoaderCircle, RotateCcw, Trash2, UserRound, type LucideIcon } from "lucide-react"
-import { api, hermesRequestParts, uploadSourceFile, type DataSourceItem, type Discipline, type EvidenceItem, type SourceKind, type StudentProfile, sourceKindLabel } from "@/lib/waypoint-api"
+import { api, uploadSourceFile, type DataSourceItem, type Discipline, type EvidenceItem, type SourceKind, type StudentProfile, sourceKindLabel } from "@/lib/waypoint-api"
 import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
@@ -284,8 +284,7 @@ function SourceStatusList({ kind, items, studentId, counts, onChange }: { kind: 
       if (file) {
         await uploadSourceFile(studentId, source.id, file, { background: true })
       } else {
-        const { body, headers } = hermesRequestParts()
-        await api(`/api/students/${studentId}/sources/${source.id}/sync?background=true`, { method: "POST", body: JSON.stringify(body), headers })
+        await api(`/api/students/${studentId}/sources/${source.id}/sync?background=true`, { method: "POST", body: "{}" })
       }
     } catch (reason) {
       setRowError(reason instanceof Error ? reason.message : t("onboarding.sources.readFailed"))
@@ -354,8 +353,7 @@ function SourceAction({ kind, studentId, active, onChange, featured = false, com
       if (file) {
         await uploadSourceFile(studentId, source.id, file, { background: true })
       } else {
-        const { body, headers } = hermesRequestParts()
-        await api(`/api/students/${studentId}/sources/${source.id}/sync?background=true`, { method: "POST", body: JSON.stringify(body), headers })
+        await api(`/api/students/${studentId}/sources/${source.id}/sync?background=true`, { method: "POST", body: "{}" })
       }
       setValue("")
     } catch (reason) {

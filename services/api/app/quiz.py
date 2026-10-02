@@ -20,7 +20,7 @@ RUN_TIMEOUT_SECONDS = 180
 
 QUIZ_INSTRUCTIONS = " ".join([
     "You generate study quizzes from lecture slides.",
-    "Load the waypoint-quiz skill and follow it.",
+    "Follow the waypoint-quiz skill included below.",
     "Do not call any tools. Return ONLY a JSON object: {\"questions\": [...]}. No markdown, no prose.",
     "Each question: {\"id\":\"q1\",\"type\":\"mcq|true_false|short_answer\",\"question\":\"...\",\"options\":[...],\"answer\":\"...\",\"explanation\":\"one sentence\",\"source\":\"Slide N or Page N\"}.",
     "Rules: mcq has exactly 4 distinct options with answer matching one option verbatim.",
@@ -85,6 +85,8 @@ def run_quiz(
             model,
             hermes_api_key,
             RUN_TIMEOUT_SECONDS,
+            skills=("waypoint-quiz",),
+            direct=True,
         )
     except HermesJsonError as exc:
         message = "Hermes returned an empty answer — try fewer questions" if "empty answer" in str(exc) else str(exc)

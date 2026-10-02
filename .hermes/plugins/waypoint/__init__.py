@@ -107,7 +107,8 @@ def register(ctx):
         ),
         (
             "waypoint_record_explicit_fact",
-            "Store a fact the student stated directly. Use for chat statements and explicit branch choices; never infer facts.",
+            "Store a fact the student stated directly. Use for chat statements and explicit branch choices; never infer facts. "
+            "Call it once per fact (several in one step are fine); a success reply means it is stored, so never repeat it.",
             {
                 "type": "object",
                 "properties": {
@@ -122,6 +123,34 @@ def register(ctx):
                 "required": ["user_id", "grant", "category", "key", "value", "source_message_id", "explicit"],
             },
             lambda p, **_: request("POST", "/internal/hermes/facts", _body(p), grant=_grant(p)),
+        ),
+        (
+            "waypoint_remember",
+            "Remember one short, non-sensitive sentence about this student for future conversations (how they like to "
+            "learn or be answered, standing context). Only from their own messages; never email, documents or guesses. "
+            "Pass replaces_id to update an outdated memory instead of adding a duplicate.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": USER_ID, "grant": GRANT,
+                    "content": {"type": "string", "description": "One declarative sentence, third person, under 300 characters"},
+                    "category": {"type": "string", "enum": ["preference", "learning", "context", "other"]},
+                    "source_message_id": {"type": "string", "description": "source_message_id from THIS run's header"},
+                    "replaces_id": {"type": "string", "description": "Id of the listed memory this one replaces"},
+                },
+                "required": ["user_id", "grant", "content", "source_message_id"],
+            },
+            lambda p, **_: request("POST", "/internal/hermes/memory", _body(p), grant=_grant(p)),
+        ),
+        (
+            "waypoint_forget",
+            "Forget one of this student's listed memories, e.g. when they ask you to or it is no longer true.",
+            {
+                "type": "object",
+                "properties": {"user_id": USER_ID, "grant": GRANT, "memory_id": {"type": "string"}},
+                "required": ["user_id", "grant", "memory_id"],
+            },
+            lambda p, **_: request("POST", "/internal/hermes/memory/forget", _body(p), grant=_grant(p)),
         ),
         (
             "waypoint_get_student_profile",

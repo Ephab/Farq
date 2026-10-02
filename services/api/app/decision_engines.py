@@ -15,7 +15,7 @@ import importlib.util
 import os
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Callable
 
 import httpx
 
@@ -27,41 +27,21 @@ CLOUD = {"jev", "span"}
 # "laya" = local only (nothing leaves the machine), "auto" = the full chain.
 ENGINE_MODES = {"auto": CHAIN, "jev": ("jev", "span"), "laya": ("laya",)}
 SETTING_KEY = "decision_engine"
-_choice: str | None = None
-
-
 def engine_choice() -> str:
     """Current switch value: persisted in app_settings, else DECISION_ENGINE in the environment, else auto."""
-    global _choice
-    if _choice is None:
-        fallback = os.getenv("DECISION_ENGINE", "").strip().lower()
-        try:
-            from .database import SessionLocal
-            from .models import AppSetting
-            with SessionLocal() as db:
-                row = db.get(AppSetting, SETTING_KEY)
-        except Exception:
-            return fallback if fallback in ENGINE_MODES else "auto"  # table not created yet; do not cache
-        value = row.value if row else fallback
-        _choice = value if value in ENGINE_MODES else "auto"
-    return _choice
+    from .app_settings import get_setting
+
+    value = get_setting(SETTING_KEY) or os.getenv("DECISION_ENGINE", "").strip().lower()
+    return value if value in ENGINE_MODES else "auto"
 
 
 def set_engine_choice(value: str) -> str:
     """Persist the switch; takes effect on the next decision without a restart."""
-    global _choice
+    from .app_settings import set_setting
+
     if value not in ENGINE_MODES:
         raise ValueError("engine must be one of: " + ", ".join(ENGINE_MODES))
-    from .database import SessionLocal
-    from .models import AppSetting
-    with SessionLocal() as db:
-        row = db.get(AppSetting, SETTING_KEY)
-        if row is None:
-            db.add(AppSetting(key=SETTING_KEY, value=value))
-        else:
-            row.value = value
-        db.commit()
-    _choice = value
+    set_setting(SETTING_KEY, value)
     return value
 
 

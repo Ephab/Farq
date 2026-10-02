@@ -54,7 +54,7 @@ SUGGEST_INSTRUCTIONS = " ".join([
 
 EXTEND_INSTRUCTIONS = " ".join([
     "You write new lecture slides that extend an existing deck.",
-    "Load the waypoint-slides skill and follow it.",
+    "Follow the waypoint-slides skill included below.",
     "Do not call any tools. Return ONLY a JSON object: {\"slides\": [...]}. No markdown, no prose.",
     "Each slide: {\"title\":\"...\",\"kicker\":\"...\",\"layout\":\"bullets|steps|two-column|stats|quote|takeaway\","
     "\"bullets\":[\"...\",\"...\"],\"columns\":[{\"heading\":\"...\",\"bullets\":[\"...\"]}],"
@@ -228,7 +228,8 @@ def _run_prompt(
     instructions = SUGGEST_INSTRUCTIONS if kind == "suggest" else EXTEND_INSTRUCTIONS
     try:
         # Pass the browser's own key: run_json_prompt needs it to spot an nvapi key and pick the NIM ladder.
-        output = run_json_prompt(f"slides-{kind}", prompt, instructions, provider, model, hermes_api_key, RUN_TIMEOUT_SECONDS)
+        output = run_json_prompt(f"slides-{kind}", prompt, instructions, provider, model, hermes_api_key, RUN_TIMEOUT_SECONDS,
+                                 skills=() if kind == "suggest" else ("waypoint-slides",), direct=True)
     except HermesJsonError as exc:
         message = "Hermes returned an empty answer — try a smaller deck" if "empty answer" in str(exc) else str(exc)
         raise SlidesRunError(message, status=exc.status) from exc

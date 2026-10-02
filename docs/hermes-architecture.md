@@ -110,6 +110,22 @@ selected. Reusing a category/key supersedes the old fact without erasing its aud
 This prevents fuzzy agent memory from becoming the only record of courses, achievements,
 strengths, weaknesses, or career direction.
 
+Hermes' built-in memory (MEMORY.md/USER.md) is disabled because it is one file per gateway home,
+shared by every student and team. Per-student memory is `StudentMemory` in SQLite
+(`app/student_memory.py`): short notes injected into that student's coach and onboarding
+instructions, written by Hermes only through `waypoint_remember`/`waypoint_forget` under a per-run
+grant and citing the student's own message, and fully editable in Settings > Memory. These notes are
+supplemental; they never become StudentFacts and are never given to team runs.
+
+Skills: built-in `waypoint-*` skills are inlined into each run's instructions by
+`app/hermes_skills.py`. Learned skills (written by Hermes with `skill_manage` when learning is on)
+live in `<HERMES_HOME>/learned-skills`, are shared across students, must not contain personal
+details, and can be archived or deleted from Settings on the local machine. Connectors (Blackboard,
+hackathons, co-op, Outlook) are per-student switches enforced in the internal API routes.
+
+The provider and model are a single server-side choice (`app_settings.hermes_model`), set in
+Settings; browsers send no model or key.
+
 ## Onboarding and the first roadmap
 
 A new student is created by `POST /api/students` with an empty v0 roadmap. Onboarding then runs:

@@ -24,8 +24,8 @@ from .coop_refresh import router as coop_refresh_router, start_scheduler as star
 from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
-from .hermes import HERMES_API_KEY, HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent
-from .models import AgentRun, ChatMessage, ChatThread, DataSource, DecisionRecord, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentOpportunity, StudentProfile, now, uid
+from .hermes import HERMES_API_KEY, HERMES_URL, HermesJsonError, resolve_hermes_selection, run_agent, saved_choice
+from .models import AgentRun, ChatMessage, ChatThread, DataSource, DecisionRecord, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentHermesSettings, StudentMemory, StudentOpportunity, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
 from .opportunities import find_hackathons, mark_seen, normalize_opportunity_operations, opportunity_summary, recompute_student, sync_hackathonat
 from .pipeline.brief_step import readiness as readiness_for
@@ -38,8 +38,11 @@ from .roadmaps import apply_operations
 from .projects import router as projects_router
 from .identity import CurrentUser, User, resolve_user, router as identity_router
 from .internal_auth import require_internal
-from .ownership import OwnedStudent, StreamUser, assert_owner
+from .ownership import OwnedStudent, StreamUser, assert_owner, require_own_message
 from .tool_grants import EvidenceGrant, FactsGrant, ProposalsGrant, ReadGrant, student_for
+from .hermes_connectors import HackathonsGrant, router as hermes_connectors_router
+from .hermes_skills import apply_learning_setting, router as hermes_skills_router
+from .student_memory import router as student_memory_router
 from .outlook.router import router as outlook_router
 from .outlook.sync import sync_loop as outlook_sync_loop
 from .suggestions import router as suggestions_router
@@ -75,6 +78,9 @@ app.include_router(coop_router)
 app.include_router(coop_refresh_router)
 app.include_router(suggestions_router)
 app.include_router(connections_router)
+app.include_router(hermes_skills_router)
+app.include_router(student_memory_router)
+app.include_router(hermes_connectors_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")],
@@ -226,6 +232,11 @@ async def startup() -> None:
         seed_coop_catalog(db)
     finally:
         db.close()
+    try:
+        # Provisioning re-copies config.yaml on every launch; re-apply Settings > Skills to it.
+        apply_learning_setting()
+    except OSError:
+        logger.warning("Could not apply the skill-learning setting to the Hermes runtime config", exc_info=True)
     global _opportunity_sync_task
     global _outlook_sync_task
     start_coop_scheduler()  # co-op refresh runs from app start, independent of the hackathon sync
@@ -291,7 +302,8 @@ def health() -> dict:
     db = SessionLocal()
     try: decisions = decision_status(db)
     finally: db.close()
-    return {"status": "ok", "database": "ready", "agent": agent, "decisions": decisions, "started_at": STARTED_AT, "model": HERMES_MODEL, "provider": HERMES_PROVIDER}
+    provider, model = saved_choice()
+    return {"status": "ok", "database": "ready", "agent": agent, "decisions": decisions, "started_at": STARTED_AT, "model": model, "provider": provider}
 
 
 @app.get("/api/decisions/status")
@@ -364,6 +376,8 @@ def reset_demo(_body: ResetInput, db: Db) -> dict:
     db.execute(delete(RoadmapProposal).where(RoadmapProposal.student_id == DEMO_STUDENT_ID))
     db.execute(delete(StudentOpportunity).where(StudentOpportunity.student_id == DEMO_STUDENT_ID))
     db.execute(delete(StudentFact).where(StudentFact.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(StudentMemory).where(StudentMemory.student_id == DEMO_STUDENT_ID))
+    db.execute(delete(StudentHermesSettings).where(StudentHermesSettings.student_id == DEMO_STUDENT_ID))
     db.execute(delete(EvidenceItem).where(EvidenceItem.student_id == DEMO_STUDENT_ID))
     db.execute(delete(DataSource).where(DataSource.student_id == DEMO_STUDENT_ID))
     db.execute(delete(ChatThread).where(ChatThread.student_id == DEMO_STUDENT_ID))
@@ -1604,7 +1618,7 @@ def internal_context(student_id: str, db: Db, grant: ReadGrant) -> dict:
 
 
 @app.get("/internal/hermes/students/{student_id}/hackathons")
-def internal_hackathons(student_id: str, db: Db, grant: ReadGrant, query: str = "", limit: int = 5) -> dict:
+def internal_hackathons(student_id: str, db: Db, grant: HackathonsGrant, query: str = "", limit: int = 5) -> dict:
     return find_hackathons(db, student_for(db, grant, student_id), query, max(1, min(limit, 5)))
 
 
@@ -1621,6 +1635,9 @@ def internal_roadmap(student_id: str, db: Db, grant: ReadGrant) -> dict:
     return _roadmap_dict(db, student_for(db, grant, student_id))
 
 
+FACT_RECORDED_NOTE = "Stored. Do not record this fact again in this run; continue with your reply."
+
+
 @app.post("/internal/hermes/facts")
 def record_fact(body: FactCreate, db: Db, grant: FactsGrant) -> dict:
     if not body.explicit:
@@ -1628,19 +1645,22 @@ def record_fact(body: FactCreate, db: Db, grant: FactsGrant) -> dict:
     student = require_student(db, student_for(db, grant, body.user_id))
     if body.source_message_id:
         # A fact must point at something the student actually said in their own thread.
-        source = db.get(ChatMessage, body.source_message_id)
-        thread = db.get(ChatThread, source.thread_id) if source is not None else None
-        if source is None or source.role != "user" or thread is None or thread.student_id != student.id:
-            raise HTTPException(422, "source_message_id must be one of this student's own messages")
+        require_own_message(db, student.id, body.source_message_id)
     existing = db.scalars(select(StudentFact).where(StudentFact.student_id == student.id, StudentFact.category == body.category, StudentFact.key == body.key, StudentFact.active.is_(True))).all()
+    value_json = json.dumps(body.value)
+    same = next((fact for fact in existing if fact.value_json.casefold() == value_json.casefold()), None)
+    if same is not None:
+        # Models re-sent the same fact up to five times a turn when the reply did not say it was done;
+        # each copy cost a full model round trip and churned the profile. Recording is idempotent.
+        return {"success": True, "fact_id": same.id, "already_recorded": True, "note": FACT_RECORDED_NOTE}
     for fact in existing:
         fact.active = False
-    fact = StudentFact(student_id=student.id, category=body.category, key=body.key, value_json=json.dumps(body.value), source_message_id=body.source_message_id, source_kind=body.source_kind, confidence=100)
+    fact = StudentFact(student_id=student.id, category=body.category, key=body.key, value_json=value_json, source_message_id=body.source_message_id, source_kind=body.source_kind, confidence=100)
     db.add(fact)
     db.flush()
     recompute_student(db, student.id)
     db.commit()
-    return {"success": True, "fact_id": fact.id}
+    return {"success": True, "fact_id": fact.id, "note": FACT_RECORDED_NOTE}
 
 
 @app.get("/internal/hermes/students/{student_id}/profile")

@@ -1,5 +1,5 @@
 import type { slides as slidesCatalog } from "../locales/en/slides";
-import { API_BASE, formatErrorDetail, hermesRequestParts, identityHeaders } from "./waypoint-api";
+import { API_BASE, formatErrorDetail, identityHeaders } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // slides-ai.ts — AI backbone for slide extension (mirrors quiz-ai.ts).
@@ -285,16 +285,14 @@ async function postSlides(
 ): Promise<{ output: string; model: string; provider: string }> {
   let res: Response;
   try {
-    // The tab's Hermes provider/model and key, exactly like the coach (nvapi keys pick NIM).
-    const hermes = hermesRequestParts();
+    // No model in the request: the server runs the Settings choice, like the coach.
     res = await fetch(`${API_BASE}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...identityHeaders(),
-        ...hermes.headers,
       },
-      body: JSON.stringify({ ...hermes.body, ...body }),
+      body: JSON.stringify(body),
       signal,
     });
   } catch (e) {

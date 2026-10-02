@@ -7,7 +7,9 @@ import { EvidenceReview } from "@/components/onboarding/EvidenceReview"
 import { OnboardingChat } from "@/components/onboarding/OnboardingChat"
 import { RoadmapPreview } from "@/components/onboarding/RoadmapPreview"
 import { SourcesStep } from "@/components/onboarding/SourcesStep"
-import { ApiError, DEMO_STUDENT_ID, api, getCurrentStudentId, getHermesApiKey, getHermesModel, getHermesProvider, hasChosenStudent, isNvapiKey, modelsFor, saveHermesApiKey, saveHermesModel, saveHermesProvider, setCurrentStudentId, type HermesProvider, type OnboardingStatus, type StudentProfile } from "@/lib/waypoint-api"
+import { ModelPicker } from "@/components/model-picker"
+import { modelLabel, useModelCatalog } from "@/lib/models"
+import { ApiError, DEMO_STUDENT_ID, api, getCurrentStudentId, hasChosenStudent, setCurrentStudentId, type OnboardingStatus, type StudentProfile } from "@/lib/waypoint-api"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n/context"
 
@@ -35,37 +37,8 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
   const [stepError, setStepError] = useState<string | null>(null)
   const onDoneRef = useRef(onDone)
   useEffect(() => { onDoneRef.current = onDone }, [onDone])
-  const [apiKey, setApiKey] = useState(getHermesApiKey())
-  const [showKey, setShowKey] = useState(false)
-  // Provider/model live here (not just footer Settings) so a saturated model
-  // can be switched mid-onboarding without leaving the flow.
-  const [hermesProvider, setHermesProvider] = useState<HermesProvider>(() => initialHermesProvider())
-  const [hermesModel, setHermesModel] = useState<string>(() => getHermesModel(initialHermesProvider()))
-  const modelOptions = modelsFor(hermesProvider)
-  const modelChoices =
-    hermesModel && !modelOptions.some((m) => m.id === hermesModel)
-      ? [{ id: hermesModel, label: hermesModel }, ...modelOptions]
-      : modelOptions
-
-  const onKeyChange = (value: string) => {
-    setApiKey(value)
-    saveHermesApiKey(value.trim())
-    // An nvapi key only works on NVIDIA: follow it automatically.
-    if (isNvapiKey(value)) {
-      setHermesProvider("nim")
-      saveHermesProvider("nim")
-      setHermesModel(getHermesModel("nim"))
-    }
-  }
-  const onProviderChange = (provider: HermesProvider) => {
-    setHermesProvider(provider)
-    saveHermesProvider(provider)
-    setHermesModel(getHermesModel(provider))
-  }
-  const onModelChange = (model: string) => {
-    setHermesModel(model)
-    saveHermesModel(hermesProvider, model)
-  }
+  // The model picker stays reachable here so a saturated model can be switched mid-onboarding.
+  const selectedModel = useModelCatalog().catalog?.selected.model
 
   const load = useCallback(async () => {
     if (!hasChosenStudent()) { setLoading(false); return }
@@ -152,24 +125,9 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
       <div className="border-b border-border bg-muted/40 px-4 py-2 sm:px-8">
         <details className="mx-auto w-full max-w-4xl">
           <summary className="cursor-pointer text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-            {hermesProvider === "gemini" && hermesModel === modelOptions[0].id ? t("onboarding.advanced.summary") : t("onboarding.advanced.summaryModel", { model: modelChoices.find((m) => m.id === hermesModel)?.label ?? hermesModel })}<span className="underline">{t("onboarding.advanced.toggle")}</span>
+            {t("onboarding.advanced.summaryModel", { model: modelLabel(selectedModel) || "Hermes" })}<span className="underline">{t("onboarding.advanced.toggle")}</span>
           </summary>
-          <div className="flex w-full flex-wrap items-center gap-2 pt-2">
-          <label htmlFor="onboarding-hermes-provider" className="sr-only">{t("onboarding.advanced.provider")}</label>
-          <select id="onboarding-hermes-provider" value={hermesProvider} onChange={(event) => onProviderChange(event.target.value as HermesProvider)} className="h-8 rounded-lg border border-border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" aria-label={t("onboarding.advanced.provider")}>
-            <option value="gemini">Gemini</option>
-            <option value="nim">NVIDIA</option>
-            <option value="hf">Hugging Face</option>
-            <option value="openrouter">OpenRouter</option>
-          </select>
-          <label htmlFor="onboarding-hermes-model" className="sr-only">{t("onboarding.advanced.model")}</label>
-          <select id="onboarding-hermes-model" value={hermesModel} onChange={(event) => onModelChange(event.target.value)} className="h-8 max-w-44 rounded-lg border border-border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" aria-label={t("onboarding.advanced.model")}>
-            {modelChoices.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
-          <label htmlFor="onboarding-hermes-key" className="sr-only">{t("onboarding.advanced.apiKey")}</label>
-          <input id="onboarding-hermes-key" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => onKeyChange(event.target.value)} placeholder={t("onboarding.advanced.keyPlaceholder")} dir={apiKey ? "ltr" : undefined} autoComplete="off" spellCheck={false} className="h-8 min-w-36 flex-1 rounded-lg border border-border bg-background px-2.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring" />
-          <button type="button" onClick={() => setShowKey((v) => !v)} aria-label={showKey ? t("onboarding.advanced.hideKey") : t("onboarding.advanced.showKey")} className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{showKey ? t("onboarding.advanced.hide") : t("onboarding.advanced.show")}</button>
-          </div>
+          <div className="pt-2"><ModelPicker compact /></div>
         </details>
       </div>
       {stepError ? <p role="alert" className="border-b border-border bg-destructive/5 px-4 py-2 text-center text-xs text-destructive sm:px-8">{stepError}</p> : null}
@@ -182,10 +140,6 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
       </main>
     </div>
   )
-}
-
-function initialHermesProvider(): HermesProvider {
-  return isNvapiKey(getHermesApiKey()) ? "nim" : getHermesProvider()
 }
 
 interface SavedStudent { student_id: string; display_name: string; onboarding_status: OnboardingStatus; created_at: string | null }

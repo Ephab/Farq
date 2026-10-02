@@ -1,9 +1,10 @@
 "use client"
 
-import { Database, LoaderCircle, Plug, RotateCcw, Settings, SlidersHorizontal, UserPlus, Users, X } from "lucide-react"
+import { Brain, Cable, Database, KeyRound, LoaderCircle, RotateCcw, Settings, SlidersHorizontal, Sparkles, UserPlus, Users, X } from "lucide-react"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { ConnectionsPanel } from "@/components/connections-panel"
+import { ConnectorsSection, MemorySection, SkillsSection } from "@/components/hermes-settings"
 import { api, clearLocalWaypointState, setCurrentStudentId } from "@/lib/waypoint-api"
 import { getActingUserId, setActingUserId } from "@/lib/teams-api"
 import { useTheme } from "@/lib/theme-context"
@@ -16,11 +17,14 @@ import { LOCALES, type Locale } from "@/lib/i18n/core"
 // Each language is named in itself, so a reader can find theirs whatever the UI language is.
 const LOCALE_NAMES: Record<Locale, string> = { en: "English", ar: "العربية" }
 
-type Section = "general" | "connections" | "data"
-const SECTIONS: { id: Section; icon: typeof Settings }[] = [
-  { id: "general", icon: SlidersHorizontal },
-  { id: "connections", icon: Plug },
-  { id: "data", icon: Database },
+type Section = "general" | "connections" | "memory" | "skills" | "connectors" | "data"
+const SECTIONS: { id: Section; icon: typeof Settings; render: () => ReactNode }[] = [
+  { id: "general", icon: SlidersHorizontal, render: () => <GeneralSection /> },
+  { id: "connections", icon: KeyRound, render: () => <ConnectionsPanel /> },
+  { id: "memory", icon: Brain, render: () => <MemorySection /> },
+  { id: "skills", icon: Sparkles, render: () => <SkillsSection /> },
+  { id: "connectors", icon: Cable, render: () => <ConnectorsSection /> },
+  { id: "data", icon: Database, render: () => <DataSection /> },
 ]
 
 /** The sidebar gear. Settings open as one roomy dialog, portalled to the page root so no
@@ -103,7 +107,7 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
             </button>
           </div>
           <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${section}`} key={section} className="wp-view min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-8 sm:py-6">
-            {section === "general" ? <GeneralSection /> : section === "connections" ? <ConnectionsPanel /> : <DataSection />}
+            {SECTIONS.find((item) => item.id === section)?.render()}
           </div>
         </div>
       </div>

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app import connections, database, decision_engines
+from app import app_settings, connections, database, decision_engines
 from app.models import AppSetting
 
 KEY = "sk-test-abcdefghijklmnop1234"
@@ -24,7 +24,7 @@ def env(tmp_path, monkeypatch):
     test_engine = create_engine(f"sqlite:///{(tmp_path / 'db.sqlite').as_posix()}")
     AppSetting.metadata.create_all(test_engine, tables=[AppSetting.__table__])
     monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=test_engine, expire_on_commit=False))
-    monkeypatch.setattr(decision_engines, "_choice", None)
+    monkeypatch.setattr(app_settings, "_cache", {})
     return path
 
 
@@ -117,7 +117,7 @@ def test_engine_switch_persists_and_narrows_the_chain(client, monkeypatch):
     assert payload["decision_engine"]["choice"] == "jev"
     selected = {e["id"]: e["selected"] for e in payload["decision_engine"]["engines"]}
     assert selected == {"jev": True, "span": True, "laya": False}
-    monkeypatch.setattr(decision_engines, "_choice", None)  # a fresh process reads the persisted value
+    app_settings.forget_cached_settings()  # a fresh process reads the persisted value
     assert decision_engines.engine_choice() == "jev"
 
 
@@ -155,18 +155,29 @@ def test_laya_mode_skips_cloud(client, monkeypatch):
     assert decision_engines.ask_chain("s", {}).engine == "laya"
 
 
-def test_hermes_model_writes_provider_and_model_never_the_gateway_key(client, env):
+def test_hermes_model_is_saved_live_and_never_touches_env(client, env):
+    from app.hermes import resolve_hermes_selection
+
     env.write_text(env.read_text() + "HERMES_API_KEY=" + "g" * 40 + "\n")
+    before = env.read_text()
     status = client.get("/api/settings/connections").json()["hermes"]
     assert set(status) == {"provider", "model", "key_connection", "key_env"}
     response = client.put("/api/settings/hermes-model", json={"provider": "nim", "model": "nvidia/nemotron-3-super-120b-a12b"})
-    assert response.status_code == 200 and response.json()["hermes"]["key_env"] == "NVIDIA_API_KEY"
-    values = connections.read_env_values(env)
-    assert values["HERMES_PROVIDER"] == "nvidia" and values["HERMES_MODEL"] == "nvidia/nemotron-3-super-120b-a12b"
-    assert values["HERMES_API_KEY"] == "g" * 40
+    assert response.status_code == 200 and response.json()["apply"] == "live"
+    assert response.json()["hermes"] == {"provider": "nim", "model": "nvidia/nemotron-3-super-120b-a12b",
+                                         "key_connection": "nvidia", "key_env": "NVIDIA_API_KEY"}
+    # The next run without its own choice uses it at once; .env (and so the runner's restart watch) is untouched.
+    assert resolve_hermes_selection(None, None) == ("nvidia/nemotron-3-super-120b-a12b", "nvidia")
+    assert env.read_text() == before
+    catalog = client.get("/api/settings/models").json()
+    assert catalog["selected"]["model"] == "nvidia/nemotron-3-super-120b-a12b"
+    nim = next(p for p in catalog["providers"] if p["id"] == "nim")
+    assert nim["key_env"] == "NVIDIA_API_KEY" and nim["models"][0]["note"]
     assert client.put("/api/settings/hermes-model", json={"provider": "gemini", "model": "nope"}).status_code == 422
     assert client.put("/api/settings/hermes-model", json={"provider": "other"}).status_code == 422
     assert client.put("/api/settings/hermes-model", json={"provider": "hf"}, headers={"Origin": "https://evil.example"}).status_code == 403
+    client.put("/api/settings/hermes-model", json={"provider": "gemini"})
+    assert resolve_hermes_selection(None, None) == ("gemini-3.8-flash", "gemini")
 
 
 def test_runner_restarts_only_processes_that_read_the_changed_keys():

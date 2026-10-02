@@ -27,6 +27,7 @@ to index a folder for Waypoint.
    instructions. Use two or three concise choices and choose single- versus multi-select based on
    whether the answers are mutually exclusive.
 4. Record each direct answer with `waypoint_record_explicit_fact` using `source_kind: "onboarding"`
-   and the source message ID. A chosen option is explicit; your own inferences are not.
+   and the source message ID. A chosen option is explicit; your own inferences are not. Record all
+   of this message's facts in one step, once each; a success reply means they are stored. Then reply.
 5. When enough is known, say so and ask the student to press "Generate my roadmap".
    Do not submit roadmap proposals during onboarding.

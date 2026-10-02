@@ -88,6 +88,8 @@ def generate_stage_nodes(
             provider=hermes.get("provider"),
             model=hermes.get("model"),
             hermes_api_key=hermes.get("key"),
+            skills=("waypoint-roadmap-builder",),
+            direct=True,
         )
         try:
             raw = parse_json_output(output).get("nodes", [])

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, getCurrentStudentId, getHermesModel, getHermesProvider, modelsFor } from "@/lib/waypoint-api";
+import { getCurrentStudentId } from "@/lib/waypoint-api";
+import { modelLabel, useModelCatalog } from "@/lib/models";
 import { extractSource } from "@/lib/quiz-extract";
 import {
   combineDeckTexts,
@@ -40,15 +41,6 @@ export interface DeckVisuals {
   error?: string;
 }
 
-/** The model this tab picked in Settings or onboarding, when it is not the server default. */
-function tabModelLabel(): string | null {
-  const provider = getHermesProvider();
-  const model = getHermesModel(provider);
-  const options = modelsFor(provider);
-  if (provider === "gemini" && model === options[0].id) return null;
-  return options.find((option) => option.id === model)?.label ?? model;
-}
-
 export function SlidesView() {
   const { t } = useI18n();
   /** Translate a library error when it carries a key; server-supplied text passes through. */
@@ -63,7 +55,8 @@ export function SlidesView() {
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hermesModel, setHermesModel] = useState({ id: "" });
+  // Raw infra ids (nvidia/…) mean nothing to students: show the catalog's human label.
+  const selectedModel = useModelCatalog().catalog?.selected.model;
 
   const [topics, setTopics] = useState<SuggestedTopic[]>([]);
   const [topicsLoading, setTopicsLoading] = useState(false);
@@ -108,20 +101,6 @@ export function SlidesView() {
   useEffect(() => {
     selectedDeckRef.current = selectedDeckId;
   }, [selectedDeckId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    api<{ model?: string }>("/api/health")
-      .then((health) => {
-        if (cancelled || !health.model) return;
-        // Raw infra ids (nvidia/…) mean nothing to students: show a human label.
-        setHermesModel({ id: health.model });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   /** Stop an in-flight extension: its slides belong to the deck it was started for. */
   const cancelExtend = useCallback(() => {
@@ -517,7 +496,7 @@ export function SlidesView() {
 
   return (
     <SlidesHome
-      modelLabel={tabModelLabel() ?? (hermesModel.id ? t("slides.modelDefault") : "Hermes")}
+      modelLabel={selectedModel ? modelLabel(selectedModel) : "Hermes"}
       decks={library.decks}
       selectedDeckId={selectedDeckId}
       onSelectDeck={handleSelectDeck}

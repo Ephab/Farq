@@ -27,6 +27,33 @@ def restart_targets(old: dict[str, str], new: dict[str, str], restartable=("api"
 
 
 RETIRED_SKILLS = ("onboarding", "project-coach", "quiz", "slides", "student-coach", "team-coach")
+# Hermes seeds ~60 general skills (iMessage, Apple Notes, X, devops...) into a new home and lists every
+# one in each run's system prompt. Waypoint exposes none of their tools, so the runtime opts out with
+# this marker (Hermes then seeds only its essential `hermes-agent` skill) and provisioning drops the
+# copies an earlier sync left behind.
+NO_BUNDLED_SKILLS_MARKER = ".no-bundled-skills"
+ESSENTIAL_SKILLS = {"hermes-agent"}
+
+
+def prune_bundled_skills(skills: Path) -> list[str]:
+    """Remove skill folders Hermes recorded in its bundled manifest; never Waypoint or learned skills."""
+    manifest = skills / ".bundled_manifest"
+    if not manifest.is_file():
+        return []
+    bundled = {line.split(":", 1)[0].strip() for line in manifest.read_text(encoding="utf-8").splitlines() if ":" in line}
+    bundled -= ESSENTIAL_SKILLS
+    removed = []
+    for skill_md in sorted(skills.rglob("SKILL.md")):
+        folder = skill_md.parent
+        if folder.name in bundled and not folder.name.startswith("waypoint-") and folder.exists():
+            if folder.resolve().is_relative_to(skills.resolve()):
+                shutil.rmtree(folder)
+                removed.append(folder.name)
+    # Category folders (apple/, creative/, ...) left with no skill inside are leftovers too.
+    for category in sorted(path for path in skills.iterdir() if path.is_dir() and not path.name.startswith(".")):
+        if not category.name.startswith("waypoint-") and not any(category.rglob("SKILL.md")):
+            shutil.rmtree(category)
+    return removed
 
 
 def executable(name: str) -> str | None:
@@ -46,6 +73,9 @@ def provision(root: Path = ROOT, runtime: Path | None = None):
     home.mkdir(parents=True, exist_ok=True)
     for filename in ("config.yaml", "SOUL.md"):
         shutil.copy2(root / "services/hermes" / filename, home / filename)
+    (home / NO_BUNDLED_SKILLS_MARKER).write_text("Waypoint runtime: bundled Hermes skills are not used.\n", encoding="utf-8")
+    if (home / "skills").is_dir():
+        prune_bundled_skills(home / "skills")
     # Copies from before the Farq -> Waypoint rename would load beside the new plugin/skills.
     retired = [home / "plugins/farq"] + [home / "skills" / f"farq-{name}" for name in RETIRED_SKILLS]
     for stale in retired:

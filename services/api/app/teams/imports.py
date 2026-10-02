@@ -231,7 +231,8 @@ def normalise_rows(raw) -> list[dict]:
 def extract_rows(text: str, provider: str | None, model: str | None, key: str | None) -> list[dict]:
     prompt = f"--- DOCUMENT START ---\n{text}\n--- DOCUMENT END ---"
     try:
-        output = run_json_prompt("teamimport", prompt, INSTRUCTIONS, provider, model, key)
+        output = run_json_prompt("teamimport", prompt, INSTRUCTIONS, provider, model, key,
+                                 skills=("waypoint-project-import",), direct=True)
         rows = normalise_rows(parse_json_output(output).get("rows"))
     except HermesJsonError as exc:
         raise SourceError(str(exc), status=exc.status) from exc

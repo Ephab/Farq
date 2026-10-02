@@ -28,7 +28,8 @@ FACTS = "facts"
 PROPOSALS = "proposals"
 EVIDENCE = "evidence"
 PROJECTS = "projects"
-COACH_SCOPES = (READ, FACTS, PROPOSALS, PROJECTS)
+MEMORY = "memory"
+COACH_SCOPES = (READ, FACTS, PROPOSALS, PROJECTS, MEMORY)
 GRANT_HEADER = "X-Waypoint-Grant"
 DEFAULT_TTL_SECONDS = 15 * 60
 
@@ -105,6 +106,7 @@ FactsGrant = Annotated[HermesToolGrant, Depends(grant_dependency(FACTS))]
 ProposalsGrant = Annotated[HermesToolGrant, Depends(grant_dependency(PROPOSALS))]
 EvidenceGrant = Annotated[HermesToolGrant, Depends(grant_dependency(EVIDENCE))]
 ProjectsGrant = Annotated[HermesToolGrant, Depends(grant_dependency(PROJECTS))]
+MemoryGrant = Annotated[HermesToolGrant, Depends(grant_dependency(MEMORY))]
 
 
 def student_for(db: Session, grant: HermesToolGrant, claimed: str | None) -> str:

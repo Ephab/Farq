@@ -8,7 +8,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 function run(signal = new AbortController().signal) {
   const callbacks = { onPlan: vi.fn(), onStage: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
-  return { callbacks, result: streamStagedRoadmap("student", { provider: "gemini", model: "test" }, {}, signal, callbacks) }
+  return { callbacks, result: streamStagedRoadmap("student", signal, callbacks) }
 }
 
 describe("staged generation error localization", () => {

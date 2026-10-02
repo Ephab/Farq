@@ -397,3 +397,31 @@ class AppSetting(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class StudentMemory(Base):
+    """Something Hermes (or the student) chose to remember about one student across conversations.
+
+    Private to that student and supplemental: it never becomes a StudentFact, never reaches a team
+    run, and the student can read, edit and delete every entry in Settings > Memory."""
+    __tablename__ = "student_memories"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    content: Mapped[str] = mapped_column(String(400))
+    # preference | learning | context | other
+    category: Mapped[str] = mapped_column(String(24), default="other")
+    # hermes | student
+    origin: Mapped[str] = mapped_column(String(16), default="hermes")
+    source_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class StudentHermesSettings(Base):
+    """Per-student switches for what Hermes may remember and which Waypoint connectors it may read."""
+    __tablename__ = "student_hermes_settings"
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), primary_key=True)
+    memory_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Connector ids the student turned off for Hermes (see app.hermes_connectors.CONNECTORS).
+    connectors_off_json: Mapped[str] = mapped_column(Text, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

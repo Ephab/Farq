@@ -1,7 +1,6 @@
 import { useRef, useState } from "react"
 import { ArrowUp, Copy, LoaderCircle, Sparkles, X } from "lucide-react"
 
-import { hermesRequestParts } from "@/lib/waypoint-api"
 import { outlookApi } from "@/lib/outlook-api"
 import { useI18n } from "@/lib/i18n/context"
 
@@ -31,9 +30,8 @@ export function EmailQuestion({ ids }: { ids: string[] }) {
   async function ask() {
     if (!ready) return
     setBusy(true); setError(""); setAnswer(null); setCopied(false)
-    const { body, headers } = hermesRequestParts()
     try {
-      setAnswer(await outlookApi<Answer>("/chat", { method: "POST", headers, body: JSON.stringify({ ...body, ids, question, accepted }) }))
+      setAnswer(await outlookApi<Answer>("/chat", { method: "POST", body: JSON.stringify({ ids, question, accepted }) }))
       setQuestion("")
       if (field.current) field.current.style.height = ""
     } catch (reason) { setError(reason instanceof Error ? reason.message : t("emails.errors.answer")) }

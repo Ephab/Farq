@@ -19,7 +19,6 @@ from .models import DataSource, now
 from .pipeline.brief_step import build_profile_brief
 from .pipeline.evidence_step import (
     FOLDER_INSTRUCTIONS,
-    _evidence_count,
     _hermes_args,
     run_folder_ingest,
     sync_remote,
@@ -81,7 +80,8 @@ def generate_initial_roadmap(db: Session, student_id: str, hermes: dict) -> Road
     confirmed = {row["evidence_id"] for rows in brief["confirmed_evidence"].values() for row in rows}
     error: str | None = None
     for _attempt in range(2):
-        output = run_json_prompt("roadmap", build_generate_prompt(brief, error), GENERATE_INSTRUCTIONS, timeout_seconds=240, **_hermes_args(hermes))
+        output = run_json_prompt("roadmap", build_generate_prompt(brief, error), GENERATE_INSTRUCTIONS, timeout_seconds=240,
+                                 skills=("waypoint-roadmap-builder",), direct=True, **_hermes_args(hermes))
         try:
             snapshot = RoadmapSnapshot.model_validate(parse_json_output(output))
             return validate_generated(snapshot, confirmed)

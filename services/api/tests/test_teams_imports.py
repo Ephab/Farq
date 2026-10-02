@@ -31,8 +31,9 @@ ROWS = {"rows": [
 def fake_hermes(monkeypatch):
     seen = {}
 
-    def run(kind, prompt, instructions, *args):
+    def run(kind, prompt, instructions, *args, **kwargs):
         seen["kind"], seen["prompt"], seen["instructions"] = kind, prompt, instructions
+        seen["skills"], seen["direct"] = kwargs.get("skills"), kwargs.get("direct")
         return json.dumps(ROWS)
 
     monkeypatch.setattr(imports, "run_json_prompt", run)
@@ -65,6 +66,7 @@ def test_import_extracts_redacted_rows_for_review(client, fake_hermes):
     assert (demo["due"], demo["due_text"]) == (None, "week 14")
     assert "prof@example.edu" not in fake_hermes["prompt"] and "[email]" in fake_hermes["prompt"]
     assert "untrusted" in fake_hermes["instructions"] and "Do not call any tools" in fake_hermes["instructions"]
+    assert fake_hermes["skills"] == ("waypoint-project-import",) and fake_hermes["direct"] is True
     assert [event["type"] for event in events_for(team)][-2:] == ["import.created", "import.updated"]
     # Nothing changes for the team until a proposal is accepted.
     assert client.get(f"/api/teams/{team}/state", headers=hdr(s0)).json()["proposals"] == []
@@ -151,7 +153,7 @@ def test_lead_can_discard_someone_elses_import(client, fake_hermes):
 
 
 def test_a_failed_read_is_shown_with_its_reason(client, monkeypatch):
-    def fail(*args):
+    def fail(*args, **kwargs):
         raise imports.HermesJsonError("Hermes gateway unavailable", status=502)
 
     monkeypatch.setattr(imports, "run_json_prompt", fail)

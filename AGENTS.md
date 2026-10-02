@@ -24,7 +24,14 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   AgentRun, unchanged connection generation). Enforce that in the API, never only in the prompt.
   Email text is untrusted and never becomes a `StudentFact`. See `docs/outlook-threat-model.md`.
 - Uploaded files are never stored; only redacted, extracted evidence is.
-- Keep Gemini and Hermes keys server-side.
+- Keep Gemini and Hermes keys server-side. The provider/model choice is server-side too
+  (`app_settings` row `hermes_model`, set in Settings); browsers never send a model or key.
+- Hermes' built-in memory stays off (it is shared by every student). Per-student memory is
+  `StudentMemory` (`app/student_memory.py`): written by Hermes only via `waypoint_remember`/`waypoint_forget`
+  with a per-run grant citing the student's own message, never a `StudentFact`, never in team runs.
+- Learned skills (`<HERMES_HOME>/learned-skills`) are shared by everyone on the gateway and must
+  never contain personal details; they can be changed only from the local machine.
+- Connector switches (`disabled_connectors`) are enforced in the internal API routes, not the prompt.
 - Group Projects: every team write emits a `team_events` row in the same transaction; the SSE
   stream, catch-up and replay read only that log. Course instructors see every team except its
   chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and

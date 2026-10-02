@@ -48,6 +48,8 @@ def generate_plan(brief: dict, hermes: dict) -> RoadmapPlan:
             provider=hermes.get("provider"),
             model=hermes.get("model"),
             hermes_api_key=hermes.get("key"),
+            skills=("waypoint-roadmap-builder",),
+            direct=True,
         )
         try:
             return validate_plan(RoadmapPlan.model_validate(parse_json_output(output)))

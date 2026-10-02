@@ -13,7 +13,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

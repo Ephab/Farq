@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { API_BASE, api, hermesRequestParts, runErrorMessage, withIdentityQuery } from "@/lib/waypoint-api"
+import { API_BASE, api, runErrorMessage, withIdentityQuery } from "@/lib/waypoint-api"
 import { parseServerTime } from "@/lib/server-time"
 
 export interface OpportunityCard {
@@ -193,14 +193,12 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
     setBusy(true); setError(null)
     setMessages((items) => [...items, { ...optimistic, id: `optimistic-${Date.now()}`, role: "user", created_at: new Date().toISOString() }])
     try {
-      const { body, headers } = hermesRequestParts()
-      // Tab-only Waypoint Hermes key override goes to Waypoint API only — never to
-      // providers directly, never persisted, never sent to a system Hermes.
+      // No model in the request: the server runs the Settings choice and its fallback ladder.
       const result = await api<{ run_id: string }>(`/api/chat/threads/${threadId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ ...payload, ...body }),
-        headers,
+        body: JSON.stringify(payload),
       })
+      window.dispatchEvent(new Event(RUN_STARTED_EVENT))
       // Stop was pressed while the send was in flight: cancel the run that
       // just started instead of watching it.
       if (stopRequestedRef.current) {
@@ -318,29 +316,47 @@ export function useHermesChat(threadId: string | null, onRunFinished?: () => voi
   return { messages, busy, stage, error, setError, send, sendInteraction, refresh, retry, editAndResend, stop, runId }
 }
 
-/** Live run for a thread, polled so any section can show Hermes is generating. */
-export function useActiveRun(threadId: string | null, pollMs = 2000): ActiveRun | null {
+/** Fired when this tab starts a Hermes run, so useActiveRun checks at once instead of at its idle pace. */
+export const RUN_STARTED_EVENT = "waypoint:hermes-run-started"
+
+/** Live run for a thread, polled so any section can show Hermes is generating. Polls every
+ *  `pollMs` while a run is live and at `idleMs` otherwise (a run started in this tab is picked up
+ *  at once via RUN_STARTED_EVENT; one started elsewhere within `idleMs`). */
+export function useActiveRun(threadId: string | null, pollMs = 2000, idleMs = 15000): ActiveRun | null {
   const [run, setRun] = useState<ActiveRun | null>(null)
   useEffect(() => {
     if (!threadId) { setRun(null); return }
     let cancelled = false
+    let timer: number | undefined
+    let live = false
+    const schedule = () => {
+      window.clearTimeout(timer)
+      if (!cancelled) timer = window.setTimeout(check, live ? pollMs : idleMs)
+    }
     const check = async () => {
-      if (document.hidden) return
+      if (document.hidden) { schedule(); return }
       try {
         const { run: latest } = await api<{ run: ActiveRun | null }>(`/api/chat/threads/${threadId}/runs/latest`)
         const next = isLiveRun(latest) ? latest : null
+        live = next !== null
         // Keep the same object while nothing changed, so the whole app does not re-render every poll.
         if (!cancelled) setRun((current) => (current && next && current.id === next.id && current.status === next.status && current.stage === next.stage ? current : next))
       } catch {
         // Keep the last known state; the next poll retries.
       }
+      schedule()
     }
     void check()
-    const timer = window.setInterval(check, pollMs)
-    const onVisible = () => { void check() }
-    document.addEventListener("visibilitychange", onVisible)
-    return () => { cancelled = true; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible) }
-  }, [threadId, pollMs])
+    const now = () => { void check() }
+    document.addEventListener("visibilitychange", now)
+    window.addEventListener(RUN_STARTED_EVENT, now)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      document.removeEventListener("visibilitychange", now)
+      window.removeEventListener(RUN_STARTED_EVENT, now)
+    }
+  }, [threadId, pollMs, idleMs])
   return run
 }
 

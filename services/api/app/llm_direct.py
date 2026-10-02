@@ -81,14 +81,18 @@ def _ready(models: list[str]) -> list[str]:
     return [model for model in models if _cooldown.get(model, 0) <= now]
 
 
-def _gemini_call(client: httpx.Client, key: str, model: str, instructions: str, prompt: str, max_tokens: int) -> str:
+def _gemini_call(client: httpx.Client, key: str, model: str, instructions: str, prompt: str, max_tokens: int,
+                 temperature: float | None = 0) -> str:
+    config = {"responseMimeType": "application/json", "maxOutputTokens": max_tokens}
+    if temperature is not None:
+        config["temperature"] = temperature
     response = client.post(
         GEMINI_URL.format(model=model),
         headers={"x-goog-api-key": key},
         json={
             "systemInstruction": {"parts": [{"text": instructions}]},
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json", "temperature": 0, "maxOutputTokens": max_tokens},
+            "generationConfig": config,
         },
     )
     if response.status_code >= 400:
@@ -136,20 +140,24 @@ def run_direct_json(
     max_tokens: int = 8192,
     nvidia_override: str | None = None,
     budget_seconds: float = TOTAL_BUDGET_SECONDS,
+    chain: list[tuple[str, str]] | None = None,
+    attempt_seconds: float | None = None,
+    temperature: float | None = 0,
 ) -> DirectResult:
-    """Ask a fast model for a JSON answer. Raises DirectUnavailable after trying every rung."""
+    """Ask a fast model for a JSON answer. Raises DirectUnavailable after trying every rung.
+
+    `chain` ((model, "gemini"|"nvidia") pairs) replaces the fast extraction ladder: generation tasks
+    pass the chosen model and its same-provider fallbacks, since the caller falls back to the gateway."""
     gemini_key = _gemini_key() if enabled() else ""
     nim_key = _nim_key(nvidia_override) if enabled() else ""
-    if not gemini_key and not nim_key:
+    if chain is None:
+        chain = [(m, "gemini") for m in GEMINI_EXTRACT_CHAIN] + [(m, "nvidia") for m in NIM_EXTRACT_CHAIN]
+    keyed = [(m, p) for m, p in chain if (p == "gemini" and gemini_key) or (p == "nvidia" and nim_key)]
+    if not keyed:
         raise DirectUnavailable("No direct model key is configured", configured=False)
-    rungs: list[tuple[str, str]] = []
-    if gemini_key:
-        rungs += [(model, "gemini") for model in _ready(GEMINI_EXTRACT_CHAIN)]
-    if nim_key:
-        rungs += [(model, "nvidia") for model in _ready(NIM_EXTRACT_CHAIN)]
-    if not rungs:  # every rung is resting: try the one that recovers first rather than failing outright
-        everything = ([(m, "gemini") for m in GEMINI_EXTRACT_CHAIN] if gemini_key else []) + ([(m, "nvidia") for m in NIM_EXTRACT_CHAIN] if nim_key else [])
-        rungs = [min(everything, key=lambda item: _cooldown.get(item[0], 0))]
+    ready = set(_ready([m for m, _p in keyed]))
+    # Every rung resting: try the one that recovers first rather than failing outright.
+    rungs = [item for item in keyed if item[0] in ready] or [min(keyed, key=lambda item: _cooldown.get(item[0], 0))]
     errors: list[str] = []
     end = time.monotonic() + budget_seconds
     dead_providers: set[str] = set()
@@ -159,12 +167,12 @@ def run_direct_json(
             break
         if provider in dead_providers:
             continue
-        attempt = min(GEMINI_ATTEMPT_SECONDS if provider == "gemini" else NIM_ATTEMPT_SECONDS, remaining)
+        attempt = min(attempt_seconds or (GEMINI_ATTEMPT_SECONDS if provider == "gemini" else NIM_ATTEMPT_SECONDS), remaining)
         started = time.monotonic()
         try:
             with httpx.Client(timeout=httpx.Timeout(attempt, connect=5)) as client:
                 if provider == "gemini":
-                    text = _gemini_call(client, gemini_key, model, instructions, prompt, max_tokens)
+                    text = _gemini_call(client, gemini_key, model, instructions, prompt, max_tokens, temperature)
                 else:
                     text = _nim_call(client, nim_key, model, instructions, prompt, max_tokens)
             logger.info("direct extraction answered by %s in %.1fs", model, time.monotonic() - started)
@@ -177,6 +185,7 @@ def run_direct_json(
                 cool_down(model, f"{exc.status} {exc.body}")
         except httpx.TimeoutException:
             errors.append(f"{model}: no answer within {attempt:.0f}s")
+            cool_down(model, errors[-1])
         except (httpx.HTTPError, ValueError) as exc:
             errors.append(f"{model}: {type(exc).__name__}")
         logger.warning("direct extraction rung %s failed after %.1fs: %s", model, time.monotonic() - started, errors[-1])

@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from . import decision_engines
-from .hermes import HERMES_MODEL, HERMES_PROVIDER, HERMES_URL, resolve_hermes_selection
+from .hermes import HERMES_URL, PROVIDERS, save_choice, saved_choice
 from .settings_env import ENV_PATH, read_env_values, write_env_values
 from .transcribe import TRANSCRIBE_MODEL
 
@@ -137,27 +137,39 @@ def _hint(value: str) -> str | None:
     return f"…{value[-4:]}" if len(value) >= 12 else None
 
 
-# Browser provider ids -> (server provider slug, the connection that holds that provider's key).
-HERMES_PROVIDERS = {"gemini": ("gemini", "gemini"), "nim": ("nvidia", "nvidia"), "hf": ("huggingface", "huggingface"), "openrouter": ("openrouter", "span")}
-_UI_PROVIDER = {slug: ui for ui, (slug, _c) in HERMES_PROVIDERS.items()}
+# Provider id -> the connection row that holds its key (OpenRouter's row is named after Span, its first user).
+KEY_CONNECTION = {"gemini": "gemini", "nim": "nvidia", "hf": "huggingface", "openrouter": "span"}
 
 
-def _hermes_choice(file_values: dict[str, str]) -> dict:
-    """The server-default provider/model: .env if present, else what this process started with."""
-    slug = file_values.get("HERMES_PROVIDER", "").strip() or HERMES_PROVIDER
-    model = file_values.get("HERMES_MODEL", "").strip() or HERMES_MODEL
-    provider = _UI_PROVIDER.get(slug, "gemini")
-    return {"provider": provider, "model": model, "key_connection": HERMES_PROVIDERS[provider][1],
-            "key_env": BY_ID[HERMES_PROVIDERS[provider][1]].env}
+def _hermes_choice() -> dict:
+    """The model every Hermes run uses unless a request names its own (Settings > Models)."""
+    provider, model = saved_choice()
+    return {"provider": provider, "model": model, "key_connection": KEY_CONNECTION[provider],
+            "key_env": PROVIDERS[provider].key_env}
+
+
+def model_catalog(local: bool) -> dict:
+    """Every provider and model Hermes can run, whether its key is set, and the current choice."""
+    file_values = _env_file()
+    return {
+        "can_edit": local,
+        "selected": _hermes_choice(),
+        "providers": [{
+            "id": item.id, "label": item.label, "key_env": item.key_env, "key_connection": KEY_CONNECTION[item.id],
+            "key_set": bool(effective(item.key_env, file_values)[0]),
+            "models": [{"id": m.id, "label": m.label, "note": m.note} for m in item.models],
+        } for item in PROVIDERS.values()],
+    }
 
 
 def _models() -> list[dict]:
     jev, span, laya = decision_engines.jev_info(), decision_engines.span_info(), decision_engines.laya_info()
     choice = decision_engines.engine_choice()
     lead = next((e for e in (jev, span, laya) if e.available and e.id in decision_engines.active_chain()), None)
+    hermes = _hermes_choice()
     return [
-        {"feature": "coach", "provider": HERMES_PROVIDER, "model": HERMES_MODEL},
-        {"feature": "extraction", "provider": HERMES_PROVIDER, "model": HERMES_MODEL},
+        {"feature": "coach", "provider": hermes["provider"], "model": hermes["model"]},
+        {"feature": "extraction", "provider": hermes["provider"], "model": hermes["model"]},
         {"feature": "dictation", "provider": "gemini", "model": TRANSCRIBE_MODEL},
         {"feature": "decisions", "provider": lead.provider if lead else None, "model": lead.model if lead else None,
          "engine": lead.id if lead else None, "choice": choice},
@@ -182,7 +194,7 @@ def build_status(local: bool) -> dict:
         "connections": connections,
         "local_model": {"id": "laya", "available": laya.available, "reason": laya.reason, "loaded": decision_engines.laya_loaded(), "model": laya.model},
         "models": _models(),
-        "hermes": _hermes_choice(file_values),
+        "hermes": _hermes_choice(),
         "decision_engine": {
             "choice": decision_engines.engine_choice(), "choices": list(decision_engines.ENGINE_MODES),
             "engines": decision_engines.engines_status(),
@@ -265,20 +277,18 @@ class HermesModelUpdate(BaseModel):
     model: str | None = None
 
 
+@router.get("/api/settings/models")
+def models_catalog(request: Request) -> dict:
+    return model_catalog(is_local(request))
+
+
 @router.put("/api/settings/hermes-model")
 def set_hermes_model(body: HermesModelUpdate, request: Request) -> dict:
-    """Server-default Coach/extraction model. Never touches HERMES_API_KEY: a provider's key has its own env name."""
+    """The model for every Hermes run. Stored in app_settings and read per run, so it applies to the
+    next run without touching .env (whose watcher restarted the API and gateway on each change)."""
     require_local(request)
-    if body.provider not in HERMES_PROVIDERS:
-        raise HTTPException(422, "Unknown provider")
     try:
-        model, slug = resolve_hermes_selection(body.provider, body.model)
+        save_choice(body.provider, body.model)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    try:
-        write_env_values({"HERMES_MODEL": model, "HERMES_PROVIDER": slug}, ENV_PATH)
-    except FileNotFoundError as exc:
-        raise HTTPException(409, "No .env file on this server; set HERMES_MODEL and HERMES_PROVIDER in the server environment instead") from exc
-    except OSError as exc:
-        raise HTTPException(500, "Could not write the .env file") from exc
-    return {"status": "saved", "restart_required": True, "hermes": _hermes_choice(_env_file())}
+    return {"status": "saved", "apply": "live", "hermes": _hermes_choice(), "catalog": model_catalog(True)}

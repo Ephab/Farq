@@ -14,7 +14,7 @@ import { PendingChanges } from "@/components/roadmap/PendingChanges";
 import { RoadmapHistory } from "@/components/roadmap/RoadmapHistory";
 import { RoadmapDialog } from "@/components/roadmap/RoadmapDialog";
 import type { RoadmapPreview, RoadmapProposalData, RoadmapSnapshotData, RoadmapVersionSummary } from "@/components/roadmap/roadmap-types";
-import { api, getCurrentStudentId, hermesRequestParts, notifyRoadmapChanged, ROADMAP_CHANGED_EVENT } from "@/lib/waypoint-api";
+import { api, getCurrentStudentId, notifyRoadmapChanged, ROADMAP_CHANGED_EVENT } from "@/lib/waypoint-api";
 
 interface RoadmapResponse {
   version_id: string;
@@ -197,10 +197,9 @@ export function RoadmapView({ onOpenProject, onAskCoach }: { onOpenProject?: (pr
       const readiness = await api<{ ready: boolean; blockers: string[] }>(`/api/students/${studentId}/onboarding/readiness`);
       if (!readiness.ready) throw new Error(readiness.blockers.join("; "));
       if (previousId) { await api(`/api/students/${studentId}/roadmap/archive`, { method: "POST" }); archived = true; }
-      const { body, headers } = hermesRequestParts();
       let created: RoadmapProposalData;
       try {
-        created = await api<RoadmapProposalData>(`/api/students/${studentId}/onboarding/generate`, { method: "POST", body: JSON.stringify(body), headers });
+        created = await api<RoadmapProposalData>(`/api/students/${studentId}/onboarding/generate`, { method: "POST", body: "{}" });
       } catch (failure) {
         // Never leave the student with nothing because generation failed.
         if (archived && previousId) await api(`/api/students/${studentId}/roadmap/versions/${previousId}/restore`, { method: "POST" }).catch(() => undefined);

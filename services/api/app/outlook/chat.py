@@ -3,6 +3,7 @@ import uuid
 import httpx
 
 from ..hermes import HERMES_URL, effective_hermes_key, execute_with_fallback, resolve_hermes_selection
+from ..hermes_skills import with_skills
 
 MAX_EMAILS = 25
 MAX_PROMPT_CHARS = 24_000
@@ -73,7 +74,7 @@ def run_email_chat(
     try:
         with httpx.Client(timeout=20, follow_redirects=False) as client:
             output, used_model, used_provider = execute_with_fallback(
-                client, headers, {"input": prompt, "session_id": session_id, "instructions": EMAIL_INSTRUCTIONS},
+                client, headers, {"input": prompt, "session_id": session_id, "instructions": with_skills(EMAIL_INSTRUCTIONS, "waypoint-mail-assistant")},
                 provider, model, 180, hermes_api_key=hermes_api_key, gateway_url=HERMES_URL)
     except (httpx.HTTPError, RuntimeError, TimeoutError):
         raise EmailChatError("Email Q&A is unavailable. Check the Coach gateway and provider settings.", status=502) from None

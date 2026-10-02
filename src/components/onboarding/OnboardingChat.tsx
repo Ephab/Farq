@@ -7,7 +7,7 @@ import { useHermesChat } from "@/components/hermes/use-hermes-chat"
 import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas"
 import { streamStagedRoadmap, type StagedPlan, type StagedSnapshot } from "@/hooks/use-staged-generation"
 import type { NodeStatus } from "@/data/computer-vision-roadmap"
-import { api, hermesRequestParts, runErrorMessage, type StudentProfile } from "@/lib/waypoint-api"
+import { api, runErrorMessage, type StudentProfile } from "@/lib/waypoint-api"
 import { useI18n } from "@/lib/i18n/context"
 import { stripStagePrefix } from "@/lib/roadmap-layout"
 
@@ -46,8 +46,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
     setGenerating(true); setGenError(null); setPlan(null); setSnapshot(null)
     setDoneStageIds(new Set()); setActiveStageId(null); setSelectedId(null)
     try {
-      const { body, headers } = hermesRequestParts()
-      await streamStagedRoadmap(profile.student_id, body, headers, controller.signal, {
+      await streamStagedRoadmap(profile.student_id, controller.signal, {
         onPlan: (_jobId, next) => {
           setPlan(next)
           setActiveStageId(next.stages[0]?.id ?? null)
@@ -67,8 +66,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
       if (controller.signal.aborted) return
       // Fall back to the whole-roadmap endpoint so a dropped stream never blocks onboarding.
       try {
-        const { body, headers } = hermesRequestParts()
-        await api(`/api/students/${profile.student_id}/onboarding/generate`, { method: "POST", body: JSON.stringify(body), headers })
+        await api(`/api/students/${profile.student_id}/onboarding/generate`, { method: "POST", body: "{}" })
         onGenerated()
       } catch (fallbackReason) {
         setGenError(fallbackReason instanceof Error ? runErrorMessage(fallbackReason.message) : reason instanceof Error ? runErrorMessage(reason.message) : t("onboarding.chat.generateFailed"))

@@ -8,5 +8,6 @@ COPY services/api/app ./app
 COPY services/api/start.py ./start.py
 COPY services/api/seed-roadmap.json ./seed-roadmap.json
 COPY services/api/fixtures ./fixtures
+COPY .hermes/skills ./hermes-skills
 CMD ["python", "start.py"]
 

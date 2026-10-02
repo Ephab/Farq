@@ -1,5 +1,5 @@
 import { translate } from "@/lib/i18n/context"
-import { API_BASE, api, getCurrentStudentId, hermesRequestParts } from "@/lib/waypoint-api"
+import { API_BASE, api, getCurrentStudentId } from "@/lib/waypoint-api"
 
 const ACTING_USER_STORAGE_KEY = "waypoint.current-user"
 export const ACTING_USER_EVENT = "waypoint:acting-user-changed"
@@ -164,11 +164,7 @@ export function teamClient(userId: string) {
     teamApi<TeamTask>(`/api/tasks/${taskId}/move`, send("POST", { status, position: position ?? null })),
   deleteTask: (taskId: string) => teamApi<{ id: string }>(`/api/tasks/${taskId}`, send("DELETE")),
   createMilestone: (teamId: string, body: MilestoneInput) => teamApi<TeamMilestone>(`/api/teams/${teamId}/milestones`, send("POST", body)),
-  postMessage: (teamId: string, body: MessageInput) => {
-    // Hermes may answer this message, so send the tab's model choice and key like the Coach does.
-    const hermes = hermesRequestParts()
-    return teamApi<TeamMessage>(`/api/teams/${teamId}/messages`, { ...send("POST", { ...hermes.body, ...body }), headers: hermes.headers })
-  },
+  postMessage: (teamId: string, body: MessageInput) => teamApi<TeamMessage>(`/api/teams/${teamId}/messages`, send("POST", body)),
   editMessage: (messageId: string, content: string) => teamApi<TeamMessage>(`/api/messages/${messageId}`, send("PATCH", { content })),
   deleteMessage: (messageId: string) => teamApi<{ id: string }>(`/api/messages/${messageId}`, send("DELETE")),
   react: (messageId: string, emoji: string) =>
@@ -180,14 +176,10 @@ export function teamClient(userId: string) {
   acceptProposal: (proposalId: string) => teamApi<TeamProposal>(`/api/proposals/${proposalId}/accept`, send("POST")),
   rejectProposal: (proposalId: string) => teamApi<TeamProposal>(`/api/proposals/${proposalId}/reject`, send("POST")),
   importProject: (teamId: string, source: { file: File } | { text: string }) => {
-    // Hermes reads the document, so send the tab's model choice and key like the Coach does.
-    const hermes = hermesRequestParts()
     const form = new FormData()
     if ("file" in source) form.append("file", source.file)
     else form.append("text", source.text)
-    form.append("provider", hermes.body.provider)
-    form.append("model", hermes.body.model)
-    return teamApi<TeamImportInfo>(`/api/teams/${teamId}/imports`, { method: "POST", body: form, headers: hermes.headers })
+    return teamApi<TeamImportInfo>(`/api/teams/${teamId}/imports`, { method: "POST", body: form })
   },
   proposeImport: (importId: string, items: { kind: ImportRowKind; data: Record<string, unknown> }[]) =>
     teamApi<{ import: TeamImportInfo; proposal: TeamProposal }>(`/api/imports/${importId}/propose`, send("POST", { items })),

@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from .internal_auth import require_internal
 from .ownership import OwnedStudent
-from .tool_grants import ReadGrant, student_for
+from .hermes_connectors import CoopGrant
+from .tool_grants import student_for
 from .database import get_db
 from .decisions import DecisionItem, observe_items, rerank
 from .coop_sources import CoopCandidate, FEED_SOURCE, fetch_feed_candidates, fetch_linkedin_candidates, fetch_telegram_candidates
@@ -902,21 +903,21 @@ def set_posting_state(student_id: str, _owner: OwnedStudent, posting_id: str, bo
 
 
 @router.get("/internal/hermes/students/{student_id}/coop/companies")
-def internal_companies(student_id: str, db: Db, grant: ReadGrant, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
+def internal_companies(student_id: str, db: Db, grant: CoopGrant, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
     student_id = student_for(db, grant, student_id)
     require_student(db, student_id)
     return {"results": find_companies(db, student_id, query, limit=limit), "provenance": "Waypoint cached co-op catalog"}
 
 
 @router.get("/internal/hermes/students/{student_id}/coop/postings")
-def internal_postings(student_id: str, db: Db, grant: ReadGrant, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
+def internal_postings(student_id: str, db: Db, grant: CoopGrant, query: str = "", limit: int = Query(5, ge=1, le=8)) -> dict:
     student_id = student_for(db, grant, student_id)
     require_student(db, student_id)
     return {"results": find_postings(db, student_id, query, limit=limit), "provenance": "Waypoint cached official, Telegram, and LinkedIn sources"}
 
 
 @router.get("/internal/hermes/students/{student_id}/coop/{target_type}/{target_id}")
-def internal_target(student_id: str, target_type: Literal["company", "posting"], target_id: str, db: Db, grant: ReadGrant) -> dict:
+def internal_target(student_id: str, target_type: Literal["company", "posting"], target_id: str, db: Db, grant: CoopGrant) -> dict:
     student_id = student_for(db, grant, student_id)
     require_student(db, student_id)
     if target_type == "company":

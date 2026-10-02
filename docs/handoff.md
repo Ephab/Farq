@@ -14,9 +14,9 @@
   score questions are rewritten per option/level and folded back. With Laya installed and no keys,
   the gate now observes locally; the first call cold-loads the model (~6 s), including in rerank
   request paths.
-- Settings is a wide dialog with three sections in a side rail (General, Models & connections, Your data);
+- Settings is a wide dialog with sections in a side rail (General, Models & API keys, Memory, Skills, Connectors, Your data);
   on phones the rail becomes a tab row.
-- Engine switch (Settings > Models & connections): `auto` (default, full chain), `jev` (cloud only, Laya is
+- Engine switch (Settings > Models & API keys): `auto` (default, full chain), `jev` (cloud only, Laya is
   never loaded, email classification raises instead of falling back to it) and `laya` (local only). Stored in
   the `app_settings` table (`decision_engine`), read by `decision_engines.engine_choice()`, applied without a
   restart. `app/connections.py` serves `/api/settings/connections` (key presence, source `.env` vs process
@@ -221,11 +221,14 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
   `huggingface`, model ids like `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`) and OpenRouter
   (`OPENROUTER_API_KEY`, the same key Span-01 Lite uses; `OPENROUTER_CHAIN`, currently the free
   `stealth/space-bunny-alpha`, which may log prompts). The gateway reads the key from its own
-  environment, so it must be exported or saved in Settings > Models & connections (OpenRouter row),
+  environment, so it must be exported or saved in Settings > Models & API keys (OpenRouter row),
   then the gateway restarted.
-- The provider and model are chosen per browser tab (onboarding "Advanced" or Settings) and sent with
-  every request; the server default (`HERMES_PROVIDER`/`HERMES_MODEL`) applies only to callers that send
-  none. Settings shows the tab's choice and notes when it differs from the saved default.
+- One server-wide provider and model, chosen in Settings > Models & API keys (or the compact picker in
+  onboarding) and stored in the `app_settings` row `hermes_model` (`app/app_settings.py`). It applies to
+  the next run without restarting anything and never rewrites `.env`; `HERMES_PROVIDER`/`HERMES_MODEL`
+  are only the default before anyone chooses. The browser no longer sends a provider, model or key with
+  requests (the per-tab sessionStorage override was removed). The catalog of providers, models,
+  labels and notes is `PROVIDERS` in `hermes.py`; `GET /api/settings/models` serves it with key status.
 - Every gateway run (chat, ingest, roadmap, quiz, slides) goes through `execute_with_fallback`:
   any model-side failure (429/quota, 503, failed/cancelled run, empty answer, >120 s) moves to
   the next rung of `FALLBACK_CHAIN`: Gemini 3.8 → 3.7 → 3.6 → 3.5 → 3 → 2.5 Flash → Flash-Lite
@@ -235,12 +238,47 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
   Model-busy errors reach the student as one plain sentence (`runErrorMessage`). Failing models cool down (30 s / 65 s / 30 min for daily quota).
 - A 429 on **run creation** is the gateway's own concurrency cap: we wait for a slot, we do not
   skip models. Only a rejected Waypoint gateway key (401) stops immediately.
-- Hermes runtime config (`services/hermes/config.yaml`): `agent.api_max_retries: 1` (Waypoint does
-  the fallback), `tools.tool_search.enabled: "off"` (no discovery round trip),
+- Each fallback rung runs on a fresh gateway session (`<session>-r<n>`), so a retry never sees the
+  failed attempt's half-finished turn. A rung that times out also rests (180 s), so the next run does
+  not wait the full timeout on the same stuck model.
+- Tool-less JSON prompts (quiz, slides, roadmap plan/stages, project import) whose chosen model is
+  Gemini go straight to the Gemini API (`_direct_json` + `llm_direct.run_direct_json`), skipping ~6k
+  tokens of tool schemas and the agent loop; everything else, and every failure, uses the gateway.
+  NIM direct was measured and was not faster, so NIM stays on the gateway.
+- Hermes runtime config (`services/hermes/config.yaml`): `agent.api_max_retries: 1` and
+  `agent.auto_recovery_cycles: 0` (Waypoint does the fallback; Hermes' own recovery slept 15-60 s per
+  cycle before giving up), `auxiliary.title_generation.enabled: false` (an extra model call per new
+  session), `tools.tool_search.enabled: "off"` (no discovery round trip),
   `max_concurrent_runs: 8`.
 - HF smoke test (tool call + strict JSON, 2026-09-24): DeepSeek V4.1 Flash best (both, ~2 s);
   Gemma 26B novita good; gpt-oss-20b fastest but missed a tool call; Gemma 26B deepinfra slow
   (~30 s); Llama 3.1 8B nscale failed both. Gemma via the Gemini API does not call tools.
+
+### 5a. Memory, skills and connectors (Settings)
+- **Memory** (`app/student_memory.py`, Settings > Memory): Hermes' built-in MEMORY.md/USER.md is off
+  (one file per gateway home, shared by every student). Waypoint keeps up to 40 short notes per student
+  in SQLite (`StudentMemory`) and puts them into that student's coach/onboarding instructions, so recall
+  costs no tool call. Hermes adds or retires notes only via `waypoint_remember`/`waypoint_forget` with a
+  per-run grant, citing one of the student's own messages; secrets are refused. Notes never become
+  StudentFacts and never reach team runs. The student can add, edit, delete, clear or turn memory off.
+- **Skills** (`app/hermes_skills.py`, Settings > Skills): each built-in `waypoint-*` skill is listed with
+  the actions that use it and is inlined into the run's instructions (no `skill_view` round trip).
+  "Learn new skills" lets Hermes write procedures with `skill_manage` into `learned-skills/` (shared, no
+  personal details per the `waypoint-memory` skill); learned skills can be viewed, turned off (archived)
+  or deleted. Changing skills is allowed only from the machine running Waypoint.
+- **Connectors** (Settings > Connectors): per-student switches for the Waypoint data Hermes may read
+  (Blackboard, hackathons, co-op, Outlook). A switched-off connector's internal tools return 403 in the
+  API. Arbitrary MCP servers were deliberately not added: AGENTS.md forbids new tool surfaces without a
+  threat model.
+
+### 5b. Speed profile (2026-10-02)
+- Coach turn: was ~3.5 min (Gemini 503 + Hermes auto-recovery sleeps + a title call + a retry on the
+  same session) and later 75 s on NIM with 8 model calls (the fact tool was called up to 5x per fact).
+  `waypoint_record_explicit_fact` is now idempotent and says "stored, do not repeat"; a turn is ~3 calls
+  with ~1.3 s of Waypoint/gateway overhead. The rest is the model: Nemotron Ultra ~11 tok/s (~80 s per
+  reply), Super ~9-20 s, Gemini Flash a few seconds.
+- JSON features: ~1-3 s overhead on the gateway; quiz on Ultra 35 s, Super 20 s, Gemini direct ~9 s.
+- `useActiveRun` polls every 2 s only while a run is live (15 s idle, instant on send/visibility).
 
 ### 6. Smaller fixes
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.

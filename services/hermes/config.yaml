@@ -4,10 +4,32 @@ model:
   base_url: https://generativelanguage.googleapis.com/v1beta
 
 platform_toolsets:
+  # No `memory` toolset: Hermes' built-in MEMORY.md/USER.md is one file per gateway home, shared by
+  # every student and team. Per-student memory lives in Waypoint (waypoint_remember/waypoint_forget).
   api_server:
     - waypoint
-    - memory
     - skills
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  nudge_interval: 0
+
+skills:
+  # Skills Hermes learns with skill_manage land here, apart from the built-in waypoint-* copies that
+  # provisioning replaces on every start. Settings > Skills lists, turns off and deletes them.
+  create_dir: learned-skills
+  # Settings > Skills writes 0 here (learning off) into the runtime copy; see app/hermes_skills.py.
+  creation_nudge_interval: 8
+
+platform_hints:
+  # The default api_server hint says "plain text, no markdown, no code fences", which contradicts the
+  # Waypoint app: it renders Markdown and reads the fenced waypoint-ui block the run instructions describe.
+  api_server:
+    replace: >-
+      You are answering inside the Waypoint student app, which renders Markdown. Keep replies short and
+      conversational: short paragraphs, a brief list when it helps, no large headers or tables. When the run
+      instructions describe a fenced waypoint-ui block or a JSON-only answer, follow them exactly.
 
 plugins:
   enabled:
@@ -23,6 +45,16 @@ agent:
   # Fail fast: Waypoint's API already falls back to the next model (app.hermes.FALLBACK_CHAIN),
   # so Hermes' own retries on an exhausted model only add minutes of waiting.
   api_max_retries: 1
+  # The default 5 post-exhaustion "auto-recovery" cycles sleep 15-60 s each on a 503/overload before
+  # the turn fails, which kept Waypoint's ladder from reaching a healthy model for minutes.
+  auto_recovery_cycles: 0
+
+auxiliary:
+  # Waypoint never shows gateway session titles, and every coach run is its own session, so the
+  # default background title call was one extra model request per message on the same quota.
+  title_generation:
+    enabled: false
+    model_upgrade_enabled: false
 
 tools:
   tool_search:

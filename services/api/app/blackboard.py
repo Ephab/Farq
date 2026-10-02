@@ -23,7 +23,8 @@ from .database import get_db
 from .decisions import DecisionItem, observe_items, rerank
 from .internal_auth import require_internal as _require_internal
 from .ownership import OwnedStudent
-from .tool_grants import ReadGrant, student_for
+from .hermes_connectors import BlackboardGrant
+from .tool_grants import student_for
 from .models import BlackboardContentItem, BlackboardCourse, DataSource, Student, now
 
 
@@ -231,7 +232,7 @@ def snapshot_status(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
 
 
 @router.get("/internal/hermes/students/{student_id}/blackboard/courses")
-def list_courses(student_id: str, db: Db, grant: ReadGrant) -> dict:
+def list_courses(student_id: str, db: Db, grant: BlackboardGrant) -> dict:
     student_id = student_for(db, grant, student_id)
     _student(db, student_id)
     courses = db.scalars(select(BlackboardCourse).where(BlackboardCourse.student_id == student_id).order_by(BlackboardCourse.code, BlackboardCourse.title)).all()
@@ -247,7 +248,7 @@ def list_content(
     student_id: str,
     course_id: str,
     db: Db,
-    grant: ReadGrant,
+    grant: BlackboardGrant,
     content_type: str | None = None,
     limit: int = Query(default=30, ge=1, le=50),
 ) -> dict:
@@ -273,7 +274,7 @@ def _snippet(text: str, terms: list[str], width: int = 360) -> str:
 def search_content(
     student_id: str,
     db: Db,
-    grant: ReadGrant,
+    grant: BlackboardGrant,
     query: str = Query(min_length=2, max_length=160),
     course_id: str | None = None,
     limit: int = Query(default=8, ge=1, le=20),
@@ -310,7 +311,7 @@ def search_content(
 
 
 @router.get("/internal/hermes/students/{student_id}/blackboard/items/{item_id}")
-def read_item(student_id: str, item_id: str, db: Db, grant: ReadGrant, cursor: int = Query(default=0, ge=0)) -> dict:
+def read_item(student_id: str, item_id: str, db: Db, grant: BlackboardGrant, cursor: int = Query(default=0, ge=0)) -> dict:
     student_id = student_for(db, grant, student_id)
     item = db.get(BlackboardContentItem, item_id)
     course = db.get(BlackboardCourse, item.course_id) if item else None
@@ -326,7 +327,7 @@ def read_item(student_id: str, item_id: str, db: Db, grant: ReadGrant, cursor: i
 def list_updates(
     student_id: str,
     db: Db,
-    grant: ReadGrant,
+    grant: BlackboardGrant,
     since: datetime | None = None,
     limit: int = Query(default=15, ge=1, le=50),
 ) -> dict:

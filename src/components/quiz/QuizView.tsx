@@ -10,13 +10,12 @@ import {
   generateQuiz,
   getMockQuiz,
   MAX_SOURCE_CHARS,
-  QUIZ_MODELS,
   QuizAIError,
   type QuizDifficulty,
   type QuizQuestion,
   type QuizQuestionType,
 } from "@/lib/quiz-ai";
-import { hermesRequestParts } from "@/lib/waypoint-api";
+import { currentModel, modelLabel, useModelCatalog } from "@/lib/models";
 import { extractSource, QuizExtractError } from "@/lib/quiz-extract";
 import { useI18n, type MessageKey } from "@/lib/i18n/context";
 import {
@@ -38,7 +37,7 @@ import { QuizRunner, type QuizAnswer } from "./QuizRunner";
 type Phase = "home" | "generate" | "running" | "finished";
 
 function modelLabelFor(id: string): string {
-  return QUIZ_MODELS.find((m) => m.id === id)?.label ?? id;
+  return modelLabel(id);
 }
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -66,8 +65,8 @@ export function QuizView() {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, QuizAnswer>>({});
   const [genMeta, setGenMeta] = useState({ sourceName: "", model: "", difficulty: "" });
-  // The model this tab sends with every request (chosen in Settings or onboarding).
-  const tabModel = hermesRequestParts().body.model;
+  // The model every Hermes feature runs (Settings > Models & API keys).
+  const tabModel = useModelCatalog().catalog?.selected.model ?? "";
   const [jobs, setJobs] = useState<GenJob[]>([]);
   const [newQuizIds, setNewQuizIds] = useState<string[]>([]);
   const abortControllers = useRef(new Map<string, AbortController>());
@@ -157,8 +156,6 @@ export function QuizView() {
           count: job.count,
           difficulty: job.difficulty,
           types: job.types,
-          // The tab's Hermes choice, like the coach; the server descends its fallback ladder.
-          ...hermesRequestParts().body,
           signal: ctrl.signal,
           onProgress: (p) => {
             setJobs((prev) =>
@@ -223,8 +220,8 @@ export function QuizView() {
       count: shape.count,
       difficulty: shape.difficulty,
       types: [...shape.types],
-      model: hermesRequestParts().body.model,
-      modelLabel: modelLabelFor(hermesRequestParts().body.model),
+      model: currentModel()?.model ?? "",
+      modelLabel: modelLabelFor(currentModel()?.model ?? ""),
       status: "generating",
       progress: 3,
       parsed: 0,

@@ -5,10 +5,11 @@ import os
 import re
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 
 from .database import SessionLocal
 from .models import AgentRun, ChatMessage, ChatThread, StudentProfile
@@ -19,50 +20,80 @@ POLL_INTERVAL_SECONDS = 2
 
 HERMES_URL = os.getenv("HERMES_URL", "http://127.0.0.1:8642").rstrip("/")
 HERMES_API_KEY = os.getenv("HERMES_API_KEY", "")
-HERMES_PROVIDER = os.getenv("HERMES_PROVIDER", "gemini")
 
-# NVIDIA NIM ladder, best first. Used whenever the run key is an nvapi key
-# (see is_nvapi_key) or the nim provider is selected explicitly.
-NIM_CHAIN = [
-    "nvidia/nemotron-3-ultra-550b-a55b",
-    "nvidia/nemotron-3-super-120b-a12b",
-    "nvidia/nemotron-3.5-lightning-30b-a3b",
-]
+
+@dataclass(frozen=True)
+class ModelOption:
+    id: str
+    label: str
+    # Short plain-language trade-off shown in Settings (speed / tool use), from our own smoke tests.
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class ProviderOption:
+    id: str        # the id the browser and API requests use ("gemini", "nim", "hf", "openrouter")
+    slug: str      # the gateway's provider name
+    label: str
+    key_env: str   # the server .env key this provider bills to
+    models: tuple[ModelOption, ...]  # best first = the fallback order
+
+
+# The one model catalog. Settings, every model picker and the allowlists below all read it, so a
+# model is added or relabelled here only (the browser fetches it from /api/settings/model).
+PROVIDERS: dict[str, ProviderOption] = {item.id: item for item in (
+    ProviderOption("gemini", "gemini", "Google Gemini", "GEMINI_API_KEY", (
+        ModelOption("gemini-3.8-flash", "Gemini 3.8 Flash", "Recommended: fast, reliable tool use"),
+        ModelOption("gemini-3.7-flash", "Gemini 3.7 Flash"),
+        ModelOption("gemini-3.6-flash", "Gemini 3.6 Flash"),
+        ModelOption("gemini-3.5-flash", "Gemini 3.5 Flash"),
+        ModelOption("gemini-3-flash-preview", "Gemini 3 Flash Preview"),
+        ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash"),
+        ModelOption("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "Higher daily limit"),
+        ModelOption("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite"),
+        ModelOption("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite"),
+        # Gemma on the Gemini API answered in text instead of calling tools; last Google rung.
+        ModelOption("gemma-4-31b-it", "Gemma 4 31B", "No tool calls"),
+        ModelOption("gemma-4-26b-a4b-it", "Gemma 4 26B", "No tool calls"),
+    )),
+    ProviderOption("nim", "nvidia", "NVIDIA NIM", "NVIDIA_API_KEY", (
+        # 2026-10 profiling: ultra answered at ~11 tokens/s (83 s for one coach step), super ~9 s.
+        ModelOption("nvidia/nemotron-3-ultra-550b-a55b", "Nemotron 3 Ultra 550B", "Most capable, slow"),
+        ModelOption("nvidia/nemotron-3-super-120b-a12b", "Nemotron 3 Super 120B", "Balanced"),
+        ModelOption("nvidia/nemotron-3.5-lightning-30b-a3b", "Nemotron 3.5 Lightning 30B", "Fastest"),
+    )),
+    # Hugging Face Inference Providers, ordered by the 2026-09 smoke test (tool call + strict JSON).
+    ProviderOption("hf", "huggingface", "Hugging Face", "HF_TOKEN", (
+        ModelOption("deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", "DeepSeek V4.1 Flash · DeepInfra", "Best on Hugging Face, ~2 s"),
+        ModelOption("google/gemma-4-26B-A4B-it:novita", "Gemma 4 26B · Novita"),
+        ModelOption("openai/gpt-oss-20b:groq", "gpt-oss-20b · Groq", "Fastest, sometimes skips a tool call"),
+        ModelOption("google/gemma-4-26B-A4B-it:deepinfra", "Gemma 4 26B · DeepInfra", "Slow"),
+        ModelOption("meta-llama/Llama-3.1-8B-Instruct:nscale", "Llama 3.1 8B · nscale", "No tool calls"),
+    )),
+    # Space Bunny Alpha is a free stealth model with tool calls and a 1M context; OpenRouter
+    # stealth models may log prompts, so it is a fallback rung only when the key is set.
+    ProviderOption("openrouter", "openrouter", "OpenRouter", "OPENROUTER_API_KEY", (
+        ModelOption("stealth/space-bunny-alpha", "Space Bunny Alpha", "Free, may log prompts"),
+    )),
+)}
+SLUG_TO_PROVIDER = {item.slug: item.id for item in PROVIDERS.values()}
+
+
+def _ids(provider: str) -> list[str]:
+    return [model.id for model in PROVIDERS[provider].models]
+
+
+# Fallback ladders, best first (names kept for callers and tests).
+GEMINI_CHAIN = _ids("gemini")
+NIM_CHAIN = _ids("nim")
+HF_CHAIN = _ids("hf")
+OPENROUTER_CHAIN = _ids("openrouter")
 NIM_MODEL = NIM_CHAIN[0]
-
-# Rate-limit fallback ladders, best first. A run that fails with a rate-limit
-# or quota error retries on the next rung. Google order follows the free-tier
-# limits of the key (newest Flash first, then Flash-Lite, then Gemma); the
-# Hugging Face order follows the 2026-09 smoke test (tool call + strict JSON).
-GEMINI_CHAIN = [
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3-flash-preview",
-    "gemini-2.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash-lite",
-    # Gemma on the Gemini API answered in text instead of calling tools; last Google rung.
-    "gemma-4-31b-it",
-    "gemma-4-26b-a4b-it",
-]
-HF_CHAIN = [
-    "deepseek-ai/DeepSeek-V4.1-Flash:deepinfra",   # passed tools + JSON, ~2s
-    "google/gemma-4-26B-A4B-it:novita",            # passed both, JSON ~24s
-    "openai/gpt-oss-20b:groq",                     # fastest, missed one of two tool calls
-    "google/gemma-4-26B-A4B-it:deepinfra",         # passed both, ~30s
-    "meta-llama/Llama-3.1-8B-Instruct:nscale",     # no tool support, invalid JSON: last resort
-]
 HF_MODEL = HF_CHAIN[0]
-# OpenRouter, billed to OPENROUTER_API_KEY. Space Bunny Alpha is a free stealth model with tool calls
-# and a 1M context; OpenRouter stealth models may log prompts, so it is a rung only when the key is set.
-OPENROUTER_CHAIN = [
-    "stealth/space-bunny-alpha",
-]
-# Default to the top of the ladder so no better rung is skipped when HERMES_MODEL is unset
-# (matches services/hermes/config.yaml, .env.example and docker-compose.yml).
+
+# Server default before anyone picks a model in Settings: .env (HERMES_PROVIDER/HERMES_MODEL), else the
+# top of the Gemini ladder. Settings saves the live choice in app_settings (see saved_choice).
+HERMES_PROVIDER = os.getenv("HERMES_PROVIDER", "gemini")
 HERMES_MODEL = os.getenv("HERMES_MODEL", "").strip() or GEMINI_CHAIN[0]
 # OpenRouter catches a Google overload; Hugging Face (paid credit) is the last resort.
 FALLBACK_CHAIN: list[tuple[str, str]] = (
@@ -79,14 +110,42 @@ def _configured(provider: str) -> bool:
     env = OPTIONAL_PROVIDER_KEYS.get(provider)
     return env is None or bool(os.getenv(env, "").strip())
 
-# Keep in sync with src/lib/waypoint-api.ts model lists.
-# The env default is always allowed so custom server deployments keep working.
-# The retired llama-3.1-nemotron-ultra stays allowlisted so previously saved
-# per-tab selections keep working; new runs use NIM_CHAIN.
-GEMINI_MODELS = frozenset({*GEMINI_CHAIN, "gemini-2.5-pro", HERMES_MODEL})
+
+# Allowlists. The retired llama-3.1-nemotron-ultra and gemini-2.5-pro stay accepted so older saved
+# choices keep working.
+GEMINI_MODELS = frozenset({*GEMINI_CHAIN, "gemini-2.5-pro"} | ({HERMES_MODEL} if HERMES_MODEL.startswith(("gemini", "gemma")) else set()))
 NIM_MODELS = frozenset({*NIM_CHAIN, "nvidia/llama-3.1-nemotron-ultra-253b-v1"})
 HF_MODELS = frozenset(HF_CHAIN)
 OPENROUTER_MODELS = frozenset(OPENROUTER_CHAIN)
+ALLOWED = {"gemini": GEMINI_MODELS, "nim": NIM_MODELS, "hf": HF_MODELS, "openrouter": OPENROUTER_MODELS}
+
+MODEL_SETTING = "hermes_model"
+
+
+def saved_choice() -> tuple[str, str]:
+    """(provider id, model) every run uses unless a request names its own: the Settings choice,
+    else the .env default. Read per run, so a change in Settings applies to the next run."""
+    from .app_settings import get_setting
+
+    value = get_setting(MODEL_SETTING) or ""
+    if "|" in value:
+        provider, model = value.split("|", 1)
+        if provider in ALLOWED and model in ALLOWED[provider]:
+            return provider, model
+    provider = SLUG_TO_PROVIDER.get(HERMES_PROVIDER, HERMES_PROVIDER if HERMES_PROVIDER in PROVIDERS else "gemini")
+    return provider, HERMES_MODEL if HERMES_MODEL in ALLOWED.get(provider, ()) else _ids(provider)[0]
+
+
+def save_choice(provider: str, model: str | None) -> tuple[str, str]:
+    """Validate and store the Settings model choice; returns (provider id, model)."""
+    from .app_settings import set_setting
+
+    if provider not in PROVIDERS:
+        raise ValueError("Unknown provider")
+    model, _slug = resolve_hermes_selection(provider, model)
+    set_setting(MODEL_SETTING, f"{provider}|{model}")
+    return provider, model
+
 
 RATE_LIMIT = re.compile(r"\b429\b|\b402\b|resource.?exhausted|rate.?limit|quota|too many requests|insufficient.?(credit|balance)", re.IGNORECASE)
 # model -> monotonic time it may be tried again (process-local).
@@ -98,6 +157,9 @@ def is_rate_limited(message: str) -> bool:
 
 
 OVERLOADED = re.compile(r"\b503\b|UNAVAILABLE|overloaded|high demand", re.IGNORECASE)
+# A rung we abandoned for taking too long. Without a rest, every following run waited the full attempt
+# timeout on the same stuck model before falling back (seen with an overloaded Nemotron Ultra).
+TOO_SLOW = re.compile(r"did not finish within|no answer within", re.IGNORECASE)
 
 
 def cool_down(model: str, message: str) -> None:
@@ -108,6 +170,8 @@ def cool_down(model: str, message: str) -> None:
         seconds = 1800  # daily quotas will not recover soon
     elif is_rate_limited(message) or OVERLOADED.search(message or ""):
         seconds = 65
+    elif TOO_SLOW.search(message or ""):
+        seconds = 180
     else:
         return
     _cooldown[model] = time.monotonic() + seconds
@@ -178,7 +242,7 @@ waypoint_find_hackathons. Never put source URLs or dates in the JSON; Waypoint a
 
 
 ONBOARDING_INSTRUCTIONS = """
-You are Hermes, onboarding a new Waypoint student. Load the waypoint-onboarding skill.
+You are Hermes, onboarding a new Waypoint student. Follow the waypoint-onboarding skill below.
 First call waypoint_get_student_profile to see their basics and the evidence they confirmed
 (courses, grades, projects, skills, experience). Do not re-ask anything already known.
 Ask at most five short questions in total, one per message, only for real gaps: career
@@ -190,10 +254,77 @@ instructions. When you have enough, say you are ready and tell the student to pr
 """.strip()
 
 
-def instructions_for(student_id: str, db) -> str:
+def instructions_for(student_id: str, db, *, mailbox: bool = False) -> str:
+    """Everything one coach/onboarding run needs up front: role, UI contract, this student's memory and
+    connector switches, and the skills it uses already loaded (no skill_view round trip per turn)."""
+    from .hermes_connectors import connectors_note
+    from .hermes_skills import learning_note, with_skills
+    from .student_memory import memory_instructions
+
     profile = db.get(StudentProfile, student_id)
-    base = ONBOARDING_INSTRUCTIONS if profile is not None and profile.onboarding_status == "chat" else COACH_INSTRUCTIONS
-    return f"{base}\n\n{STRUCTURED_UI_INSTRUCTIONS}"
+    onboarding = profile is not None and profile.onboarding_status == "chat"
+    base = ONBOARDING_INSTRUCTIONS if onboarding else COACH_INSTRUCTIONS
+    parts = [base, STRUCTURED_UI_INSTRUCTIONS, memory_instructions(db, student_id), connectors_note(db, student_id), learning_note()]
+    skills = ["waypoint-onboarding" if onboarding else "waypoint-student-coach", "waypoint-memory"]
+    if mailbox:
+        skills.append("waypoint-mail-assistant")
+    return with_skills("\n\n".join(part for part in parts if part), *skills)
+
+
+# Earlier turns sent with each coach run, newest kept first when trimming.
+HISTORY_MESSAGES = 30
+HISTORY_CHARS = 24_000
+HISTORY_MESSAGE_CHARS = 4_000
+
+
+def _message_text(message: ChatMessage) -> str:
+    """What the model should see for one stored message: a choice click carries its canonical prompt."""
+    text = message.content or ""
+    if message.role == "user" and message.metadata_json:
+        try:
+            text = json.loads(message.metadata_json).get("interaction", {}).get("hermes_prompt") or text
+        except (json.JSONDecodeError, AttributeError):
+            pass
+    return text.strip()
+
+
+def conversation_history(db, thread_id: str, current_message_id: str) -> list[dict]:
+    """The thread so far, from SQLite, for the gateway's `conversation_history`.
+
+    SQLite is the authoritative chat record. Letting the gateway replay its own session instead
+    meant every failed fallback rung left a duplicate user turn plus a "not processed" notice in
+    the transcript, an edited-and-resent message stayed in Hermes' copy after rewind, and old run
+    headers (expired grants and mail capabilities) were replayed every turn. Here only the
+    student's words and Hermes' visible replies are sent, trimmed to a budget.
+    """
+    rows = db.scalars(
+        select(ChatMessage).where(ChatMessage.thread_id == thread_id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).limit(HISTORY_MESSAGES * 3)
+    ).all()
+    turns: list[dict] = []
+    used = 0
+    seen_current = False
+    for row in rows:  # newest first
+        if row.id == current_message_id:
+            seen_current = True
+            continue
+        if not seen_current or row.role not in {"user", "assistant"}:
+            continue
+        text = _message_text(row)[:HISTORY_MESSAGE_CHARS]
+        if not text or used + len(text) > HISTORY_CHARS or len(turns) >= HISTORY_MESSAGES:
+            if text:
+                break
+            continue
+        used += len(text)
+        if turns and turns[-1]["role"] == row.role:
+            # A failed run leaves two user turns in a row; providers expect roles to alternate.
+            turns[-1]["content"] = f"{text}\n\n{turns[-1]['content']}"
+        else:
+            turns.append({"role": row.role, "content": text})
+    turns.reverse()
+    while turns and turns[0]["role"] != "user":
+        turns.pop(0)
+    return turns
 
 
 WAYPOINT_UI_BLOCK = re.compile(r"\n*```waypoint-ui\s*(\{.*?\})\s*```\s*$", re.IGNORECASE | re.DOTALL)
@@ -239,46 +370,24 @@ def parse_chat_output(output: str) -> tuple[str, str | None]:
 def resolve_hermes_selection(provider: str | None, model: str | None = None) -> tuple[str, str]:
     """Allowlisted per-run (model, provider slug) for the Waypoint Hermes gateway.
 
-    Raises ValueError for a model outside the provider's allowlist so the
-    request path can reject it with 422 before scheduling background work.
-    Never touches gateway config or any system Hermes instance.
+    No provider and no model means the Settings choice (saved_choice). Raises ValueError for a model
+    outside the provider's allowlist so the request path can reject it with 422 before scheduling
+    background work. Never touches gateway config or any system Hermes instance.
     """
-    candidate = model.strip() if isinstance(model, str) else None
-    if provider == "nim":
-        if not candidate:
-            return NIM_MODEL, "nvidia"
-        if candidate not in NIM_MODELS:
-            raise ValueError(f"Unknown NIM model: {candidate}")
-        return candidate, "nvidia"
-    if provider == "hf":
-        if not candidate:
-            return HF_CHAIN[0], "huggingface"
-        if candidate not in HF_MODELS:
-            raise ValueError(f"Unknown Hugging Face model: {candidate}")
-        return candidate, "huggingface"
-    if provider == "openrouter":
-        if not candidate:
-            return OPENROUTER_CHAIN[0], "openrouter"
-        if candidate not in OPENROUTER_MODELS:
-            raise ValueError(f"Unknown OpenRouter model: {candidate}")
-        return candidate, "openrouter"
-    if provider == "gemini":
-        if not candidate:
-            return GEMINI_CHAIN[0], "gemini"
-        if candidate not in GEMINI_MODELS:
-            raise ValueError(f"Unknown Gemini model: {candidate}")
-        return candidate, "gemini"
+    candidate = model.strip() if isinstance(model, str) and model.strip() else None
+    if provider in PROVIDERS:
+        if candidate is None:
+            return _ids(provider)[0], PROVIDERS[provider].slug
+        if candidate not in ALLOWED[provider]:
+            raise ValueError(f"Unknown {PROVIDERS[provider].label} model: {candidate}")
+        return candidate, PROVIDERS[provider].slug
     if candidate:
-        if candidate in NIM_MODELS:
-            return candidate, "nvidia"
-        if candidate in GEMINI_MODELS:
-            return candidate, "gemini"
-        if candidate in HF_MODELS:
-            return candidate, "huggingface"
-        if candidate in OPENROUTER_MODELS:
-            return candidate, "openrouter"
-        raise ValueError(f"Unknown Hermes model: {candidate}")
-    return HERMES_MODEL, HERMES_PROVIDER
+        owner = next((pid for pid, allowed in ALLOWED.items() if candidate in allowed), None)
+        if owner is None:
+            raise ValueError(f"Unknown Hermes model: {candidate}")
+        return candidate, PROVIDERS[owner].slug
+    chosen, chosen_model = saved_choice()
+    return chosen_model, PROVIDERS[chosen].slug
 
 
 def effective_hermes_key(override: str | None) -> str:
@@ -372,11 +481,16 @@ ATTEMPT_TIMEOUT_SECONDS = 120
 def _cancel_gateway_run(client, base_url: str, run_id: str, headers: dict) -> None:
     """Best effort: ask the gateway to stop a run we are abandoning (timeout, empty answer,
     student stop), so it frees its slot and stops calling tools while the next rung runs.
-    Gateways without a cancel route simply ignore this."""
+    The Hermes gateway's route is POST /v1/runs/{id}/stop; there is no /cancel."""
     try:
-        client.post(f"{base_url}/v1/runs/{run_id}/cancel", headers=headers, json={})
+        client.post(f"{base_url}/v1/runs/{run_id}/stop", headers=headers, json={})
     except Exception:
         pass
+
+
+def _poll_delay(attempt: int) -> float:
+    """Fast first polls (short answers finish in a second or two), then back off to the old 2 s."""
+    return min(POLL_INTERVAL_SECONDS, 0.25 * (1.6 ** attempt))
 
 
 def execute_with_fallback(client, headers: dict, payload: dict, provider: str | None, model: str | None, timeout_seconds: int, on_state=None, hermes_api_key: str | None = None, gateway_url: str | None = None) -> tuple[str, str, str]:
@@ -397,6 +511,10 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
         if time.monotonic() >= budget_end:
             break
         body = {**payload, "model": run_model, "provider": run_provider}
+        if attempt and body.get("session_id"):
+            # A fresh gateway session per rung: reusing the failed rung's session made the gateway
+            # replay that half-finished turn (and run two turns on one session) instead of starting clean.
+            body["session_id"] = f"{body['session_id']}-r{attempt}"
         run_headers = {**headers, "Idempotency-Key": f"{headers['Idempotency-Key']}-{attempt}"}
         if on_state:
             on_state(None, run_model)
@@ -426,6 +544,7 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
         deadline = min(time.monotonic() + min(timeout_seconds, ATTEMPT_TIMEOUT_SECONDS), budget_end)
         error = f"did not finish within {min(timeout_seconds, ATTEMPT_TIMEOUT_SECONDS)} seconds"
         finished = False
+        polls = 0
         try:
             while time.monotonic() < deadline:
                 try:
@@ -450,7 +569,8 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
                     finished = True
                     error = state.get("error") or f"run {status}"
                     break
-                time.sleep(POLL_INTERVAL_SECONDS)
+                time.sleep(_poll_delay(polls))
+                polls += 1
         except RunCancelled:
             _cancel_gateway_run(client, base_url, run_id, run_headers)
             raise
@@ -472,6 +592,37 @@ class HermesJsonError(RuntimeError):
         self.status = status
 
 
+def _direct_json(prompt: str, instructions: str, provider: str | None, model: str | None,
+                 hermes_api_key: str | None, timeout_seconds: int) -> "JsonOutput | None":
+    """A tool-less JSON task straight to Gemini when this run would start on a Gemini model.
+
+    Through the gateway the same task is a full agent run: ~30 kB of tool schemas, the agent system
+    prompt and skill index, a run slot, a poll loop, and possibly Hermes' background review forks,
+    all for one "text in, JSON out" answer with tools forbidden. The student's chosen model still
+    goes first, and the gateway (with OpenRouter/Hugging Face rungs) remains the fallback."""
+    from . import llm_direct
+
+    if not llm_direct.is_configured(hermes_api_key):
+        return None
+    chain = candidate_chain(provider, model, hermes_api_key)
+    if not chain or chain[0][1] != "gemini":
+        # OpenRouter / Hugging Face / NIM keep the gateway route. (Measured 2026-10: NIM direct was no
+        # faster than the gateway, 14-20 s vs ~11 s for Nemotron Super, so it is not worth a second path.)
+        return None
+    # Gemini rungs only (Gemma answers in text, not JSON); the gateway covers the rest.
+    direct = [(name, slug) for name, slug in chain if slug == "gemini" and not name.startswith("gemma")]
+    if not direct:
+        return None
+    try:
+        result = llm_direct.run_direct_json(
+            instructions, prompt, chain=direct, max_tokens=32768, temperature=None, nvidia_override=hermes_api_key,
+            attempt_seconds=min(90, timeout_seconds), budget_seconds=min(150, timeout_seconds),
+        )
+    except llm_direct.DirectUnavailable:
+        return None
+    return JsonOutput(result.text, result.model, result.provider)
+
+
 def run_json_prompt(
     kind: str,
     prompt: str,
@@ -480,12 +631,20 @@ def run_json_prompt(
     model: str | None = None,
     hermes_api_key: str | None = None,
     timeout_seconds: int = 180,
+    *,
+    skills: tuple[str, ...] = (),
+    direct: bool = False,
 ) -> "JsonOutput":
     """Run one prompt on a throwaway `waypoint:<kind>:*` session and return raw output.
 
     Same contract as app.quiz / app.slides: fresh session per call so the
-    content never enters the coach's conversational memory.
+    content never enters the coach's conversational memory. `skills` are put
+    into the instructions (a JSON-only prompt may not call skill_view), and
+    `direct=True` lets a tool-less task skip the agent loop (see _direct_json).
     """
+    from .hermes_skills import with_skills
+
+    instructions = with_skills(instructions, *skills)
     gateway_key = effective_hermes_key(hermes_api_key)
     if len(gateway_key) < 16:
         raise HermesJsonError("Waypoint Hermes key is missing or too short; run setup (setup.bat or bash setup.sh) to generate HERMES_API_KEY in the server .env", status=401)
@@ -493,6 +652,10 @@ def run_json_prompt(
         resolve_hermes_selection(provider, model)
     except ValueError as exc:
         raise HermesJsonError(str(exc), status=422) from exc
+    if direct:
+        answered = _direct_json(prompt, instructions, provider, model, hermes_api_key, timeout_seconds)
+        if answered is not None:
+            return answered
     session_id = f"{kind}-{uuid.uuid4().hex[:12]}"
     headers = {
         "Authorization": f"Bearer {gateway_key}",
@@ -600,8 +763,12 @@ def run_agent(
                 f"{mail_context}"
                 f"Student message:\n{message_input}"
             ),
-            "session_id": thread.hermes_session_id,
-            "instructions": instructions_for(student_id, db),
+            # Authoritative history from SQLite (see conversation_history). A per-run gateway session
+            # means an empty history (first turn, or a rewind to it) never falls back to replaying an
+            # old gateway transcript; the stable X-Hermes-Session-Key still scopes the conversation.
+            "session_id": f"{thread.hermes_session_id}-{local_run_id[:8]}",
+            "conversation_history": conversation_history(db, thread.id, message.id),
+            "instructions": instructions_for(student_id, db, mailbox=bool(mailbox_access)),
         }
 
         def on_state(status: str | None, run_model: str) -> None:

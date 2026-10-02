@@ -2,7 +2,9 @@
 
 import { Check, ExternalLink, Eye, EyeOff, LoaderCircle } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import { api, hermesRequestParts, modelsFor, saveHermesModel, saveHermesProvider, type HermesProvider } from "@/lib/waypoint-api"
+import { ModelPicker } from "@/components/model-picker"
+import { loadModelCatalog, modelLabel, useModelCatalog } from "@/lib/models"
+import { api } from "@/lib/waypoint-api"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
 import { cn } from "@/lib/utils"
 
@@ -27,7 +29,6 @@ interface ConnectionsStatus {
   connections: Connection[]
   local_model: { available: boolean; reason: string; loaded: boolean }
   models: { feature: string; provider: string | null; model: string | null }[]
-  hermes: { provider: HermesProvider; model: string; key_connection: string; key_env: string }
   decision_engine: {
     choice: EngineChoice
     choices: EngineChoice[]
@@ -49,6 +50,8 @@ export function ConnectionsPanel() {
   const load = useCallback(() => {
     setError(false)
     api<ConnectionsStatus>("/api/settings/connections").then(setStatus).catch(() => setError(true))
+    // A saved or removed key changes which providers the model picker marks as ready.
+    loadModelCatalog(true).catch(() => undefined)
   }, [])
   useEffect(load, [load])
 
@@ -73,23 +76,25 @@ function Body({ status, reload }: { status: ConnectionsStatus; reload: () => voi
   const { t } = useI18n()
   const canSave = status.can_edit && status.env_file.exists
   const jevKeySet = status.connections.find((item) => item.id === "jev")?.set ?? false
+  // Coach and extraction follow the model picker live.
+  const selected = useModelCatalog().catalog?.selected
   return (
     <>
       {!status.can_edit ? <p role="note" className="mt-4 text-xs text-amber-700 dark:text-amber-400">{t("connections.readOnly")}</p> : null}
       {status.can_edit && !status.env_file.exists ? <p role="note" className="mt-4 text-xs text-amber-700 dark:text-amber-400">{t("connections.noEnvFile")}</p> : null}
 
-      <HermesSection status={status} reload={reload} />
+      <HermesSection />
 
       <EngineSection status={status} jevKeySet={jevKeySet} reload={reload} />
 
       <section className="mt-4 rounded-xl border border-border p-4 sm:p-5" aria-labelledby="connections-features">
         <h3 id="connections-features" className="text-[15px] font-semibold">{t("connections.features.title")}</h3>
         <dl className="mt-3 grid gap-2 text-sm">
-          {status.models.map((item) => (item.feature === "coach" ? { ...item, ...coachUse() } : item)).map((item) => (
+          {status.models.map((item) => (selected && (item.feature === "coach" || item.feature === "extraction") ? { ...item, ...selected } : item)).map((item) => (
             <div key={item.feature} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
               <dt className="text-muted-foreground">{t(`connections.features.${item.feature}` as MessageKey)}</dt>
               <dd className="text-end font-medium">
-                {item.model ? <bdi>{t("connections.features.viaProvider", { model: item.model, provider: providerName(item.provider) })}</bdi> : t("connections.features.none")}
+                {item.model ? <bdi>{t("connections.features.viaProvider", { model: modelLabel(item.model), provider: providerName(item.provider) })}</bdi> : t("connections.features.none")}
               </dd>
             </div>
           ))}
@@ -107,95 +112,16 @@ function Body({ status, reload }: { status: ConnectionsStatus; reload: () => voi
   )
 }
 
-const HERMES_PROVIDER_IDS: HermesProvider[] = ["gemini", "nim", "hf", "openrouter"]
-const HERMES_KEY_CONNECTION: Record<HermesProvider, string> = { gemini: "gemini", nim: "nvidia", hf: "huggingface", openrouter: "span" }
-
-function HermesSection({ status, reload }: { status: ConnectionsStatus; reload: () => void }) {
+function HermesSection() {
   const { t } = useI18n()
-  // Every request from this tab carries its own choice, so start from that, not the server default.
-  const tab = hermesRequestParts().body
-  const [provider, setProvider] = useState<HermesProvider>(tab.provider)
-  const [model, setModel] = useState(tab.model)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null)
-  const options = modelsFor(provider)
-  const choices = model && !options.some((option) => option.id === model) ? [{ id: model, label: model }, ...options] : options
-  const keyConnection = status.connections.find((item) => item.id === HERMES_KEY_CONNECTION[provider])
-  const dirty = provider !== tab.provider || model !== tab.model || provider !== status.hermes.provider || model !== status.hermes.model
-  const tabDiffers = tab.provider !== status.hermes.provider || tab.model !== status.hermes.model
-  const selectClass = "mt-1 h-9 w-full rounded-lg border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-
-  const changeProvider = (next: HermesProvider) => {
-    setProvider(next)
-    setModel(next === tab.provider ? tab.model : next === status.hermes.provider ? status.hermes.model : modelsFor(next)[0].id)
-    setMessage(null)
-  }
-
-  const save = async () => {
-    setSaving(true)
-    setMessage(null)
-    try {
-      await api("/api/settings/hermes-model", { method: "PUT", body: JSON.stringify({ provider, model }) })
-      // New chats pick the tab's choice immediately; the server default follows after a restart.
-      saveHermesProvider(provider)
-      saveHermesModel(provider, model)
-      setMessage({ tone: "ok", text: t("connections.hermes.saved") })
-      reload()
-    } catch (reason) {
-      setMessage({ tone: "error", text: reason instanceof Error ? reason.message : t("connections.hermes.saveFailed") })
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
     <section className="mt-6 rounded-xl border border-border p-4 sm:p-5" aria-labelledby="connections-hermes">
       <h3 id="connections-hermes" className="text-[15px] font-semibold">{t("connections.hermes.title")}</h3>
-      <p className="mt-1 text-xs text-muted-foreground">{t("connections.hermes.help")}</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <div>
-          <label htmlFor="hermes-provider" className="text-xs font-medium">{t("connections.hermes.provider")}</label>
-          <select id="hermes-provider" value={provider} disabled={!status.can_edit} onChange={(event) => changeProvider(event.target.value as HermesProvider)} className={selectClass}>
-            {HERMES_PROVIDER_IDS.map((id) => <option key={id} value={id}>{t(`connections.hermes.providers.${id}` as MessageKey)}</option>)}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="hermes-model" className="text-xs font-medium">{t("connections.hermes.model")}</label>
-          <select id="hermes-model" value={model} disabled={!status.can_edit} onChange={(event) => { setModel(event.target.value); setMessage(null) }} className={selectClass}>
-            {choices.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-          </select>
-        </div>
-      </div>
-      <p className={cn("mt-2 text-xs", keyConnection?.set ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
-        {t(keyConnection?.set ? "connections.hermes.keyReady" : "connections.hermes.keyMissing", { env: keyEnvFor(provider) })}
-      </p>
-      {tabDiffers ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("connections.hermes.tabDiffers", { model: modelLabel(status.hermes.provider, status.hermes.model), provider: providerName(status.hermes.provider) })}
-        </p>
-      ) : null}
-      {status.can_edit ? (
-        <button type="button" disabled={!dirty || saving} onClick={() => void save()} className={cn(buttonClass, "mt-3 bg-primary text-primary-foreground hover:bg-primary/90")}>
-          {saving ? t("connections.keys.saving") : t("connections.hermes.save")}
-        </button>
-      ) : null}
-      {message ? <p role={message.tone === "error" ? "alert" : "status"} className={cn("mt-2 text-xs", message.tone === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-destructive")}>{message.text}</p> : null}
+      <p className="mt-1 mb-3 text-xs text-muted-foreground">{t("connections.hermes.help")}</p>
+      <ModelPicker />
     </section>
   )
 }
-
-/** What Coach uses in this tab: the tab's own provider and model. */
-function coachUse() {
-  const { provider, model } = hermesRequestParts().body
-  return { provider, model }
-}
-
-function modelLabel(provider: HermesProvider, model: string) {
-  return modelsFor(provider).find((option) => option.id === model)?.label ?? model
-}
-
-const KEY_ENV: Record<HermesProvider, string> = { gemini: "GEMINI_API_KEY", nim: "NVIDIA_API_KEY", hf: "HF_TOKEN", openrouter: "OPENROUTER_API_KEY" }
-function keyEnvFor(provider: HermesProvider) { return KEY_ENV[provider] }
 
 const PROVIDER_NAMES: Record<string, string> = { gemini: "Gemini", nim: "NVIDIA NIM", nvidia: "NVIDIA NIM", hf: "Hugging Face", huggingface: "Hugging Face", openrouter: "OpenRouter" }
 function providerName(provider: string | null) {

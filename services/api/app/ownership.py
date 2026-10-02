@@ -14,7 +14,16 @@ from sqlalchemy.orm import Session
 
 from .database import get_db
 from .identity import User, current_user, resolve_user
-from .models import Student
+from .models import ChatMessage, ChatThread, Student
+
+
+def require_own_message(db: Session, student_id: str, message_id: str) -> ChatMessage:
+    """A message the student wrote in one of their own threads: what a fact or memory must cite."""
+    message = db.get(ChatMessage, message_id)
+    thread = db.get(ChatThread, message.thread_id) if message is not None else None
+    if message is None or message.role != "user" or thread is None or thread.student_id != student_id:
+        raise HTTPException(422, "source_message_id must be one of this student's own messages")
+    return message
 
 
 def assert_owner(user: User, student_id: str) -> None:

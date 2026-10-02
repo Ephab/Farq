@@ -35,14 +35,12 @@ export interface StagedStreamCallbacks {
  * the snapshot so far so the canvas can render it immediately. */
 export async function streamStagedRoadmap(
   studentId: string,
-  body: { provider: string; model: string },
-  headers: Record<string, string>,
   signal: AbortSignal,
   callbacks: StagedStreamCallbacks,
 ): Promise<void> {
-  const params = new URLSearchParams({ provider: body.provider, model: body.model })
-  const response = await fetch(`${API_BASE}/api/students/${studentId}/onboarding/generate/stream?${params}`, {
-    headers: { ...identityHeaders(), ...headers },
+  // No model in the request: the server runs the Settings choice.
+  const response = await fetch(`${API_BASE}/api/students/${studentId}/onboarding/generate/stream`, {
+    headers: identityHeaders(),
     signal,
   }).catch((reason: unknown) => {
     if (signal.aborted) throw reason

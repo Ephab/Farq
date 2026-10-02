@@ -1,5 +1,4 @@
-import { API_BASE, HERMES_GEMINI_MODELS, HERMES_HF_MODELS, HERMES_OPENROUTER_MODELS,
-  HERMES_NIM_MODELS, formatErrorDetail, hermesRequestParts } from "./waypoint-api";
+import { API_BASE, formatErrorDetail } from "./waypoint-api";
 
 // ─────────────────────────────────────────────────────────────
 // quiz-ai.ts — THE swappable AI backbone for Waypoint quizzes.
@@ -34,9 +33,6 @@ export interface QuizGenerationOptions {
   count: number;
   difficulty: QuizDifficulty;
   types: QuizQuestionType[];
-  /** The tab's Hermes provider/model (hermesRequestParts); empty uses the server default. */
-  provider?: string;
-  model?: string;
   /** Optional AbortSignal so the UI can cancel a slow generation. */
   signal?: AbortSignal;
   /** Real progress events while the response streams in. */
@@ -58,10 +54,6 @@ export interface QuizProgress {
   /** Questions requested. */
   totalQuestions: number;
 }
-
-/** Quiz models served through the Hermes gateway (allowlisted server-side).
- * Used for display labels only — generation sends this tab's provider and model. */
-export const QUIZ_MODELS = [...HERMES_GEMINI_MODELS, ...HERMES_NIM_MODELS, ...HERMES_OPENROUTER_MODELS, ...HERMES_HF_MODELS];
 
 /** Max chars of slide text sent for generation — keeps it fast + cheap. */
 export const MAX_SOURCE_CHARS = 12_000;
@@ -343,10 +335,8 @@ function startRunTicker(options: QuizGenerationOptions): () => void {
 
 /**
  * Generate quiz questions through the Waypoint backend (Hermes gateway).
- * No provider key needed in the browser: auth is the server gateway key,
- * optionally overridden per-tab from Settings (same as the coach).
- * The model is the server's Hermes model unless `options.model` carries a
- * per-run override (e.g. the Lightning fallback after a transient failure).
+ * No provider key in the browser: the server runs the model chosen in Settings
+ * and descends its fallback ladder (same as the coach).
  * Progress ticks while the agent run is polled; the shared
  * parse/salvage pipeline then validates the output.
  */
@@ -366,21 +356,18 @@ export async function generateQuiz(
 
   const source =
     sourceText.length > MAX_SOURCE_CHARS ? sourceText.slice(0, MAX_SOURCE_CHARS) : sourceText;
-  const { headers: hermesHeaders } = hermesRequestParts();
   const stopTicker = startRunTicker(options);
 
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/quiz/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...hermesHeaders },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source_text: source,
         count: options.count,
         difficulty: options.difficulty,
         types: options.types,
-        provider: options.provider,
-        model: options.model,
       }),
       signal: options.signal,
     });

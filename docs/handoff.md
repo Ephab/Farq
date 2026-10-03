@@ -555,3 +555,17 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
   `src/components/coop/{CoopView,CoopMatchesPreview,fixtures}.tsx`
 - CV: `services/api/app/{cv,cv_fit}.py`, `src/components/cv/*`, `src/locales/{en,ar}/cv.ts`
 - Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps,test_staged_roadmap,test_coop_phase_b,test_cv,test_hermes_settings}.py`
+
+## Learning updates (2026-10-04)
+
+Implemented Learning updates navigation, English/Arabic topic confirmation, source filters, cache
+cards, private dismissals and Ask Hermes. Backend learning_updates/ owns SQLite records, curated
+source validation, owner-checked routes, running student READ tools, separate Reddit/X connector
+switches and durable six-hour Apify refresh queue with $1/day shared budget and $0.10 reservations.
+Paid refresh defaults off behind two rollout flags; no live verification is claimed. See
+[learning-updates-threat-model.md](learning-updates-threat-model.md) for rollout and lost-launch recovery.
+
+Verification: full backend suite **553 passed** (41 new learning-update cases); frontend **70 passed**;
+`npm run build` passed. `node scripts/check-learning-updates.mjs` passed English desktop and Arabic
+mobile confirmation/filter/dismissal/Ask Hermes flows with escaped injection text. The browser test
+uses mocked API data, not live scraping. Existing lint/build/deprecation warnings remain.

@@ -320,3 +320,12 @@ must not become StudentFacts or accepted roadmap changes.
 
 Classic Outlook and temporary Graph tokens share the local Laya/cache path.
 Native entrypoints are setup.bat/run.bat (Windows), setup.sh/run.sh (macOS).
+
+## Public learning updates
+
+FastAPI owns a versioned Reddit/X topic catalog, explicit subscriptions, shared redacted public post
+cache, isolated dismissals and a durable Apify budget/refresh queue. Hermes reads only bounded
+cached results via waypoint_find_learning_updates/waypoint_get_learning_update with a running
+student READ grant. Social text is untrusted and never becomes facts or memory. Roadmap changes
+remain ordinary accepted proposals. See [threat model and rollout](learning-updates-threat-model.md).
+Paid refreshing ships disabled pending policy, identity, pricing and live smoke checks.

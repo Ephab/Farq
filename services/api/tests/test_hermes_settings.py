@@ -156,7 +156,7 @@ def test_connector_switch_is_enforced_at_the_tool_endpoint(client: TestClient):
 
     student_id, _ = _student(client)
     listing = client.get(f"/api/students/{student_id}/connectors").json()["connectors"]
-    assert {c["id"] for c in listing} == {"blackboard", "hackathons", "coop", "outlook"}
+    assert {c["id"] for c in listing} == {"blackboard", "hackathons", "coop", "outlook", "learning_reddit", "learning_x"}
     assert all(c["enabled"] for c in listing)
 
     tool = f"/internal/hermes/students/{student_id}/hackathons"

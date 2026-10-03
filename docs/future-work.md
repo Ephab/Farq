@@ -42,7 +42,7 @@ Hermes should continue receiving only normalized records through bounded tools.
 ## Current information
 
 Enable web research only after adding source allowlists, citations, freshness metadata, and
-prompt-injection defenses. Reddit and X require their own credentials and policies. Research
+prompt-injection defenses. Curated Reddit/X learning updates now use server-side Apify and cached-only Hermes tools; paid refresh remains off pending the policy, identity, pricing and bounded live checks in `learning-updates-threat-model.md`. Research
 results should create suggestions awaiting review, never silently rewrite active roadmaps.
 
 Hackathonat is now the primary cached Saudi-hackathon connector. Before production scale, request

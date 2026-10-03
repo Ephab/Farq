@@ -1,3 +1,4 @@
+import { learning } from "./learning"
 // Modern Standard Arabic for a university app. Product and model names (Waypoint, Hermes,
 // Gemini) stay in Latin script; students know them by those names.
 import { core } from "./core"
@@ -13,4 +14,4 @@ import { connections } from "./connections"
 import { agent } from "./agent"
 import { cv } from "./cv"
 
-export const ar = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides, connections, agent, cv }
+export const ar = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides, connections, agent, cv, learning }

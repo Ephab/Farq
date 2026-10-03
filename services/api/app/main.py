@@ -22,6 +22,8 @@ from .blackboard import router as blackboard_router, seed_demo_snapshot
 from .connections import router as connections_router
 from .coop import router as coop_router, seed_coop_catalog
 from .coop_refresh import router as coop_refresh_router, start_scheduler as start_coop_scheduler, stop_scheduler as stop_coop_scheduler
+from .learning_updates.router import router as learning_updates_router
+from .learning_updates.refresh import start_scheduler as start_learning_scheduler, stop_scheduler as stop_learning_scheduler
 from .cv import router as cv_router
 from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
@@ -82,6 +84,7 @@ app.include_router(blackboard_router)
 app.include_router(coop_router)
 app.include_router(coop_refresh_router)
 app.include_router(cv_router)
+app.include_router(learning_updates_router)
 app.include_router(suggestions_router)
 app.include_router(connections_router)
 app.include_router(hermes_skills_router)
@@ -251,6 +254,7 @@ async def startup() -> None:
         logger.warning("Could not apply the skill-learning setting to the Hermes runtime config", exc_info=True)
     global _opportunity_sync_task
     global _outlook_sync_task
+    start_learning_scheduler()
     start_coop_scheduler()  # co-op refresh runs from app start, independent of the hackathon sync
     if os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true" and (_outlook_sync_task is None or _outlook_sync_task.done()):
         _outlook_sync_task = asyncio.create_task(outlook_sync_loop())
@@ -279,6 +283,7 @@ async def _opportunity_sync_loop() -> None:
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    await stop_learning_scheduler()
     await stop_coop_scheduler()
     global _outlook_sync_task
     if _outlook_sync_task is not None:

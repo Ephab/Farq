@@ -272,3 +272,14 @@ def test_extract_text_rejects_garbage_and_oversize():
     assert files.extract_text("huge.txt", b"a" * (files.MAX_FILE_BYTES + 1)) is None
     long = files.extract_text("notes.txt", ("word " * 20_000).encode())
     assert long is not None and len(long) <= files.MAX_CHARS
+
+
+def test_extract_text_rejects_zip_bombs():
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", b"\0" * (101 * 1024 * 1024))
+    assert len(buffer.getvalue()) < files.MAX_FILE_BYTES
+    assert files.extract_text("bomb.docx", buffer.getvalue()) is None
+    assert files.extract_text("bomb.pptx", buffer.getvalue()) is None

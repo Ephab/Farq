@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import re
+import zipfile
 from dataclasses import dataclass
 
 from ..sources.pdf_text import redact
@@ -11,6 +12,8 @@ MAX_FILE_BYTES = 15 * 1024 * 1024
 MAX_FILES = 60
 MAX_CHARS = 40_000
 MAX_PDF_PAGES = 80
+MAX_UNZIPPED_BYTES = 100 * 1024 * 1024
+MAX_ZIP_ENTRIES = 2000
 TEXT_EXTENSIONS = {".pdf", ".pptx", ".docx", ".txt", ".md"}
 SYLLABUS = re.compile(r"syllabus|course (outline|spec|plan)|خطة المقرر|توصيف", re.I)
 
@@ -73,6 +76,16 @@ def _docx(data: bytes) -> str:
     return "\n".join(paragraph.text for paragraph in Document(io.BytesIO(data)).paragraphs)
 
 
+def _zip_ok(data: bytes) -> bool:
+    """Office files are zips; refuse decompression bombs before a parser inflates them in memory."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            infos = archive.infolist()
+            return len(infos) <= MAX_ZIP_ENTRIES and sum(i.file_size for i in infos) <= MAX_UNZIPPED_BYTES
+    except zipfile.BadZipFile:
+        return False
+
+
 def extract_text(name: str, data: bytes) -> str | None:
     if not data or len(data) > MAX_FILE_BYTES:
         return None
@@ -80,10 +93,10 @@ def extract_text(name: str, data: bytes) -> str | None:
     try:
         if ext == ".pdf":
             text = _pdf(data)
-        elif ext == ".pptx":
-            text = _pptx(data)
-        elif ext == ".docx":
-            text = _docx(data)
+        elif ext in {".pptx", ".docx"}:
+            if not _zip_ok(data):
+                return None
+            text = _pptx(data) if ext == ".pptx" else _docx(data)
         elif ext in {".txt", ".md"}:
             text = data.decode("utf-8", errors="replace")
         else:

@@ -1,0 +1,53 @@
+{
+  "exported_at": "2026-10-03T00:00:00.000Z",
+  "source": "IAU Blackboard",
+  "origin": "https://vle.iau.edu.sa",
+  "user": {"id": "_1_1", "userName": "student"},
+  "courses": [
+    {"id": "_101_1", "code": "100_23Aug2026_COMSC", "name": "Deep Learning-7MA1", "term_name": "Fall 2026", "is_current": true,
+     "instructors": [{"name": "Sara Ali", "email": "s@iau.edu.sa", "userId": "_9_1"}],
+     "grade_summary": {"earned": 9, "possible": 10, "percentage": 90, "graded": 1, "pending": 1, "missing": 1},
+     "final_grade": null, "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline"},
+    {"id": "_102_1", "code": "102_23Aug2026_COMSC", "name": "Deep Learning-MA01", "term_name": "Fall 2026", "is_current": true,
+     "instructors": [], "grade_summary": {"earned": 0, "possible": 0, "percentage": null, "graded": 0, "pending": 0, "missing": 0},
+     "final_grade": null, "url": "https://vle.iau.edu.sa/ultra/courses/_102_1/outline"},
+    {"id": "_090_1", "code": "090_2025_COMSC", "name": "Machine learning-6MA2", "term_name": "Spring 2026", "is_current": false,
+     "instructors": [], "grade_summary": {"earned": 88, "possible": 100, "percentage": 88, "graded": 5, "pending": 0, "missing": 0},
+     "final_grade": {"score": 88, "possible": 100, "percentage": 88, "text": "B+"}, "url": "https://vle.iau.edu.sa/ultra/courses/_090_1/outline"}
+  ],
+  "assessments": [
+    {"course_id": "_101_1", "title": "Quiz 1", "description": "Backprop & GD", "due_date": "2026-09-01T20:59:00.000Z", "type": "Quiz",
+     "submission_status": null, "grade": null, "possible": 5, "column_id": "_col2", "source_id": "_col2", "is_upcoming": false, "is_overdue": true,
+     "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline?contentId=_col2"},
+    {"course_id": "_101_1", "title": "Project report", "description": null, "due_date": "2099-01-15T20:59:00.000Z", "type": "Assignment",
+     "submission_status": null, "grade": null, "possible": 20, "column_id": "_col4", "source_id": "_col4", "is_upcoming": true, "is_overdue": false,
+     "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline?contentId=_col4"}
+  ],
+  "announcements": [
+    {"course_id": "_101_1", "announcement_id": "_a1", "source_id": "_a1", "title": "Quiz 1 (5%)", "body_text": "QUIZ 1\nTopics: Backprop",
+     "body_html": "<h5>QUIZ 1</h5>", "created_at": "2026-09-20T08:00:00.000Z", "updated_at": "2026-09-20T08:00:00.000Z",
+     "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline"}
+  ],
+  "content": [
+    {"course_id": "_101_1", "content_id": "_f1", "title": "Week 1", "type": "Folder", "path": "Week 1", "body_text": null, "attachments": [],
+     "created": "2026-09-01T00:00:00.000Z", "modified": "2026-09-02T00:00:00.000Z", "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline?contentId=_f1"},
+    {"course_id": "_101_1", "content_id": "_file1", "title": "Course Syllabus.pdf", "type": "File", "path": "Week 1 / Course Syllabus.pdf", "body_text": null,
+     "attachments": [{"id": "_att9", "name": "Course Syllabus.pdf", "mime": "application/pdf", "size": 2048,
+                      "download_url": "https://vle.iau.edu.sa/learn/api/public/v1/courses/_101_1/contents/_file1/attachments/_att9/download"}],
+     "created": "2026-09-01T00:00:00.000Z", "modified": "2026-09-01T00:00:00.000Z", "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline?contentId=_file1"},
+    {"course_id": "_101_1", "content_id": "_c1", "title": "Lecture 3 slides", "type": "Document", "path": "Lecture 3 slides", "body_text": "Hello & welcome",
+     "attachments": [], "created": "2026-09-02T00:00:00.000Z", "modified": "2026-09-03T00:00:00.000Z", "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline?contentId=_c1"}
+  ],
+  "grades": [
+    {"course_id": "_101_1", "item": "Lab 1", "column_id": "_col1", "score": 9, "possible": 10, "percentage": 90, "status": "Graded",
+     "feedback": "Good work", "posted": "2026-09-15T00:00:00.000Z"}
+  ],
+  "events": [],
+  "diagnostics": {"sources": [
+    {"source": "contents:_101_1", "status": "ok"}, {"source": "announcements:_101_1", "status": "ok"},
+    {"source": "columns:_101_1", "status": "ok"}, {"source": "usergrades:_101_1", "status": "ok"},
+    {"source": "contents:_102_1", "status": "ok"}, {"source": "announcements:_102_1", "status": "ok"},
+    {"source": "columns:_102_1", "status": "ok"}, {"source": "usergrades:_102_1", "status": "ok"}
+  ]},
+  "summary": {"failed_sources": 0}
+}

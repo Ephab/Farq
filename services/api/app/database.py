@@ -37,6 +37,13 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 # Columns added after the first release. create_all() never alters existing
 # tables, so older local SQLite databases get them here (no migration tool yet).
 ADDED_COLUMNS = {
+    "blackboard_courses": {
+        "is_current": "BOOLEAN NOT NULL DEFAULT 0",
+        "instructors_json": "TEXT NOT NULL DEFAULT '[]'",
+        "grade_summary_json": "TEXT NOT NULL DEFAULT '{}'",
+        "url": "VARCHAR(500) NOT NULL DEFAULT ''",
+    },
+    "blackboard_content_items": {"url": "VARCHAR(500) NOT NULL DEFAULT ''"},
     "outlook_sessions": {"coach_access": "BOOLEAN NOT NULL DEFAULT 0"},
     "outlook_connections": {"classifier": "VARCHAR(16) NOT NULL DEFAULT 'laya'", "classify_limit": "INTEGER"},
     "outlook_items": {"pending": "BOOLEAN NOT NULL DEFAULT 0"},

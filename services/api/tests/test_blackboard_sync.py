@@ -467,7 +467,8 @@ def test_post_with_credentials_while_running_is_rejected_untouched(client, stude
 def test_deadlines_exclude_needs_grading_status(client, student, fake_browser):
     sync(client, student, username="2240000000", password=SECRET)
     db = SessionLocal()
-    item = db.scalars(select(BlackboardContentItem).where(BlackboardContentItem.title == "Project report")).first()
+    item = db.scalars(select(BlackboardContentItem).join(BlackboardCourse, BlackboardContentItem.course_id == BlackboardCourse.id)
+                      .where(BlackboardCourse.student_id == student, BlackboardContentItem.title == "Project report")).first()
     item.body_text = "Brief\nStatus: needs_grading"
     db.commit()
     db.close()

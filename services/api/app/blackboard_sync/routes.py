@@ -47,7 +47,7 @@ def status_dict(conn: BlackboardConnection | None) -> dict:
                 "last_synced_at": None, "next_sync_at": None, "summary": {}}
     return {
         "connected": True, "status": conn.status, "stage_detail": conn.stage_detail, "failure_reason": conn.failure_reason,
-        "username": conn.username, "has_saved_login": bool(conn.password_enc), "can_remember": credentials.can_remember(),
+        "username": conn.username, "has_saved_login": credentials.saved_password(conn) is not None, "can_remember": credentials.can_remember(),
         "last_synced_at": _iso(conn.last_synced_at), "next_sync_at": _iso(conn.next_sync_at),
         "summary": json.loads(conn.summary_json or "{}"),
     }
@@ -88,7 +88,11 @@ def start_sync(student_id: str, _owner: OwnedStudent, db: Db, body: SyncRequest 
             conn.failed_logins = 0
         conn.username = username
     elif not credentials.saved_password(conn) and not credentials.saved_session(conn):
-        raise HTTPException(422, "Sign in again to keep syncing.")
+        # Nothing to sign in with: report it as a status so the card shows its localized message and form.
+        conn.status, conn.failure_reason, conn.stage_detail = "failed", "needs_login", ""
+        conn.next_sync_at = None
+        db.commit()
+        return status_dict(conn)
     conn.status, conn.failure_reason, conn.stage_detail = "queued", None, ""
     db.commit()
     worker.start(student_id, password, body.remember)

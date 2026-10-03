@@ -375,6 +375,7 @@ class FakeBrowser:
     """Stands in for Chromium: plays back an outcome and records what it was asked."""
     calls: list[dict] = []
     outcome: object = None
+    verifies: bool = True  # False: signed in via the saved session/AD FS cookie, form never submitted
 
     def run(self, *, username, password, session_state, pick_attachments, progress):
         FakeBrowser.calls.append({"username": username, "password": password, "session": session_state})
@@ -384,13 +385,14 @@ class FakeBrowser:
         export = sample()
         picks = pick_attachments(export)
         return BrowserResult(export=export, session_state={"cookies": [{"name": "BbRouter", "value": "x"}]},
+                             password_verified=bool(password) and FakeBrowser.verifies,
                              # Text bytes under a .txt name: extract_text dispatches on the extension.
                              files={a.key: ("syllabus.txt", b"Syllabus: midterm covers chapters 1-4 and the final covers all.") for a in picks})
 
 
 @pytest.fixture()
 def fake_browser(monkeypatch, fernet_key):
-    FakeBrowser.calls, FakeBrowser.outcome = [], None
+    FakeBrowser.calls, FakeBrowser.outcome, FakeBrowser.verifies = [], None, True
     monkeypatch.setattr(worker, "browser_factory", FakeBrowser)
     real_start = worker.start
     monkeypatch.setattr(worker, "start", lambda sid, pw, remember, background=True: real_start(sid, pw, remember, background=False))
@@ -480,8 +482,57 @@ def test_extract_failure_is_reported(client, student, fake_browser):
 
 
 def test_first_sync_needs_credentials(client, student, fake_browser):
-    assert sync(client, student).status_code == 422
+    assert sync(client, student).status_code == 422  # no connection row and nothing sent
     assert sync(client, student, username="2240000000").status_code == 422
+
+
+def test_no_saved_login_reports_needs_login_status(client, student, fake_browser):
+    sync(client, student, username="2240000000", password=SECRET, remember=False)
+    db = SessionLocal()
+    credentials.clear_session(db.get(BlackboardConnection, student))
+    db.commit()
+    db.close()
+    before = len(fake_browser.calls)
+    response = sync(client, student)
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "failed" and body["failure_reason"] == "needs_login" and body["has_saved_login"] is False
+    assert len(fake_browser.calls) == before  # nothing to sign in with: no browser run
+
+
+def test_password_sealed_with_other_key_is_not_saved_login(client, student, fake_browser, monkeypatch):
+    from app.blackboard_sync.routes import status_dict
+    sync(client, student, username="2240000000", password=SECRET)
+    monkeypatch.setenv("WAYPOINT_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    db = SessionLocal()
+    conn = db.get(BlackboardConnection, student)
+    assert conn.password_enc and status_dict(conn)["has_saved_login"] is False
+    db.close()
+
+
+def test_unverified_typed_password_is_not_remembered(client, student, fake_browser):
+    fake_browser.verifies = False  # the saved session signed in; the typed password was never checked
+    sync(client, student, username="2240000000", password="maybe-mistyped", remember=True)
+    status = client.get(f"/api/students/{student}/blackboard/sync").json()
+    assert status["status"] == "done" and status["has_saved_login"] is False
+    db = SessionLocal()
+    assert db.get(BlackboardConnection, student).password_enc is None
+    db.close()
+
+
+def test_due_students_skips_disabled_connector(client, student, fake_browser):
+    from datetime import timedelta
+    from app.models import now
+    from app.student_memory import set_connector
+    sync(client, student, username="2240000000", password=SECRET)
+    db = SessionLocal()
+    db.get(BlackboardConnection, student).next_sync_at = now() - timedelta(minutes=1)
+    db.commit()
+    assert student in worker.due_students(db)
+    set_connector(db, student, "blackboard", False)
+    db.commit()
+    assert student not in worker.due_students(db)
+    db.close()
 
 
 def test_second_post_while_running_is_single_flight(client, student, fake_browser, monkeypatch):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
@@ -21,6 +22,8 @@ EXTRACTOR_FILES = ("bb-utils.js", "bb-model.js", "extractor.js")
 SELECTORS = {"username": "#userNameInput", "password": "#passwordInput", "submit": "#submitButton", "error": "#errorText"}
 LOGIN_WAIT_MS = 30_000
 EXTRACT_TIMEOUT_MS = 8 * 60_000
+# The whole attachment phase; with login and extraction this keeps a sync under ~10 minutes.
+DOWNLOAD_BUDGET_SECONDS = 180
 EXTRACT_SCRIPT = """async ({ origin, timeoutMs }) => {
   const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("extract timed out")), timeoutMs));
   try {
@@ -57,6 +60,9 @@ class BrowserResult:
     export: dict
     session_state: dict
     files: dict[str, tuple[str, bytes]] = field(default_factory=dict)
+    # True only when this run submitted the AD FS form and the sign-in succeeded. A saved session or a
+    # silent AD FS cookie sign-in never checks the typed password, so it must not be remembered then.
+    password_verified: bool = False
 
 
 class BlackboardBrowser(Protocol):
@@ -76,12 +82,14 @@ def classify_after_submit(url: str, error_text: str | None, origin: str = ORIGIN
 
 class PlaywrightBrowser:
     def __init__(self, origin: str = ORIGIN, login_url: str = LOGIN_URL, bundle_dir: Path | None = None,
-                 headless: bool = True, login_wait_ms: int = LOGIN_WAIT_MS):
+                 headless: bool = True, login_wait_ms: int = LOGIN_WAIT_MS,
+                 download_budget_s: float = DOWNLOAD_BUDGET_SECONDS):
         self.origin = origin.rstrip("/")
         self.login_url = login_url
         self.bundle_dir = bundle_dir or extractor_dir()
         self.headless = headless
         self.login_wait_ms = login_wait_ms
+        self.download_budget_s = download_budget_s
 
     def run(self, *, username, password, session_state, pick_attachments, progress) -> BrowserResult:
         """Must be called from a worker thread, not the asyncio event-loop thread (Playwright sync API)."""
@@ -104,14 +112,16 @@ class PlaywrightBrowser:
                 page = context.new_page()
                 page.expose_function("waypointProgress", lambda message: progress("extracting", str(message)[:200]))
                 progress("logging_in", "")
+                verified = False
                 if session_state and self._signed_in(context):
                     page.goto(f"{self.origin}/ultra/course", wait_until="domcontentloaded")
                 else:
                     if not password:
                         raise LoginFailure("needs_login")
-                    self._login(page, username, password)
+                    submitted = self._login(page, username, password)
                     if not self._signed_in(context):
                         raise LoginFailure("extra_verification")
+                    verified = submitted
                 progress("extracting", "")
                 try:
                     for source in bundle:
@@ -125,18 +135,23 @@ class PlaywrightBrowser:
                 export = outcome["data"]
                 progress("reading_files", "")
                 downloaded: dict[str, tuple[str, bytes]] = {}
+                deadline = time.monotonic() + self.download_budget_s
                 for attachment in pick_attachments(export):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break  # budget spent: keep what was downloaded, start nothing new
                     if not attachment.url.startswith(f"{self.origin}/"):
-                        continue  # URLs come from the page world; never fetch another origin.
+                        continue  # URLs come from the page world; never start a fetch on another origin.
                     try:
-                        response = context.request.get(attachment.url, timeout=60_000)
+                        response = context.request.get(attachment.url, timeout=max(1_000, min(60_000, remaining * 1000)))
                     except PlaywrightError:
                         continue
-                    if response.ok:
+                    if response.ok and self._allowed_final_url(response.url):
                         body = response.body()
                         if len(body) <= MAX_FILE_BYTES:
                             downloaded[attachment.key] = (attachment.name, body)
-                return BrowserResult(export=export, session_state=context.storage_state(), files=downloaded)
+                return BrowserResult(export=export, session_state=context.storage_state(), files=downloaded,
+                                     password_verified=verified)
             except PlaywrightError:
                 raise LoginFailure("unreachable") from None
             finally:
@@ -145,16 +160,21 @@ class PlaywrightBrowser:
                 except Exception:
                     pass
 
+    def _allowed_final_url(self, url: str) -> bool:
+        """Redirects are followed; keep the body only if the last hop is the Blackboard origin or https."""
+        return url.startswith(f"{self.origin}/") or url.startswith("https://")
+
     def _signed_in(self, context) -> bool:
         response = context.request.get(f"{self.origin}/learn/api/v1/users/me",
                                        headers={"Accept": "application/json"}, max_redirects=0)
         return response.status == 200
 
-    def _login(self, page, username: str, password: str) -> None:
+    def _login(self, page, username: str, password: str) -> bool:
+        """True when the form was submitted and accepted; False when AD FS signed in silently (cookie)."""
         from playwright.sync_api import TimeoutError as PlaywrightTimeout
         page.goto(self.login_url, wait_until="domcontentloaded")
         if page.url.startswith(f"{self.origin}/ultra"):
-            return
+            return False
         try:
             page.wait_for_selector(SELECTORS["username"], timeout=self.login_wait_ms)
         except PlaywrightTimeout:
@@ -168,3 +188,4 @@ class PlaywrightBrowser:
             error = page.locator(SELECTORS["error"])
             text = error.first.inner_text(timeout=2_000) if error.count() else ""
             raise LoginFailure(classify_after_submit(page.url, text, self.origin)) from None
+        return True

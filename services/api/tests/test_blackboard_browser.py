@@ -53,6 +53,12 @@ class Portal(BaseHTTPRequestHandler):
             return self._send(200, b"<html><body>Ultra</body></html>") if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})
         if self.path == "/learn/api/v1/users/me":
             return self._send(200, b'{"id":"_1_1"}', "application/json") if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})
+        if self.path == "/files/hop":  # same-origin redirect: allowed
+            return self._send(302, headers={"Location": "/files/syllabus.txt"})
+        if self.path == "/files/away":  # redirect off the origin to plain http: body must be dropped
+            return self._send(302, headers={"Location": f"http://localhost:{self.server.server_port}/public/notes.txt"})
+        if self.path == "/public/notes.txt":
+            return self._send(200, b"Off-origin text that must never be kept.", "text/plain")
         if self.path == "/files/syllabus.txt":
             return self._send(200, b"Week 1 covers gradient descent." * 4, "text/plain") if self._authed() else self._send(403)
         return self._send(404)
@@ -109,6 +115,7 @@ def test_fake_portal_login_extract_and_download(portal):
     assert any(c["name"] == "bb" for c in result.session_state["cookies"])
     assert ("extracting", "Courses: 1") in stages
     assert PASSWORD not in json.dumps(result.session_state)
+    assert result.password_verified is True  # the form was submitted and accepted
 
 
 def test_fake_portal_bad_password(portal):
@@ -122,7 +129,10 @@ def test_saved_session_skips_login_and_missing_password_needs_login(portal):
     origin, bundle = portal
     first, _ = _run(_make(origin, bundle), PASSWORD)
     again, _ = _run(_make(origin, bundle), None, state=first.session_state)
-    assert again.export["courses"]
+    assert again.export["courses"] and again.password_verified is False
+    # A typed (maybe mistyped) password is not verified when the saved session signs in.
+    typed, _ = _run(_make(origin, bundle), "mistyped", state=first.session_state)
+    assert typed.export["courses"] and typed.password_verified is False
     with pytest.raises(browser.LoginFailure) as caught:
         _run(_make(origin, bundle), None, state=None)
     assert caught.value.code == "needs_login"
@@ -156,3 +166,29 @@ def test_other_origin_attachment_is_not_fetched(portal):
              Attachment("k2", "_1", "_c", "syllabus.txt", f"{origin}/files/syllabus.txt", 100)]
     result, _ = _run(_make(origin, bundle), PASSWORD, picks=picks)
     assert "k1" not in result.files and "k2" in result.files
+
+
+def test_redirect_off_origin_body_is_dropped(portal):
+    origin, bundle = portal
+    picks = [Attachment("hop", "_1", "_c", "syllabus.txt", f"{origin}/files/hop", 100),
+             Attachment("away", "_1", "_c", "notes.txt", f"{origin}/files/away", 100)]
+    result, _ = _run(_make(origin, bundle), PASSWORD, picks=picks)
+    assert b"gradient descent" in result.files["hop"][1]
+    assert "away" not in result.files
+
+
+def test_download_budget_stops_new_downloads(portal):
+    origin, bundle = portal
+    b = _make(origin, bundle)
+    b.download_budget_s = 0
+    pick = [Attachment("_1:_c:_a", "_1", "_c", "syllabus.txt", f"{origin}/files/syllabus.txt", 100)]
+    result, _ = _run(b, PASSWORD, picks=pick)
+    assert result.export["courses"] and result.files == {}
+
+
+def test_allowed_final_url():
+    b = browser.PlaywrightBrowser()
+    assert b._allowed_final_url("https://vle.iau.edu.sa/bbcswebdav/x.pdf")
+    assert b._allowed_final_url("https://cdn.example.com/signed/x.pdf")
+    assert not b._allowed_final_url("http://10.0.0.5/x.pdf")
+    assert not b._allowed_final_url("file:///etc/passwd")

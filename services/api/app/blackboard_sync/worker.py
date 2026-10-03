@@ -121,7 +121,8 @@ def run_sync(student_id: str, password: str | None, remember: bool) -> None:
         db.refresh(conn)
         conn.failed_logins = 0
         credentials.save_session(conn, result.session_state)
-        if password and remember and credentials.can_remember():
+        # Remember a typed password only once IAU has accepted it (a saved session skips the form).
+        if password and remember and result.password_verified and credentials.can_remember():
             credentials.remember_password(conn, password)
         elif password and not remember:
             credentials.forget_password(conn)

@@ -436,6 +436,13 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - `useActiveRun` polls every 2 s only while a run is live (15 s idle, instant on send/visibility).
 
 ### 6. Smaller fixes
+- Coach runs never reach for the onboarding Generate button. `waypoint_ready_to_generate` is refused
+  outside the onboarding chat (409), but only a run's final text is stored and shown, so the refusal
+  used to *replace* Hermes' answer: a student asked "Where do I start coding?" and got "I couldn't
+  show the Generate button from here (it's onboarding-only)…" instead. `COACH_INSTRUCTIONS` now
+  forbids the call and points the coach at `waypoint_get_active_roadmap`, the 409 detail tells the
+  model to answer the question rather than narrate the error, and the plugin tool description says
+  the same (2026-10-03).
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.
 - `scripts/runtime.py`, shared by `scripts/run_mac.py` and `scripts/run_windows.py`,
   re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start

@@ -47,3 +47,6 @@ __pycache__/
 .superpowers/
 # Keep old pairing files ignored so upgrades cannot accidentally commit a secret.
 .local-outlook-key
+
+# Real Blackboard exports contain a student's grades (see BB-Extension/.gitignore)
+iau-blackboard-export-*.json

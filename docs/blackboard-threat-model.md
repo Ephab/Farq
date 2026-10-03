@@ -22,8 +22,16 @@ remembered logins.
 
 ## 3. What the sync can do
 
-- Requests are GET-only, plus the AD FS sign-in form submit. Attachment downloads are restricted to
-  the Blackboard origin.
+- Requests are GET-only, plus the AD FS sign-in form submit.
+- An attachment download is started only for a URL on the Blackboard origin. Redirects are followed
+  (Playwright's request context, up to 20 hops, cookies sent only under normal cookie rules), and the
+  body is kept only if the final URL is on the Blackboard origin or is `https://`. Intermediate hops
+  are not checked, and a final `https://` URL on another host is accepted (Blackboard may hand files
+  off to a storage host).
+- The download phase has a 180 s budget (`DOWNLOAD_BUDGET_SECONDS`); after it no new download
+  starts and what was already read is kept. With the 8-minute extract timeout this bounds a sync.
+- A typed password is remembered only after this run submitted it to AD FS and the sign-in
+  succeeded; a sync that signed in with the saved session never stores the typed password.
 - It reads only the signed-in student's own data, with their own entitlements.
 - Hermes never sees credentials. It gets Blackboard data only through the existing read tools, behind
   the connector switch (enforced in the internal API routes).
@@ -31,7 +39,7 @@ remembered logins.
 ## 4. Lockout safety
 
 - A saved password that fails once is wiped and the retry loop stops.
-- 3 typed (manually entered) failures wipe everything.
+- 3 typed (manually entered) failures wipe the saved password and session.
 - Network errors, extraction failures and crashes do not count as login failures; they retry in 1 hour.
 - Credentials sent during a running sync are rejected with 409. Syncs are single-flight.
 

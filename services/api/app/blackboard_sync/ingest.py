@@ -85,7 +85,18 @@ def _delete_course(db: Session, course: BlackboardCourse) -> None:
     db.delete(course)
 
 
-def _items(export: dict, file_texts: dict[str, str], summary: IngestSummary):
+def _carried_block(previous: str, name: str) -> str:
+    """The stored `[File: name]` block (header and text) from an earlier sync, or ''."""
+    header = f"[File: {name}]\n"
+    start = previous.find(header)
+    if start == -1 or (start and previous[max(0, start - 2):start] != "\n\n"):
+        return ""
+    end = previous.find("\n\n[File: ", start)
+    return previous[start:end if end != -1 else len(previous)].strip()
+
+
+def _items(export: dict, file_texts: dict[str, str], summary: IngestSummary,
+           previous: dict[tuple[str, str], str] | None = None):
     """Yield (course external id, item external id, fields) for every item worth keeping."""
     for a in export.get("announcements", []):
         ident = a.get("announcement_id") or a.get("source_id")
@@ -127,9 +138,15 @@ def _items(export: dict, file_texts: dict[str, str], summary: IngestSummary):
         attachments = c.get("attachments") or []
         for att in attachments:
             text = file_texts.get(f"{c.get('course_id')}:{ident}:{att.get('id')}")
+            name = att.get("name") or "attachment"
             if text:
                 summary.files_read += 1
-                body = f"{body}\n\n[File: {att.get('name') or 'attachment'}]\n{text}".strip()
+                body = f"{body}\n\n[File: {name}]\n{text}".strip()
+            else:
+                # Not read this run (download failed, size cap): keep what an earlier sync extracted.
+                carried = _carried_block((previous or {}).get((c.get("course_id"), f"content:{ident}"), ""), name)
+                if carried:
+                    body = f"{body}\n\n{carried}".strip()
         if c.get("type") == "Folder" and not body and not attachments:
             continue
         label = f"{c.get('title') or ''} {c.get('path') or ''}"
@@ -211,7 +228,11 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         _delete_course(db, stale)
 
     seen: dict[str, set[str]] = {ext: set() for ext in by_ext}
-    for course_ext, item_ext, fields in _items(export, file_texts, summary):
+    ext_of = {row.id: ext for ext, row in by_ext.items()}
+    previous = {(ext_of[i.course_id], i.external_id): i.body_text for i in db.scalars(
+        select(BlackboardContentItem).where(BlackboardContentItem.course_id.in_(list(ext_of)),
+                                            BlackboardContentItem.external_id.like("content:%"))).all()}
+    for course_ext, item_ext, fields in _items(export, file_texts, summary, previous):
         course = by_ext.get(course_ext)
         if course is None:
             continue

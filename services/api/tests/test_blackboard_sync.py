@@ -172,3 +172,18 @@ def test_unchanged_item_keeps_modified_at(student):
     after = {i.external_id: i.modified_at for i in rows(BlackboardContentItem, course_id=course.id)}
     assert before["asmt:_col4"] == after["asmt:_col4"]
 
+
+
+def test_unread_attachment_keeps_earlier_text_until_removed(student):
+    def syllabus_body():
+        course = next(c for c in rows(BlackboardCourse, student_id=student) if c.external_id == "_101_1")
+        item = next(i for i in rows(BlackboardContentItem, course_id=course.id) if i.external_id == "content:_file1")
+        return item.body_text
+
+    ingest_sample(student, texts={SYLLABUS_KEY: "Midterm covers chapters 1-4."})
+    ingest_sample(student, texts={})
+    assert "Midterm covers chapters 1-4." in syllabus_body()
+    removed = sample()
+    next(c for c in removed["content"] if c["content_id"] == "_file1")["attachments"] = []
+    ingest_sample(student, removed, texts={})
+    assert "Midterm covers chapters 1-4." not in syllabus_body()

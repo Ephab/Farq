@@ -1,28 +1,31 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Bot, Check, LoaderCircle, Sparkles, Wand2 } from "lucide-react"
+import { ArrowRight, BookOpen, Bot, Check, FastForward, LoaderCircle, Sparkles, Target, Wand2 } from "lucide-react"
+import { GeneratingView } from "@/components/onboarding/GeneratingView"
 import { ChatThreadView } from "@/components/hermes/ChatThreadView"
 import { useHermesChat } from "@/components/hermes/use-hermes-chat"
-import { RoadmapCanvas } from "@/components/roadmap/RoadmapCanvas"
 import { streamStagedRoadmap, type StagedPlan, type StagedSnapshot } from "@/hooks/use-staged-generation"
 import type { NodeStatus } from "@/data/computer-vision-roadmap"
 import { api, runErrorMessage, type StudentProfile } from "@/lib/waypoint-api"
 import { useI18n } from "@/lib/i18n/context"
-import { stripStagePrefix } from "@/lib/roadmap-layout"
 
 interface OnboardingChatProps {
   profile: StudentProfile
   onBack: () => void
   onGenerated: () => void
+  /** Leave onboarding for the app while the roadmap keeps generating on the server. */
+  onExplore: () => void
+  /** Reports whether a roadmap is being built, so the page around the chat can drop exits that would orphan it. */
+  onGeneratingChange?: (generating: boolean) => void
 }
 
-export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatProps) {
+export function OnboardingChat({ profile, onBack, onGenerated, onExplore, onGeneratingChange }: OnboardingChatProps) {
   const { t } = useI18n()
   const chat = useHermesChat(profile.thread_id)
-  // A reload during generation closes the stream and the server returns the student to chat,
-  // so always start idle: the Generate button is the way back in (never a dead spinner).
-  const [generating, setGenerating] = useState(false)
+  // Generation runs on the server, so a student who left (or reloaded) mid-run comes back to it:
+  // the stream below re-attaches and replays what has been built so far.
+  const [generating, setGenerating] = useState(profile.onboarding_status === "generating")
   const [plan, setPlan] = useState<StagedPlan | null>(null)
   const [snapshot, setSnapshot] = useState<StagedSnapshot | null>(null)
   const [doneStageIds, setDoneStageIds] = useState<Set<string>>(new Set())
@@ -39,7 +42,7 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
     return map
   }, [snapshot])
 
-  const generate = async () => {
+  const generate = async (attach = false) => {
     abort.current?.abort()
     const controller = new AbortController()
     abort.current = controller
@@ -61,9 +64,14 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
           setGenError(message)
           setGenerating(false)
         },
-      })
+      }, attach)
     } catch (reason) {
       if (controller.signal.aborted) return
+      if (attach) {
+        setGenError(reason instanceof Error ? runErrorMessage(reason.message) : t("onboarding.chat.generateFailed"))
+        setGenerating(false)
+        return
+      }
       // Fall back to the whole-roadmap endpoint so a dropped stream never blocks onboarding.
       try {
         await api(`/api/students/${profile.student_id}/onboarding/generate`, { method: "POST", body: "{}" })
@@ -75,6 +83,22 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
     }
   }
 
+  // Returning to a run that is already going: follow it instead of starting another.
+  useEffect(() => {
+    if (profile.onboarding_status === "generating") void generate(true)
+    // Once on mount; later runs are started by the buttons.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => { onGeneratingChange?.(generating) }, [generating, onGeneratingChange])
+  useEffect(() => () => onGeneratingChange?.(false), [onGeneratingChange])
+
+  const stop = async () => {
+    abort.current?.abort()
+    try { await api(`/api/students/${profile.student_id}/onboarding/generate/cancel`, { method: "POST" }) } catch { /* the run may already be over */ }
+    setGenerating(false); setPlan(null); setSnapshot(null)
+  }
+
   const answered = chat.messages.filter((message) => message.role === "user").length
   // Hermes calls waypoint_ready_to_generate once it knows enough; until then Generate is only a quiet skip.
   const ready = chat.messages.some((message) => message.role === "assistant" && message.metadata?.ready_to_generate)
@@ -82,13 +106,14 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {generating ? null : (
       <div className="border-b border-border px-4 py-3 sm:px-8"><div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3">
         <span className="grid size-9 place-items-center rounded-2xl bg-primary text-primary-foreground"><Bot className="size-4" /></span>
         <div className="min-w-0 flex-1"><h1 className="text-sm font-semibold">{t("onboarding.chat.title")}</h1><p className="text-xs text-muted-foreground">{t("onboarding.chat.subtitle")}</p></div>
-        <button type="button" onClick={onBack} disabled={generating} className="h-9 rounded-xl border border-border px-3 text-xs disabled:opacity-40">{t("onboarding.chat.backToReview")}</button>
-        {ready || generating ? (
-          <button type="button" onClick={() => void generate()} disabled={generating || chat.busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40">
-            {generating ? <LoaderCircle className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}{t("onboarding.chat.generate")}
+        <button type="button" onClick={onBack} className="h-9 rounded-xl border border-border px-3 text-xs disabled:opacity-40">{t("onboarding.chat.backToReview")}</button>
+        {ready ? (
+          <button type="button" onClick={() => void generate()} disabled={chat.busy} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40">
+            <Wand2 className="size-3.5" />{t("onboarding.chat.generate")}
           </button>
         ) : canSkip ? (
           <button type="button" onClick={() => void generate()} disabled={chat.busy} title={t("onboarding.chat.skipAheadTitle")} className="h-9 rounded-xl px-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline disabled:opacity-40">
@@ -96,53 +121,23 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
           </button>
         ) : null}
       </div></div>
+      )}
       {generating ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-border px-4 py-3 sm:px-8">
-            <div className="mx-auto w-full max-w-3xl">
-              <p className="text-sm font-medium">
-                {plan ? t("onboarding.chat.stageProgress", { title: `⁨${plan.title}⁩`, current: doneStageIds.size + 1, total: plan.stages.length }) : t("onboarding.chat.planning")}
-              </p>
-              {plan ? (
-                <ol className="mt-2 flex flex-wrap gap-1.5" aria-label={t("onboarding.chat.stageProgressLabel")}>
-                  {plan.stages.map((stage) => {
-                    const done = doneStageIds.has(stage.id)
-                    const active = stage.id === activeStageId
-                    return (
-                      <li key={stage.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${done ? "border-emerald-500/40 bg-emerald-500/10" : active ? "border-primary/40 bg-primary/5" : "border-border text-muted-foreground"}`}>
-                        {done ? <Check className="size-3" /> : active ? <LoaderCircle className="size-3 animate-spin" /> : null}
-                        <bdi>{stripStagePrefix(stage.title)}</bdi>
-                      </li>
-                    )
-                  })}
-                </ol>
-              ) : (
-                <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" />{t("onboarding.chat.reading")}</p>
-              )}
-              <p className="mt-2 text-[11px] text-muted-foreground">{t("onboarding.chat.stageHint")}</p>
-            </div>
-          </div>
-          <div className="relative flex min-h-[50svh] flex-1 flex-col">
-            {snapshot ? (
-              <RoadmapCanvas
-                nodes={snapshot.nodes}
-                stages={snapshot.stages}
-                statuses={statuses}
-                selectedId={selectedId}
-                dimmedIds={new Set()}
-                onSelect={setSelectedId}
-                onToggleDone={() => undefined}
-              />
-            ) : (
-              <div className="grid flex-1 place-items-center p-8 text-center">
-                <div><LoaderCircle className="mx-auto size-6 animate-spin text-primary" /><p className="mt-3 text-sm font-medium">{t("onboarding.chat.buildingFirst")}</p><p className="mt-1 text-xs text-muted-foreground">{t("onboarding.chat.underMinute")}</p></div>
-              </div>
-            )}
-          </div>
-        </div>
+        <GeneratingView
+          plan={plan}
+          snapshot={snapshot}
+          doneStageIds={doneStageIds}
+          activeStageId={activeStageId}
+          statuses={statuses}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onExplore={onExplore}
+          onStop={() => void stop()}
+        />
       ) : (
         <>
           {genError ? <div className="mx-auto mt-3 w-full max-w-3xl rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{genError}</div> : null}
+          <div className="onboarding-chat mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
           <ChatThreadView
             messages={chat.messages}
             busy={chat.busy}
@@ -164,8 +159,23 @@ export function OnboardingChat({ profile, onBack, onGenerated }: OnboardingChatP
                 </button>
               </div>
             ) : undefined}
-            empty={<div className="p-6 text-center"><Sparkles className="mx-auto size-7 text-primary" /><h2 className="mt-3 font-semibold">{t("onboarding.chat.emptyTitle")}</h2><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{t("onboarding.chat.emptyBody")}</p><button type="button" onClick={() => void chat.send(t("onboarding.chat.kickoff"))} className="mt-5 h-9 rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground">{t("onboarding.chat.start")}</button></div>}
+            empty={
+              <div className="onb-empty">
+                <span className="onb-empty-mark"><Sparkles className="size-6" aria-hidden="true" /></span>
+                <h2>{t("onboarding.chat.emptyTitle")}</h2>
+                <p>{t("onboarding.chat.emptyBody")}</p>
+                <ul className="onb-empty-chips">
+                  <li><Target className="size-3.5" aria-hidden="true" />{t("onboarding.chat.chipGoals")}</li>
+                  <li><BookOpen className="size-3.5" aria-hidden="true" />{t("onboarding.chat.chipLearning")}</li>
+                  <li><FastForward className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />{t("onboarding.chat.chipSkip")}</li>
+                </ul>
+                <button type="button" onClick={() => void chat.send(t("onboarding.chat.kickoff"))} className="onb-empty-start">
+                  {t("onboarding.chat.start")}<ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
+                </button>
+              </div>
+            }
           />
+          </div>
         </>
       )}
     </div>

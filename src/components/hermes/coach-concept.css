@@ -2124,3 +2124,108 @@ html[data-theme="deep-ocean"] .fq {
 @media (prefers-reduced-motion: reduce) {
   .fq .flashcard-inner { transition: none !important; }
 }
+
+/* Onboarding chat: the first-run empty state is an open hero, not a dashed card. */
+/* .fq-thread is itself the .fq root here, so the Coach's ".fq .fq-thread" rule never matches it. */
+.onboarding-chat > .fq-thread {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.onboarding-chat .fq-empty {
+  width: min(100%, 600px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: clamp(16px, 4vw, 32px) 0;
+  box-shadow: none;
+}
+
+.onb-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.onb-empty-mark {
+  display: grid;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 22px;
+  place-items: center;
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 20%, transparent), color-mix(in srgb, var(--primary) 6%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--primary);
+}
+
+.fq .onb-empty h2 {
+  margin: 0 0 10px;
+  font-size: clamp(24px, 3.4vw, 32px);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.fq .onb-empty > p {
+  max-width: 46ch;
+  margin: 0 0 22px;
+  color: var(--fq-muted);
+  font-size: 15px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.onb-empty-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+
+.onb-empty-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  padding: 6px 12px;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+
+.fq button.onb-empty-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--primary);
+  padding: 0 24px;
+  color: var(--primary-foreground);
+  font-size: 15px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.fq button.onb-empty-start:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--fq-shadow-accent);
+}
+
+.fq button.onb-empty-start:active {
+  transform: scale(0.97);
+}
+
+.fq button.onb-empty-start:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}

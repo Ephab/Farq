@@ -276,3 +276,86 @@ def test_stage_with_unknown_dep_is_rejected(client: TestClient, monkeypatch: pyt
     response = client.post(f"/api/students/{sid}/onboarding/roadmap/stages/foundations/generate", json={"job_id": job_id}, headers=HERMES)
     assert response.status_code in (422, 502)
     assert client.post(f"/api/students/{sid}/onboarding/roadmap/finalize", json={"job_id": job_id}).status_code == 409
+
+
+def _events(response) -> list[str]:
+    return [line.removeprefix("event: ") for line in response.iter_lines() if line.startswith("event: ")]
+
+
+def test_generation_continues_after_the_stream_is_closed(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    import time
+
+    sid = prepare_student(client)
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        "app.hermes.httpx.Client",
+        staged_gateway(json.dumps(PLAN), {key: json.dumps(value) for key, value in STAGE_PAYLOADS.items()}, prompts),
+    )
+    with client.stream("GET", f"/api/students/{sid}/onboarding/generate/stream", headers={**HERMES, "X-Waypoint-User": sid}) as first:
+        for line in first.iter_lines():
+            if line.startswith("event: plan"):
+                break  # the student navigates away mid-generation
+    deadline = time.monotonic() + 20
+    status = client.get(f"/api/students/{sid}/onboarding/generate/status").json()
+    while status["state"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.1)
+        status = client.get(f"/api/students/{sid}/onboarding/generate/status").json()
+    assert status["state"] == "done", status
+    assert status["completed_stage_ids"] == ["foundations", "core", "career"] and status["proposal_id"]
+    assert client.get(f"/api/students/{sid}/profile").json()["onboarding_status"] == "preview"
+    # A late attach (a reload) replays the whole run and still ends in done.
+    with client.stream("GET", f"/api/students/{sid}/onboarding/generate/stream?attach=true", headers={**HERMES, "X-Waypoint-User": sid}) as again:
+        names = _events(again)
+    assert names == ["plan", "stage", "stage", "stage", "done"]
+
+
+def test_attach_without_a_run_resets_to_chat_and_cancel_is_safe(client: TestClient):
+    sid = prepare_student(client)
+    from app.database import SessionLocal
+    from app.models import StudentProfile
+
+    with SessionLocal() as db:
+        db.get(StudentProfile, sid).onboarding_status = "generating"
+        db.commit()
+    with client.stream("GET", f"/api/students/{sid}/onboarding/generate/stream?attach=true", headers={**HERMES, "X-Waypoint-User": sid}) as response:
+        assert response.status_code == 200, response.read()
+        assert _events(response) == ["error"]
+    assert client.get(f"/api/students/{sid}/profile").json()["onboarding_status"] == "chat"
+    assert client.get(f"/api/students/{sid}/onboarding/generate/status").json()["state"] == "idle"
+    assert client.post(f"/api/students/{sid}/onboarding/generate/cancel").json() == {"cancelled": False}
+
+
+def test_cannot_step_back_while_a_roadmap_is_being_built(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    import threading
+    import time
+
+    sid = prepare_student(client)
+    gate = threading.Event()
+    prompts: list[str] = []
+    base = staged_gateway(json.dumps(PLAN), {key: json.dumps(value) for key, value in STAGE_PAYLOADS.items()}, prompts)
+
+    class SlowClient(base):
+        def get(self, url, headers=None):
+            gate.wait(10)
+            return super().get(url, headers=headers)
+
+    monkeypatch.setattr("app.hermes.httpx.Client", SlowClient)
+    seen: list[str] = []
+
+    def watch():
+        with client.stream("GET", f"/api/students/{sid}/onboarding/generate/stream", headers={**HERMES, "X-Waypoint-User": sid}) as stream:
+            seen.extend(_events(stream))
+
+    watcher = threading.Thread(target=watch)
+    watcher.start()
+    deadline = time.monotonic() + 5
+    while client.get(f"/api/students/{sid}/profile").json()["onboarding_status"] != "generating" and time.monotonic() < deadline:
+        time.sleep(0.05)
+    blocked = client.put(f"/api/students/{sid}/profile", json={"onboarding_status": "review"})
+    assert blocked.status_code == 409
+    assert client.post(f"/api/students/{sid}/onboarding/generate/cancel").json() == {"cancelled": True}
+    gate.set()
+    watcher.join(10)
+    assert seen[-1] == "cancelled"
+    assert client.get(f"/api/students/{sid}/profile").json()["onboarding_status"] == "chat"
+    assert client.put(f"/api/students/{sid}/profile", json={"onboarding_status": "review"}).status_code == 200

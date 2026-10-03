@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 import zipfile
 from dataclasses import dataclass
 
 from ..sources.pdf_text import redact
+
+# Lecture PDFs are often slightly malformed; pypdf repairs them and warns per object, which only adds noise.
+logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 MAX_FILE_BYTES = 15 * 1024 * 1024
 MAX_FILES = 60

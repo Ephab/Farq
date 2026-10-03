@@ -51,7 +51,7 @@ const responses = {
       { id: "_total", name: "Total", externalGrade: true, score: { possible: 100 } }
     ], paging: {}
   },
-  cols102: { results: [], paging: {} },
+  cols102: { results: [{ id: "_total2", name: "Total", externalGrade: true, score: { possible: 50 } }], paging: {} },
   userGrades101: { results: [{ columnId: "_col1", userId: "_1_1", status: "Graded", score: 9, displayGrade: { score: 9, possible: 10, text: "9/10" }, feedback: "Good work", modified: "2026-02-12T00:00:00.000Z" },
     { columnId: "_total", userId: "_1_1", status: "Graded", score: 88, displayGrade: { score: 88, possible: 100, text: "B+" } }] },
   attemptsCol1: { results: [{ id: "_att1", status: "Graded", created: "2026-02-09T00:00:00.000Z", modified: "2026-02-10T20:00:00.000Z" }] },
@@ -80,6 +80,7 @@ global.fetch = async (url) => {
   if (p === "/learn/api/public/v1/courses/_101_1/gradebook/users/_1_1") return ok(responses.userGrades101);
   if (p === "/learn/api/public/v1/courses/_102_1/gradebook/users/_1_1") return miss(404);
   if (p === "/learn/api/public/v1/courses/_101_1/gradebook/columns/_col1/users/_1_1") return ok(responses.userGrades101.results[0]);
+  if (p === "/learn/api/public/v1/courses/_102_1/gradebook/columns/_total2/users/_1_1") return ok({ columnId: "_total2", userId: "_1_1", status: "Graded", score: 40, displayGrade: { score: 40, possible: 50, text: "A-" } });
   if (p === "/learn/api/public/v2/courses/_101_1/gradebook/columns/_col1/users/_1_1/attempts") return ok(responses.attemptsCol1);
   if (p === "/learn/api/public/v1/calendars/items") {
     const span = Date.parse(u.searchParams.get("until")) - Date.parse(u.searchParams.get("since"));
@@ -138,6 +139,9 @@ global.fetch = async (url) => {
   check("term name attached", c101.term_name === "Fall 2026", c101);
   check("final grade from external column", c101.final_grade && c101.final_grade.text === "B+" && c101.final_grade.percentage === 88, c101.final_grade);
   check("grade summary excludes the total column", c101.grade_summary && c101.grade_summary.graded === 1 && c101.grade_summary.possible === 10, c101.grade_summary);
+  const c102 = all.courses.find((c) => c.id === "_102_1");
+  check("final grade via per-column fallback when bulk grades 404", c102 && c102.final_grade && c102.final_grade.text === "A-" && c102.final_grade.percentage === 80, c102 && c102.final_grade);
+  check("every course has a final_grade key", all.courses.length > 0 && all.courses.every((c) => "final_grade" in c && (c.final_grade === null || typeof c.final_grade === "object")), all.courses.map((c) => c.final_grade));
   check("total column is not an assessment", !all.assessments.some((a) => a.column_id === "_total"));
   const syl = all.content.find((m) => m.content_id === "_file1");
   check("folder children walked with path + parent", syl && syl.parent_id === "_f1" && syl.path === "Week 1 / Course Syllabus.pdf", syl);

@@ -193,6 +193,7 @@
         role: m.courseRoleId || m.role || null,
         term_id: c.termId || c.term_id || null,
         term_name: (termsById.get(c.termId || c.term_id) || {}).name || null,
+        final_grade: null,
         created: U.normalizeTimestamp(c.created),
         modified: U.normalizeTimestamp(c.modified),
         is_current: current.current,
@@ -213,7 +214,7 @@
         for (const c of data) {
           const cid = c.courseId || c.id;
           if (!cid || courseById.has(cid)) continue;
-          const e = { id: cid, course_id: cid, courseId: c.courseId || null, code: c.courseId || null, name: c.displayName || c.name || cid, availability: null, enrollment_date: null, role: null, term_id: null, created: null, modified: null, is_current: true, current_reasons: ["fallback-listing"], url: courseUrl(origin, cid) };
+          const e = { id: cid, course_id: cid, courseId: c.courseId || null, code: c.courseId || null, name: c.displayName || c.name || cid, availability: null, enrollment_date: null, role: null, term_id: null, term_name: null, final_grade: null, created: null, modified: null, is_current: true, current_reasons: ["fallback-listing"], url: courseUrl(origin, cid) };
           courseById.set(cid, e);
           courses.push(e);
         }
@@ -457,7 +458,7 @@
         userGrades = g.results || g.grades || (g.columnId ? [g] : []);
       } catch {
         // Bounded per-column fallback (documented path).
-        const todo = columns.slice(0, 10);
+        const todo = [...(totalColumn ? [totalColumn] : []), ...columns.slice(0, 10)]; // total first so the cap cannot drop the final grade
         const res = await U.limitedMap(todo, 2, async (col) => {
           const t0 = Date.now();
           try {
@@ -575,7 +576,6 @@
         } catch { /* recorded */ }
       }
 
-      if (course.final_grade === undefined) course.final_grade = null;
       return per;
     }, true);
 

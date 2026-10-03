@@ -57,7 +57,10 @@
     return typeof s === "string" && /<[a-z][\s\S]*>/i.test(s);
   }
 
-  // Browser-safe HTML -> text. Falls back to regex stripping in Node/tests.
+  const ENTITIES = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'" };
+  const BREAK = "\u0001";
+
+  // HTML -> readable plain text. Block tags become line breaks; runs of spaces collapse.
   function htmlToText(html) {
     if (html == null) return null;
     if (typeof html !== "string") {
@@ -65,15 +68,20 @@
       html = r.text;
       if (html == null) return null;
     }
+    const marked = String(html).replace(/<br\s*\/?>/gi, BREAK).replace(/<\/(p|div|li|h[1-6]|tr|ul|ol)>/gi, BREAK);
+    let raw = null;
     try {
       if (typeof document !== "undefined" && document.createElement) {
         const div = document.createElement("div");
-        div.innerHTML = html;
-        const t = (div.textContent || "").replace(/\s+/g, " ").trim();
-        return t || null;
+        div.innerHTML = marked;
+        raw = div.textContent || "";
       }
-    } catch { /* fall through to regex */ }
-    return String(html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null;
+    } catch { raw = null; }
+    if (raw == null) {
+      raw = marked.replace(/<[^>]+>/g, " ").replace(/&(nbsp|amp|lt|gt|quot|#39|apos);/g, (m) => ENTITIES[m] || m);
+    }
+    const lines = raw.split(BREAK).map((s) => s.replace(/[\s ]+/g, " ").trim()).filter(Boolean);
+    return lines.length ? lines.join("\n") : null;
   }
 
   // Normalize timestamps to ISO 8601 UTC with millis. Preserves the instant;

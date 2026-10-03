@@ -205,6 +205,12 @@ async function main() {
     assert(M.instructorsFrom(null).length === 0 && M.instructorsFrom({}).length === 0, "instructors: empty input -> []");
   }
 
+  // ---- htmlToText keeps paragraph breaks and decodes entities ----
+  {
+    const t = U.htmlToText("<h5>QUIZ 1</h5><p>Topics:&nbsp;Backprop &amp; GD</p><ul><li>One</li><li>Two</li></ul>");
+    assert(t === "QUIZ 1\nTopics: Backprop & GD\nOne\nTwo", "htmlToText: block breaks + entities", t);
+  }
+
   if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
   console.log("\nAll unit tests passed.");
 }

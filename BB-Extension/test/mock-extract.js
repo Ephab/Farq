@@ -8,7 +8,7 @@
  *  - scope filtering (current vs all) and redaction
  * Run: node test/mock-extract.js
  */
-global.document = { createElement: () => ({ set innerHTML(v) { this._h = v; }, get textContent() { return (this._h || "").replace(/<[^>]+>/g, " "); } }) };
+global.document = { createElement: () => ({ set innerHTML(v) { this._h = v; }, get textContent() { return (this._h || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&"); } }) };
 global.location = { origin: "https://vle.iau.edu.sa" };
 
 const BAD_PATH_HIT = [];
@@ -24,11 +24,20 @@ const responses = {
   roster101: { results: [{ courseRoleId: "Instructor", userId: "_9_1", user: { name: { given: "A", family: "Prof" }, contact: { email: "a@iau.edu.sa" } } }], paging: {} },
   roster102: { results: [], paging: {} },
   contents101: { results: [{ id: "_c1", title: "Week 1 slides", body: "<p>Hello</p>", contentHandler: { id: "resource/x-bb-document" }, hasChildren: false, created: "2026-09-02T00:00:00.000Z", modified: "2026-09-03T00:00:00.000Z", availability: { available: "Yes" } }], paging: {} },
+  pubContents101: { results: [
+    { id: "_f1", title: "Week 1", contentHandler: { id: "resource/x-bb-folder" }, hasChildren: true, created: "2026-09-01T00:00:00.000Z", modified: "2026-09-02T00:00:00.000Z", availability: { available: "Yes" } },
+    { id: "_c1", title: "Week 1 slides", body: "<p>Hello &amp; welcome</p>", contentHandler: { id: "resource/x-bb-document" }, hasChildren: false, created: "2026-09-02T00:00:00.000Z", modified: "2026-09-03T00:00:00.000Z", availability: { available: "Yes" } }
+  ], paging: {} },
+  pubChildrenF1: { results: [
+    { id: "_file1", title: "Course Syllabus.pdf", body: "https://vle.iau.edu.sa/courses/1/X/content/_file1/embedded/", contentHandler: { id: "resource/x-bb-file", file: { fileName: "Course Syllabus.pdf", mimeType: "application/pdf" } }, hasChildren: false, created: "2026-09-01T00:00:00.000Z", modified: "2026-09-01T00:00:00.000Z" }
+  ], paging: {} },
+  attachmentsFile1: { results: [{ id: "_att9", fileName: "Course Syllabus.pdf", mimeType: "application/pdf" }] },
+  categories101: { results: [{ id: "_cat1", title: "Quizzes" }] },
   contents102: { results: [], paging: {} },
   ann101: {
     results: [{
       id: "_a1", title: "Welcome",
-      body: { rawText: "Welcome plain", displayText: "<p>Welcome <b>all</b></p>" },
+      body: { rawText: "<p>Welcome <b>all</b></p>", displayText: "<p>Welcome <b>all</b></p>" },
       created: "2026-09-01T00:00:00.000Z", modified: "2026-09-02T00:00:00.000Z", createdBy: { userName: "prof.a", id: "_9_1" }
     }], paging: {}
   },
@@ -36,7 +45,7 @@ const responses = {
   cols101: {
     results: [
       { id: "_col1", name: "Assignment 1", description: "<p>Do it</p>", grading: { due: "2026-02-10T20:59:00.000Z" }, score: { possible: 10 }, contentId: "_c1", gradebookCategoryId: "Assignment" },
-      { id: "_col2", name: "Quiz 1", grading: { due: "2026-03-01T20:59:00.000Z" }, score: { possible: 5 }, gradebookCategoryId: "Test" },
+      { id: "_col2", name: "Quiz 1", grading: { due: "2026-03-01T20:59:00.000Z" }, score: { possible: 5 }, gradebookCategoryId: "_cat1" },
       { id: "_col3", name: "Attendance Week 1", score: { possible: 1 }, gradebookCategoryId: "Attendance" },
       { id: "_col4", name: "Project report", grading: { due: "2099-01-15T20:59:00.000Z" }, score: { possible: 20 }, gradebookCategoryId: "Assignment" }
     ], paging: {}
@@ -80,6 +89,13 @@ global.fetch = async (url) => {
   if (p === "/learn/api/public/v1/courses/_101_1/users") return miss(403); // students may not list members
   if (p === "/learn/api/v1/courses/_101_1") return ok({ id: "_101_1", instructorsMembership: [{ user: { givenName: "A", familyName: "Prof", emailAddress: "a@iau.edu.sa", id: "_9_1" } }] });
   if (p === "/learn/api/v1/courses/_102_1") return miss(403); // closed course
+  if (p === "/learn/api/public/v1/courses/_101_1/contents") return ok(responses.pubContents101);
+  if (p === "/learn/api/public/v1/courses/_101_1/contents/_f1/children") return ok(responses.pubChildrenF1);
+  if (p === "/learn/api/public/v1/courses/_101_1/contents/_file1/attachments") return ok(responses.attachmentsFile1);
+  if (p === "/learn/api/public/v1/courses/_101_1/contents/_c1/attachments") return ok({ results: [] });
+  if (p === "/learn/api/public/v1/courses/_102_1/contents") return miss(403);
+  if (p === "/learn/api/public/v1/courses/_101_1/gradebook/categories") return ok(responses.categories101);
+  if (p === "/learn/api/public/v1/courses/_102_1/gradebook/categories") return miss(403);
   return miss(404);
 };
 
@@ -98,7 +114,7 @@ global.fetch = async (url) => {
   const srcs = all.diagnostics.sources;
   check("probe misses and 403s are not failures", srcs.some((s) => String(s.status).startsWith("probe_")) && srcs.some((s) => s.status === "forbidden") && !all.diagnostics.failed_sources.some((f) => /probe_|forbidden/.test(f)), all.diagnostics.failed_sources);
   const ann = all.announcements.find((a) => a.announcement_id === "_a1");
-  check("announcement object body -> real text", ann && ann.body_text === "Welcome plain", ann && ann.body_text);
+  check("announcement body_text is plain text", ann && ann.body_text === "Welcome all", ann && ann.body_text);
   check("announcement keeps HTML + dates + author", ann && ann.body_html.includes("<p>") && ann.created_at && ann.author === "prof.a", ann);
   check("no [object Object] anywhere", !JSON.stringify(all).includes("[object Object]"));
   const a1 = all.assessments.find((a) => a.column_id === "_col1");
@@ -116,7 +132,13 @@ global.fetch = async (url) => {
   check("future ungraded item is upcoming", report && report.is_upcoming === true, report);
   check("graded item neither upcoming nor overdue", a1 && !a1.is_upcoming && !a1.is_overdue, a1);
   check("summary counts deadlines", all.summary.upcoming_deadlines >= 1 && all.summary.overdue >= 1, all.summary);
-  check("content has parent/path/type/timestamps", all.content.some((m) => m.parent_id === null && m.path && m.type === "Document" && m.created));
+  const syl = all.content.find((m) => m.content_id === "_file1");
+  check("folder children walked with path + parent", syl && syl.parent_id === "_f1" && syl.path === "Week 1 / Course Syllabus.pdf", syl);
+  check("content type from public handler", syl && syl.type === "File" && all.content.some((m) => m.type === "Folder"), syl);
+  check("embedded URL is not a description", syl && syl.body_text === null && syl.embedded_url && syl.embedded_url.includes("/embedded/"), syl);
+  check("attachment has download_url", syl && syl.attachments.length === 1 && syl.attachments[0].download_url === "https://vle.iau.edu.sa/learn/api/public/v1/courses/_101_1/contents/_file1/attachments/_att9/download", syl && syl.attachments);
+  check("content body is plain text", all.content.find((m) => m.content_id === "_c1").body_text === "Hello & welcome");
+  check("category title resolves classification", all.assessments.find((a) => a.column_id === "_col2").type === "Quiz" && all.assessments.find((a) => a.column_id === "_col2").gradebook_category === "Quizzes");
   check("legacy aliases present", Array.isArray(all.assignments) && Array.isArray(all.materials));
   check("diagnostics sources recorded", all.diagnostics.sources.length > 5 && all.summary.assessments >= 3, all.summary);
 

@@ -62,9 +62,14 @@
     return out;
   }
 
+  function handlerOf(item) {
+    const h = item && item.contentHandler;
+    return (typeof h === "string" ? h : (h && h.id)) || (item && item.handler) || "";
+  }
+
   // Map raw contentHandler IDs (documented by Anthology) to friendly types.
   function contentTypeOf(item) {
-    const h = (item && item.contentHandler && item.contentHandler.id) || "";
+    const h = handlerOf(item);
     switch (h) {
       case "resource/x-bb-folder": return "Folder";
       case "resource/x-bb-file": return "File";
@@ -245,63 +250,92 @@
         }
       }
 
-      // 3b. contents (proven endpoint, kept) — richer records: parents, paths,
-      // availability, timestamps, attachments, external links.
+      // 3b. contents: documented public API first (stable shape: contentHandler.id,
+      // hasChildren, created/modified); Ultra's internal list is the fallback.
       const contentIndex = new Map(); // contentId -> record
-      try {
-        const tops = await track(`contents:${cid}`, "GET /learn/api/v1/courses/{id}/contents",
-          () => U.pagedGet(origin, `/learn/api/v1/courses/${encodeURIComponent(cid)}/contents`, { limit: 100, maxPages: 5, timeoutMs, retries }));
+      const contentBases = [
+        `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/contents`,
+        `/learn/api/v1/courses/${encodeURIComponent(cid)}/contents`
+      ];
+      let tops = null;
+      let base = null;
+      for (const b of contentBases) {
+        try {
+          tops = await track(`contents:${cid}`, `GET ${b.includes("/public/") ? "public" : "ultra"} contents`,
+            () => U.pagedGet(origin, b, { limit: 100, maxPages: 5, timeoutMs, retries }));
+          base = b;
+          break;
+        } catch { /* recorded; try the next shape */ }
+      }
+      const attachmentJobs = [];
+      if (tops) {
         const queue = tops.map((t) => ({ item: t, parentId: null, path: [t.title || "(untitled)"] }));
         const seen = new Set();
         while (queue.length) {
           const { item, parentId, path } = queue.shift();
           if (!item || !item.id || seen.has(item.id)) continue;
           seen.add(item.id);
+          const handler = handlerOf(item);
           const type = contentTypeOf(item);
           const bodyR = U.extractRichText(item.body);
+          const bodyText = U.htmlToText(bodyR.text);
+          const embedded = bodyText && /^https?:\/\/\S+\/embedded\/?$/.test(bodyText) ? bodyText : null;
+          const created = item.created || item.createdDate;
+          const modified = item.modified || item.modifiedDate;
           const rec = {
             course: cname, course_id: cid,
             title: item.title || "(untitled)",
             content_id: item.id,
             source_id: item.id,
             type,
-            handler: (item.contentHandler && item.contentHandler.id) || null,
+            handler: handler || null,
             parent_id: parentId,
             path: path.join(" / "),
-            description: bodyR.text,
-            body_text: bodyR.text,
-            body_html: bodyR.html || (typeof item.body === "string" ? item.body : null),
+            description: embedded ? null : bodyText,
+            body_text: embedded ? null : bodyText,
+            body_html: bodyR.html || (typeof item.body === "string" && !embedded ? item.body : null),
+            embedded_url: embedded,
             availability: (item.availability && item.availability.available) ?? null,
             available_from: U.normalizeTimestamp(item.availability && item.availability.adaptiveRelease && item.availability.adaptiveRelease.start),
             available_until: U.normalizeTimestamp(item.availability && item.availability.adaptiveRelease && item.availability.adaptiveRelease.end),
-            created: U.normalizeTimestamp(item.created),
-            modified: U.normalizeTimestamp(item.modified),
+            created: U.normalizeTimestamp(created),
+            modified: U.normalizeTimestamp(modified),
             dates: {
               due: U.normalizeTimestamp((item.dates && item.dates.due) || U.findKey(item.contentDetail || {}, ["dueDate", "due"])),
               start: U.normalizeTimestamp(item.dates && item.dates.start),
               end: U.normalizeTimestamp(item.dates && item.dates.end)
             },
             url: contentUrl(origin, cid, item.id),
-            attachments: Array.isArray(item.attachments) ? item.attachments.map((a) => ({
-              id: a.id || a.attachmentId || null,
-              name: a.fileName || a.name || null,
-              mime: a.mimeType || a.mime || null,
-              size: a.fileSize ?? a.size ?? null,
-              url: a.url || (a.id ? `${origin}/learn/api/v1/courses/${encodeURIComponent(cid)}/contents/${encodeURIComponent(item.id)}/attachments/${encodeURIComponent(a.id)}` : null)
-            })) : [],
-            external_link: item.contentHandler && item.contentHandler.url ? item.contentHandler.url : (item.externalLink || null)
+            attachments: [],
+            external_link: (item.contentHandler && item.contentHandler.url) || item.externalLink || null
           };
           contentIndex.set(item.id, rec);
           per.content.push(rec);
-
-          if (item.hasChildren) {
+          if (/x-bb-(file|document|assignment)/.test(handler)) attachmentJobs.push(rec);
+          const isFolder = item.hasChildren || /x-bb-(folder|lesson)/.test(handler);
+          if (isFolder) {
             try {
-              const kids = await U.pagedGet(origin, `/learn/api/v1/courses/${encodeURIComponent(cid)}/contents/${encodeURIComponent(item.id)}/children`, { limit: 100, maxPages: 5, timeoutMs, retries });
+              const kids = await U.pagedGet(origin, `${base}/${encodeURIComponent(item.id)}/children`, { limit: 100, maxPages: 5, timeoutMs, retries });
               for (const k of kids) queue.push({ item: k, parentId: item.id, path: [...path, k.title || "(untitled)"] });
             } catch { /* keep what we have */ }
           }
         }
-      } catch { /* recorded; course continues */ }
+      }
+
+      // 3b'. attachment metadata (documented); bytes are never fetched here.
+      await U.limitedMap(attachmentJobs.slice(0, 80), 2, async (rec) => {
+        const listPath = `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/contents/${encodeURIComponent(rec.content_id)}/attachments`;
+        try {
+          const res = await U.getJson(origin, listPath, { timeoutMs, retries: 1 });
+          rec.attachments = (res.results || []).map((a) => ({
+            id: a.id || null,
+            name: a.fileName || a.name || null,
+            mime: a.mimeType || null,
+            size: a.fileSize ?? a.size ?? null,
+            download_url: a.id ? `${origin}${listPath}/${encodeURIComponent(a.id)}/download` : null
+          }));
+        } catch { /* not every handler has attachments */ }
+      }, true);
 
       // 3c. announcements (proven endpoint, kept) — fixed rich-text extraction.
       try {
@@ -315,9 +349,9 @@
           per.announcements.push({
             course: cname, course_id: cid,
             title: (typeof a.title === "string" ? a.title : U.extractRichText(a.title).text) || "(announcement)",
-            body_text: r.text,
-            body_html: r.html || (typeof a.body === "string" ? a.body : null),
-            body: r.text,
+            body_text: U.htmlToText(r.text),
+            body_html: r.html || (r.text && /<[a-z]/i.test(r.text) ? r.text : null),
+            body: U.htmlToText(r.text),
             created_at: U.normalizeTimestamp(a.created),
             updated_at: U.normalizeTimestamp(a.modified),
             posted_on: U.normalizeTimestamp(a.created || a.modified),
@@ -343,13 +377,22 @@
         void rec;
       }
 
+      // Category titles (columns only carry category IDs) for classification.
+      const categoryById = new Map();
+      try {
+        const cats = await U.pagedGet(origin, `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/gradebook/categories`, { limit: 100, maxPages: 2, timeoutMs, retries: 1 });
+        for (const c of cats) if (c && c.id) categoryById.set(c.id, c.title || c.name || null);
+      } catch { /* optional */ }
+      for (const col of columns) {
+        if (!col.gradebookCategory && categoryById.get(col.gradebookCategoryId)) col.gradebookCategory = { title: categoryById.get(col.gradebookCategoryId) };
+      }
       for (const col of columns) {
         const grading = col.grading || {};
         const descR = U.extractRichText(col.description);
         per.assessments.push({
           course: cname, course_id: cid,
           title: col.name || col.displayName || "(graded item)",
-          description: descR.text,
+          description: U.htmlToText(descR.text),
           due_date: U.normalizeTimestamp(grading.due || col.due || U.findKey(col, ["dueDate"])),
           available_from: U.normalizeTimestamp(grading.availableFrom || (col.availability && col.availability.start)),
           available_until: U.normalizeTimestamp(grading.availableUntil || (col.availability && col.availability.end)),
@@ -380,7 +423,7 @@
             available_until: rec.available_until || (rec.dates && rec.dates.end) || null,
             submission_status: null, submitted_at: null,
             grade: null, possible: null, percentage: null, feedback: null, attempts: [],
-            type: M.classifyAssessment({ content: { contentHandler: { id: h } } }),
+            type: M.classifyAssessment({ column: { name: rec.title }, content: { contentHandler: { id: h } } }),
             content_id: rec.content_id,
             column_id: null, calendar_id: null, attempt_id: null,
             url: rec.url, source_id: rec.content_id,
@@ -433,7 +476,7 @@
           grade: (gr.displayGrade && gr.displayGrade.text) ?? gr.text ?? null,
           status: gr.status || null,
           submission_status: gr.status || null,
-          feedback: fb.text,
+          feedback: U.htmlToText(fb.text),
           feedback_html: fb.html || (typeof gr.feedback === "string" ? gr.feedback : null),
           posted: U.normalizeTimestamp(gr.modified || gr.created),
           attempts: [],

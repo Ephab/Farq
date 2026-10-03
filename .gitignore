@@ -50,3 +50,6 @@ __pycache__/
 
 # Real Blackboard exports contain a student's grades (see BB-Extension/.gitignore)
 iau-blackboard-export-*.json
+
+# Blackboard sync sign-in screenshots (local debugging only — may show the username)
+.blackboard-debug/

@@ -64,3 +64,14 @@ review tick.
 
 - If IAU adds MFA, the sync fails with `extra_verification`; supporting MFA is a separate design.
 - Hosted multi-user deployments need a different secret store.
+
+## 9. "Extra step" diagnostics
+
+When IAU shows something other than Blackboard after sign-in (MFA, password change, consent,
+a changed sign-in page), the sync records the page title and `host/path` (never the query string,
+which can hold a SAMLRequest) in `stage_detail`, and saves a screenshot to
+`.blackboard-debug/<student>.png` on this computer (git-ignored, never in the DB or a log). The
+screenshot can show the username but not the password (password fields are masked). Only the owner
+can fetch it (`GET /api/students/{id}/blackboard/sync/screenshot`); the next sync and "Forget my
+login" delete it. Setting `WAYPOINT_BB_HEADED=1` before `run.bat` opens the sign-in in a visible
+Chromium window so the student can watch it.

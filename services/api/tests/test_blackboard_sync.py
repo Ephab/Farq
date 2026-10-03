@@ -639,3 +639,28 @@ def test_status_reports_live_mode(client, student, fake_browser):
     sync(client, student, username="2240000000", password=SECRET)
     status = client.get(f"/api/students/{student}/blackboard/status").json()
     assert status["mode"] == "live" and status["courses"] == 3 and status["last_synced_at"]
+
+
+def test_extra_step_detail_and_screenshot_reach_the_owner(client, student, fake_browser, monkeypatch, tmp_path):
+    monkeypatch.setenv("WAYPOINT_BB_DEBUG_DIR", str(tmp_path))
+    fake_browser.outcome = LoginFailure("extra_verification", "Update your password — iauauth.iau.edu.sa/adfs/ls/", b"PNG-fake")
+    sync(client, student, username="2240000000", password=SECRET)
+    status = client.get(f"/api/students/{student}/blackboard/sync").json()
+    assert status["failure_reason"] == "extra_verification"
+    assert status["stage_detail"] == "Update your password — iauauth.iau.edu.sa/adfs/ls/"
+    assert status["has_screenshot"] is True
+    shot = client.get(f"/api/students/{student}/blackboard/sync/screenshot")
+    assert shot.status_code == 200 and shot.content == b"PNG-fake"
+    assert SECRET not in shot.text and SECRET not in json.dumps(status)
+    client.delete(f"/api/students/{student}/blackboard/connection")
+    assert client.get(f"/api/students/{student}/blackboard/sync/screenshot").status_code == 404
+
+
+def test_next_sync_clears_old_screenshot(client, student, fake_browser, monkeypatch, tmp_path):
+    monkeypatch.setenv("WAYPOINT_BB_DEBUG_DIR", str(tmp_path))
+    fake_browser.outcome = LoginFailure("extra_verification", "Verify — host/path", b"png")
+    sync(client, student, username="2240000000", password=SECRET)
+    fake_browser.outcome = None
+    sync(client, student, username="2240000000", password=SECRET)
+    status = client.get(f"/api/students/{student}/blackboard/sync").json()
+    assert status["status"] == "done" and status["has_screenshot"] is False and status["stage_detail"] == ""

@@ -236,6 +236,7 @@ export interface BlackboardSyncStatus {
   failure_reason: BlackboardFailure | null
   username: string | null
   has_saved_login: boolean
+  has_screenshot: boolean
   can_remember: boolean
   last_synced_at: string | null
   next_sync_at: string | null

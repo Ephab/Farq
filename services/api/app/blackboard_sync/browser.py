@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
+from urllib.parse import urlsplit
 
 from .files import MAX_FILE_BYTES, Attachment
 
@@ -46,9 +47,13 @@ def extractor_dir() -> Path:
 class LoginFailure(Exception):
     """code: bad_password | extra_verification | unreachable | needs_login | browser_missing"""
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, detail: str = "", screenshot: bytes | None = None):
         super().__init__(code)
         self.code = code
+        # What IAU showed instead of Blackboard (page title + host/path, no query string) and a
+        # screenshot of it, so the student can see the extra step. Never contains the password.
+        self.detail = detail
+        self.screenshot = screenshot
 
 
 class ExtractFailure(Exception):
@@ -71,6 +76,18 @@ class BlackboardBrowser(Protocol):
             progress: Callable[[str, str], None]) -> BrowserResult: ...
 
 
+def headed_from_env() -> bool:
+    """WAYPOINT_BB_HEADED=1 shows the sign-in window so the student can watch it (debugging)."""
+    return os.getenv("WAYPOINT_BB_HEADED", "").strip().lower() in {"1", "true", "yes"}
+
+
+def describe_page(url: str, title: str) -> str:
+    """'<title> — <host><path>': where the sign-in stopped, without the query (SAMLRequest, tokens)."""
+    parts = urlsplit(url or "")
+    where = f"{parts.netloc}{parts.path}"
+    return " — ".join(part for part in ((title or "").strip()[:100], where) if part)[:200]
+
+
 def classify_after_submit(url: str, error_text: str | None, origin: str = ORIGIN) -> str:
     """'ok' once back on Ultra; 'bad_password' when AD FS shows an error; otherwise IAU asked for more."""
     if url.startswith(f"{origin}/ultra"):
@@ -82,12 +99,12 @@ def classify_after_submit(url: str, error_text: str | None, origin: str = ORIGIN
 
 class PlaywrightBrowser:
     def __init__(self, origin: str = ORIGIN, login_url: str = LOGIN_URL, bundle_dir: Path | None = None,
-                 headless: bool = True, login_wait_ms: int = LOGIN_WAIT_MS,
+                 headless: bool | None = None, login_wait_ms: int = LOGIN_WAIT_MS,
                  download_budget_s: float = DOWNLOAD_BUDGET_SECONDS):
         self.origin = origin.rstrip("/")
         self.login_url = login_url
         self.bundle_dir = bundle_dir or extractor_dir()
-        self.headless = headless
+        self.headless = (not headed_from_env()) if headless is None else headless
         self.login_wait_ms = login_wait_ms
         self.download_budget_s = download_budget_s
 
@@ -120,7 +137,7 @@ class PlaywrightBrowser:
                         raise LoginFailure("needs_login")
                     submitted = self._login(page, username, password)
                     if not self._signed_in(context):
-                        raise LoginFailure("extra_verification")
+                        raise self._extra_step(page)
                     verified = submitted
                 progress("extracting", "")
                 try:
@@ -160,6 +177,16 @@ class PlaywrightBrowser:
                 except Exception:
                     pass
 
+    def _extra_step(self, page) -> LoginFailure:
+        """Record what IAU showed instead of Blackboard; best effort, never masks the failure."""
+        detail, shot = "", None
+        try:
+            detail = describe_page(page.url, page.title())
+            shot = page.screenshot(full_page=True, timeout=5_000)
+        except Exception:
+            pass
+        return LoginFailure("extra_verification", detail, shot)
+
     def _allowed_final_url(self, url: str) -> bool:
         """Redirects are followed; keep the body only if the last hop is the Blackboard origin or https."""
         return url.startswith(f"{self.origin}/") or url.startswith("https://")
@@ -178,7 +205,7 @@ class PlaywrightBrowser:
         try:
             page.wait_for_selector(SELECTORS["username"], timeout=self.login_wait_ms)
         except PlaywrightTimeout:
-            raise LoginFailure("extra_verification") from None
+            raise self._extra_step(page) from None
         page.fill(SELECTORS["username"], username)
         page.fill(SELECTORS["password"], password)
         page.click(SELECTORS["submit"])
@@ -187,5 +214,6 @@ class PlaywrightBrowser:
         except PlaywrightTimeout:
             error = page.locator(SELECTORS["error"])
             text = error.first.inner_text(timeout=2_000) if error.count() else ""
-            raise LoginFailure(classify_after_submit(page.url, text, self.origin)) from None
+            code = classify_after_submit(page.url, text, self.origin)
+            raise (self._extra_step(page) if code == "extra_verification" else LoginFailure(code)) from None
         return True

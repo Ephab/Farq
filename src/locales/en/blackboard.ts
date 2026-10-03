@@ -29,6 +29,13 @@ export const blackboard = {
   synced: "Synced {when}",
   partial: "Some sections were unavailable this time.",
   nextSync: "Next automatic sync {when}",
+  extraStep: {
+    showed: "IAU showed:",
+    view: "See what IAU showed",
+    hide: "Hide screenshot",
+    alt: "Screenshot of the IAU sign-in page where the sync stopped",
+    missing: "The screenshot is no longer available.",
+  },
   failure: {
     bad_password: "Your username or password is incorrect.",
     extra_verification: "IAU asked for an extra step. Sign in once at vle.iau.edu.sa, then try again.",

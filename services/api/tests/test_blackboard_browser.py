@@ -47,6 +47,8 @@ class Portal(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/auth-saml/saml/login"):
             return self._send(302, headers={"Location": "/adfs/ls/"})
+        if self.path.startswith("/adfs/ls/mfa"):
+            return self._send(200, b"<html><head><title>Verify your identity</title></head><body>Approve the sign-in</body></html>")
         if self.path.startswith("/adfs/ls"):
             return self._send(200, FORM.format(error="").encode())
         if self.path.startswith("/ultra"):
@@ -68,6 +70,8 @@ class Portal(BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(length).decode())
         if form.get("p") == [PASSWORD]:
             return self._send(302, headers={"Location": "/ultra/course", "Set-Cookie": "bb=1; Path=/"})
+        if form.get("p") == ["needs-mfa"]:
+            return self._send(302, headers={"Location": "/adfs/ls/mfa?ctx=SECRETCTX"})
         return self._send(200, FORM.format(error="Incorrect user ID or password.").encode())
 
 
@@ -116,6 +120,29 @@ def test_fake_portal_login_extract_and_download(portal):
     assert ("extracting", "Courses: 1") in stages
     assert PASSWORD not in json.dumps(result.session_state)
     assert result.password_verified is True  # the form was submitted and accepted
+
+
+def test_fake_portal_extra_step_reports_page_and_screenshot(portal):
+    origin, bundle = portal
+    with pytest.raises(browser.LoginFailure) as caught:
+        _run(_make(origin, bundle), "needs-mfa")
+    failure = caught.value
+    assert failure.code == "extra_verification"
+    assert failure.detail.startswith("Verify your identity — 127.0.0.1:") and failure.detail.endswith("/adfs/ls/mfa")
+    assert "SECRETCTX" not in failure.detail and "needs-mfa" not in failure.detail
+    assert failure.screenshot and failure.screenshot[1:4] == b"PNG"
+
+
+def test_describe_page_drops_query_and_fragment():
+    assert browser.describe_page("https://iauauth.iau.edu.sa/adfs/ls/?SAMLRequest=abc#x", "Sign In") == "Sign In — iauauth.iau.edu.sa/adfs/ls/"
+    assert browser.describe_page("", "") == ""
+
+
+def test_headed_mode_from_env(monkeypatch):
+    monkeypatch.setenv("WAYPOINT_BB_HEADED", "1")
+    assert browser.PlaywrightBrowser().headless is False
+    monkeypatch.delenv("WAYPOINT_BB_HEADED")
+    assert browser.PlaywrightBrowser().headless is True
 
 
 def test_fake_portal_bad_password(portal):

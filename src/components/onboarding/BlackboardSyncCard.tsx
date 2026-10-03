@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { AlertCircle, GraduationCap, LoaderCircle, RotateCcw } from "lucide-react"
-import { api, getCurrentStudentId, type BlackboardSyncStatus } from "@/lib/waypoint-api"
+import { API_BASE, api, getCurrentStudentId, identityHeaders, type BlackboardSyncStatus } from "@/lib/waypoint-api"
 import { useI18n } from "@/lib/i18n/context"
 import { parseServerTime } from "@/lib/server-time"
 
@@ -19,6 +19,22 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const path = `/api/students/${studentId}/blackboard`
+  const [shotUrl, setShotUrl] = useState<string | null>(null)
+
+  // The screenshot route needs the identity header, so fetch it as a blob rather than <img src>.
+  async function toggleShot() {
+    if (shotUrl) { URL.revokeObjectURL(shotUrl); setShotUrl(null); return }
+    try {
+      const response = await fetch(`${API_BASE}${path}/sync/screenshot`, { headers: identityHeaders() })
+      if (!response.ok) throw new Error(t("blackboard.extraStep.missing"))
+      setShotUrl(URL.createObjectURL(await response.blob()))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+  useEffect(() => () => { if (shotUrl) URL.revokeObjectURL(shotUrl) }, [shotUrl])
+  // A new sync replaces the screenshot; drop the one on screen once it no longer exists.
+  useEffect(() => { if (!status?.has_screenshot && shotUrl) { URL.revokeObjectURL(shotUrl); setShotUrl(null) } }, [status?.has_screenshot, shotUrl])
 
   const load = useCallback(async () => {
     try { setStatus(await api<BlackboardSyncStatus>(`${path}/sync`)); setError(null) } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
@@ -66,8 +82,22 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
 
       {status?.status === "failed" && status.failure_reason ? (
         <p role="alert" className="mt-4 flex items-start gap-2 rounded-2xl bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
-          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{t(`blackboard.failure.${status.failure_reason}`)}
+          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span>
+            {t(`blackboard.failure.${status.failure_reason}`)}
+            {status.failure_reason === "extra_verification" && status.stage_detail ? (
+              <span className="mt-1 block text-foreground">{t("blackboard.extraStep.showed")} <bdi className="font-semibold">{status.stage_detail}</bdi></span>
+            ) : null}
+          </span>
         </p>
+      ) : null}
+      {status?.status === "failed" && status.has_screenshot ? (
+        <div className="mt-2">
+          <button type="button" onClick={() => void toggleShot()} className="text-[13px] font-semibold text-primary underline-offset-2 hover:underline">
+            {t(shotUrl ? "blackboard.extraStep.hide" : "blackboard.extraStep.view")}
+          </button>
+          {shotUrl ? <img src={shotUrl} alt={t("blackboard.extraStep.alt")} className="mt-2 max-h-[480px] w-full rounded-2xl border border-border object-contain object-top" /> : null}
+        </div>
       ) : null}
       {error ? <p role="alert" className="mt-4 text-[13px] text-destructive">{error}</p> : null}
 

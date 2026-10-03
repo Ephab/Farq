@@ -10,6 +10,7 @@ from datetime import timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -44,12 +45,13 @@ def status_dict(conn: BlackboardConnection | None) -> dict:
     if conn is None:
         return {"connected": False, "status": "idle", "stage_detail": "", "failure_reason": None, "username": None,
                 "has_saved_login": False, "can_remember": credentials.can_remember(),
-                "last_synced_at": None, "next_sync_at": None, "summary": {}}
+                "last_synced_at": None, "next_sync_at": None, "summary": {}, "has_screenshot": False}
     return {
         "connected": True, "status": conn.status, "stage_detail": conn.stage_detail, "failure_reason": conn.failure_reason,
         "username": conn.username, "has_saved_login": credentials.saved_password(conn) is not None, "can_remember": credentials.can_remember(),
         "last_synced_at": _iso(conn.last_synced_at), "next_sync_at": _iso(conn.next_sync_at),
         "summary": json.loads(conn.summary_json or "{}"),
+        "has_screenshot": conn.failure_reason == "extra_verification" and worker.screenshot_path(conn.student_id).is_file(),
     }
 
 
@@ -109,7 +111,17 @@ def forget_connection(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
         credentials.clear_session(conn)
         db.delete(conn)
         db.commit()
+    worker.clear_screenshot(student_id)
     return {"forgotten": True}
+
+
+@router.get("/api/students/{student_id}/blackboard/sync/screenshot")
+def sign_in_screenshot(student_id: str, _owner: OwnedStudent) -> FileResponse:
+    """The page IAU showed instead of Blackboard on the last failed sign-in (owner only, local file)."""
+    path = worker.screenshot_path(student_id)
+    if not path.is_file():
+        raise HTTPException(404, "No sign-in screenshot")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/students/{student_id}/blackboard/deadlines")

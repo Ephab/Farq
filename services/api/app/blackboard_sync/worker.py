@@ -5,8 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import re
 import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable
 
 from sqlalchemy import select
@@ -24,6 +27,26 @@ RETRY_UNREACHABLE = timedelta(hours=1)
 MAX_FAILED_LOGINS = 3
 TICK_SECONDS = 600
 RUNNING_STATES = {"queued", "logging_in", "extracting", "reading_files", "saving"}
+
+def screenshot_path(student_id: str) -> Path:
+    """Where the last 'extra step' screenshot lives: on this computer only, never in the DB or a log."""
+    base = os.getenv("WAYPOINT_BB_DEBUG_DIR", "").strip()
+    folder = Path(base) if base else Path(__file__).resolve().parents[4] / ".blackboard-debug"
+    return folder / f"{re.sub(r'[^A-Za-z0-9_-]', '_', student_id)}.png"
+
+
+def clear_screenshot(student_id: str) -> None:
+    screenshot_path(student_id).unlink(missing_ok=True)
+
+
+def _save_screenshot(student_id: str, data: bytes) -> None:
+    path = screenshot_path(student_id)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    except OSError:
+        logger.warning("Could not save the Blackboard sign-in screenshot")
+
 
 browser_factory: Callable[[], BlackboardBrowser] = PlaywrightBrowser
 _lock = threading.Lock()
@@ -100,6 +123,7 @@ def run_sync(student_id: str, password: str | None, remember: bool) -> None:
             return
         conn.status, conn.failure_reason, conn.stage_detail = "logging_in", None, ""
         db.commit()
+        clear_screenshot(student_id)
         saved = None if password else credentials.saved_password(conn)
         try:
             result = browser_factory().run(
@@ -110,6 +134,10 @@ def run_sync(student_id: str, password: str | None, remember: bool) -> None:
         except LoginFailure as failure:
             db.refresh(conn)
             _login_failed(conn, failure.code, used_saved_password=saved is not None)
+            if failure.code == "extra_verification":
+                conn.stage_detail = (failure.detail or "")[:200]
+                if failure.screenshot:
+                    _save_screenshot(student_id, failure.screenshot)
             db.commit()
             return
         except ExtractFailure:

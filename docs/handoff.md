@@ -402,3 +402,6 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
   `services/hermes/{SOUL.md,config.yaml}`
 - Frontend: `src/components/onboarding/*`, `src/components/hermes/*`, `src/lib/waypoint-api.ts`
 - Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps,test_staged_roadmap}.py`
+
+If the card says IAU asked for an extra step, it now shows what IAU displayed ("IAU showed: …") and a
+"See what IAU showed" screenshot. To watch the sign-in live, set `WAYPOINT_BB_HEADED=1` in `.env` and restart `run.bat`.

@@ -481,3 +481,20 @@ def test_crash_sets_retry_time(client, student, fake_browser):
     sync(client, student)
     status = client.get(f"/api/students/{student}/blackboard/sync").json()
     assert status["failure_reason"] == "extract_failed" and status["next_sync_at"] is not None
+
+
+def test_hermes_list_courses_exposes_live_fields(client, student, fake_browser):
+    sync(client, student, username="2240000000", password=SECRET)
+    from app.blackboard import _course_dict
+    db = SessionLocal()
+    course = db.scalar(select(BlackboardCourse).where(BlackboardCourse.student_id == student, BlackboardCourse.external_id == "_101_1"))
+    data = _course_dict(course)
+    db.close()
+    assert data["is_current"] is True and data["instructors"][0]["name"] == "Sara Ali"
+    assert data["grade_summary"]["percentage"] == 90 and data["url"].endswith("/outline")
+
+
+def test_status_reports_live_mode(client, student, fake_browser):
+    sync(client, student, username="2240000000", password=SECRET)
+    status = client.get(f"/api/students/{student}/blackboard/status").json()
+    assert status["mode"] == "live" and status["courses"] == 3 and status["last_synced_at"]

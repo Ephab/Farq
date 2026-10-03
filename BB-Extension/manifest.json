@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IAU Blackboard Read-Only Extractor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read-only extractor for IAU Blackboard (vle.iau.edu.sa). Uses your existing login session. No password storage, no admin approval, GET requests only.",
   "permissions": ["activeTab", "storage"],
   "host_permissions": ["https://vle.iau.edu.sa/*"],

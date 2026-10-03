@@ -250,6 +250,34 @@ Blackboard UTC (`Z`); convert to Asia/Riyadh for display, never treat as local.
   3-course concurrency cap, per-course isolation, partial exports, safe HTML parsing,
   ISO-8601 timestamp normalization. Full suite: `node test/run-tests.js`.
 
+## 2c. v3 improvements
+
+Waypoint runs this same `src/` extractor headlessly for its Blackboard sync (`services/api/app/blackboard_sync/`).
+
+- Calendar windows: the date range is split into windows of at most 16 weeks
+  (`U.calendarWindows`); the old single 210-day window returned HTTP 400.
+- Due-date fallbacks (grading/column due, content dates, calendar items) plus
+  `is_upcoming` / `is_overdue` flags per assessment (submitted/graded work is never
+  overdue; attendance is not a deadline) and `summary.upcoming_deadlines` / `summary.overdue`.
+- Instructor probes (`ultra-course`, `public-memberships`) replace the 404 roster
+  endpoint; `course.instructor_source` records which one answered.
+- 403 and probe misses (`probe_*`, `forbidden` statuses) are no longer counted in `failed_sources`.
+- Public contents API (`/learn/api/public/v1/courses/{id}/contents`, Ultra list as fallback)
+  with folder walking and attachment `download_url` (metadata only; the extension never
+  downloads). An `attachments:<courseId>` diagnostics source reports `ok`/`partial`,
+  `truncated`, and `listing_errors`.
+- Plain-text `body_text` with `body_html` kept.
+- Category titles resolved for gradebook categories (columns only carry category IDs).
+- `term_name`, `grade_summary` (earned/possible/percentage/graded/pending/missing) and
+  `final_grade` per course (`null` unless the course total column is readable).
+- The console snippet `tools/extract-console.js` is generated from `src/`
+  (`node tools/build-console.js`; `--check` fails if stale; the test suite runs it).
+- `captureSamples`: `extractAll({ captureSamples: true })` adds `diagnostics.samples`,
+  the first raw record per source family with user keys removed and strings cut to 120
+  characters, for debugging endpoint shapes. Never set by the backend.
+
+---
+
 ---
 
 ## 3. Usage
@@ -270,8 +298,8 @@ Blackboard UTC (`Z`); convert to Asia/Riyadh for display, never treat as local.
 
 1. Same login.
 2. (Optional) set scope/redact first:
-   `window.BB_EXTRACT_OPTIONS = { scope: "current", redact: false }`
-3. F12 → Console → paste `tools/extract-console.js` → Enter.
+   `window.BB_EXTRACT_OPTIONS = { scope: "current", redact: false, captureSamples: false }`
+3. F12 → Console → paste `tools/extract-console.js` (generated from `src/`) → Enter.
 4. JSON downloads automatically; a text summary is logged.
 
 ### Comparing with the previous export

@@ -40,6 +40,10 @@ assert(cs.indexOf("src/bb-utils.js") < cs.indexOf("src/extractor.js"), "content 
 const gi = fs.readFileSync(path.join(__dirname, "../.gitignore"), "utf8");
 assert(/iau-blackboard-export-\*\.json/.test(gi), ".gitignore excludes export JSON");
 
+// 4b. Console snippet is generated from src/ (no hand-maintained copy drifting).
+const built = execFileSync(process.execPath, [path.join(__dirname, "../tools/build-console.js"), "--check"], { encoding: "utf8" });
+assert(/up to date/.test(built), "tools/extract-console.js is generated from src/ and up to date");
+
 // 5. Unit tests (rich text, timestamps, classification, filtering, dedupe, redaction, retries).
 try {
   execFileSync(process.execPath, [path.join(__dirname, "unit-tests.js")], { stdio: "inherit" });

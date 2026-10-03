@@ -164,6 +164,11 @@ global.fetch = async (url) => {
   check("redact: course/column IDs preserved", red.courses.some((c) => c.id === "_101_1") && red.assessments.some((a) => a.column_id === "_col1"));
   check("redact: no raw userName leak", !JSON.stringify(red).includes('"userName":"student"'));
 
+  const dbg = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all", captureSamples: true });
+  check("captureSamples records raw shapes", dbg.diagnostics.samples && dbg.diagnostics.samples.contents && dbg.diagnostics.samples.contents.id === "_f1", dbg.diagnostics.samples && Object.keys(dbg.diagnostics.samples));
+  check("samples strip user keys", !JSON.stringify(dbg.diagnostics.samples).includes("a@iau.edu.sa"));
+  check("no samples by default", all.diagnostics.samples === undefined);
+
   const fail = checks.filter(([, ok]) => !ok);
   if (fail.length) { console.error(`\n${fail.length} failure(s)`); process.exit(1); }
   console.log("\nMock extract OK — all checks passed.");

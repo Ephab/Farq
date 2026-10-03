@@ -102,6 +102,12 @@
     const windows = U.calendarWindows(since, until);
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
     const prog = (m) => { try { if (onProgress) onProgress(m); } catch { /* ignore */ } };
+    const samples = options.captureSamples ? {} : null;
+    const USER_KEYS = /^(email|emailAddress|userName|studentId|contact|name|givenName|familyName)$/;
+    function sample(family, raw) {
+      if (!samples || samples[family] || !raw || typeof raw !== "object") return;
+      samples[family] = JSON.parse(JSON.stringify(raw, (k, v) => (USER_KEYS.test(k) ? undefined : (typeof v === "string" ? v.slice(0, 120) : v))));
+    }
 
     const startedAt = Date.now();
     const sources = [];
@@ -156,6 +162,7 @@
     } catch (e) {
       diagnostics.endpointStatus["/learn/api/v1/users/me/memberships"] = `failed: ${U.sanitizeError(e)}`;
     }
+    sample("memberships", memberships[0]);
     const membershipByCourse = new Map();
     for (const m of memberships) {
       const cid = (m.course && m.course.id) || m.courseId;
@@ -244,6 +251,7 @@
         const t0 = Date.now();
         try {
           const payload = await U.getJson(origin, path, { timeoutMs, retries: 1 });
+          sample(`instructors-${label}`, payload);
           const found = M.instructorsFrom(payload);
           recordSource(`instructors:${cid}`, `GET ${label}`, found.length ? "ok" : "probe_empty", found.length, Date.now() - t0);
           if (found.length) { course.instructors = found; course.instructor_source = label; break; }
@@ -269,6 +277,7 @@
           break;
         } catch { /* recorded; try the next shape */ }
       }
+      sample("contents", tops && tops[0]);
       const attachmentJobs = [];
       if (tops) {
         const queue = tops.map((t) => ({ item: t, parentId: null, path: [t.title || "(untitled)"] }));
@@ -331,6 +340,7 @@
         const listPath = `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/contents/${encodeURIComponent(rec.content_id)}/attachments`;
         try {
           const res = await U.getJson(origin, listPath, { timeoutMs, retries: 1 });
+          sample("attachments", (res.results || [])[0]);
           rec.attachments = (res.results || []).filter((a) => a && a.id).map((a) => ({
             id: a.id || null,
             name: a.fileName || a.name || null,
@@ -352,6 +362,7 @@
       try {
         const anns = await track(`announcements:${cid}`, "GET /learn/api/v1/courses/{id}/announcements",
           () => U.pagedGet(origin, `/learn/api/v1/courses/${encodeURIComponent(cid)}/announcements`, { limit: 100, maxPages: 5, timeoutMs, retries }));
+        sample("announcements", anns[0]);
         for (const a of anns) {
           const r = U.extractRichText(a.body);
           const authorRaw = a.createdBy || a.creator || null;
@@ -380,6 +391,7 @@
         columns = await track(`columns:${cid}`, "GET /learn/api/public/v2/courses/{id}/gradebook/columns",
           () => U.pagedGet(origin, `/learn/api/public/v2/courses/${encodeURIComponent(cid)}/gradebook/columns`, { limit: 100, maxPages: 5, timeoutMs, retries }));
       } catch { columns = []; }
+      sample("columns", columns[0]);
       // The course total ("externalGrade") is a final grade, not an assessment.
       const totalColumn = columns.find((c) => c.externalGrade === true) || null;
       columns = columns.filter((c) => c !== totalColumn);
@@ -475,6 +487,7 @@
           if (r.ok && r.value && (r.value.columnId || r.value.status)) userGrades.push(r.value);
         }
       }
+      sample("grades", userGrades[0]);
       for (const gr of userGrades) {
         if (!gr || typeof gr !== "object") continue;
         if (totalColumn && gr.columnId === totalColumn.id) {
@@ -549,6 +562,7 @@
         try {
           const cal = await track(`calendar:${cid}`, "GET /learn/api/public/v1/calendars/items",
             () => U.getJson(origin, `/learn/api/public/v1/calendars/items?courseId=${encodeURIComponent(cid)}&since=${encodeURIComponent(w.since)}&until=${encodeURIComponent(w.until)}`, { timeoutMs, retries }));
+          sample("calendar", (cal.results || [])[0]);
           for (const it of (cal.results || [])) {
             const dynId = it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.id;
             per.events.push({
@@ -686,6 +700,7 @@
       materials: materialsAlias.filter((m) => scope === "all" || (courseById.get(m.course_id)?.is_current ?? true)),
       diagnostics: {
         ...diagnostics,
+        ...(samples ? { samples } : {}),
         sources,
         failed_sources: failedSources.map((s) => `${s.source}: ${s.status}${s.error ? ` (${s.error})` : ""}`),
         summary,

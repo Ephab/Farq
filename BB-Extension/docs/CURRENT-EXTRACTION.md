@@ -19,19 +19,23 @@ course date window, term window (`GET /learn/api/v1/terms`, best-effort),
 enrollment recency; course-code year is a tiebreaker only.
 
 ## Instructors
-`GET /learn/api/v1/courses/{id}/users?expand=user` (paged) → filter
-`courseRoleId` matching instructor/faculty/teacher. Name + email kept;
-email redacted under `--redact`.
+Students get 404 on the course roster, so two student-readable probes run in order and
+stop at the first that yields instructors: `ultra-course`
+(`GET /learn/api/v1/courses/{id}?expand=instructorsMembership`) then `public-memberships`
+(`GET /learn/api/public/v1/courses/{id}/users?role=Instructor&expand=user`). The one that
+answered is stored as `course.instructor_source`. Teaching assistants are excluded by a
+word-boundary role match. Probe misses are recorded as `probe_*` diagnostics statuses and are
+not counted in `failed_sources`. Name + email kept; email redacted under `--redact`.
 
 ## Content / materials
-`GET /learn/api/v1/courses/{id}/contents` (paged) then, for items with
-`hasChildren`, `GET .../contents/{contentId}/children` recursively.
-Records keep content ID, parent ID, breadcrumb path, friendly type mapped
-from documented `contentHandler` IDs (`x-bb-folder/file/document/externallink/
-courselink/forumlink/blti-link/asmt-test-link/assignment`), rich-text
-description (`body_text` + `body_html`), availability window, created/modified,
-Ultra URL, attachment metadata (id/name/mime/size/URL — metadata only, files
-are NOT downloaded), and external/LTI link targets.
+`GET /learn/api/public/v1/courses/{id}/contents` (paged); Ultra's
+`GET /learn/api/v1/courses/{id}/contents` is the fallback. Folders (`hasChildren`) are walked via
+`.../contents/{contentId}/children`. Records keep content ID, parent ID, breadcrumb path, friendly type
+from `contentHandler` IDs, plain-text `body_text` (+ `body_html`), availability window,
+created/modified, Ultra URL, and external/LTI link targets. Attachments come from
+`GET .../contents/{contentId}/attachments` and carry id/name/mime/size and a `download_url`
+(metadata only; files are NOT downloaded). The `attachments:<courseId>` diagnostics source is
+`ok` or `partial` with `truncated` and `listing_errors`.
 
 ## Announcements
 `GET /learn/api/v1/courses/{id}/announcements` (paged).
@@ -59,7 +63,8 @@ Fallback (documented, bounded to 10 columns, concurrency 2):
 403 (hidden from students) and 404 (no grade yet) are quiet skips.
 The path `/learn/api/public/v2/courses/{id}/users/{userId}/grades` (no
 `/gradebook/`) 404s and is listed in `KNOWN_BAD_GRADE_PATHS` — it is never
-called. Grades carry score, possible, computed percentage, status, feedback
+called. When the primary call fails, the per-column fallback fetches the course total column
+(`externalGrade`) first so the 10-column cap cannot drop it; it feeds `final_grade`. Grades carry score, possible, computed percentage, status, feedback
 (rich-text aware), and posted date, and back-fill their assessment's
 grade/percentage/feedback.
 
@@ -69,13 +74,21 @@ grade/percentage/feedback.
 submitted timestamp, per-attempt feedback. Non-attempt columns skip quietly.
 
 ## Calendar (structured) + ICS (fallback)
-Structured (kept): `GET /learn/api/public/v1/calendars/items?courseId={id}&since=&until=`
-per in-scope course plus one global sweep. `GradebookColumn` items with
-`dynamicCalendarItemProps.id` enrich the matching assessment's due date and
-`calendar_id`. ICS (kept): user-pasted Share-Calendar URL, parsed by
-`src/ics.js`, merged as `source: "ics"` events. Timestamps normalized to
-ISO 8601 UTC via `BBUtils.normalizeTimestamp` (instant preserved, e.g.
-`+03:00` → `Z`).
+Structured: `GET /learn/api/public/v1/calendars/items?courseId={id}&since=&until=` per in-scope
+course plus one global sweep, issued per window of at most 16 weeks (`U.calendarWindows`; a longer
+range returns HTTP 400). `GradebookColumn` items with `dynamicCalendarItemProps.id` enrich the
+matching assessment's due date and `calendar_id`, and calendar items are a due-date fallback.
+ICS (kept): user-pasted Share-Calendar URL, parsed by `src/ics.js`, merged as `source: "ics"`.
+Timestamps normalized to ISO 8601 UTC via `BBUtils.normalizeTimestamp`.
+
+## Course summary
+Each course carries `term_name` (from `GET /learn/api/v1/terms`), `grade_summary`
+(`{ earned, possible, percentage, graded, pending, missing }` computed from the student's own
+grades; `missing` counts overdue assessments) and `final_grade`
+(`{ score, possible, percentage, text }` from the course total column, `null` by default and
+whenever that column is hidden or unreadable). The total column is not an assessment.
+Assessments also get `is_upcoming`/`is_overdue`; `summary.upcoming_deadlines` and `summary.overdue`
+count them.
 
 ## Diagnostics
 Every source records `{ source, endpoint, status, count, elapsed_ms, error? }`
@@ -84,3 +97,6 @@ with credential-stripped errors. The export ends with `summary` plus
 
 Courses: 8 current / 62 total / Assessments: 37 / Announcements: 42 /
 Grades: 35 / Events: 18 / Content: 91 / Failed sources: …
+
+Debug option: `extractAll({ captureSamples: true })` adds `diagnostics.samples`, the first raw
+record per source family (user keys removed, strings truncated to 120 characters). Off by default.

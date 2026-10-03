@@ -20,7 +20,7 @@ const responses = {
       { id: "_m2", courseRoleId: "Student", enrollmentDate: "2021-09-01T00:00:00.000Z", course: { id: "_102_1", courseId: "HIST101-2021", displayName: "Old History", availability: { available: "No" }, modified: "2021-12-01T00:00:00.000Z" } }
     ], paging: {}
   },
-  terms: { results: [{ id: "_t1", availability: { duration: { start: "2026-08-01T00:00:00.000Z", end: "2026-12-31T00:00:00.000Z" } } }], paging: {} },
+  terms: { results: [{ id: "_t1", name: "Fall 2026", availability: { duration: { start: "2026-08-01T00:00:00.000Z", end: "2026-12-31T00:00:00.000Z" } } }], paging: {} },
   roster101: { results: [{ courseRoleId: "Instructor", userId: "_9_1", user: { name: { given: "A", family: "Prof" }, contact: { email: "a@iau.edu.sa" } } }], paging: {} },
   roster102: { results: [], paging: {} },
   contents101: { results: [{ id: "_c1", title: "Week 1 slides", body: "<p>Hello</p>", contentHandler: { id: "resource/x-bb-document" }, hasChildren: false, created: "2026-09-02T00:00:00.000Z", modified: "2026-09-03T00:00:00.000Z", availability: { available: "Yes" } }], paging: {} },
@@ -47,11 +47,13 @@ const responses = {
       { id: "_col1", name: "Assignment 1", description: "<p>Do it</p>", grading: { due: "2026-02-10T20:59:00.000Z" }, score: { possible: 10 }, contentId: "_c1", gradebookCategoryId: "Assignment" },
       { id: "_col2", name: "Quiz 1", grading: { due: "2026-03-01T20:59:00.000Z" }, score: { possible: 5 }, gradebookCategoryId: "_cat1" },
       { id: "_col3", name: "Attendance Week 1", score: { possible: 1 }, gradebookCategoryId: "Attendance" },
-      { id: "_col4", name: "Project report", grading: { due: "2099-01-15T20:59:00.000Z" }, score: { possible: 20 }, gradebookCategoryId: "Assignment" }
+      { id: "_col4", name: "Project report", grading: { due: "2099-01-15T20:59:00.000Z" }, score: { possible: 20 }, gradebookCategoryId: "Assignment" },
+      { id: "_total", name: "Total", externalGrade: true, score: { possible: 100 } }
     ], paging: {}
   },
   cols102: { results: [], paging: {} },
-  userGrades101: { results: [{ columnId: "_col1", userId: "_1_1", status: "Graded", score: 9, displayGrade: { score: 9, possible: 10, text: "9/10" }, feedback: "Good work", modified: "2026-02-12T00:00:00.000Z" }] },
+  userGrades101: { results: [{ columnId: "_col1", userId: "_1_1", status: "Graded", score: 9, displayGrade: { score: 9, possible: 10, text: "9/10" }, feedback: "Good work", modified: "2026-02-12T00:00:00.000Z" },
+    { columnId: "_total", userId: "_1_1", status: "Graded", score: 88, displayGrade: { score: 88, possible: 100, text: "B+" } }] },
   attemptsCol1: { results: [{ id: "_att1", status: "Graded", created: "2026-02-09T00:00:00.000Z", modified: "2026-02-10T20:00:00.000Z" }] },
   cal101: { results: [{ id: "_cal1", title: "Assignment 1", start: "2026-02-10T20:59:00.000Z", end: "2026-02-10T20:59:00.000Z", type: "GradebookColumn", calendarId: "_101_1", calendarName: "Intro to Computing", dynamicCalendarItemProps: { id: "_col1" } }, { id: "_cal2", title: "Lab session", start: "2026-10-05T08:00:00.000Z", end: "2026-10-05T10:00:00.000Z", type: "Course", calendarId: "_101_1", calendarName: "Intro to Computing" }] },
   cal102: { results: [] },
@@ -132,6 +134,11 @@ global.fetch = async (url) => {
   check("future ungraded item is upcoming", report && report.is_upcoming === true, report);
   check("graded item neither upcoming nor overdue", a1 && !a1.is_upcoming && !a1.is_overdue, a1);
   check("summary counts deadlines", all.summary.upcoming_deadlines >= 1 && all.summary.overdue >= 1, all.summary);
+  const c101 = all.courses.find((c) => c.id === "_101_1");
+  check("term name attached", c101.term_name === "Fall 2026", c101);
+  check("final grade from external column", c101.final_grade && c101.final_grade.text === "B+" && c101.final_grade.percentage === 88, c101.final_grade);
+  check("grade summary excludes the total column", c101.grade_summary && c101.grade_summary.graded === 1 && c101.grade_summary.possible === 10, c101.grade_summary);
+  check("total column is not an assessment", !all.assessments.some((a) => a.column_id === "_total"));
   const syl = all.content.find((m) => m.content_id === "_file1");
   check("folder children walked with path + parent", syl && syl.parent_id === "_f1" && syl.path === "Week 1 / Course Syllabus.pdf", syl);
   check("content type from public handler", syl && syl.type === "File" && all.content.some((m) => m.type === "Folder"), syl);

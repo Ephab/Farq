@@ -211,6 +211,19 @@ async function main() {
     assert(t === "QUIZ 1\nTopics: Backprop & GD\nOne\nTwo", "htmlToText: block breaks + entities", t);
   }
 
+  // ---- grade summary ----
+  {
+    const grades = [
+      { score: 9, possible: 10, status: "Graded" },
+      { score: 4, possible: 5, status: "Graded" },
+      { score: null, possible: 5, status: "NeedsGrading" }
+    ];
+    const s = M.gradeSummary(grades, [{ is_overdue: true }, { is_overdue: false }]);
+    assert(s.earned === 13 && s.possible === 15 && s.percentage === 86.7, "grade summary: earned/possible/percentage", s);
+    assert(s.graded === 2 && s.pending === 1 && s.missing === 1, "grade summary: counts", s);
+    assert(M.gradeSummary([], []).percentage === null, "grade summary: nothing graded -> null percentage");
+  }
+
   if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
   console.log("\nAll unit tests passed.");
 }

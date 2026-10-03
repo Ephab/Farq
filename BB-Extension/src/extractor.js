@@ -168,7 +168,7 @@
       const terms = await track("terms", "GET /learn/api/v1/terms",
         () => U.pagedGet(origin, "/learn/api/v1/terms", { limit: 100, maxPages: 5, timeoutMs, retries }));
       for (const t of terms) {
-        if (t && t.id) termsById.set(t.id, { start: t.availability && t.availability.duration && t.availability.duration.start, end: t.availability && t.availability.duration && t.availability.duration.end });
+        if (t && t.id) termsById.set(t.id, { name: t.name || null, start: t.availability && t.availability.duration && t.availability.duration.start, end: t.availability && t.availability.duration && t.availability.duration.end });
       }
     } catch (e) {
       recordSource("terms", "GET /learn/api/v1/terms", "skipped", 0, 0, e);
@@ -192,6 +192,7 @@
         enrollment: m.enrollmentDate || null,
         role: m.courseRoleId || m.role || null,
         term_id: c.termId || c.term_id || null,
+        term_name: (termsById.get(c.termId || c.term_id) || {}).name || null,
         created: U.normalizeTimestamp(c.created),
         modified: U.normalizeTimestamp(c.modified),
         is_current: current.current,
@@ -378,7 +379,10 @@
         columns = await track(`columns:${cid}`, "GET /learn/api/public/v2/courses/{id}/gradebook/columns",
           () => U.pagedGet(origin, `/learn/api/public/v2/courses/${encodeURIComponent(cid)}/gradebook/columns`, { limit: 100, maxPages: 5, timeoutMs, retries }));
       } catch { columns = []; }
-      const columnById = new Map(columns.map((c) => [c.id, c]));
+      // The course total ("externalGrade") is a final grade, not an assessment.
+      const totalColumn = columns.find((c) => c.externalGrade === true) || null;
+      columns = columns.filter((c) => c !== totalColumn);
+      const columnById = new Map([...columns, ...(totalColumn ? [totalColumn] : [])].map((c) => [c.id, c]));
       const contentByColumnContentId = new Map();
       for (const rec of contentIndex.values()) {
         // columns reference content via contentId; index not strictly needed
@@ -472,6 +476,12 @@
       }
       for (const gr of userGrades) {
         if (!gr || typeof gr !== "object") continue;
+        if (totalColumn && gr.columnId === totalColumn.id) {
+          const score = typeof gr.score === "number" ? gr.score : (gr.displayGrade && gr.displayGrade.score) ?? null;
+          const possible = (gr.displayGrade && gr.displayGrade.possible) ?? (totalColumn.score && totalColumn.score.possible) ?? null;
+          course.final_grade = { score, possible, percentage: percentageOf(score, possible), text: (gr.displayGrade && gr.displayGrade.text) ?? null };
+          continue;
+        }
         const col = columnById.get(gr.columnId) || {};
         const score = typeof gr.score === "number" ? gr.score : (gr.displayGrade && gr.displayGrade.score) ?? null;
         const possible = (gr.displayGrade && gr.displayGrade.possible) ?? col.score?.possible ?? null;
@@ -565,6 +575,7 @@
         } catch { /* recorded */ }
       }
 
+      if (course.final_grade === undefined) course.final_grade = null;
       return per;
     }, true);
 
@@ -625,6 +636,9 @@
     const gradesD = dedupeByKey(grades, (g) => g.source_id || (g.column_id ? `grade:${g.course_id}:${g.column_id}` : null));
     const eventsD = dedupeByKey(events, (e) => e.source_id || (e.uid ? `uid:${e.uid}` : null));
     const contentD = dedupeByKey(content, (m) => m.source_id || m.content_id || null);
+    for (const c of courses) {
+      c.grade_summary = M.gradeSummary(gradesD.filter((g) => g.course_id === c.id), assessmentsM.filter((a) => a.course_id === c.id));
+    }
 
     // Backward-compatible aliases for the previous schema.
     const assignmentsAlias = assessmentsM.map((a) => ({

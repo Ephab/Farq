@@ -274,7 +274,20 @@
     return out;
   }
 
-  const api = { normKey, classifyAssessment, isCurrentCourse, assessmentMergeKey, mergeAssessments, redactExport, deadlineFlags, instructorsFrom };
+  // Running standing from the student's own grades (graded items only count).
+  function gradeSummary(grades, assessments) {
+    let earned = 0, possible = 0, graded = 0, pending = 0;
+    for (const g of grades || []) {
+      if (typeof g.score === "number" && typeof g.possible === "number" && g.possible > 0) {
+        earned += g.score; possible += g.possible; graded++;
+      } else if (/needs_?grading/i.test(String(g.status || ""))) pending++;
+    }
+    const missing = (assessments || []).filter((a) => a.is_overdue).length;
+    const round = (n) => Math.round(n * 10) / 10;
+    return { earned: round(earned), possible: round(possible), percentage: possible ? round((earned / possible) * 100) : null, graded, pending, missing };
+  }
+
+  const api = { normKey, classifyAssessment, isCurrentCourse, assessmentMergeKey, mergeAssessments, redactExport, deadlineFlags, instructorsFrom, gradeSummary };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.BBModel = api;
 })(typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : globalThis));

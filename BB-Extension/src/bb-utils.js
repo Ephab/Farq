@@ -71,7 +71,11 @@
     const marked = String(html).replace(/<br\s*\/?>/gi, BREAK).replace(/<\/(p|div|li|h[1-6]|tr|ul|ol)>/gi, BREAK);
     let raw = null;
     try {
-      if (typeof document !== "undefined" && document.createElement) {
+      // DOMParser builds an inert document: course HTML cannot trigger image or other loads.
+      if (typeof DOMParser !== "undefined") {
+        const body = new DOMParser().parseFromString(marked, "text/html").body;
+        raw = (body && body.textContent) || "";
+      } else if (typeof document !== "undefined" && document.createElement) {
         const div = document.createElement("div");
         div.innerHTML = marked;
         raw = div.textContent || "";

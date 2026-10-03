@@ -197,6 +197,15 @@ async function main() {
     assert(f({ due_date: "2026-10-10T00:00:00.000Z", grade: "9/10" }).is_upcoming === false, "deadline: graded is not upcoming");
     assert(f({ due_date: "2026-09-01T00:00:00.000Z", type: "Attendance" }).is_overdue === false, "deadline: attendance never overdue");
     assert(f({ due_date: null }).is_upcoming === false && f({}).is_overdue === false, "deadline: no due date -> no flags");
+    assert(f({ due_date: "2026-10-10T00:00:00.000Z", submission_status: "InProgress" }).is_upcoming === true, "deadline: InProgress (unsubmitted draft) status is still upcoming");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", submission_status: "in_progress" }).is_overdue === true, "deadline: in_progress status is still overdue");
+    assert(f({ due_date: "2026-10-10T00:00:00.000Z", attempts: [{ id: "x", status: "InProgress" }] }).is_upcoming === true, "deadline: in-progress attempt is still upcoming");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", attempts: [{ status: "NotAttempted" }, { status: "Abandoned" }] }).is_overdue === true, "deadline: NotAttempted/Abandoned attempts are still overdue");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", attempts: [{ status: "NeedsGrading" }] }).is_overdue === false, "deadline: NeedsGrading attempt counts as done");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", attempts: [{ status: "completed" }] }).is_overdue === false, "deadline: Completed attempt counts as done (case-insensitive)");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", grade: "-" }).is_overdue === true, "deadline: placeholder grade '-' is still overdue");
+    assert(f({ due_date: "2026-10-10T00:00:00.000Z", grade: " - " }).is_upcoming === true, "deadline: placeholder grade ' - ' is still upcoming");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", grade: 0 }).is_overdue === false, "deadline: numeric grade 0 counts as graded");
   }
 
   // ---- instructorsFrom: tolerant of the shapes Blackboard returns ----
@@ -223,6 +232,23 @@ async function main() {
   {
     const t = U.htmlToText("<h5>QUIZ 1</h5><p>Topics:&nbsp;Backprop &amp; GD</p><ul><li>One</li><li>Two</li></ul>");
     assert(t === "QUIZ 1\nTopics: Backprop & GD\nOne\nTwo", "htmlToText: block breaks + entities", t);
+  }
+
+  // ---- htmlToText prefers DOMParser (inert document) over innerHTML on a live element ----
+  {
+    const parsed = [];
+    let created = 0;
+    global.DOMParser = class {
+      parseFromString(markup, type) {
+        parsed.push(type);
+        return { body: { textContent: markup.replace(/<[^>]+>/g, " ") } };
+      }
+    };
+    global.document = { createElement: () => { created++; return {}; } };
+    const t = U.htmlToText("<p>Hi <img src=\"https://x.test/a.png\">there</p>");
+    assert(t === "Hi there" && parsed[0] === "text/html" && created === 0, "htmlToText: uses DOMParser, never innerHTML, when available", { t, parsed, created });
+    delete global.DOMParser;
+    delete global.document;
   }
 
   // ---- grade summary ----

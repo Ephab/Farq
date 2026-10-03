@@ -12,6 +12,7 @@ global.document = { createElement: () => ({ set innerHTML(v) { this._h = v; }, g
 global.location = { origin: "https://vle.iau.edu.sa" };
 
 const BAD_PATH_HIT = [];
+let FAIL_CHILDREN = false; // simulate a folder whose children listing returns HTTP 500
 const responses = {
   me: { id: "_1_1", userName: "student" },
   memberships: {
@@ -93,7 +94,7 @@ global.fetch = async (url) => {
   if (p === "/learn/api/v1/courses/_101_1") return ok({ id: "_101_1", instructorsMembership: [{ user: { givenName: "A", familyName: "Prof", emailAddress: "a@iau.edu.sa", id: "_9_1" } }] });
   if (p === "/learn/api/v1/courses/_102_1") return miss(403); // closed course
   if (p === "/learn/api/public/v1/courses/_101_1/contents") return ok(responses.pubContents101);
-  if (p === "/learn/api/public/v1/courses/_101_1/contents/_f1/children") return ok(responses.pubChildrenF1);
+  if (p === "/learn/api/public/v1/courses/_101_1/contents/_f1/children") return FAIL_CHILDREN ? miss(500) : ok(responses.pubChildrenF1);
   if (p === "/learn/api/public/v1/courses/_101_1/contents/_file1/attachments") return ok(responses.attachmentsFile1);
   if (p === "/learn/api/public/v1/courses/_101_1/contents/_c1/attachments") return ok({ results: [] });
   if (p === "/learn/api/public/v1/courses/_102_1/contents") return miss(403);
@@ -173,6 +174,16 @@ global.fetch = async (url) => {
   check("samples strip user keys", !sampJson.includes("a@iau.edu.sa") && !sampJson.includes("Prof") && !sampJson.includes('"givenName"'), sampJson.slice(0, 300));
   check("samples truncate strings to 120 chars", typeof dbg.diagnostics.samples.contents.description === "string" && dbg.diagnostics.samples.contents.description.length === 120);
   check("no samples by default", all.diagnostics.samples === undefined);
+
+  check("contents source ok when every folder opened", all.diagnostics.sources.filter((x) => x.source === "contents:_101_1").every((x) => x.status === "ok"));
+
+  FAIL_CHILDREN = true;
+  const partial = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all", retries: 0 });
+  FAIL_CHILDREN = false;
+  const contentsSrc = partial.diagnostics.sources.filter((x) => x.source === "contents:_101_1");
+  check("children 500 -> exactly one contents:<cid> entry, status partial", contentsSrc.length === 1 && contentsSrc[0].status === "partial" && contentsSrc[0].children_errors === 1, contentsSrc);
+  check("partial contents counts as a failed source", partial.summary.failed_sources >= 1 && partial.diagnostics.failed_sources.some((f) => f.startsWith("contents:_101_1: partial")), partial.diagnostics.failed_sources);
+  check("children 500 keeps the items it could read", partial.content.some((m) => m.content_id === "_c1") && !partial.content.some((m) => m.content_id === "_file1"));
 
   const fail = checks.filter(([, ok]) => !ok);
   if (fail.length) { console.error(`\n${fail.length} failure(s)`); process.exit(1); }

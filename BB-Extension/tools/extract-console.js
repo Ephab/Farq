@@ -78,7 +78,11 @@ const module = undefined; // force browser globals in the bundled files
     const marked = String(html).replace(/<br\s*\/?>/gi, BREAK).replace(/<\/(p|div|li|h[1-6]|tr|ul|ol)>/gi, BREAK);
     let raw = null;
     try {
-      if (typeof document !== "undefined" && document.createElement) {
+      // DOMParser builds an inert document: course HTML cannot trigger image or other loads.
+      if (typeof DOMParser !== "undefined") {
+        const body = new DOMParser().parseFromString(marked, "text/html").body;
+        raw = (body && body.textContent) || "";
+      } else if (typeof document !== "undefined" && document.createElement) {
         const div = document.createElement("div");
         div.innerHTML = marked;
         raw = div.textContent || "";
@@ -518,12 +522,22 @@ const module = undefined; // force browser globals in the bundled files
   }
 
   // Submitted/graded work is never "overdue"; attendance columns are not deadlines.
-  const DONE_STATUS = /^(graded|needsgrading|needs_grading|submitted|completed|inprogress|in_progress)$/i;
+  // InProgress is an unsubmitted draft in Blackboard, so it is NOT done.
+  const DONE_STATUS = /^(graded|needsgrading|needs_grading|submitted|completed)$/i;
+  // Only these attempt states mean the work was handed in (not NotAttempted/Abandoned/InProgress).
+  const DONE_ATTEMPT = /^(needsgrading|needs_grading|completed|submitted)$/i;
+  function hasRealGrade(grade) {
+    if (typeof grade === "number") return Number.isFinite(grade);
+    if (typeof grade !== "string") return false;
+    const g = grade.trim();
+    return g !== "" && g !== "-";
+  }
   function deadlineFlags(a, nowMs) {
     const due = a && a.due_date ? Date.parse(a.due_date) : NaN;
     if (Number.isNaN(due) || (a && a.type === "Attendance")) return { is_upcoming: false, is_overdue: false };
     const done = DONE_STATUS.test(String(a.submission_status || "")) ||
-      (Array.isArray(a.attempts) && a.attempts.length > 0) || (a.grade != null && a.grade !== "");
+      (Array.isArray(a.attempts) && a.attempts.some((x) => x && DONE_ATTEMPT.test(String(x.status || "")))) ||
+      hasRealGrade(a.grade);
     return { is_upcoming: !done && due >= nowMs, is_overdue: !done && due < nowMs };
   }
 
@@ -980,6 +994,7 @@ const module = undefined; // force browser globals in the bundled files
       }
       sample("contents", tops && tops[0]);
       const attachmentJobs = [];
+      let childErrors = 0;
       if (tops) {
         const queue = tops.map((t) => ({ item: t, parentId: null, path: [t.title || "(untitled)"] }));
         const seen = new Set();
@@ -1029,8 +1044,14 @@ const module = undefined; // force browser globals in the bundled files
             try {
               const kids = await U.pagedGet(origin, `${base}/${encodeURIComponent(item.id)}/children`, { limit: 100, maxPages: 5, timeoutMs, retries });
               for (const k of kids) queue.push({ item: k, parentId: item.id, path: [...path, k.title || "(untitled)"] });
-            } catch { /* keep what we have */ }
+            } catch { childErrors++; /* keep what we have */ }
           }
+        }
+        // A folder we could not open hides its items: mark the listing partial so consumers
+        // never treat the missing items as deleted.
+        if (childErrors) {
+          const entry = sources.filter((s) => s.source === `contents:${cid}` && s.status === "ok").pop();
+          if (entry) Object.assign(entry, { status: "partial", children_errors: childErrors });
         }
       }
 

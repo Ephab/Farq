@@ -280,6 +280,7 @@
       }
       sample("contents", tops && tops[0]);
       const attachmentJobs = [];
+      let childErrors = 0;
       if (tops) {
         const queue = tops.map((t) => ({ item: t, parentId: null, path: [t.title || "(untitled)"] }));
         const seen = new Set();
@@ -329,8 +330,14 @@
             try {
               const kids = await U.pagedGet(origin, `${base}/${encodeURIComponent(item.id)}/children`, { limit: 100, maxPages: 5, timeoutMs, retries });
               for (const k of kids) queue.push({ item: k, parentId: item.id, path: [...path, k.title || "(untitled)"] });
-            } catch { /* keep what we have */ }
+            } catch { childErrors++; /* keep what we have */ }
           }
+        }
+        // A folder we could not open hides its items: mark the listing partial so consumers
+        // never treat the missing items as deleted.
+        if (childErrors) {
+          const entry = sources.filter((s) => s.source === `contents:${cid}` && s.status === "ok").pop();
+          if (entry) Object.assign(entry, { status: "partial", children_errors: childErrors });
         }
       }
 

@@ -248,12 +248,22 @@
   }
 
   // Submitted/graded work is never "overdue"; attendance columns are not deadlines.
-  const DONE_STATUS = /^(graded|needsgrading|needs_grading|submitted|completed|inprogress|in_progress)$/i;
+  // InProgress is an unsubmitted draft in Blackboard, so it is NOT done.
+  const DONE_STATUS = /^(graded|needsgrading|needs_grading|submitted|completed)$/i;
+  // Only these attempt states mean the work was handed in (not NotAttempted/Abandoned/InProgress).
+  const DONE_ATTEMPT = /^(needsgrading|needs_grading|completed|submitted)$/i;
+  function hasRealGrade(grade) {
+    if (typeof grade === "number") return Number.isFinite(grade);
+    if (typeof grade !== "string") return false;
+    const g = grade.trim();
+    return g !== "" && g !== "-";
+  }
   function deadlineFlags(a, nowMs) {
     const due = a && a.due_date ? Date.parse(a.due_date) : NaN;
     if (Number.isNaN(due) || (a && a.type === "Attendance")) return { is_upcoming: false, is_overdue: false };
     const done = DONE_STATUS.test(String(a.submission_status || "")) ||
-      (Array.isArray(a.attempts) && a.attempts.length > 0) || (a.grade != null && a.grade !== "");
+      (Array.isArray(a.attempts) && a.attempts.some((x) => x && DONE_ATTEMPT.test(String(x.status || "")))) ||
+      hasRealGrade(a.grade);
     return { is_upcoming: !done && due >= nowMs, is_overdue: !done && due < nowMs };
   }
 

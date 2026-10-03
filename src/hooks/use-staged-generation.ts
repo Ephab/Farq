@@ -37,9 +37,11 @@ export async function streamStagedRoadmap(
   studentId: string,
   signal: AbortSignal,
   callbacks: StagedStreamCallbacks,
+  /** Only follow a generation that is already running; never start one (used when reopening the page). */
+  attach = false,
 ): Promise<void> {
   // No model in the request: the server runs the Settings choice.
-  const response = await fetch(`${API_BASE}/api/students/${studentId}/onboarding/generate/stream`, {
+  const response = await fetch(`${API_BASE}/api/students/${studentId}/onboarding/generate/stream${attach ? "?attach=true" : ""}`, {
     headers: identityHeaders(),
     signal,
   }).catch((reason: unknown) => {

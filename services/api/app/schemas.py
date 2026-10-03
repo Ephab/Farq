@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -372,16 +372,150 @@ class ChatFollowUp(BaseModel):
     prompt: str = Field(min_length=1, max_length=500)
 
 
+## Chat elements: the rich UI palette Hermes can attach to a reply (quiz, timer, progress,
+## flashcards, checklist, table, callout, code). This is the exact mirror of the frontend's
+## `src/components/hermes/elements/types.ts` — keep the two in sync, limits included, since a
+## model-authored element is untrusted input until these validators say otherwise.
+
+class QuizQuestionSpec(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    type: Literal["mcq", "true_false", "short_answer"]
+    stem: str = Field(min_length=1, max_length=500)
+    # mcq: 2-4 options. true_false / short_answer: omitted (the UI supplies True/False itself).
+    options: list[str] | None = Field(default=None, max_length=4)
+    answer: str = Field(min_length=1, max_length=300)
+    explanation: str | None = Field(default=None, max_length=600)
+    difficulty: Literal["easy", "medium", "hard"] | None = None
+    time_limit_s: int | None = Field(default=None, ge=5, le=3600)
+
+    @model_validator(mode="after")
+    def valid_for_type(self) -> "QuizQuestionSpec":
+        if self.type == "mcq":
+            if not self.options or not (2 <= len(self.options) <= 4):
+                raise ValueError("An mcq question needs 2-4 options")
+            if self.answer not in self.options:
+                raise ValueError("An mcq answer must exactly match one of its options")
+        elif self.type == "true_false" and self.answer not in ("True", "False"):
+            raise ValueError('A true_false answer must be "True" or "False"')
+        return self
+
+
+class QuizElement(BaseModel):
+    kind: Literal["quiz"] = "quiz"
+    id: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=120)
+    questions: list[QuizQuestionSpec] = Field(min_length=1, max_length=10)
+
+
+class TimerElement(BaseModel):
+    kind: Literal["timer"] = "timer"
+    id: str = Field(min_length=1, max_length=64)
+    label: str | None = Field(default=None, max_length=80)
+    duration_s: int = Field(ge=5, le=3600)
+    warning_s: int | None = Field(default=None, ge=0, le=3600)
+    autostart: bool = True
+
+
+class ProgressStep(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=120)
+    done: bool | None = None
+
+
+class ProgressElement(BaseModel):
+    kind: Literal["progress"] = "progress"
+    id: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=120)
+    style: Literal["ring", "steps"] | None = None
+    current: int = Field(ge=0)
+    total: int = Field(ge=0)
+    # Only meaningful for style: "steps".
+    steps: list[ProgressStep] | None = Field(default=None, max_length=12)
+
+
+class Flashcard(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    front: str = Field(min_length=1, max_length=300)
+    back: str = Field(min_length=1, max_length=300)
+
+
+class FlashcardsElement(BaseModel):
+    kind: Literal["flashcards"] = "flashcards"
+    id: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=120)
+    cards: list[Flashcard] = Field(min_length=1, max_length=20)
+
+
+class ChecklistItem(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=200)
+    done: bool | None = None
+
+
+class ChecklistElement(BaseModel):
+    kind: Literal["checklist"] = "checklist"
+    id: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=120)
+    items: list[ChecklistItem] = Field(min_length=1, max_length=15)
+
+
+class TableElement(BaseModel):
+    kind: Literal["table"] = "table"
+    id: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=120)
+    columns: list[str] = Field(min_length=1, max_length=6)
+    rows: list[list[str]] = Field(default_factory=list, max_length=20)
+    highlight_column: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def rows_fit_columns(self) -> "TableElement":
+        if any(len(row) > len(self.columns) for row in self.rows):
+            raise ValueError("A table row cannot have more cells than there are columns")
+        if self.highlight_column is not None and self.highlight_column >= len(self.columns):
+            raise ValueError("highlight_column must index an actual column")
+        return self
+
+
+class CalloutElement(BaseModel):
+    kind: Literal["callout"] = "callout"
+    id: str = Field(min_length=1, max_length=64)
+    tone: Literal["tip", "warning", "info", "success"]
+    title: str | None = Field(default=None, max_length=120)
+    body: str = Field(min_length=1, max_length=600)
+
+
+class CodeElement(BaseModel):
+    kind: Literal["code"] = "code"
+    id: str = Field(min_length=1, max_length=64)
+    language: str | None = Field(default=None, max_length=40)
+    code: str = Field(min_length=1, max_length=4000)
+    caption: str | None = Field(default=None, max_length=200)
+
+
+ChatElement = Annotated[
+    Union[
+        QuizElement, TimerElement, ProgressElement, FlashcardsElement,
+        ChecklistElement, TableElement, CalloutElement, CodeElement,
+    ],
+    Field(discriminator="kind"),
+]
+# At most this many elements on one reply — a study coach shows a couple of things at
+# once, not a wall of cards. (The dev-only frontend fixture preview is exempt: it's local
+# UI fixtures, never real Hermes output.)
+MAX_CHAT_ELEMENTS = 6
+
+
 class ChatMessageUi(BaseModel):
     choice_group: ChatChoiceGroup | None = None
     follow_ups: list[ChatFollowUp] = Field(default_factory=list, max_length=3)
     # Onboarding: Hermes has what it needs (waypoint_ready_to_generate); the chat shows Generate.
     ready_to_generate: bool = False
+    elements: list[ChatElement] = Field(default_factory=list, max_length=MAX_CHAT_ELEMENTS)
 
     @model_validator(mode="after")
     def has_controls(self) -> "ChatMessageUi":
-        if self.choice_group is None and not self.follow_ups and not self.ready_to_generate:
-            raise ValueError("A chat interaction must contain choices or follow-ups")
+        if self.choice_group is None and not self.follow_ups and not self.ready_to_generate and not self.elements:
+            raise ValueError("A chat interaction must contain choices, follow-ups, or elements")
         if len({item.id for item in self.follow_ups}) != len(self.follow_ups):
             raise ValueError("Follow-up IDs must be unique")
         return self
@@ -457,7 +591,46 @@ class EvaluationCriterionResult(BaseModel):
     feedback: str = Field(default="", max_length=3000)
 
 
+class EvaluationObservation(BaseModel):
+    id: str = Field(pattern=r"^check-[0-9]+$", max_length=40)
+    title: str = Field(min_length=1, max_length=200)
+    kind: str = Field(max_length=40)
+    passed: bool
+    output: str = Field(max_length=16000)
+    duration_ms: int = Field(ge=0)
+
+
+class EvaluationScreenshot(BaseModel):
+    id: str = Field(pattern=r"^shot-[0-9]+$", max_length=40)
+    title: str = Field(max_length=200)
+    png_base64: str = Field(max_length=2800000)
+
+
+class EvaluationAction(BaseModel):
+    kind: Literal["run_script", "node_cli", "probe_harness", "install_dependencies", "python_tests", "start_server", "http", "browser", "finish"]
+    title: str = Field(min_length=1, max_length=200)
+    script: str = Field(default="", pattern=r"^[A-Za-z0-9_:.-]*$", max_length=80)
+    entry: str = Field(default="", max_length=200)
+    args: list[str] = Field(default_factory=list, max_length=12)
+    path: str = Field(default="/", max_length=500)
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
+    body: dict | None = None
+    expected_status: int = Field(default=200, ge=100, le=599)
+    expected_text: str = Field(default="", max_length=1000)
+    steps: list[dict] = Field(default_factory=list, max_length=15)
+
+
+class EvaluationReasonRequest(BaseModel):
+    lease_token: str = Field(min_length=16, max_length=64)
+    phase: Literal["next", "review"]
+    context: str = Field(max_length=60000)
+    observations: list[EvaluationObservation] = Field(default_factory=list, max_length=14)
+    remaining: int = Field(default=0, ge=0, le=12)
+
+
 class EvaluationComplete(BaseModel):
+    observations: list[EvaluationObservation] = Field(default_factory=list, max_length=14)
+    screenshots: list[EvaluationScreenshot] = Field(default_factory=list, max_length=8)
     lease_token: str = Field(min_length=16, max_length=64)
     adapter: Literal["software", "web", "data_ml", "document", "cad", "circuit", "generic"]
     score: int = Field(ge=0, le=100)
@@ -470,6 +643,7 @@ class EvaluationComplete(BaseModel):
 
 
 class EvaluationProgress(BaseModel):
+    observations: list[EvaluationObservation] | None = Field(default=None, max_length=14)
     lease_token: str = Field(min_length=16, max_length=64)
     stage: str = Field(min_length=1, max_length=100)
 
@@ -559,3 +733,161 @@ class SlidesExportInput(BaseModel):
     # The divider slide's text in the student's language (the browser owns translations).
     divider_title: str | None = Field(default=None, max_length=320)
     divider_note: str | None = Field(default=None, max_length=400)
+
+
+# ---------------------------------------------------------------------------------------------
+# CV Builder (app.cv): strict mirror of src/components/cv/fixtures.ts's CvDocument, Phase B.
+# Generation and the "Ask Hermes" assist panel both produce/patch this shape; every value coming
+# back from a model is re-validated against it before the student (or SQLite) ever sees it.
+# ---------------------------------------------------------------------------------------------
+
+CvTemplateKind = Literal["classic", "modern", "compact"]
+CvSectionKind = Literal["summary", "education", "experience", "projects", "skills", "certificates", "activities", "languages"]
+CV_SECTION_KINDS: frozenset[str] = frozenset(("summary", "education", "experience", "projects", "skills", "certificates", "activities", "languages"))
+
+
+class CvTheme(BaseModel):
+    accent: str = Field(default="#17181c", pattern=r"^#[0-9a-fA-F]{6}$")
+    font: Literal["sans", "serif"] | None = "sans"
+
+
+class CvProvenance(BaseModel):
+    # e.g. "Project Waypoint - evaluation", "Roadmap - Linear Algebra". Must name a real record;
+    # app.cv checks every generated label against the learner context it actually sent the model.
+    label: str = Field(min_length=1, max_length=160)
+
+
+class CvBullet(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    text: str = Field(min_length=1, max_length=400)
+    provenance: CvProvenance | None = None
+
+
+class CvEntry(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    title: str = Field(min_length=1, max_length=200)
+    subtitle: str = Field(default="", max_length=200)
+    location: str = Field(default="", max_length=120)
+    start: str = Field(default="", max_length=40)
+    end: str = Field(default="", max_length=40)
+    bullets: list[CvBullet] = Field(default_factory=list, max_length=10)
+    provenance: CvProvenance | None = None
+
+
+class CvSkillGroup(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    label: str = Field(min_length=1, max_length=80)
+    items: list[str] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def clip_items(self) -> "CvSkillGroup":
+        self.items = [str(item).strip()[:60] for item in self.items if str(item).strip()][:30]
+        return self
+
+
+class CvLanguage(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=60)
+    level: str = Field(default="", max_length=60)
+
+
+class CvCertificate(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=200)
+    issuer: str = Field(default="", max_length=160)
+    date: str = Field(default="", max_length=40)
+    provenance: CvProvenance | None = None
+
+
+class CvSection(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    kind: CvSectionKind
+    title: str = Field(min_length=1, max_length=80)
+    visible: bool = True
+    summary: str | None = Field(default=None, max_length=1200)
+    entries: list[CvEntry] | None = Field(default=None, max_length=12)
+    skills: list[CvSkillGroup] | None = Field(default=None, max_length=10)
+    certificates: list[CvCertificate] | None = Field(default=None, max_length=20)
+    languages: list[CvLanguage] | None = Field(default=None, max_length=10)
+
+    @model_validator(mode="after")
+    def content_matches_kind(self) -> "CvSection":
+        # Exactly one content field may be populated, and it must be the one its `kind` implies —
+        # mirrors the frontend's CvSection union (src/components/cv/fixtures.ts).
+        shape = {
+            "summary": self.summary is not None,
+            "education": self.entries is not None, "experience": self.entries is not None,
+            "projects": self.entries is not None, "activities": self.entries is not None,
+            "skills": self.skills is not None, "certificates": self.certificates is not None,
+            "languages": self.languages is not None,
+        }
+        if not shape.get(self.kind):
+            raise ValueError(f"section {self.id!r} (kind={self.kind!r}) is missing its content field")
+        others = {"summary": self.summary, "entries": self.entries, "skills": self.skills,
+                  "certificates": self.certificates, "languages": self.languages}
+        field_for_kind = "entries" if self.kind in ("education", "experience", "projects", "activities") else (
+            "summary" if self.kind == "summary" else self.kind)
+        extra = [name for name, value in others.items() if value is not None and name != field_for_kind]
+        if extra:
+            raise ValueError(f"section {self.id!r} (kind={self.kind!r}) must not set {extra}")
+        return self
+
+
+class CvContact(BaseModel):
+    # Every field but `name` is optional by design: the student typed it or it is omitted from
+    # the printed CV. Generation never invents a phone, email, or handle — only the draft the
+    # student already has (see CvGenerateInput.contact) ever fills these in.
+    name: str = Field(default="", max_length=120)
+    headline: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=40)
+    email: str = Field(default="", max_length=160)
+    linkedin: str = Field(default="", max_length=200)
+    github: str = Field(default="", max_length=200)
+    city: str = Field(default="", max_length=120)
+
+
+MAX_CV_SECTIONS = 12
+
+
+class CvDocument(BaseModel):
+    template: CvTemplateKind = "modern"
+    theme: CvTheme = Field(default_factory=CvTheme)
+    contact: CvContact = Field(default_factory=CvContact)
+    sections: list[CvSection] = Field(min_length=1, max_length=MAX_CV_SECTIONS)
+
+    @model_validator(mode="after")
+    def unique_section_ids(self) -> "CvDocument":
+        ids = [section.id for section in self.sections]
+        if len(ids) != len(set(ids)):
+            raise ValueError("CV sections must have unique ids")
+        return self
+
+
+class CvGenerateInput(ServerChoosesModel):
+    # A saved posting to tailor the first draft toward (reordering/emphasis only — never invented
+    # content). Omitted => a generic draft from confirmed data alone.
+    posting_id: str | None = Field(default=None, min_length=1, max_length=36)
+    # Contact details the student already typed into a previous draft (or onboarding), carried
+    # over verbatim. Generation never infers a phone number, email, or handle.
+    contact: CvContact | None = None
+
+
+class CvDraftInput(BaseModel):
+    document: CvDocument
+
+
+class CvFieldChange(BaseModel):
+    target_id: str = Field(min_length=1, max_length=160)
+    before: Any = None
+    after: Any = None
+
+
+class CvAssistInput(ServerChoosesModel):
+    instruction: str = Field(min_length=1, max_length=400)
+    document: CvDocument
+    posting_id: str | None = Field(default=None, min_length=1, max_length=36)
+
+
+class CvFitInput(BaseModel):
+    posting_id: str = Field(min_length=1, max_length=36)
+    document: CvDocument | None = None

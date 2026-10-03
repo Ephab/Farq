@@ -15,6 +15,8 @@ export default defineConfig({
     },
   },
   server: {
+    // Cloudflare quick tunnels (phone access from outside the LAN).
+    allowedHosts: ['.trycloudflare.com'],
     watch: {
       // Hermes (HERMES_HOME=.hermes-runtime) unpacks its uv cache here while the dev server runs.
       // Watching it floods page reloads, and on Windows the watcher's open handles make uv's

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowRight, Check, Database, Flag, RotateCcw, Sparkles, Trophy } from "lucide-react"
 import { ChatThreadView, type SuggestedPrompt } from "@/components/hermes/ChatThreadView"
+import { MockElementsThread } from "@/components/hermes/MockElementsThread"
 import { CoachPortalIntro, type PortalPhase } from "@/components/animation/CoachPortalIntro"
 import { useChatSuggestions, useHermesChat } from "@/components/hermes/use-hermes-chat"
 import { api, getCurrentStudentId, notifyRoadmapChanged, type OpportunitySummary, type StudentProfile } from "@/lib/waypoint-api"
@@ -287,6 +288,27 @@ export function HermesCoach({ initialDraft = "", onConsumeDraft, visible = true,
 
   const factParts = factCounts(facts)
   const percent = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0
+
+  // Dev-only preview of the chat elements palette, loader redesign and reply
+  // reveal, fed by local fixtures — never reachable in production, never a
+  // network call. See src/components/hermes/MockElementsThread.tsx.
+  if (import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mock") === "elements") {
+    return (
+      <div className="fq fq-coach-page relative">
+        <div className="chat-shell">
+          <section className="chat-main" aria-label="Hermes Coach elements preview">
+            <header className="chat-header">
+              <div style={{ minWidth: 0 }}>
+                <h1>Hermes Coach — elements preview</h1>
+                <p>Local fixtures only (?mock=elements). Nothing here reaches the backend.</p>
+              </div>
+            </header>
+            <MockElementsThread />
+          </section>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fq fq-coach-page relative">

@@ -1,6 +1,7 @@
 "use client"
 
 import { Fragment, type ReactNode } from "react"
+import { CodeBlock } from "@/components/hermes/elements/parts/CodeBlock"
 
 /** Inline `code`, **bold**, *italic* and [links](https://…). Everything is rendered as React
  *  text nodes, so model output can never inject markup and "&" in a URL stays a real "&". */
@@ -32,8 +33,16 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
   return parts
 }
 
-/** Minimal markdown for Hermes answers: headings, bullets, numbered lists, paragraphs. */
-export function MarkdownText({ text }: { text: string }) {
+/** A row of a pipe table: `| a | b |` -> ["a", "b"]. */
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "")
+  return trimmed.split("|").map((cell) => cell.trim())
+}
+
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/
+
+/** Minimal markdown for prose: headings, bullets, numbered lists, paragraphs, pipe tables. */
+function ProseBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
   const lines = text.split("\n")
   const blocks: ReactNode[] = []
   let list: { ordered: boolean; items: string[] } | null = null
@@ -43,11 +52,38 @@ export function MarkdownText({ text }: { text: string }) {
     list = null
     blocks.push(
       ordered
-        ? <ol key={`b${blocks.length}`} className="list-decimal space-y-1 ps-5">{items.map((item, i) => <li key={i} dir="auto">{inline(item, `b${blocks.length}o${i}`)}</li>)}</ol>
-        : <ul key={`b${blocks.length}`} className="list-disc space-y-1 ps-5">{items.map((item, i) => <li key={i} dir="auto">{inline(item, `b${blocks.length}u${i}`)}</li>)}</ul>,
+        ? <ol key={`${keyPrefix}b${blocks.length}`} className="list-decimal space-y-1 ps-5">{items.map((item, i) => <li key={i} dir="auto">{inline(item, `${keyPrefix}b${blocks.length}o${i}`)}</li>)}</ol>
+        : <ul key={`${keyPrefix}b${blocks.length}`} className="list-disc space-y-1 ps-5">{items.map((item, i) => <li key={i} dir="auto">{inline(item, `${keyPrefix}b${blocks.length}u${i}`)}</li>)}</ul>,
     )
   }
-  lines.forEach((line) => {
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx]
+    // Pipe table: a header row, a separator row, then 1+ data rows.
+    if (/^\s*\|.*\|\s*$/.test(line) && idx + 1 < lines.length && TABLE_SEPARATOR.test(lines[idx + 1])) {
+      flush()
+      const header = splitTableRow(line)
+      let cursor = idx + 2
+      const rows: string[][] = []
+      while (cursor < lines.length && /^\s*\|.*\|\s*$/.test(lines[cursor])) {
+        rows.push(splitTableRow(lines[cursor]))
+        cursor += 1
+      }
+      const key = `${keyPrefix}b${blocks.length}`
+      blocks.push(
+        <div key={key} className="md-table-scroll">
+          <table>
+            <thead><tr>{header.map((cell, i) => <th key={i} dir="auto">{inline(cell, `${key}h${i}`)}</th>)}</tr></thead>
+            <tbody>
+              {rows.map((row, r) => (
+                <tr key={r}>{row.map((cell, c) => <td key={c} dir="auto">{inline(cell, `${key}r${r}c${c}`)}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      )
+      idx = cursor - 1
+      continue
+    }
     const bullet = line.match(/^\s*[-*]\s+(.+)$/)
     const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/)
     const heading = line.match(/^\s*#{1,4}\s+(.+)$/)
@@ -61,11 +97,41 @@ export function MarkdownText({ text }: { text: string }) {
       flush()
       if (line.trim()) {
         blocks.push(heading
-          ? <p key={`b${blocks.length}`} dir="auto" className="font-semibold">{inline(heading[1], `b${blocks.length}h`)}</p>
-          : <p key={`b${blocks.length}`} dir="auto">{inline(line.trim(), `b${blocks.length}p`)}</p>)
+          ? <p key={`${keyPrefix}b${blocks.length}`} dir="auto" className="font-semibold">{inline(heading[1], `${keyPrefix}b${blocks.length}h`)}</p>
+          : <p key={`${keyPrefix}b${blocks.length}`} dir="auto">{inline(line.trim(), `${keyPrefix}b${blocks.length}p`)}</p>)
       }
     }
-  })
+  }
   flush()
-  return <div className="space-y-2">{blocks}</div>
+  return <>{blocks}</>
+}
+
+/** Splits text on fenced ```code``` blocks so they render through the shared, copyable
+ *  CodeBlock instead of being flattened into paragraphs line by line (the bug this fixes:
+ *  a raw ```json quiz reply used to render as plain text, one line per paragraph). */
+export function MarkdownText({ text }: { text: string }) {
+  // A fresh regex per call: a module-level `/g` regex would carry `lastIndex` state across
+  // renders/instances, which is exactly the kind of shared mutable state that bites later.
+  const fence = /```([\w+-]*)\n?([\s\S]*?)```/g
+  const parts: ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+  let n = 0
+  while ((match = fence.exec(text)) !== null) {
+    if (match.index > last) {
+      const prose = text.slice(last, match.index)
+      if (prose.trim()) parts.push(<ProseBlocks key={`p${n}`} text={prose} keyPrefix={`p${n}`} />)
+    }
+    const lang = match[1].trim()
+    const code = match[2].replace(/\n$/, "")
+    parts.push(<CodeBlock key={`c${n}`} code={code} language={lang || undefined} />)
+    last = match.index + match[0].length
+    n += 1
+  }
+  if (last < text.length) {
+    const prose = text.slice(last)
+    if (prose.trim()) parts.push(<ProseBlocks key={`p${n}`} text={prose} keyPrefix={`p${n}`} />)
+  }
+  if (parts.length === 0) return null
+  return <div className="space-y-2">{parts}</div>
 }

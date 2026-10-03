@@ -53,3 +53,8 @@ iau-blackboard-export-*.json
 
 # Blackboard sync sign-in screenshots (local debugging only — may show the username)
 .blackboard-debug/
+data/docker-backup/
+
+# Generated launch-video renders and intermediate frames.
+/brag-output/
+/brag-output-*/

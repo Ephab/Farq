@@ -177,10 +177,75 @@ def register(ctx):
         ),
         (
             "waypoint_ready_to_generate",
-            "Onboarding only: call once when you know enough to build the student's first roadmap. Shows them the "
-            "Generate my roadmap button. Then reply with a one or two sentence summary of what you learned.",
+            "Onboarding only: call once, before writing your summary, when you know enough to build the student's "
+            "first roadmap. Shows them the Generate my roadmap button, then reply with one or two sentences about "
+            "what you learned. Never call it from Hermes Coach or after onboarding: it is refused there, and the "
+            "refusal replaces your reply, so the student would only see an error note instead of your answer.",
             {"type": "object", "properties": {"user_id": USER_ID, "grant": GRANT}, "required": ["user_id", "grant"]},
             lambda p, **_: request("POST", "/internal/hermes/onboarding/ready", _body(p), grant=_grant(p)),
+        ),
+        (
+            "waypoint_show_element",
+            "Attach a rich, pre-built UI element to your reply instead of describing it in text or printing JSON: "
+            "a quiz (when the student asks to be quizzed/tested/drilled), a countdown timer, a step/progress "
+            "tracker, flashcards, a checklist, a comparison table, a callout, or a code block. The student sees "
+            "it rendered the moment your reply completes. Call it at most a couple of times per reply, then end "
+            "with one short lead-in sentence — never also restate the element's content as text or JSON.",
+            {
+                "type": "object",
+                "properties": {
+                    "user_id": USER_ID, "grant": GRANT,
+                    "kind": {"type": "string", "enum": ["quiz", "timer", "progress", "flashcards", "checklist", "table", "callout", "code"]},
+                    "id": {"type": "string", "description": "A short unique id for this element, e.g. \"quiz-probability\""},
+                    "title": {"type": "string", "description": "quiz / progress / flashcards / checklist / table"},
+                    "questions": {
+                        "type": "array", "maxItems": 10, "description": "quiz: 1-10 questions",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "type": {"type": "string", "enum": ["mcq", "true_false", "short_answer"]},
+                                "stem": {"type": "string", "description": "The question text"},
+                                "options": {"type": "array", "items": {"type": "string"}, "maxItems": 4, "description": "mcq only: 2-4 options"},
+                                "answer": {"type": "string", "description": "mcq: exact option text. true_false: \"True\" or \"False\". short_answer: reference answer"},
+                                "explanation": {"type": "string"},
+                                "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+                                "time_limit_s": {"type": "integer", "description": "Optional per-question countdown in seconds"},
+                            },
+                            "required": ["id", "type", "stem", "answer"],
+                        },
+                    },
+                    "label": {"type": "string", "description": "timer"},
+                    "duration_s": {"type": "integer", "description": "timer: 5-3600 seconds"},
+                    "warning_s": {"type": "integer", "description": "timer: seconds remaining to switch to the warning color"},
+                    "autostart": {"type": "boolean", "description": "timer"},
+                    "style": {"type": "string", "enum": ["ring", "steps"], "description": "progress"},
+                    "current": {"type": "integer", "description": "progress"},
+                    "total": {"type": "integer", "description": "progress"},
+                    "steps": {
+                        "type": "array", "maxItems": 12, "description": "progress (style steps)",
+                        "items": {"type": "object", "properties": {"id": {"type": "string"}, "label": {"type": "string"}, "done": {"type": "boolean"}}, "required": ["id", "label"]},
+                    },
+                    "cards": {
+                        "type": "array", "maxItems": 20, "description": "flashcards",
+                        "items": {"type": "object", "properties": {"id": {"type": "string"}, "front": {"type": "string"}, "back": {"type": "string"}}, "required": ["id", "front", "back"]},
+                    },
+                    "items": {
+                        "type": "array", "maxItems": 15, "description": "checklist",
+                        "items": {"type": "object", "properties": {"id": {"type": "string"}, "label": {"type": "string"}, "done": {"type": "boolean"}}, "required": ["id", "label"]},
+                    },
+                    "columns": {"type": "array", "items": {"type": "string"}, "maxItems": 6, "description": "table"},
+                    "rows": {"type": "array", "maxItems": 20, "items": {"type": "array", "items": {"type": "string"}}, "description": "table"},
+                    "highlight_column": {"type": "integer", "description": "table: 0-based index of the recommended column"},
+                    "tone": {"type": "string", "enum": ["tip", "warning", "info", "success"], "description": "callout"},
+                    "body": {"type": "string", "description": "callout: under 600 characters"},
+                    "language": {"type": "string", "description": "code"},
+                    "code": {"type": "string", "description": "code: under 4000 characters"},
+                    "caption": {"type": "string", "description": "code"},
+                },
+                "required": ["user_id", "grant", "kind", "id"],
+            },
+            lambda p, **_: request("POST", "/internal/hermes/elements", _body(p), grant=_grant(p)),
         ),
         (
             "waypoint_forget",

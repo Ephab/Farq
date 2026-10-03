@@ -1,4 +1,37 @@
-# Handoff: onboarding, evidence, first roadmap, model fallback
+# Handoff: project state
+
+State as of 2026-10-03 (native QA evaluator follow-up on `main`). Read this, then `AGENTS.md`,
+`docs/hermes-architecture.md` and `docs/future-work.md` before changing an area.
+
+## Current state at a glance
+
+| Area | State | Section |
+|---|---|---|
+| Onboarding → evidence review → first roadmap | Built; staged generation; live end-to-end run still owed | 1–4 |
+| Roadmap view, proposals, history | Built | Roadmap view |
+| Hermes Coach chat | Built; rich elements (quiz, timer, flashcards…), animated progress, no model/reasoning leak | 0, 5a-3 |
+| Co-op | Rebuilt 2026-10-03: extraction + per-student Jev relevance, gaps → roadmap proposal | Co-op |
+| CV builder (Career > CV) | New 2026-10-03: generate from confirmed data, drafts, Ask Hermes edits, fit, PDF | CV builder |
+| Group Projects | Built (plans 1–3); Plan 4 (animations, Playwright demo) open; user bug report pending | Group Projects |
+| Projects + evaluator | Native QA agent verified; screenshot-based VLM review is the next step | Project milestones |
+| Quizzes / Slides | Built (separate tool-less JSON prompts) | — |
+| Outlook, Blackboard demo, hackathons | Built | respective sections |
+| Memory / skills / connectors | Built; "Hermes self-adapting" (learned skills) under-used, see Next steps | 5a |
+| Jev decision layer | Jev is the active engine on the dev machine (`decision_engine=jev` in Settings) | below |
+
+**Run it:** `setup.bat` then `run.bat` (Windows), `bash setup.sh` / `bash run.sh` (macOS). Docker is
+optional and not needed for development. API :8000, Hermes gateway :8642, Vite :5173 (proxies
+`/api`). If `uv` fails on C: with "os error 17" (a rename error), set `UV_PYTHON_INSTALL_DIR` and
+`UV_CACHE_DIR` to a folder on another drive for both setup and run; `run.bat` then needs the same
+variables, or it reports the Hermes launcher as broken.
+
+**Dev-only previews (Vite dev server only, fixtures, no network):** `?mock=elements` (Hermes Coach:
+every chat element plus the loader), `?mock=coop&persona=cs|medicine` (Co-op), `?mock=cv&persona=cs|medicine` (CV).
+Open the URL, then pick the view in the sidebar.
+
+**Phone access while developing:** `cloudflared tunnel --url http://127.0.0.1:5173 --http-host-header 127.0.0.1:5173`
+needs `server.allowedHosts: ['.trycloudflare.com']` in `vite.config.ts`. That setting is checked in for phone-preview access. A quick tunnel dies when the laptop sleeps or loses network, and the URL changes
+on every restart.
 
 ## Jev / TypeSafe decision layer
 
@@ -24,6 +57,16 @@
   plus Origin check; Jev/Span/Apify apply live, Gemini/NVIDIA/HF need the gateway restarted) and `POST .../{id}/test`.
 - Emails: the student picks the classifier (default Laya) in the Emails panel; cloud engines fall
   back down the same chain. See `outlook-threat-model.md`.
+- The Jev key variable is `TYPESAFE_AI_API_KEY`; `TYPESAFE_API_KEY` is silently ignored. With the
+  wrong name and `auto` mode, every decision falls through to local Laya, which pinned the CPU at
+  ~700% on the dev laptop.
+- Purposes that call `decision_engines.ask_chain` directly (they skip the shadow gate):
+  `coop_relevance` (`app/coop_relevance.py`) and `cv_fit` (`app/cv_fit.py`). Both have
+  deterministic fallbacks for when every engine is unavailable.
+- Tests never load the real Laya model. `services/api/tests/conftest.py` makes it unavailable,
+  because otherwise app startup in tests (Blackboard seeding observes items) fell through to Laya
+  and made a run take 20+ minutes. A test that needs Laya installs a fake with
+  `monkeypatch.setitem(decision_engines.INFO/ASK, "laya", ...)`.
 
 ## Blackboard live sync (2026-10-03)
 
@@ -40,8 +83,6 @@
 - Follow-ups: MFA support (`extra_verification` today), a hosted secret store, and the extractor's
   `captureSamples` debug option for diagnosing new portal shapes.
 
-State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.md` and
-`docs/future-work.md` before changing this area.
 
 ## What was built
 
@@ -82,6 +123,50 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
   Tests mock Microsoft; live tenant policy and macOS setup require target-device checks.
 
 ### Personalized Saudi co-op discovery
+**Matches tab (rebuilt 2026-10-03).** The default "For you" tab used to show the same 8 checked-in
+companies to every student. Only the order changed, and Jev never saw the student. It now shows
+real postings scored per student:
+- **Extraction** (`app/coop_extraction.py`): one tool-less JSON prompt per posting, cached on
+  `CoopPosting.extracted_json` / `extraction_status`, never re-run once done. It extracts:
+  - a clean title and company
+  - target disciplines and seniority
+  - skill requirements, quoted from the text and never invented
+  - eligibility requirements (GPA, nationality, enrollment, university letter, language test), each flagged `learnable`
+  - location, duration, and the apply window, with Arabic dates parsed
+
+  Posting text is untrusted data.
+- **Relevance** (`app/coop_relevance.py`, table `coop_relevance`): one row per student × posting.
+  - **Jev input:** discipline, program and confirmed skills against the extracted fields. Jev returns relevant/fit.
+  - **Guards** (`_discipline_guard`): a posting whose target majors exclude the student's is hidden.
+    Adjacent majors (cs↔engineering, sciences↔medicine) are capped at 60. Broad "any major, soft
+    skills only" programs are capped at 70. Manager and senior roles are always hidden.
+  - **Fallback:** a discipline-aware heuristic when the whole chain fails.
+  - **Caching:** rows are keyed by fingerprints of the student state, the extracted posting and
+    `SCORING_VERSION`. Bump the version to re-score everyone after changing the rules.
+- **Gaps:** only requirements the posting actually states. Each gap carries `skill`, `why` (the
+  quoted requirement), `importance`, `evidence_needed` and `suggestion {title, description, duration,
+  kind}`. Eligibility-only postings (e.g. Aramco's) show no skill gap, only an eligibility checklist.
+- **Add to roadmap** (`POST .../coop/postings/{id}/propose-gaps`) builds one `RoadmapProposal`
+  (`kind="coop_gaps"`) of `add_node` operations from the selected gaps. It never activates; the
+  student accepts it at the existing proposal endpoint.
+- **`GET .../coop/matches`** returns visible and hidden-with-reason lists. It never waits on a model:
+  per-request budgets are 0, and one background pass per student scores the rest, committing per
+  posting so SQLite's write lock is never held across a model call. The UI refetches every 8 s while
+  any entry is `engine="unscored"`.
+- **Display names:** `_display_company` prefers the extracted company, rejects scraper junk
+  (sentences, section labels, `company-<hex>` slugs) and shows LinkedIn slugs as words. An empty
+  name renders as "Employer not named".
+- **UI** (`src/components/coop/CoopMatchesPreview.tsx`, embedded in `CoopView.tsx`):
+  - Each card shows the source badge, fit bar, "why it fits" line and target majors (the student's own major first).
+  - A black chip at the card's bottom-start shows the top missing skill.
+  - The detail sheet lists matched skills, gaps with per-gap or "Add all" roadmap actions, the eligibility checklist and "Tailor my CV for this".
+  - Other parts: a "Hidden as not relevant (N)" collapsible, a sources strip, and a plain Companies directory tab.
+  - The Openings, Saved and Hidden tabs and search still use the older code path.
+- Demo companies/postings are shown only when no real posting exists anywhere.
+- LinkedIn (Apify actor `hKByXkMQaC5Qt9UMN`) failed every run with HTTP 400 until 2026-10-03:
+  `datePosted` must be `"pastMonth"`, not `"past month"`.
+
+**Older description (catalog, sources, refresh) — still accurate unless contradicted above:**
 - Sidebar **Co-op** ranks a checked-in catalog of Saudi organizations from verified student facts,
   completed/in-progress roadmap skills and projects. It separates stable company fit from current
   postings and supports save/dismiss, official-source links and a responsive detail sheet.
@@ -107,6 +192,28 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
   may submit a future-only roadmap proposal, but cannot apply or change the roadmap itself.
 - This slice does not submit applications, access authenticated Jadarat/LinkedIn accounts, send
   emails or track interviews. Those remain future work.
+
+### CV builder (Career > CV, 2026-10-03)
+- **UI** (`src/components/cv/`):
+  - An editor sits beside a live A4 preview (stacked on phones).
+  - Three templates: Classic, Modern, and Compact (two columns).
+  - Appearance: 8 accent presets plus a custom color, and a sans/serif choice.
+  - Contact fields are optional and omitted from the CV when empty.
+  - Sections can be shown/hidden, dragged to reorder and edited inline. Each bullet has a provenance chip, hidden in print.
+  - **Download PDF** uses `window.print` on an isolated `.cv-print-root` with `@page A4`. DOCX was
+    skipped because no library is installed.
+- **Backend** (`app/cv.py`, table `cv_drafts`, all routes owner-checked):
+  - `POST .../cv/generate` (optional `posting_id` to tailor): a tool-less JSON prompt fed confirmed
+    data only — profile brief, completed roadmap nodes, projects + evaluations, Group Projects task
+    contributions, reviewed evidence. It gets one repair retry, and provenance labels must reference real records.
+  - `GET/PUT .../cv/draft` stores the edited document, including theme and order. It never becomes a StudentFact.
+  - `POST .../cv/assist` is **Ask Hermes**. It returns at most 4 field-level changes; target ids are
+    regex-whitelisted and the server computes the before-values. The student accepts or undoes each change.
+  - `POST .../cv/fit`: Jev fit against a co-op posting (`cv_fit.py`, with a keyword fallback).
+- "Tailor my CV for this" on a co-op detail sheet stores the posting id in sessionStorage
+  (`waypoint.cv.tailor-posting`) and opens CV, which runs the tailored generate + fit once.
+- Generation takes ~60 s on the current model. The name defaults from the profile, so a student
+  with no confirmed name sees their program as the name until they type theirs.
 
 ### Group Projects (course teams with Hermes as a teammate)
 - Spec: `docs/superpowers/specs/2026-09-25-group-projects-design.md`; plans 1-3 in
@@ -137,6 +244,8 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
   Smoke: `.venv\Scripts\python.exe scripts\smoke_blackboard_tools.py`.
 
 ### Project milestones and evaluator backbone
+**Current limit / next step:** captured screenshots are evidence for the student; no VLM currently reviews their pixels. Implement screenshot-based VLM review next (see Next steps).
+
 - Staged generation now labels stage types and requires one final project for each new
   `skill_sequence`; legacy plans without stage types remain readable.
 - Roadmap project nodes materialize into persistent briefs with weighted rubrics, explicit draft
@@ -145,10 +254,10 @@ State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.m
   nodes open it on double-click/right-click; normal nodes keep their completion shortcut.
 - Hermes has bounded `waypoint_get_project` / `waypoint_submit_project_refinement` tools and a
   `waypoint-project-coach` skill. Drafts never apply themselves.
-- `scripts/evaluator.ps1` starts the authenticated host worker. It accepts public GitHub, ZIP and
-  local-directory snapshots and runs only fixed recipes inside disposable limited Docker containers.
-- Evaluation progress is available through SSE. A successful evaluation marks the milestone done at
-  any score; the rating communicates quality separately and can be improved through retakes.
+- Native run scripts start the authenticated evaluator automatically; `scripts/evaluator.ps1` also starts it standalone. It accepts GitHub, ZIP and local-directory snapshots. Native execution for trusted local directories is enabled with `WAYPOINT_EVALUATOR_NATIVE=1` (authorized on this machine). A JSON-only QA agent chooses typed native CLI/test, local HTTP and Playwright browser checks, then writes an evidence-cited rubric review. Logs, limitations and desktop/mobile screenshots appear in Evaluations. No Docker is required; ZIP/GitHub execution is refused without a sandbox. See `docs/evaluator-threat-model.md`. Setup installs the evaluator Chromium browser. The Windows runner also recovers stale uv Hermes trampolines read-only using a matching managed Python under `UV_PYTHON_INSTALL_DIR`.
+- Evaluation progress is available through SSE and the workspace poller. Each check is saved before further model reasoning, so failures preserve evidence. Final review must echo the exact accepted scope, cite actual check IDs and cover every rubric criterion; the server computes the weighted score. A completed evaluation marks the milestone done at any score.
+- Live verification (2026-10-03): `VLM-System2` CLI unit tests/demo/schema and independent probes ran natively. The probe exposed numeric-substring and negated-answer false positives in the submitted harness; its accepted project received 82/100 with medium coverage and explicit HF/Docker limitations. A separate local web fixture passed POST and desktop/mobile form workflows with two screenshots; the real Waypoint report UI was captured and had no page errors.
+- Backend test isolation: `conftest.py` selects a temporary database before importing `decision_engines`, which otherwise imports the database before individual test modules select their `TEST_DB`. Test runs never write the real student store.
 
 ### Current Saudi hackathons
 - Hackathonat is the primary cached source. FastAPI refreshes its public JSON feed every six hours
@@ -308,6 +417,31 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
   2026-10-02 NVIDIA's hosted Lightning took 15-25 s to start while Super took 0.4-2.6 s, so static
   "fastest" labels were removed.
 
+### 5a-3. Chat elements, progress UX, no leaks (2026-10-03)
+- **Elements:** Hermes calls `waypoint_show_element` (plugin), which posts to
+  `POST /internal/hermes/elements` (`app/chat_ui.py`). The element is staged into the caller's own
+  running `AgentRun.ui_json` under the ask grant, and `merge_staged_ui` attaches it to the reply.
+  - Kinds (a Pydantic discriminated union in `schemas.py`, mirrored in `src/components/hermes/elements/types.ts`; keep the limits in sync):
+    - `quiz` (≤10 questions; mcq, true/false or short answer; optional per-question timer)
+    - `timer`, `progress`
+    - `flashcards` (≤20), `checklist` (≤15)
+    - `table` (≤6×20), `callout`, `code` (≤4000 chars)
+  - At most 6 elements per reply.
+  - Quiz answers stay in the browser and never become facts or evidence.
+- **Quizzes in chat:** the coach is told to use the quiz element. A reply that is still a bare or
+  fenced `{"questions": [...]}` is converted to a quiz element by `parse_chat_output`; other JSON is
+  fenced as code. No model repair retry was added. The separate `/api/quiz` feature (`quiz.py`) is
+  unchanged.
+- **Rendering:** `ChatElementView.tsx` and `views/*` render the elements. Code blocks use
+  highlight.js (`parts/highlight.ts`, common languages, auto-detect) with theme tokens in
+  `coach-concept.css`. `markdown.tsx` renders fenced code blocks and pipe tables.
+- **Loader:** `CoachLoader.tsx` shows an animated orb with short step titles that cross-fade, keyed
+  by tool name (`TOOL_KEYS` in `RunProgress.tsx`, i18n `coach.progress.tools.*`). New assistant
+  replies reveal word by word. Reduced-motion is respected.
+- **No leaks, enforced server-side:** `_live_progress` (`main.py`) nulls `model`, `tokens`, `tps`,
+  `preview` and `notice`. `AgentRun.stage` is only the label (it used to append the model name,
+  which the app header showed). Raw interim/reasoning text never reaches the student.
+
 ### 5b. Speed profile (2026-10-02)
 - Coach turn: was ~3.5 min (Gemini 503 + Hermes auto-recovery sleeps + a title call + a retry on the
   same session) and later 75 s on NIM with 8 model calls (the fact tool was called up to 5x per fact).
@@ -318,6 +452,13 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - `useActiveRun` polls every 2 s only while a run is live (15 s idle, instant on send/visibility).
 
 ### 6. Smaller fixes
+- Coach runs never reach for the onboarding Generate button. `waypoint_ready_to_generate` is refused
+  outside the onboarding chat (409), but only a run's final text is stored and shown, so the refusal
+  used to *replace* Hermes' answer: a student asked "Where do I start coding?" and got "I couldn't
+  show the Generate button from here (it's onboarding-only)…" instead. `COACH_INSTRUCTIONS` now
+  forbids the call and points the coach at `waypoint_get_active_roadmap`, the 409 detail tells the
+  model to answer the question rather than narrate the error, and the plugin tool description says
+  the same (2026-10-03).
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.
 - `scripts/runtime.py`, shared by `scripts/run_mac.py` and `scripts/run_windows.py`,
   re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start
@@ -329,7 +470,20 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
-- Automated (2026-10-01): 395 backend tests (`.venv/Scripts/python -m pytest services/api/tests`),
+
+- Native evaluator follow-up (2026-10-03): **509 backend tests passed**, frontend build passed; real CLI evaluation completed, HTTP/browser form flow and desktop/mobile screenshots verified, and the completed Waypoint report UI had no page errors. Visual screenshot grading has not been implemented or verified.
+- **Automated (2026-10-03):** 492 backend tests (~60 s), `npm run build` and 70 Vitest tests pass.
+  Test modules share one SQLite file in a full run (the engine binds to the first `DATABASE_URL`
+  set at collection), so use unique titles and ids in test data.
+- **Verified live 2026-10-03 (Windows, native run, Jev active):**
+  - Chat: "quiz me on probability, 3 questions" returned a 3-question quiz element and no JSON (~18 s).
+  - Co-op: real LinkedIn (16) and Telegram (18) postings; 59 postings scored per student; matches load in ~0.3–0.6 s.
+  - CV: generate from real data (~57 s) and the draft round-trip work.
+- **Not verified live:**
+  - CV Ask Hermes and tailoring against a real posting.
+  - Co-op "Add to roadmap" accepted end to end in the Roadmap view.
+  - Arabic UI for the new screens.
+- Older (2026-10-01): 395 backend tests (`.venv/Scripts/python -m pytest services/api/tests`),
   70 Vitest tests, `npm run build` and `npm run lint` (warnings only) pass. The app was driven in
   Chromium (demo student across every view; a new student through sign-in, reload and resume in
   Arabic with a dark theme) with no failed API calls.
@@ -359,6 +513,18 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
   UTC timestamps, chat stream fallback, accessibility and i18n).
 
 ## Known gaps
+- **Co-op:**
+  - The Telegram scraper still splits some posts badly. Raw titles and companies can be junk; the
+    extraction and display layer hides most of it, but `coop_sources.py` parsing itself is untouched.
+  - Duplicate LinkedIn listings (e.g. two "DataOps Intern" at Tabby) are not merged.
+  - The Openings, Saved and Hidden tabs still use the older token-overlap ranking.
+- **Chat:** no model repair retry for malformed element JSON; the deterministic conversion covers quizzes only.
+- **CV:**
+  - DOCX export is not built.
+  - Generation is slow (~60 s) and runs in the request.
+  - The Ask Hermes free text is handled by the real prompt, but only the dev mock is keyword-routed.
+- `JEV_MODE` stays `shadow` for the generic `observe/rerank` purposes. `coop_relevance` and
+  `cv_fit` act directly (see the Jev section); neither has a labeled evaluation set yet.
 - Demo identity only: `current_user()` trusts the `X-Waypoint-User` header (and `/api/students`
   lists local profiles for the welcome page). Ownership is enforced, but real sign-in must replace
   `current_user()` before Waypoint leaves a single machine.
@@ -381,12 +547,17 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
   is untested (the tests stub Hermes).
 
 ## Next steps (in order)
-1. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.
-2. Dry-run a non-CS student (e.g. Medicine with only a CV) and check discipline cards + roadmap shape.
-3. Put `HF_TOKEN` in `.env`, restart, confirm a Hugging Face run through the gateway.
-4. Replace placeholders (Home/Dashboard) with roadmap progress + recent proposals for the demo.
-5. Proposal visual diff in Hermes Coach; feed quiz scores into proposals.
-6. Real sign-in (replace `current_user()`), then the folder-tool threat model, then OCR and the
+
+1. **Project evaluator: screenshot-based VLM review.** Screenshots are captured today, but the reviewer only receives source context, DOM text, logs and test results; it does **not** inspect screenshot pixels. Next, send the captured desktop/mobile PNGs to a server-selected vision-capable model, combine its visual findings with runtime evidence, and show screenshot-cited feedback for UI behavior, layout, usability and accessibility. Keep model/provider selection and keys server-side, preserve ownership and lease checks, and update `docs/evaluator-threat-model.md` for image disclosure and image-based prompt injection. Validate with labeled visual defects and a live web-project evaluation. CLI-only projects such as `VLM-System2` have no UI and should continue to receive behavior-based CLI review.
+2. Remaining user test reports (2026-10-03): **Group Projects** and **Hermes
+   self-adapting**. Project evaluation now runs natively; visual VLM review is step 1. Learned skills via `skill_manage` exist but are barely used: decide when Hermes
+   should write a skill, and show it to the student. Chat and co-op fixes from the same round are done.
+3. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.
+4. Dry-run a non-CS student (e.g. Medicine with only a CV) and check discipline cards + roadmap shape.
+5. Put `HF_TOKEN` in `.env`, restart, confirm a Hugging Face run through the gateway.
+6. Replace placeholders (Home/Dashboard) with roadmap progress + recent proposals for the demo.
+7. Proposal visual diff in Hermes Coach; feed quiz scores into proposals.
+8. Real sign-in (replace `current_user()`), then the folder-tool threat model, then OCR and the
    "coming soon" sources.
 
 ## Key files
@@ -401,7 +572,12 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
   `.hermes/skills/{waypoint-onboarding,waypoint-student-coach,waypoint-quiz,waypoint-slides}/SKILL.md`,
   `services/hermes/{SOUL.md,config.yaml}`
 - Frontend: `src/components/onboarding/*`, `src/components/hermes/*`, `src/lib/waypoint-api.ts`
-- Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps,test_staged_roadmap}.py`
+- Chat elements: `src/components/hermes/{elements/*,CoachLoader,RunProgress,markdown,MockElementsThread}.tsx`,
+  `services/api/app/{chat_ui,schemas}.py` (`ChatElement`), plugin tool `waypoint_show_element`
+- Co-op: `services/api/app/{coop,coop_extraction,coop_relevance,coop_sources,coop_refresh}.py`,
+  `src/components/coop/{CoopView,CoopMatchesPreview,fixtures}.tsx`
+- CV: `services/api/app/{cv,cv_fit}.py`, `src/components/cv/*`, `src/locales/{en,ar}/cv.ts`
+- Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps,test_staged_roadmap,test_coop_phase_b,test_cv,test_hermes_settings}.py`
 
 If the card says IAU asked for an extra step, it now shows what IAU displayed ("IAU showed: …") and a
 "See what IAU showed" screenshot. To watch the sign-in live, set `WAYPOINT_BB_HEADED=1` in `.env` and restart `run.bat`.

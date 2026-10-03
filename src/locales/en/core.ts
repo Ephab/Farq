@@ -47,6 +47,7 @@ export const core = {
       teams: "Group Projects",
       emails: "Emails",
       coop: "Co-op",
+      cv: "CV",
       slides: "Slides",
       myData: "My data",
     },

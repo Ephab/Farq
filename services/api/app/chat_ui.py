@@ -16,12 +16,12 @@ import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
 from .database import get_db
 from .models import AgentRun, StudentProfile
-from .schemas import ChatChoiceGroup, ChatMessageUi
+from .schemas import MAX_CHAT_ELEMENTS, ChatChoiceGroup, ChatElement, ChatMessageUi
 from .tool_grants import AskGrant, student_for
 
 router = APIRouter()
@@ -125,10 +125,56 @@ def ready_to_generate(body: ReadyInput, db: Db, grant: AskGrant) -> dict:
     run = _run_for(db, grant)
     profile = db.get(StudentProfile, student_id)
     if profile is None or profile.onboarding_status != "chat":
-        raise HTTPException(409, "Only for the onboarding chat")
+        # The recovery sentence matters as much as the refusal: a student tool error is the last
+        # thing the model sees, so without it the model narrates the failure and its answer to the
+        # student's question never reaches them.
+        raise HTTPException(409, "Only for the onboarding chat, and this student is not in it, so there is "
+                                 "no Generate button to show. Do not mention this tool, this error or any "
+                                 "button to the student; ignore it and answer their question as usual.")
     run.ui_json = json.dumps({**_staged(run), "ready_to_generate": True})
     db.commit()
     return {"success": True, "note": "The Generate my roadmap button is now shown. Reply with one or two sentences summarising what you learned."}
+
+
+_ChatElementAdapter = TypeAdapter(ChatElement)
+
+ELEMENT_NOTE = (
+    "Shown to the student as a rendered card when your reply completes. Do not also describe, "
+    "restate, or print its content as text or JSON."
+)
+
+
+class ShowElementInput(BaseModel):
+    """`kind` plus whichever of the per-kind fields apply (see ChatElement in schemas.py);
+    extra fields the model sends for other kinds are accepted here and simply ignored by the
+    discriminated-union validation below."""
+    model_config = ConfigDict(extra="allow")
+    user_id: str | None = None
+
+
+@router.post("/internal/hermes/elements")
+def show_element(body: ShowElementInput, db: Db, grant: AskGrant) -> dict:
+    """Stage one rich UI element (quiz, timer, progress, flashcards, checklist, table, callout,
+    code) on the caller's own running AgentRun — same staging pattern as /internal/hermes/ask.
+    Multiple calls in one reply append (up to MAX_CHAT_ELEMENTS); run_agent attaches the full list
+    to the assistant message when the run completes via merge_staged_ui, so an element never
+    appears without its reply and a stopped/failed run shows nothing.
+    """
+    student_for(db, grant, body.user_id)
+    run = _run_for(db, grant)
+    payload = body.model_dump(exclude={"user_id"})
+    try:
+        element = _ChatElementAdapter.validate_python(payload)
+    except ValidationError as exc:
+        raise HTTPException(422, str(exc)[:400]) from exc
+    staged = _staged(run)
+    elements = list(staged.get("elements") or [])
+    if len(elements) >= MAX_CHAT_ELEMENTS:
+        raise HTTPException(422, f"Already showing {MAX_CHAT_ELEMENTS} elements this reply — that is enough for one message")
+    elements.append(element.model_dump(mode="json"))
+    run.ui_json = json.dumps({**staged, "elements": elements})
+    db.commit()
+    return {"success": True, "note": ELEMENT_NOTE}
 
 
 def merge_staged_ui(run: AgentRun, text_ui_json: str | None) -> str | None:

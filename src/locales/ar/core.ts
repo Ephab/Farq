@@ -49,6 +49,7 @@ export const core: CatalogShape<typeof en> = {
       teams: "المشاريع الجماعية",
       emails: "البريد",
       coop: "التدريب التعاوني",
+      cv: "السيرة الذاتية",
       slides: "العروض التقديمية",
       myData: "بياناتي",
     },

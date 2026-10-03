@@ -13,5 +13,6 @@ import { slides } from "./slides"
 import { connections } from "./connections"
 import { agent } from "./agent"
 import { blackboard } from "./blackboard"
+import { cv } from "./cv"
 
-export const en = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides, connections, agent, blackboard } as const
+export const en = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides, connections, agent, blackboard, cv } as const

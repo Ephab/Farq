@@ -7,12 +7,13 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -24,7 +25,11 @@ from .tool_grants import student_for
 from .database import get_db
 from .decisions import DecisionItem, observe_items, rerank
 from .coop_sources import CoopCandidate, FEED_SOURCE, fetch_feed_candidates, fetch_linkedin_candidates, fetch_telegram_candidates
-from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySyncRun, Project, RoadmapVersion, Student, StudentCoopState, StudentCoopVisit, StudentFact, StudentProfile, now
+from .coop_extraction import ensure_extracted, extracted_fields
+from . import coop_relevance
+from .models import CoopCompany, CoopPosting, CoopPostingSource, OpportunitySyncRun, Project, RoadmapProposal, RoadmapVersion, Student, StudentCoopState, StudentCoopVisit, StudentFact, StudentProfile, now
+from .schemas import RoadmapNode, RoadmapOperation, RoadmapSnapshot
+from .roadmaps import apply_operations
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -704,17 +709,7 @@ def first_seen(db: Session, posting: CoopPosting) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=None, since=_UNSET) -> dict:
-    company = db.get(CoopCompany, posting.company_slug)
-    resolved_signals = signals or _signals(db, student_id)
-    base = company_result(db, student_id, company, resolved_signals) if company else {"fit_score": 0, "fit_tier": "Explore", "fit_tier_code": "explore", "reasons": [], "reason_codes": [], "gaps": []}
-    posting_hits = sorted((resolved_signals[0] | resolved_signals[1]).intersection(_tokens(_json(posting.skills_json))))
-    if posting_hits:
-        base = {**base, "fit_score": min(100, base["fit_score"] + min(12, len(posting_hits) * 4))}
-        base["fit_tier"] = _tier(base["fit_score"])
-        base["fit_tier_code"] = _tier_code(base["fit_score"])
-        base["reason_codes"] = ([_reason("role", items=", ".join(posting_hits[:2]))] + base["reason_codes"])[:3]
-        base["reasons"] = [item["text"] for item in base["reason_codes"]]
+def _posting_sources(db: Session, posting: CoopPosting) -> list[dict]:
     records = db.scalars(select(CoopPostingSource).where(CoopPostingSource.posting_id == posting.id)).all()
     sources = [{
         "name": item.source,
@@ -733,6 +728,21 @@ def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=N
             "status": posting.source_status, "published_at": posting.published_at.isoformat() if posting.published_at else None,
             "last_seen_at": (posting.last_seen_at or posting.fetched_at).isoformat(),
         }]
+    return sources
+
+
+def posting_result(db: Session, student_id: str, posting: CoopPosting, signals=None, since=_UNSET) -> dict:
+    company = db.get(CoopCompany, posting.company_slug)
+    resolved_signals = signals or _signals(db, student_id)
+    base = company_result(db, student_id, company, resolved_signals) if company else {"fit_score": 0, "fit_tier": "Explore", "fit_tier_code": "explore", "reasons": [], "reason_codes": [], "gaps": []}
+    posting_hits = sorted((resolved_signals[0] | resolved_signals[1]).intersection(_tokens(_json(posting.skills_json))))
+    if posting_hits:
+        base = {**base, "fit_score": min(100, base["fit_score"] + min(12, len(posting_hits) * 4))}
+        base["fit_tier"] = _tier(base["fit_score"])
+        base["fit_tier_code"] = _tier_code(base["fit_score"])
+        base["reason_codes"] = ([_reason("role", items=", ".join(posting_hits[:2]))] + base["reason_codes"])[:3]
+        base["reasons"] = [item["text"] for item in base["reason_codes"]]
+    sources = _posting_sources(db, posting)
     visited = last_visit(db, student_id) if since is _UNSET else since
     seen_first = first_seen(db, posting)
     # With no earlier visit nothing is "new": everything would be, which says nothing.
@@ -815,6 +825,241 @@ def find_postings(db: Session, student_id: str, query: str = "", status: str = "
 def require_student(db: Session, student_id: str) -> None:
     if db.get(Student, student_id) is None:
         raise HTTPException(404, "Student not found")
+
+
+# --- Personalized matches (Phase B): extraction + per-student Jev relevance ----------------
+
+# The request itself never waits on a model: it returns cached scores (unscored postings show as
+# "not yet reviewed") and one background pass per student fills the rest in, committing per posting
+# so its writes never hold SQLite's lock across a model call.
+EXTRACTION_BUDGET_PER_REQUEST = 0
+RELEVANCE_BUDGET_PER_REQUEST = 0
+RELEVANCE_BACKGROUND_BUDGET = 30
+_BACKGROUND_RUNNING: set[str] = set()
+_BACKGROUND_LOCK = threading.Lock()
+
+
+def _gap_chip(skill: str) -> dict:
+    """Shape used only for demo postings, which have no extraction/relevance row: the legacy
+    skills-only gap list, dressed as a CoopGap so the frontend never has to special-case demo data."""
+    return {
+        "id": hashlib.sha256(skill.encode()).hexdigest()[:12], "skill": skill,
+        "why": "", "importance": "medium", "evidence_needed": "",
+        "suggestion": {"title": f"Learn {skill}", "description": "", "duration": "~2 weeks", "kind": "course"},
+    }
+
+
+def posting_match_result(db: Session, student_id: str, posting: CoopPosting, relevance_row, since) -> dict:
+    """One posting from the student's personal Matches/Hidden lists: legacy structural fields
+    (dates, sources, freshness — unchanged from posting_result) plus Jev-derived relevance, a
+    reason grounded in real overlaps, gaps traceable to the posting's own extracted requirements,
+    and an eligibility checklist for postings that are mostly eligibility (e.g. the Aramco co-op)."""
+    company = db.get(CoopCompany, posting.company_slug)
+    if posting.is_demo:
+        legacy = posting_result(db, student_id, posting, since=since)
+        legacy.update(
+            relevant=True, hidden_reason=None, matched_skills=[],
+            coop_gaps=[_gap_chip(skill) for skill in legacy["gaps"]], eligibility=[], target_disciplines=[], engine="demo",
+        )
+        return legacy
+
+    data = coop_relevance.relevance_dict(relevance_row) if relevance_row is not None else coop_relevance.default_relevance_dict()
+    extracted = extracted_fields(posting)
+    title = extracted.get("title") or posting.title
+    sources = _posting_sources(db, posting)
+    visited = last_visit(db, student_id) if since is _UNSET else since
+    seen_first = first_seen(db, posting)
+    is_new = bool(visited and seen_first > visited)
+    days_left = None
+    if posting.closes_at:
+        try:
+            days_left = (date.fromisoformat(posting.closes_at) - riyadh_today()).days
+        except ValueError:
+            days_left = None
+    freshest = posting.last_seen_at or posting.fetched_at
+    age = datetime.now(timezone.utc) - (freshest if freshest.tzinfo else freshest.replace(tzinfo=timezone.utc))
+    freshness = "today" if age < timedelta(days=1) else "recent" if age < timedelta(days=7) else "older"
+    fit_score = data["fit_score"]
+    return {
+        "id": posting.id, "company_id": posting.company_slug, "company_name": _display_company(company, extracted),
+        "title": title, "description": posting.description, "location": extracted.get("location") or posting.location,
+        "skills": _json(posting.skills_json), "requirements": _json(posting.requirements_json),
+        "opens_at": extracted.get("apply_opens_at") or posting.opens_at, "closes_at": extracted.get("apply_closes_at") or posting.closes_at,
+        "detail_url": posting.detail_url, "apply_url": posting.apply_url, "status": posting.status, "source_status": posting.source_status,
+        "source": posting.source, "sources": sources, "is_demo": False,
+        "published_at": posting.published_at.isoformat() if posting.published_at else None,
+        "last_seen_at": freshest.isoformat(), "freshness": freshness,
+        "first_seen_at": seen_first.isoformat(), "is_new": is_new, "days_left": days_left,
+        "deadline_confidence": "explicit" if (extracted.get("apply_closes_at") or posting.closes_at) else "unknown",
+        "fetched_at": posting.fetched_at.isoformat(),
+        "fit_score": fit_score, "fit_tier": _tier(fit_score), "fit_tier_code": _tier_code(fit_score),
+        "reasons": [data["reason_text"]] if data["reason_text"] else [], "reason_codes": [], "gaps": [gap["skill"] for gap in data["gaps"]],
+        "state": _state(db, student_id, "posting", posting.id),
+        "relevant": data["relevant"], "hidden_reason": data["hidden_reason"], "matched_skills": data["matched"],
+        "coop_gaps": data["gaps"], "eligibility": data["eligibility"], "target_disciplines": data["target_disciplines"], "engine": data["engine"],
+    }
+
+
+_SLUG_NAME = re.compile(r"^company-[0-9a-f]{6,}$")
+# Lines the Telegram scraper sometimes takes as the company: section labels and post openers.
+_GENERIC_NAMES = {"التخصصات", "فرص تدريب تعاوني", "متدرب تعاوني", "الموارد البشرية", "تدريب تعاوني"}
+
+
+def _looks_like_name(value: str | None) -> bool:
+    text = (value or "").strip().rstrip(".:").strip()
+    if not text or _SLUG_NAME.match(text) or text in _GENERIC_NAMES:
+        return False
+    # A sentence, not a name: long, or sentence punctuation inside it.
+    return len(text) <= 48 and not re.search(r"[.!?؟،]|\.\.", text)
+
+
+def _display_company(company: CoopCompany | None, extracted: dict) -> str:
+    """The extraction prompt reads the whole post, so its company wins; the scraper's guess is a
+    fallback only when it looks like a name. "" lets the UI say the employer isn't named."""
+    for candidate in (extracted.get("company"), company.name if company else None):
+        if _looks_like_name(candidate):
+            text = str(candidate).strip()
+            # LinkedIn gives URL slugs ("help-ag", "tabby"); show them as words.
+            return text.replace("-", " ").title() if re.fullmatch(r"[a-z0-9-]+", text) else text
+    return ""
+
+
+def find_personalized_matches(db: Session, student_id: str, limit: int = 12) -> dict:
+    """Matches tab, Phase B: every active posting scored for THIS student by Jev (fallback:
+    discipline-aware heuristic), split into visible and hidden-with-a-reason. Demo postings only
+    appear when no real posting exists yet anywhere in the catalog."""
+    today = riyadh_today()
+    since = last_visit(db, student_id)
+    active = [item for item in db.scalars(select(CoopPosting).where(CoopPosting.active.is_(True))).all() if not _closed(item, today)]
+    show_demo = not any(not item.is_demo for item in active)
+    candidates = [item for item in active if not item.is_demo or show_demo]
+
+    pending_extraction = [item for item in candidates if not item.is_demo and item.extraction_status == "pending"]
+    ensure_extracted(db, pending_extraction, max_new=EXTRACTION_BUDGET_PER_REQUEST)
+    relevance = coop_relevance.ensure_relevance(db, student_id, candidates, max_new=RELEVANCE_BUDGET_PER_REQUEST)
+
+    visible: list[dict] = []
+    hidden: list[dict] = []
+    for posting in candidates:
+        result = posting_match_result(db, student_id, posting, relevance.get(posting.id), since)
+        if result["state"] == "dismissed":
+            continue
+        (visible if result["relevant"] else hidden).append(result)
+    visible.sort(key=lambda item: (-item["fit_score"], item["title"]))
+    hidden.sort(key=lambda item: (-item["fit_score"], item["title"]))
+    return {"visible": visible[: max(1, min(limit, 50))], "hidden": hidden[:30], "demo": show_demo}
+
+
+def finish_personalized_matches_background(student_id: str) -> None:
+    """Fills in extraction + relevance for whatever this request's budget left behind, so the next
+    load (or a background poll) sees fuller real data without the first request paying for it."""
+    from .database import SessionLocal
+
+    with _BACKGROUND_LOCK:
+        if student_id in _BACKGROUND_RUNNING:
+            return
+        _BACKGROUND_RUNNING.add(student_id)
+    db = SessionLocal()
+    try:
+        today = riyadh_today()
+        active = [item for item in db.scalars(select(CoopPosting).where(CoopPosting.active.is_(True))).all() if not _closed(item, today)]
+        show_demo = not any(not item.is_demo for item in active)
+        candidates = [item for item in active if not item.is_demo or show_demo]
+        ensure_extracted(db, [item for item in candidates if not item.is_demo and item.extraction_status == "pending"], max_new=RELEVANCE_BACKGROUND_BUDGET)
+        coop_relevance.ensure_relevance(db, student_id, candidates, max_new=RELEVANCE_BACKGROUND_BUDGET)
+    except Exception:
+        logger.exception("Background co-op relevance pass failed for %s", student_id)
+        db.rollback()
+    finally:
+        db.close()
+        with _BACKGROUND_LOCK:
+            _BACKGROUND_RUNNING.discard(student_id)
+
+
+@router.get("/api/students/{student_id}/coop/matches")
+def matches(student_id: str, _owner: OwnedStudent, db: Db, background: BackgroundTasks, limit: int = Query(12, ge=1, le=30)) -> dict:
+    require_student(db, student_id)
+    result = find_personalized_matches(db, student_id, limit)
+    background.add_task(finish_personalized_matches_background, student_id)
+    return {**result, "generated_at": datetime.now(timezone.utc).isoformat()}
+
+
+class ProposeGapsInput(BaseModel):
+    gap_ids: list[str] | None = None  # None/omitted = every gap on the posting
+
+
+STAGE_TYPE_PRIORITY = {"career": 0, "opportunity": 1, "skill_sequence": 2, "foundation": 3}
+GAP_KIND_ICON = {"course": "book", "project": "rocket", "certificate": "graduation", "practice": "target"}
+
+
+def _target_stage(snapshot: RoadmapSnapshot) -> str:
+    if not snapshot.stages:
+        raise HTTPException(409, "Your roadmap has no stage to attach new nodes to yet")
+    ranked = sorted(snapshot.stages, key=lambda stage: STAGE_TYPE_PRIORITY.get(stage.stageType, 9))
+    return ranked[0].id
+
+
+@router.post("/api/students/{student_id}/coop/postings/{posting_id}/propose-gaps")
+def propose_gaps(student_id: str, _owner: OwnedStudent, posting_id: str, body: ProposeGapsInput, db: Db) -> dict:
+    """One roadmap proposal per click, built from the selected gaps' suggestions (never from a
+    model-written snapshot). The student's own click is the explicit action AGENTS.md requires;
+    the proposal only ever ADDS nodes, so completed/in-progress work is untouched, and nothing
+    activates until the student accepts it at POST /api/roadmap-proposals/{id}/accept."""
+    require_student(db, student_id)
+    posting = db.get(CoopPosting, posting_id)
+    if posting is None or not posting.active:
+        raise HTTPException(404, "Posting not found")
+    row = db.scalar(select(coop_relevance.CoopRelevance).where(coop_relevance.CoopRelevance.student_id == student_id, coop_relevance.CoopRelevance.posting_id == posting_id)) if not posting.is_demo else None
+    all_gaps = json.loads(row.gaps_json) if row else []
+    wanted = set(body.gap_ids) if body.gap_ids else None
+    selected = [gap for gap in all_gaps if wanted is None or gap["id"] in wanted]
+    if not selected:
+        raise HTTPException(422, "No matching gaps to propose")
+
+    current = db.scalar(select(RoadmapVersion).where(RoadmapVersion.student_id == student_id, RoadmapVersion.active.is_(True)))
+    if current is None:
+        raise HTTPException(404, "No active roadmap")
+    snapshot = RoadmapSnapshot.model_validate_json(current.snapshot_json)
+    stage_id = _target_stage(snapshot)
+    existing_ids = {node.id for node in snapshot.nodes}
+    company = db.get(CoopCompany, posting.company_slug)
+    company_name = company.name if company else posting.company_slug
+
+    operations: list[RoadmapOperation] = []
+    for gap in selected:
+        suggestion = gap.get("suggestion", {})
+        gap_key = f"{posting_id}:{gap['id']}"
+        node_id = f"coop-gap-{hashlib.sha256(gap_key.encode()).hexdigest()[:10]}"
+        if node_id in existing_ids:
+            continue
+        node = RoadmapNode(
+            id=node_id, stageId=stage_id, title=str(suggestion.get("title") or gap["skill"])[:160],
+            icon=GAP_KIND_ICON.get(suggestion.get("kind", ""), "target"),
+            tagline=gap["skill"][:120],
+            description=f"{suggestion.get('description', '')} Requested by the {posting.title} co-op posting at {company_name}.".strip(),
+            duration=str(suggestion.get("duration") or "~2 weeks")[:40],
+            rationale=gap.get("why", "")[:600],
+            nodeType="project" if suggestion.get("kind") == "project" else "learning",
+        )
+        operations.append(RoadmapOperation(type="add_node", node_id=node_id, node=node))
+        existing_ids.add(node_id)
+    if not operations:
+        raise HTTPException(409, "Those roadmap nodes already exist")
+    try:
+        apply_operations(snapshot, operations)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    proposal = RoadmapProposal(
+        student_id=student_id, base_version_id=current.id,
+        summary=f"Close {len(operations)} gap(s) for {posting.title} at {company_name}"[:240],
+        reasoning="\n".join(f"- {gap['skill']}: {gap.get('why', '')}" for gap in selected),
+        operations_json=json.dumps([operation.model_dump() for operation in operations]),
+        kind="coop_gaps",
+    )
+    db.add(proposal)
+    db.commit()
+    return {"proposal_id": proposal.id, "status": proposal.status, "node_count": len(operations)}
 
 
 @router.get("/api/students/{student_id}/coop/overview")

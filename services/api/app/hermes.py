@@ -11,9 +11,11 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy import delete, select, update
 
+from pydantic import ValidationError
+
 from .database import SessionLocal
 from .models import AgentRun, ChatMessage, ChatThread, StudentProfile
-from .schemas import ChatMessageUi
+from .schemas import ChatMessageUi, QuizElement, QuizQuestionSpec
 
 POLL_INTERVAL_SECONDS = 2
 
@@ -208,6 +210,12 @@ For Saudi co-op guidance, call waypoint_find_coop_companies or waypoint_find_coo
 current matches. Use waypoint_get_coop_target before detailed advice or a preparation proposal. State
 whether a posting is verified, a program page, or demo fallback; never invent eligibility or an
 opening. Preparation changes are future-only roadmap proposals that the student must approve.
+waypoint_ready_to_generate belongs to the onboarding chat only: never call it from this chat and never
+tell the student their first roadmap is waiting to be generated. It is refused outside onboarding, and
+the refusal becomes your whole reply, so the answer you already wrote is lost and the student only sees
+a note about a button. Students generate or replace a roadmap from the Roadmap screen's own actions,
+not from here. When they ask where to begin or what to do next, call waypoint_get_active_roadmap first
+and answer with their own nodes.
 """.strip()
 
 
@@ -220,6 +228,15 @@ call, end with one short lead-in sentence and never repeat the options. Do not f
 question that needs the student's own words. Showing a roadmap branch never authorizes a proposal;
 wait for the student's selection. For hackathons, put each record's Waypoint id in opportunity_id;
 never invent URLs or dates.
+When the student asks to be quizzed, tested or drilled on a topic, call waypoint_show_element with
+kind "quiz" (1-10 questions; mcq needs 2-4 options, true_false answers "True"/"False", short_answer
+has no options) instead of writing the questions as prose or a JSON block — the student sees it
+rendered as an interactive card with its own progress and feedback, one question at a time. Never
+print a quiz as a ```json block, a plain JSON object, or a numbered list of questions. A quiz answer
+is never graded evidence of anything and is never a fact. waypoint_show_element also covers a
+countdown timer, a step/progress tracker, flashcards, a checklist, a comparison table, a callout, or
+a code block when one of those genuinely fits better than prose — call it at most a couple of times
+per reply, and still end with a short lead-in sentence; never also restate the element's content.
 """.strip()
 
 
@@ -248,6 +265,10 @@ def instructions_for(student_id: str, db, *, mailbox: bool = False) -> str:
     onboarding = profile is not None and profile.onboarding_status == "chat"
     base = ONBOARDING_INSTRUCTIONS if onboarding else COACH_INSTRUCTIONS
     parts = [base, STRUCTURED_UI_INSTRUCTIONS, memory_instructions(db, student_id), connectors_note(db, student_id), learning_note()]
+    # Deliberately never "waypoint-quiz" here: that skill tells the model to return ONLY a JSON
+    # object (it's written for quiz.py's tool-less, JSON-only /api/quiz session, a separate slide
+    # upload feature that must keep working as-is). The coach quizzes a student through
+    # waypoint_show_element(kind="quiz") instead, per STRUCTURED_UI_INSTRUCTIONS above.
     skills = ["waypoint-onboarding" if onboarding else "waypoint-student-coach", "waypoint-memory"]
     if mailbox:
         skills.append("waypoint-mail-assistant")
@@ -311,6 +332,96 @@ def conversation_history(db, thread_id: str, current_message_id: str) -> list[di
 
 
 WAYPOINT_UI_BLOCK = re.compile(r"\n*```waypoint-ui\s*(\{.*?\})\s*```\s*$", re.IGNORECASE | re.DOTALL)
+# Safety net for a model that ignores waypoint_show_element and free-forms a quiz as raw JSON
+# instead (this is the behavior that used to render as plain paragraphs, one JSON line per
+# paragraph). Deliberately narrow: it only recognizes the specific {"questions": [...]} shape the
+# waypoint-quiz skill and quiz-ai.ts already use, never a generic "is this JSON" sniff.
+_JSON_FENCE = re.compile(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", re.IGNORECASE)
+_BARE_JSON_START = re.compile(r"^\s*[\{\[]")
+# Keep in step with schemas.QuizElement.questions' max_length.
+_MAX_RECOVERED_QUIZ_QUESTIONS = 10
+_QUIZ_TYPE_ALIASES = {
+    "multiple_choice": "mcq", "multiplechoice": "mcq",
+    "tf": "true_false", "boolean": "true_false",
+    "short": "short_answer", "open": "short_answer",
+}
+_TRUE_WORDS = {"true", "t", "yes", "y", "correct", "right", "1"}
+_FALSE_WORDS = {"false", "f", "no", "n", "incorrect", "wrong", "0"}
+
+
+def _extract_json_quiz_payload(text: str) -> dict | None:
+    """A bare JSON quiz reply — from a ```json fence or the whole message — or None when the text
+    doesn't look like the {"questions": [...]} shape at all."""
+    candidates = [match.group(1) for match in _JSON_FENCE.finditer(text)]
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        candidates.append(stripped)
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("questions"), list) and payload["questions"]:
+            return payload
+    return None
+
+
+def _quiz_element_from_json(payload: dict) -> QuizElement | None:
+    """Loose conversion mirroring the frontend's quiz-ai.ts sanitizeQuestions: a question that
+    cannot be made to fit the schema is dropped rather than guessed at. None when nothing survives."""
+    questions: list[QuizQuestionSpec] = []
+    for index, raw in enumerate(payload.get("questions", [])[:_MAX_RECOVERED_QUIZ_QUESTIONS]):
+        if not isinstance(raw, dict):
+            continue
+        qtype = re.sub(r"[\s/-]+", "_", str(raw.get("type") or "").strip().lower())
+        qtype = _QUIZ_TYPE_ALIASES.get(qtype, qtype)
+        if qtype not in ("mcq", "true_false", "short_answer"):
+            continue
+        stem = str(raw.get("question") or raw.get("stem") or "").strip()
+        answer = str(raw.get("answer") or "").strip()
+        if not stem or not answer:
+            continue
+        options: list[str] | None = None
+        if qtype == "mcq":
+            seen: list[str] = []
+            for item in raw.get("options") or []:
+                candidate = str(item).strip()
+                if candidate and candidate not in seen:
+                    seen.append(candidate)
+            options = seen[:4]
+            if len(options) < 2 or answer not in options:
+                continue
+        elif qtype == "true_false":
+            word = answer.strip().lower().rstrip(".! ")
+            if word in _TRUE_WORDS:
+                answer = "True"
+            elif word in _FALSE_WORDS:
+                answer = "False"
+            if answer not in ("True", "False"):
+                continue
+        explanation = str(raw.get("explanation") or "").strip()[:600] or None
+        try:
+            questions.append(QuizQuestionSpec(
+                id=f"q{index + 1}", type=qtype, stem=stem[:500], options=options,
+                answer=answer[:300], explanation=explanation,
+            ))
+        except ValidationError:
+            continue
+    if not questions:
+        return None
+    try:
+        return QuizElement(id="quiz-recovered", questions=questions)
+    except ValidationError:
+        return None
+
+
+def _as_code_fence(text: str) -> str:
+    """Wraps bare (unfenced) JSON-looking text in a ```json fence so it renders as one readable,
+    copyable code block instead of being flattened into paragraphs line by line. Text that is
+    already fenced is left as-is — the frontend already renders a fenced block as code."""
+    if _JSON_FENCE.search(text):
+        return text
+    return f"```json\n{text}\n```"
 
 
 def normalize_ordered_lists(text: str) -> str:
@@ -337,17 +448,41 @@ def parse_chat_output(output: str) -> tuple[str, str | None]:
 
     Invalid metadata is discarded while the readable part remains usable. This
     keeps weaker fallback models and existing text-only conversations safe.
+
+    Also the safety net described above `_extract_json_quiz_payload`: a model that free-forms a
+    quiz as JSON instead of calling waypoint_show_element still gets the interactive card, and
+    anything else JSON-shaped gets fenced as a readable code block rather than left to be
+    flattened into paragraphs line by line.
     """
     text = (output or "").strip()
     match = WAYPOINT_UI_BLOCK.search(text)
-    if match is None:
-        return normalize_ordered_lists(text), None
-    visible = normalize_ordered_lists(text[:match.start()].strip()) or "Choose an option to continue."
+    if match is not None:
+        visible = normalize_ordered_lists(text[:match.start()].strip()) or "Choose an option to continue."
+        try:
+            ui = ChatMessageUi.model_validate(json.loads(match.group(1)))
+        except (json.JSONDecodeError, ValueError):
+            return visible, None
+        return visible, ui.model_dump_json()
+
+    payload = _extract_json_quiz_payload(text)
+    quiz = _quiz_element_from_json(payload) if payload is not None else None
+    if quiz is not None:
+        leadin = normalize_ordered_lists(_JSON_FENCE.sub("", text).strip()) or "Here's your quiz:"
+        try:
+            return leadin, ChatMessageUi(elements=[quiz]).model_dump_json()
+        except ValidationError:
+            pass  # Fall through to the generic JSON-as-code fallback below.
+    if payload is not None or (_BARE_JSON_START.match(text) and _is_json(text)):
+        return _as_code_fence(text), None
+    return normalize_ordered_lists(text), None
+
+
+def _is_json(text: str) -> bool:
     try:
-        ui = ChatMessageUi.model_validate(json.loads(match.group(1)))
-    except (json.JSONDecodeError, ValueError):
-        return visible, None
-    return visible, ui.model_dump_json()
+        json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return True
 
 
 def resolve_hermes_selection(provider: str | None, model: str | None = None) -> tuple[str, str]:
@@ -952,7 +1087,9 @@ def run_agent(
                 "waiting_for_approval": "Hermes needs approval",
                 "queued": "Waiting for a free Hermes slot",
             }.get(status, "Hermes is working")
-            run.stage = f"{label} · {run_model}"[:80]
+            # Student-facing (the app header shows it as-is): never the model name. The model stays
+            # server-side in RunProgress for logs and the settings test.
+            run.stage = label[:80]
             db.commit()
 
         progress = RunProgress(local_run_id)

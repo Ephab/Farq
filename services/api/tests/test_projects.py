@@ -161,3 +161,22 @@ def test_parallel_loads_race_to_materialise_one_project(client: TestClient, monk
 
     assert [item.status_code for item in responses] == [200, 200, 200, 200], [item.text for item in responses]
     assert [item["roadmap_node_id"] for item in responses[0].json()] == ["project-race"]
+
+
+
+def test_evaluator_reasoning_requires_running_lease(client, monkeypatch):
+    from app import evaluation_agent
+    project = client.get("/api/students/demo-student/projects").json()[0]
+    submission = client.post(f"/api/projects/{project['id']}/submissions", json={"source_type":"local_directory","source_ref":"D:\\Trusted\\project","manifest":{}}).json()
+    evaluation = client.post(f"/api/projects/{project['id']}/evaluations", json={"submission_id":submission["id"]}).json()
+    path = f"/internal/evaluator/jobs/{evaluation['id']}/reason"
+    body = {"phase":"next","lease_token":"x"*24,"context":"source"}
+    assert client.post(path, json=body).status_code == 401
+    assert client.post(path, json=body, headers=INTERNAL).status_code == 409
+    job = client.post("/internal/evaluator/jobs/claim", json={}, headers=INTERNAL).json()["job"]
+    body["lease_token"] = job["lease_token"]
+    monkeypatch.setattr(evaluation_agent, "reason", lambda body, brief: {"action":{"kind":"finish","title":"Done"}})
+    assert client.post(path, json=body, headers=INTERNAL).json()["action"]["kind"] == "finish"
+    progress = {"lease_token":job["lease_token"],"stage":"Evidence saved","observations":[{"id":"check-1","title":"runtime","kind":"node_cli","passed":True,"output":"hello\nworld","duration_ms":20}]}
+    assert client.post(f"/internal/evaluator/jobs/{evaluation['id']}/progress",json=progress,headers=INTERNAL).status_code == 200
+    assert client.get(f"/api/evaluations/{evaluation['id']}").json()["report"]["observations"][0]["output"] == "hello\nworld"

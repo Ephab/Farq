@@ -203,6 +203,8 @@ export interface ProjectEvaluation {
     improvements: string[]
     limitations: string[]
     criteria: Array<{ criterion_id: string; score: number; evidence: string[]; feedback: string }>
+    observations?: Array<{ id: string; title: string; kind: string; passed: boolean; output: string; duration_ms: number }>
+    screenshots?: Array<{ id: string; title: string; png_base64: string }>
   }
   error: string | null
   created_at: string

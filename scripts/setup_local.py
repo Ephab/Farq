@@ -79,6 +79,7 @@ def main() -> None:
     subprocess.run([str(python), "-m", "services.api.app.email_classifier", "--download", "--smoke-test"],
                    cwd=ROOT, env=env, check=True)
     subprocess.run([npm, "ci"], cwd=ROOT, check=True)
+    subprocess.run([str(python), "scripts/setup_evaluator.py"], cwd=ROOT, check=True)
     values = configure_env(ROOT)
     provision(ROOT)
     print("Hermes and Laya verified. Web and Python dependencies installed; local credentials saved in .env.")

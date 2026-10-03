@@ -23,10 +23,12 @@ const STEPS: { status: OnboardingStatus[]; key: "basics" | "sources" | "review" 
 
 interface OnboardingViewProps {
   onDone: () => void
+  /** Open the app while the first roadmap keeps generating on the server. */
+  onExplore: () => void
 }
 
 /** New-student flow: sign in, basics, sources, evidence review, chat, roadmap preview. */
-export function OnboardingView({ onDone }: OnboardingViewProps) {
+export function OnboardingView({ onDone, onExplore }: OnboardingViewProps) {
   const { t, fmt } = useI18n()
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [loading, setLoading] = useState(hasChosenStudent())
@@ -35,6 +37,8 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
   // server restarting): keep the student and offer a retry instead of signing them out.
   const [loadFailed, setLoadFailed] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
+  // While the first roadmap is being built, "Back to start" would sign the student out of it.
+  const [generating, setGenerating] = useState(false)
   const onDoneRef = useRef(onDone)
   useEffect(() => { onDoneRef.current = onDone }, [onDone])
   // The model picker stays reachable here so a saturated model can be switched mid-onboarding.
@@ -111,9 +115,11 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
     <div className="flex min-h-svh flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center gap-4 border-b border-border px-4 py-3 sm:px-8">
         <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" aria-hidden="true" /></span><span className="text-sm font-semibold">{t("common.appName")}</span></div>
-        <button type="button" onClick={backToStart} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-          <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden="true" /> {t("onboarding.backToStart")}
-        </button>
+        {generating ? null : (
+          <button type="button" onClick={backToStart} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden="true" /> {t("onboarding.backToStart")}
+          </button>
+        )}
         <ol className="ms-auto flex flex-wrap items-center gap-1.5 text-xs" aria-label={t("onboarding.progressLabel")}>
           {STEPS.map((step, index) => (
             <li key={step.key} aria-current={index === stepIndex ? "step" : undefined} className={cn("rounded-full px-2.5 py-1", index === stepIndex ? "bg-primary text-primary-foreground" : index < stepIndex ? "bg-muted text-foreground" : "text-muted-foreground")}>
@@ -135,7 +141,7 @@ export function OnboardingView({ onDone }: OnboardingViewProps) {
         {profile.onboarding_status === "basics" ? <BasicsStep profile={profile} onSaved={(next) => setProfile(next)} /> : null}
         {profile.onboarding_status === "sources" ? <SourcesStep profile={profile} onBack={() => void setStatus("basics")} onNext={() => void setStatus("review")} /> : null}
         {profile.onboarding_status === "review" ? <EvidenceReview profile={profile} onBack={() => void setStatus("sources")} onNext={() => void setStatus("chat")} /> : null}
-        {profile.onboarding_status === "chat" || profile.onboarding_status === "generating" ? <OnboardingChat profile={profile} onBack={() => void setStatus("review")} onGenerated={() => void load()} /> : null}
+        {profile.onboarding_status === "chat" || profile.onboarding_status === "generating" ? <OnboardingChat profile={profile} onBack={() => void setStatus("review")} onGenerated={() => void load()} onExplore={onExplore} onGeneratingChange={setGenerating} /> : null}
         {profile.onboarding_status === "preview" ? <RoadmapPreview profile={profile} onRegenerate={() => void load()} onAccepted={onDone} /> : null}
       </main>
     </div>

@@ -1,14 +1,16 @@
 "use client"
 
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { useEffect, useState } from "react"
-import { Check, Cpu, Gauge, Timer, TriangleAlert, X } from "lucide-react"
-import { CoachActivityIcon, type CoachActivity } from "@/components/hermes/CoachActivityIcon"
-import { MarkdownText } from "@/components/hermes/markdown"
+import { Check, X } from "lucide-react"
+import { CoachLoader } from "@/components/hermes/CoachLoader"
+import { EASE_OUT } from "@/lib/ease"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
-import { modelLabel, useModelCatalog } from "@/lib/models"
-import { cn } from "@/lib/utils"
 
-/** Live state of a chat run, from the API's run-status stream (see app.hermes.RunProgress). */
+/** Live state of a chat run, from the API's run-status stream (see app.hermes.RunProgress).
+ *  The student view only ever reads `phase`/`tool`/`steps`/`notice` off this — `model`,
+ *  `tokens`, `tps` and `preview` are carried for other call sites (dev tooling) but must
+ *  never be surfaced here; Phase B should stop sending them to this audience at all. */
 export interface RunProgress {
   phase: "starting" | "queued" | "thinking" | "tool" | "writing"
   tool: string | null
@@ -49,6 +51,10 @@ const TOOL_KEYS: Record<string, MessageKey> = {
   waypoint_scan_folder: "coach.progress.tools.folder",
   waypoint_read_project_file: "coach.progress.tools.folder",
   skill_view: "coach.progress.tools.skill",
+  // Speculative Phase B tools (quiz/study elements) — harmless to map ahead of time.
+  waypoint_get_quiz_history: "coach.progress.tools.quizHistory",
+  waypoint_generate_quiz_questions: "coach.progress.tools.generateQuestions",
+  waypoint_show_element: "coach.progress.tools.generateQuestions",
 }
 
 function useToolLabel() {
@@ -69,19 +75,18 @@ function useNow(active: boolean) {
   return now
 }
 
-const seconds = (value: number) => (value < 10 ? value.toFixed(1) : Math.round(value).toString())
-
-/** What Hermes is doing right now, shown in place of a bare "Thinking…" while a run is live. */
+/** What Hermes is doing right now: a pulsing orb, a short cross-fading status title, and
+ *  the finished steps collapsed into a subtle list. No model name, token count, speed, or
+ *  raw/reasoning text ever reaches this view — the student only sees plain-language intent. */
 export function RunProgressCard({ progress, receivedAt }: { progress: RunProgress; receivedAt: number }) {
   const { t } = useI18n()
   const toolLabel = useToolLabel()
-  useModelCatalog()
+  const reduce = useReducedMotion()
   const now = useNow(true)
   // Server clock at this moment: the last report's server time plus what passed here since.
   const serverNow = progress.server_now + (now - receivedAt) / 1000
-  const total = Math.max(0, serverNow - progress.started_at)
   const inPhase = Math.max(0, serverNow - progress.phase_since)
-  const activity: CoachActivity = progress.phase === "tool" ? "tool" : progress.phase === "writing" ? "writing" : "thinking"
+  const activity = progress.phase === "tool" ? "tool" as const : progress.phase === "writing" ? "writing" as const : "thinking" as const
   const label = progress.phase === "tool" && progress.tool
     ? toolLabel(progress.tool)
     : t(`coach.progress.phase.${progress.phase}`)
@@ -89,55 +94,28 @@ export function RunProgressCard({ progress, receivedAt }: { progress: RunProgres
 
   return (
     <div className="run-progress" aria-live="polite">
-      <div className="activity-row" role="status">
-        <CoachActivityIcon activity={activity} size={20} />
-        <span className="font-medium">{label}</span>
-        <span className="ms-auto inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground" title={t("coach.progress.elapsed")}>
-          <Timer className="size-3.5" aria-hidden="true" />{t("coach.progress.seconds", { value: seconds(total) })}
-        </span>
-      </div>
-
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        {progress.model ? (
-          <span className="inline-flex items-center gap-1"><Cpu className="size-3.5" aria-hidden="true" />{modelLabel(progress.model)}</span>
-        ) : null}
-        {progress.phase === "writing" && progress.tps ? (
-          <span className="inline-flex items-center gap-1 tabular-nums"><Gauge className="size-3.5" aria-hidden="true" />{t("coach.progress.tps", { value: progress.tps.toFixed(0) })}</span>
-        ) : null}
-        {progress.tokens ? <span className="tabular-nums">{t("coach.progress.tokens", { count: progress.tokens })}</span> : null}
-        {progress.phase !== "writing" && progress.phase !== "starting" && inPhase >= 3 ? (
-          <span className="tabular-nums">{t("coach.progress.phaseFor", { value: seconds(inPhase) })}</span>
-        ) : null}
-      </div>
-
-      {progress.notice ? (
-        <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {t("coach.progress.switched", { model: modelLabel(progress.model) })}
-        </p>
-      ) : null}
+      <CoachLoader activity={activity} label={label} />
 
       {progress.steps.length ? (
-        <ol className="mt-2 space-y-1 text-xs" aria-label={t("coach.progress.stepsLabel")}>
-          {progress.steps.map((step, index) => (
-            <li key={`${step.tool}-${index}`} className="flex items-center gap-1.5 text-muted-foreground">
-              {step.ok ? <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /> : <X className="size-3.5 text-destructive" aria-hidden="true" />}
-              <span>{toolLabel(step.tool)}</span>
-              <span className="tabular-nums opacity-70">{t("coach.progress.seconds", { value: seconds(step.seconds) })}</span>
-            </li>
-          ))}
-        </ol>
+        <ul className="run-progress-steps" aria-label={t("coach.progress.stepsLabel")}>
+          <AnimatePresence initial={false}>
+            {progress.steps.map((step, index) => (
+              <motion.li
+                key={`${step.tool}-${index}`}
+                initial={reduce ? false : { opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.25, ease: EASE_OUT }}
+              >
+                {step.ok ? <Check size={11} className="run-progress-step-ok" aria-hidden="true" /> : <X size={11} className="run-progress-step-bad" aria-hidden="true" />}
+                <span>{toolLabel(step.tool)}</span>
+              </motion.li>
+            ))}
+          </AnimatePresence>
+        </ul>
       ) : null}
 
       {silent ? (
-        <p className="mt-2 text-xs text-muted-foreground">{t("coach.progress.slow")}</p>
-      ) : null}
-
-      {progress.preview ? (
-        <div className={cn("run-progress-preview mt-2 border-t border-border pt-2")}>
-          <MarkdownText text={progress.preview} />
-          <span className="run-progress-caret" aria-hidden="true" />
-        </div>
+        <p className="run-progress-slow">{t("coach.progress.slow")}</p>
       ) : null}
     </div>
   )

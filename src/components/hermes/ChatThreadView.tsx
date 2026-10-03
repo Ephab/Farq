@@ -1,18 +1,51 @@
 "use client"
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { parseServerTime } from "@/lib/server-time"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUp, CalendarDays, Check, Copy, ExternalLink, LoaderCircle, MapPin, Mic, PencilLine, RefreshCw, RotateCcw, Sparkles, Square } from "lucide-react"
-import { CoachActivityIcon, type CoachActivity } from "@/components/hermes/CoachActivityIcon"
+import type { CoachActivity } from "@/components/hermes/CoachActivityIcon"
+import { CoachLoader } from "@/components/hermes/CoachLoader"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { splitOptions, type ChatInteractionInput, type ChatMessage, type LiveProgress } from "@/components/hermes/use-hermes-chat"
 import { RunProgressCard } from "@/components/hermes/RunProgress"
 import { useVoiceInput } from "@/components/hermes/use-voice-input"
 import { VoiceWaveform } from "@/components/hermes/VoiceWaveform"
 import { cn } from "@/lib/utils"
+import { EASE_OUT } from "@/lib/ease"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
+import { ChatElementView } from "@/components/hermes/elements/ChatElementView"
 import "./coach-concept.css"
+
+/** Progressively reveals `text` word-by-word (fast, capped to a couple of seconds) when
+ *  `active`. Used only for a just-finished reply — history and already-seen messages render
+ *  in full immediately. Reduced motion always renders in full. */
+function StreamingReply({ text, active, onDone }: { text: string; active: boolean; onDone: () => void }) {
+  // Split on whitespace but keep the separators, so the joined prefix is exact.
+  const tokens = useMemo(() => text.split(/(\s+)/).filter((t) => t.length > 0), [text])
+  const [count, setCount] = useState(active ? 0 : tokens.length)
+  useEffect(() => {
+    if (!active) { setCount(tokens.length); return }
+    setCount(0)
+    const total = tokens.length
+    if (total === 0) { onDone(); return }
+    const totalMs = Math.min(2200, Math.max(300, total * 16))
+    const stepMs = Math.max(10, totalMs / total)
+    let i = 0
+    const id = window.setInterval(() => {
+      i += 1
+      setCount(i)
+      if (i >= total) window.clearInterval(id)
+    }, stepMs)
+    return () => window.clearInterval(id)
+    // onDone is stable enough per message id; re-running on text identity only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, text])
+  useEffect(() => {
+    if (active && count >= tokens.length && tokens.length > 0) onDone()
+  }, [active, count, tokens.length, onDone])
+  return <MarkdownText text={tokens.slice(0, count).join("")} />
+}
 
 /** A suggestion chip above the composer. `message` is what fills the composer
  * (follow-ups send immediately instead, via their interaction). */
@@ -102,6 +135,26 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
   // viewport down in turn, reading as one super-fast scroll. The burst now
   // settles into a single jump.
   const pinTimerRef = useRef<number | null>(null)
+  // Word-by-word reveal: only a single freshly-arrived assistant message gets it — never a
+  // bulk history load (initial fetch, thread switch) and never an already-seen message. A
+  // bare busy->idle transition races the async refresh that actually appends the reply
+  // (finishRun flips busy before refresh() resolves), so this keys off the message list
+  // itself: the first render just records a baseline, and only a +1 growth ending in an
+  // assistant message counts as "new".
+  const [revealId, setRevealId] = useState<string | null>(null)
+  const prevCountRef = useRef<number | null>(null)
+  useEffect(() => {
+    const prevCount = prevCountRef.current
+    prevCountRef.current = messages.length
+    if (prevCount === null) return // first render for this thread: establish the baseline only
+    if (messages.length === prevCount + 1) {
+      const last = messages[messages.length - 1]
+      if (last?.role === "assistant" && !last.id.startsWith("optimistic-")) setRevealId(last.id)
+    }
+  }, [messages])
+  const clearReveal = useCallback((id: string) => {
+    setRevealId((current) => (current === id ? null : current))
+  }, [])
 
   useEffect(() => {
     const container = messagesRef.current
@@ -297,7 +350,9 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
                     </div>
                   </div>
                 ) : message.role === "assistant" ? (
-                  <div dir="auto"><MarkdownText text={text} /></div>
+                  <div dir="auto">
+                    <StreamingReply text={text} active={revealId === message.id && !reduce} onDone={() => clearReveal(message.id)} />
+                  </div>
                 ) : (
                   <p className="message-p" dir="auto">{text}</p>
                 )}
@@ -371,6 +426,20 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
                     ))}
                   </div>
                 ) : null}
+                {message.role === "assistant" && message.metadata?.elements?.length ? (
+                  <div className="chat-elements-stack">
+                    {message.metadata.elements.map((element, i) => (
+                      <motion.div
+                        key={element.id}
+                        initial={reduce ? false : { opacity: 0, y: 14, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.4, ease: EASE_OUT, delay: reduce ? 0 : i * 0.09 }}
+                      >
+                        <ChatElementView element={element} />
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : null}
               </article>
               <div className={`message-tools${message.role === "user" ? " message-tools-user" : ""}`}>
                 {time ? <span className="message-time"><bdi>{time}</bdi></span> : null}
@@ -403,10 +472,7 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
                 {progress ? (
                   <RunProgressCard progress={progress.value} receivedAt={progress.receivedAt} />
                 ) : (
-                  <div className="activity-row" role="status">
-                    <CoachActivityIcon activity={activity} size={20} />
-                    <span>{t(`coach.activity.${activity}`)}</span>
-                  </div>
+                  <CoachLoader activity={activity} label={t(`coach.activity.${activity}`)} />
                 )}
               </div>
             </div>

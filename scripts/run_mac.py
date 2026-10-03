@@ -122,6 +122,7 @@ def main() -> int:
     ensure_runtime()
 
     commands = {
+        "evaluator": [py, "-u", "scripts/evaluator_worker.py"],
         "api": [py, "-m", "uvicorn", "app.main:app", "--app-dir", "services/api",
                 "--port", str(API_PORT), "--no-access-log"],
         # NOTE: `gateway run` stays in the foreground as our child, tied to
@@ -133,7 +134,7 @@ def main() -> int:
     # Only Waypoint's own children are ever restarted here. The daily-use base
     # Hermes profile is never touched: different HERMES_HOME, no stop/restart
     # commands against it.
-    RESTARTABLE = ("api", "hermes")
+    RESTARTABLE = ("api", "hermes", "evaluator")
     children: dict[str, subprocess.Popen] = {}
     pending_restart: set[str] = set()
     lock = threading.Lock()

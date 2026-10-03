@@ -475,13 +475,167 @@ def test_ready_to_generate_is_onboarding_only(client: TestClient):
     with SessionLocal() as db:
         db.get(StudentProfile, student_id).onboarding_status = "done"
         db.commit()
-    assert client.post("/internal/hermes/onboarding/ready", json={}, headers=headers).status_code == 409
+    refused = client.post("/internal/hermes/onboarding/ready", json={}, headers=headers)
+    assert refused.status_code == 409
+    # The refusal is the last thing the model reads before replying, so it must steer the model back
+    # to the student's question instead of letting it narrate a missing button.
+    assert "answer their question" in refused.json()["detail"]
     with SessionLocal() as db:
         db.get(StudentProfile, student_id).onboarding_status = "chat"
         db.commit()
     assert client.post("/internal/hermes/onboarding/ready", json={}, headers=headers).status_code == 200
     with SessionLocal() as db:
         assert __import__("json").loads(merge_staged_ui(db.get(AgentRun, run_id), None))["ready_to_generate"] is True
+
+
+def test_coach_instructions_forbid_the_onboarding_generate_tool(client: TestClient):
+    """The coach must never re-open the onboarding-only Generate path (it burned a whole reply)."""
+    from app.hermes import instructions_for
+    from app.models import StudentProfile
+
+    student_id, _ = _student(client, "Coach Ready")
+    with SessionLocal() as db:
+        profile = db.get(StudentProfile, student_id)
+        profile.onboarding_status = "chat"
+        db.commit()
+        onboarding = instructions_for(student_id, db)
+        profile.onboarding_status = "done"
+        db.commit()
+        coach = instructions_for(student_id, db)
+    # Onboarding still tells Hermes when to show the button; the coach is told never to touch it.
+    assert "call waypoint_ready_to_generate" in onboarding
+    assert "never call it from this chat" in coach
+    assert "waypoint_get_active_roadmap first" in coach
+    assert "never call it from this chat" not in onboarding
+
+
+# --- waypoint_show_element (chat elements: quiz, timer, progress, ...) ----------------------------
+
+def test_show_element_stages_a_quiz_and_requires_grant_and_running_run(client: TestClient):
+    from app.chat_ui import merge_staged_ui
+    from app.models import AgentRun
+
+    student_id, thread_id = _student(client, "Quizzer")
+    run_id = _running_run(thread_id, _say(thread_id, "Quiz me on probability, 5 questions"))
+    grant = issue_test_grant(student_id, ("ask",), agent_run_id=run_id)
+    headers = {**INTERNAL, "X-Waypoint-Grant": grant}
+    body = {
+        "user_id": student_id, "kind": "quiz", "id": "quiz-probability", "title": "Probability",
+        "questions": [
+            {"id": "q1", "type": "mcq", "stem": "Coin flips twice: P(exactly one head)?",
+             "options": ["1/4", "1/2", "3/4", "1/3"], "answer": "1/2", "explanation": "2 of 4 outcomes."},
+            {"id": "q2", "type": "true_false", "stem": "Independent events multiply.", "answer": "True"},
+        ],
+    }
+    reply = client.post("/internal/hermes/elements", json=body, headers=headers)
+    assert reply.status_code == 200 and "rendered" in reply.json()["note"]
+
+    with SessionLocal() as db:
+        ui = __import__("json").loads(merge_staged_ui(db.get(AgentRun, run_id), None))
+    elements = ui["elements"]
+    assert len(elements) == 1 and elements[0]["kind"] == "quiz"
+    assert elements[0]["questions"][0]["answer"] == "1/2"
+
+    # Without the ask scope, or once the run ended, the tool is refused.
+    other_grant = issue_test_grant(student_id, ("read",), agent_run_id=run_id)
+    assert client.post("/internal/hermes/elements", json=body, headers={**INTERNAL, "X-Waypoint-Grant": other_grant}).status_code == 403
+    with SessionLocal() as db:
+        db.get(AgentRun, run_id).status = "completed"
+        db.commit()
+    assert client.post("/internal/hermes/elements", json=body, headers=headers).status_code == 403
+
+
+def test_show_element_rejects_invalid_or_oversized_payloads(client: TestClient):
+    student_id, thread_id = _student(client, "Rejector")
+    run_id = _running_run(thread_id, _say(thread_id, "Quiz me"))
+    headers = {**INTERNAL, "X-Waypoint-Grant": issue_test_grant(student_id, ("ask",), agent_run_id=run_id)}
+
+    # Unknown kind.
+    assert client.post("/internal/hermes/elements", json={"user_id": student_id, "kind": "essay", "id": "x"}, headers=headers).status_code == 422
+    # An mcq question with only one option.
+    bad_quiz = {"user_id": student_id, "kind": "quiz", "id": "q", "questions": [
+        {"id": "q1", "type": "mcq", "stem": "?", "options": ["only"], "answer": "only"},
+    ]}
+    assert client.post("/internal/hermes/elements", json=bad_quiz, headers=headers).status_code == 422
+    # 11 questions exceeds the 10-question cap.
+    too_many = {"user_id": student_id, "kind": "quiz", "id": "q", "questions": [
+        {"id": f"q{i}", "type": "true_false", "stem": "?", "answer": "True"} for i in range(11)
+    ]}
+    assert client.post("/internal/hermes/elements", json=too_many, headers=headers).status_code == 422
+    # Code over the 4000-character cap.
+    too_long_code = {"user_id": student_id, "kind": "code", "id": "c", "code": "x" * 4001}
+    assert client.post("/internal/hermes/elements", json=too_long_code, headers=headers).status_code == 422
+
+
+def test_show_element_caps_elements_per_reply(client: TestClient):
+    from app.schemas import MAX_CHAT_ELEMENTS
+
+    student_id, thread_id = _student(client, "Stacker")
+    run_id = _running_run(thread_id, _say(thread_id, "Show me everything"))
+    headers = {**INTERNAL, "X-Waypoint-Grant": issue_test_grant(student_id, ("ask",), agent_run_id=run_id)}
+    for i in range(MAX_CHAT_ELEMENTS):
+        body = {"user_id": student_id, "kind": "callout", "id": f"c{i}", "tone": "tip", "body": "Tip."}
+        assert client.post("/internal/hermes/elements", json=body, headers=headers).status_code == 200
+    overflow = {"user_id": student_id, "kind": "callout", "id": "overflow", "tone": "tip", "body": "One too many."}
+    assert client.post("/internal/hermes/elements", json=overflow, headers=headers).status_code == 422
+
+
+def test_parse_chat_output_recovers_a_bare_json_quiz_into_an_element():
+    import json as _json
+
+    from app.hermes import parse_chat_output
+    from app.schemas import ChatMessageUi
+
+    output = "Here's your quiz!\n```json\n" + _json.dumps({
+        "questions": [
+            {"type": "mcq", "question": "2+2?", "options": ["3", "4", "5"], "answer": "4", "explanation": "Arithmetic."},
+            {"type": "true_false", "question": "The sky is blue.", "answer": "true"},
+        ],
+    }) + "\n```"
+    visible, metadata_json = parse_chat_output(output)
+    assert metadata_json is not None
+    ui = ChatMessageUi.model_validate_json(metadata_json)
+    assert len(ui.elements) == 1 and ui.elements[0].kind == "quiz"
+    assert ui.elements[0].questions[0].answer == "4"
+    assert ui.elements[0].questions[1].answer == "True"
+    assert "```" not in visible
+
+
+def test_parse_chat_output_fences_other_json_as_code_instead_of_prose():
+    from app.hermes import parse_chat_output
+
+    output = '{"summary": "not a quiz", "count": 3}'
+    visible, metadata_json = parse_chat_output(output)
+    assert metadata_json is None
+    assert visible.startswith("```json") and visible.strip().endswith("```")
+    assert '"summary": "not a quiz"' in visible
+
+
+def test_live_progress_never_leaks_model_tokens_or_raw_preview_to_the_student(client: TestClient):
+    import json as _json
+
+    from app.hermes import LIVE_PROGRESS
+    from app.main import _live_progress
+    from app.models import AgentRun
+
+    student_id, thread_id = _student(client, "Watcher")
+    run_id = _running_run(thread_id, _say(thread_id, "How's it going?"))
+    LIVE_PROGRESS[run_id] = {
+        "phase": "tool", "tool": "waypoint_get_active_roadmap", "model": "nvidia/some-real-model",
+        "started_at": 0.0, "phase_since": 0.0, "tokens": 1234, "tps": 42.0,
+        "preview": "raw reasoning the student should never see", "steps": [{"tool": "x", "seconds": 1.0, "ok": True}],
+        "notice": "Switched to gemini-2.5-flash", "attempt": 2,
+    }
+    try:
+        with SessionLocal() as db:
+            sanitized = _live_progress(db.get(AgentRun, run_id))
+        assert sanitized["phase"] == "tool" and sanitized["tool"] == "waypoint_get_active_roadmap"
+        assert sanitized["steps"] == [{"tool": "x", "seconds": 1.0, "ok": True}]
+        assert sanitized["model"] is None and sanitized["tokens"] == 0 and sanitized["tps"] is None
+        assert sanitized["preview"] == "" and sanitized["notice"] is None
+        assert "real-model" not in _json.dumps(sanitized)
+    finally:
+        LIVE_PROGRESS.pop(run_id, None)
 
 
 def test_nim_falls_back_to_the_nearest_faster_model_first():

@@ -203,6 +203,24 @@ def hermes_command(root: Path = ROOT) -> list[str] | None:
                  if key not in {"HERMES_HOME", *PYTHON_VARS}}
     if _probe([shim, "--version"], clean_env):
         return [shim]
+    if os.name == "nt":
+        # uv's Windows trampoline can remain present while its baked CPython
+        # home is removed. Reuse its installed packages with a same-version
+        # managed interpreter; do not edit the global Hermes installation.
+        install = Path(shim).parent.parent / "hermes-agent"
+        venv = install / "venv"
+        config = venv / "pyvenv.cfg"
+        packages = venv / "Lib/site-packages"
+        if config.is_file() and packages.is_dir():
+            text = config.read_text(encoding="utf-8")
+            version = re.search(r"version_info\s*=\s*(\d+\.\d+)", text)
+            managed = os.getenv("UV_PYTHON_INSTALL_DIR")
+            if version and managed:
+                code = "import site,sys;site.addsitedir(" + repr(str(packages)) + ");sys.argv[0]='hermes';from hermes_cli.main import main;main()"
+                for interpreter in sorted(Path(managed).glob(f"cpython-{version[1]}*-windows-*/python.exe")):
+                    command = [str(interpreter), "-I", "-c", code]
+                    if _probe(command + ["--version"], clean_env):
+                        return command
     split = _split_shim_command(_follow_shim(Path(shim)))
     if split is None:
         return None

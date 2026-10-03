@@ -227,6 +227,30 @@ export interface WaypointProject {
 
 export type SourceKind = "transcript_pdf" | "cv_pdf" | "linkedin_pdf" | "linkedin_zip" | "github" | "folder" | "portfolio_url" | "orcid"
 
+export type BlackboardFailure = "bad_password" | "extra_verification" | "unreachable" | "needs_login" | "browser_missing" | "extract_failed" | "interrupted"
+
+export interface BlackboardSyncStatus {
+  connected: boolean
+  status: "idle" | "queued" | "logging_in" | "extracting" | "reading_files" | "saving" | "done" | "failed"
+  stage_detail: string
+  failure_reason: BlackboardFailure | null
+  username: string | null
+  has_saved_login: boolean
+  can_remember: boolean
+  last_synced_at: string | null
+  next_sync_at: string | null
+  summary: Partial<Record<"courses" | "current_courses" | "upcoming_deadlines" | "overdue" | "announcements" | "materials" | "files_read" | "grades" | "new_evidence", number>> & { partial?: boolean }
+}
+
+export interface BlackboardDeadline {
+  id: string
+  title: string
+  course: string
+  due_at: string
+  url: string
+  overdue: boolean
+}
+
 /** Readable name for a source kind in the active language. Sources created without a value of
  *  their own are stored with the kind as their label, so this is the fallback. */
 export function sourceKindLabel(kind: SourceKind): string {

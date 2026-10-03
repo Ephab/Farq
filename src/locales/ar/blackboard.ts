@@ -1,0 +1,51 @@
+import type { CatalogShape } from "@/lib/i18n/core"
+import type { blackboard as en } from "../en/blackboard"
+
+export const blackboard: CatalogShape<typeof en> = {
+  title: "Blackboard",
+  subtitle: "المقررات والمواعيد النهائية والإعلانات والملفات والدرجات من Blackboard الجامعة. للقراءة فقط.",
+  username: "اسم المستخدم في الجامعة",
+  password: "كلمة المرور",
+  remember: "تذكّر بيانات دخولي ليواصل Waypoint المزامنة",
+  rememberHint: "تُحفظ مشفّرة على هذا الجهاز فقط، ويمكنك حذفها في أي وقت.",
+  rememberUnavailable: "شغّل الإعداد مرة أخرى لتفعيل حفظ بيانات الدخول.",
+  sync: "زامن بيانات Blackboard",
+  syncNow: "زامن الآن",
+  signInAgain: "سجّل الدخول مجددًا",
+  forget: "احذف بيانات دخولي",
+  reviewNew: "راجع العناصر الجديدة",
+  stage: {
+    queued: "جارٍ البدء…",
+    logging_in: "جارٍ تسجيل الدخول إلى الجامعة…",
+    extracting: "جارٍ قراءة مقرراتك…",
+    reading_files: "جارٍ قراءة ملفات المقررات…",
+    saving: "جارٍ الحفظ…",
+  },
+  stats: {
+    current_courses: "مقررات حالية",
+    upcoming_deadlines: "مواعيد قادمة",
+    overdue: "متأخرة",
+    materials: "مواد",
+    files_read: "ملفات مقروءة",
+    new_evidence: "عناصر جديدة للمراجعة",
+  },
+  synced: "تمت المزامنة {when}",
+  partial: "بعض الأقسام لم تكن متاحة هذه المرة.",
+  nextSync: "المزامنة التلقائية التالية {when}",
+  failure: {
+    bad_password: "اسم المستخدم أو كلمة المرور غير صحيحة.",
+    extra_verification: "طلبت الجامعة خطوة إضافية. سجّل الدخول مرة في vle.iau.edu.sa ثم حاول مجددًا.",
+    unreachable: "تعذّر الوصول إلى Blackboard حاليًا. سيحاول Waypoint مجددًا قريبًا.",
+    needs_login: "انتهت جلسة Blackboard. سجّل الدخول مجددًا لمواصلة المزامنة.",
+    browser_missing: "متصفح المزامنة غير مثبّت. شغّل الإعداد مرة أخرى.",
+    extract_failed: "ردّ Blackboard بشكل غير متوقع. حاول لاحقًا.",
+    interrupted: "توقفت المزامنة الأخيرة. حاول مجددًا.",
+  },
+  deadlines: {
+    title: "مواعيد Blackboard",
+    empty: "لا توجد مواعيد قادمة في مقرراتك الحالية.",
+    overdue: "متأخر",
+    due: "الموعد {when}",
+    open: "افتح في Blackboard",
+  },
+}

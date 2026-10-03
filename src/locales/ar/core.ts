@@ -15,6 +15,7 @@ export const core: CatalogShape<typeof en> = {
     user: "مستخدم",
     networkError: "تعذّر الاتصال بـ Waypoint. تحقّق من اتصالك وحاول مرة أخرى.",
     sourceKinds: {
+      blackboard: "Blackboard",
       transcript_pdf: "السجل الأكاديمي",
       cv_pdf: "السيرة الذاتية",
       linkedin_pdf: "ملف LinkedIn الشخصي",

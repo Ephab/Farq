@@ -13,6 +13,7 @@ export const core = {
     user: "User",
     networkError: "Can't reach Waypoint. Check your connection and try again.",
     sourceKinds: {
+      blackboard: "Blackboard",
       transcript_pdf: "Transcript",
       cv_pdf: "CV",
       linkedin_pdf: "LinkedIn profile",

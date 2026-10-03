@@ -59,7 +59,7 @@ export const agent = {
     allow: "Allow Hermes to use {name}",
     names: { blackboard: "Course materials", hackathons: "Hackathons", coop: "Co-op postings", outlook: "Outlook mail" },
     descriptions: {
-      blackboard: "Your Blackboard courses, announcements and files (demo snapshot).",
+      blackboard: "Your Blackboard courses, deadlines, announcements and files.",
       hackathons: "Saudi hackathons and competitions from Hackathonat.",
       coop: "Co-op companies and current postings.",
       outlook: "Your synced mail cache, read only when Coach access is on for this session.",

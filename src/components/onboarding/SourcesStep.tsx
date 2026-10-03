@@ -1,6 +1,7 @@
 "use client"
 
 import { OutlookView } from "@/components/outlook/OutlookView"
+import { BlackboardSyncCard } from "@/components/onboarding/BlackboardSyncCard"
 
 import { useCallback, useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
@@ -125,6 +126,8 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span><strong className="font-semibold text-foreground">{t("onboarding.sources.nextTitle")}.</strong> {t("onboarding.sources.nextBody")}</span>
         </p>
+
+        <BlackboardSyncCard onReview={onNext} />
 
         <details className="mt-6 rounded-2xl border border-border p-4">
           <summary className="cursor-pointer text-sm font-semibold">{t("onboarding.sources.outlook")}</summary>

@@ -31,6 +31,7 @@ import { parseServerTime } from "@/lib/server-time"
 import { EASE_OUT, SPRING_MOUSE } from "@/lib/ease"
 import { cn } from "@/lib/utils"
 import { OutlookView } from "@/components/outlook/OutlookView"
+import { BlackboardDeadlines } from "@/components/dashboard/BlackboardDeadlines"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
 
 type Translate = ReturnType<typeof useI18n>["t"]
@@ -1009,6 +1010,10 @@ export function TodayView({ onNavigate }: TodayViewProps) {
             </Reveal>
           </div>
         </div>
+
+        <Reveal delay={0.12} className="mt-5">
+          <BlackboardDeadlines />
+        </Reveal>
 
         {/* What moved: simple feed, newest first. */}
         <Reveal delay={0.15} className="mt-5">

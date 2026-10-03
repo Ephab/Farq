@@ -126,3 +126,33 @@ def test_saved_session_skips_login_and_missing_password_needs_login(portal):
     with pytest.raises(browser.LoginFailure) as caught:
         _run(_make(origin, bundle), None, state=None)
     assert caught.value.code == "needs_login"
+
+
+def test_extractor_load_error_is_extract_failure(portal):
+    origin, bundle = portal
+    (bundle / "extractor.js").write_text('throw new Error("boom");', encoding="utf-8")
+    with pytest.raises(browser.ExtractFailure):
+        _run(_make(origin, bundle), PASSWORD)
+
+
+def test_extractor_rejection_is_extract_failure(portal):
+    origin, bundle = portal
+    (bundle / "extractor.js").write_text(
+        "window.BBExtractor = { extractAll: async () => { throw new Error('nope'); } };", encoding="utf-8")
+    with pytest.raises(browser.ExtractFailure):
+        _run(_make(origin, bundle), PASSWORD)
+
+
+def test_missing_bundle_file_is_extract_failure(portal):
+    origin, bundle = portal
+    (bundle / "extractor.js").unlink()
+    with pytest.raises(browser.ExtractFailure):
+        _run(_make(origin, bundle), PASSWORD)
+
+
+def test_other_origin_attachment_is_not_fetched(portal):
+    origin, bundle = portal
+    picks = [Attachment("k1", "_1", "_c", "x.txt", "http://127.0.0.1:1/x", 10),
+             Attachment("k2", "_1", "_c", "syllabus.txt", f"{origin}/files/syllabus.txt", 100)]
+    result, _ = _run(_make(origin, bundle), PASSWORD, picks=picks)
+    assert "k1" not in result.files and "k2" in result.files

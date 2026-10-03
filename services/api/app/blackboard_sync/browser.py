@@ -84,11 +84,15 @@ class PlaywrightBrowser:
         self.login_wait_ms = login_wait_ms
 
     def run(self, *, username, password, session_state, pick_attachments, progress) -> BrowserResult:
+        """Must be called from a worker thread, not the asyncio event-loop thread (Playwright sync API)."""
         try:
             from playwright.sync_api import Error as PlaywrightError, sync_playwright
         except ImportError as exc:
             raise LoginFailure("browser_missing") from exc
-        bundle = [(self.bundle_dir / name).read_text(encoding="utf-8") for name in EXTRACTOR_FILES]
+        try:
+            bundle = [(self.bundle_dir / name).read_text(encoding="utf-8") for name in EXTRACTOR_FILES]
+        except OSError:
+            raise ExtractFailure("extract failed") from None
         with sync_playwright() as pw:
             try:
                 chromium = pw.chromium.launch(headless=self.headless)
@@ -109,16 +113,21 @@ class PlaywrightBrowser:
                     if not self._signed_in(context):
                         raise LoginFailure("extra_verification")
                 progress("extracting", "")
-                for source in bundle:
-                    # Shadow `module` so the files register browser globals even if the page defines one.
-                    page.evaluate(f"() => {{ const module = undefined; {source}\n}}")
-                outcome = page.evaluate(EXTRACT_SCRIPT, {"origin": self.origin, "timeoutMs": EXTRACT_TIMEOUT_MS})
+                try:
+                    for source in bundle:
+                        # Shadow `module` so the files register browser globals even if the page defines one.
+                        page.evaluate(f"() => {{ const module = undefined; {source}\n}}")
+                    outcome = page.evaluate(EXTRACT_SCRIPT, {"origin": self.origin, "timeoutMs": EXTRACT_TIMEOUT_MS})
+                except PlaywrightError:
+                    raise ExtractFailure("extract failed") from None
                 if not outcome.get("ok"):
                     raise ExtractFailure(outcome.get("error") or "extract failed")
                 export = outcome["data"]
                 progress("reading_files", "")
                 downloaded: dict[str, tuple[str, bytes]] = {}
                 for attachment in pick_attachments(export):
+                    if not attachment.url.startswith(f"{self.origin}/"):
+                        continue  # URLs come from the page world; never fetch another origin.
                     try:
                         response = context.request.get(attachment.url, timeout=60_000)
                     except PlaywrightError:
@@ -128,10 +137,13 @@ class PlaywrightBrowser:
                         if len(body) <= MAX_FILE_BYTES:
                             downloaded[attachment.key] = (attachment.name, body)
                 return BrowserResult(export=export, session_state=context.storage_state(), files=downloaded)
-            except PlaywrightError as exc:
-                raise LoginFailure("unreachable") from exc
+            except PlaywrightError:
+                raise LoginFailure("unreachable") from None
             finally:
-                chromium.close()
+                try:
+                    chromium.close()
+                except Exception:
+                    pass
 
     def _signed_in(self, context) -> bool:
         response = context.request.get(f"{self.origin}/learn/api/v1/users/me",

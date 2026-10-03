@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .blackboard import router as blackboard_router, seed_demo_snapshot
 from .blackboard_sync.routes import router as blackboard_sync_router
+from .blackboard_sync import catalog as blackboard_catalog  # registers owner-facing inventory routes
 from .blackboard_sync.worker import reset_interrupted as reset_blackboard_syncs, sync_loop as blackboard_sync_loop
 from .connections import router as connections_router
 from .coop import router as coop_router, seed_coop_catalog

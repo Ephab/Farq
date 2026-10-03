@@ -146,9 +146,12 @@ class PlaywrightBrowser:
                     if not password:
                         raise LoginFailure("needs_login")
                     submitted = self._login(page, username, password)
-                    if not self._signed_in(context):
-                        raise self._extra_step(page)
                     verified = submitted
+                # Blackboard can reach Ultra before acknowledging its single-session notice.
+                # It is a known acknowledgement, not an MFA or consent challenge.
+                self._dismiss_session_notice(page)
+                if not self._signed_in(context):
+                    raise self._extra_step(page)
                 progress("extracting", "")
                 try:
                     for source in bundle:
@@ -197,6 +200,23 @@ class PlaywrightBrowser:
             pass
         return LoginFailure("extra_verification", detail, shot)
 
+    def _dismiss_session_notice(self, page) -> bool:
+        """Acknowledge only IAU's exact 'Additional device logged out' notice."""
+        from playwright.sync_api import TimeoutError as PlaywrightTimeout
+        if urlsplit(page.url).netloc != urlsplit(self.origin).netloc:
+            return False
+        heading = page.get_by_text("Additional device logged out", exact=True)
+        try:
+            heading.wait_for(state="visible", timeout=min(self.login_wait_ms, 5_000))
+            notice = heading.locator("xpath=ancestor::*[.//button[normalize-space(.)='Continue']][1]")
+            if not notice.count() or "You are permitted to only have 1 active session" not in notice.inner_text():
+                return False
+            notice.get_by_role("button", name="Continue", exact=True).click()
+            heading.wait_for(state="hidden", timeout=5_000)
+            return True
+        except PlaywrightTimeout:
+            return False
+
     def _allowed_final_url(self, url: str) -> bool:
         """Redirects are followed; keep the body only if the last hop is the Blackboard origin or https."""
         return url.startswith(f"{self.origin}/") or url.startswith("https://")
@@ -213,9 +233,15 @@ class PlaywrightBrowser:
         if page.url.startswith(f"{self.origin}/ultra"):
             return False
         try:
-            page.wait_for_selector(SELECTORS["username"], timeout=self.login_wait_ms)
+            # AD FS cookies may redirect asynchronously to Ultra after DOMContentLoaded.
+            # Wait for either outcome rather than misreporting a missing login form.
+            page.wait_for_function("({selector, origin}) => !!document.querySelector(selector) || location.href.startsWith(origin + '/ultra')",
+                                   arg={"selector": SELECTORS["username"], "origin": self.origin},
+                                   timeout=self.login_wait_ms)
         except PlaywrightTimeout:
             raise self._extra_step(page) from None
+        if page.url.startswith(f"{self.origin}/ultra"):
+            return False
         page.fill(SELECTORS["username"], username)
         page.fill(SELECTORS["password"], password)
         page.click(SELECTORS["submit"])

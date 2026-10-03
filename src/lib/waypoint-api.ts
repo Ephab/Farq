@@ -242,7 +242,7 @@ export interface BlackboardSyncStatus {
   can_remember: boolean
   last_synced_at: string | null
   next_sync_at: string | null
-  summary: Partial<Record<"courses" | "current_courses" | "upcoming_deadlines" | "overdue" | "announcements" | "materials" | "files_read" | "grades" | "new_evidence", number>> & { partial?: boolean }
+  summary: Partial<Record<"courses" | "current_courses" | "upcoming_deadlines" | "overdue" | "announcements" | "materials" | "files" | "files_read" | "grades" | "new_evidence", number>> & { partial?: boolean }
 }
 
 export interface BlackboardDeadline {

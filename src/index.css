@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+.bb-floating-toolbar[data-floating="true"] {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 /* `dark:` follows the chosen Waypoint theme, not the operating system: a dark OS with the White
    theme must not get light-on-white text, and the reverse. Keep in sync with dark themes in lib/themes.ts. */
 @custom-variant dark (&:where([data-theme="vercel-dark"], [data-theme="vercel-dark"] *, [data-theme="nocturne"], [data-theme="nocturne"] *, [data-theme="catppuccin-mocha"], [data-theme="catppuccin-mocha"] *, [data-theme="tokyo-night"], [data-theme="tokyo-night"] *, [data-theme="velvet"], [data-theme="velvet"] *, [data-theme="dracula"], [data-theme="dracula"] *, [data-theme="deep-ocean"], [data-theme="deep-ocean"] *));

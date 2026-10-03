@@ -125,7 +125,7 @@
       try {
         const value = await fn();
         const count = Array.isArray(value) ? value.length : (value && value.count != null ? value.count : 1);
-        recordSource(source, endpoint, "ok", count, Date.now() - t0);
+        recordSource(source, endpoint, value && value.truncated ? "partial" : "ok", count, Date.now() - t0);
         return value;
       } catch (e) {
         const status = e && e.status === 403 ? "forbidden" : (e && e.status ? `http_${e.status}` : "failed");
@@ -187,7 +187,12 @@
       const c = m.course || {};
       const cid = c.id || m.courseId;
       if (!cid || courseById.has(cid)) continue;
-      const current = M.isCurrentCourse(c, m, termsById);
+      const termId = c.termId || c.term_id || (c.term && c.term.id) || (m.term && m.term.id);
+      if (termId && !termsById.has(termId) && c.term) {
+        const d = (c.term.availability && c.term.availability.duration) || c.term.duration || {};
+        termsById.set(termId, { name: c.term.name || null, start: d.start, end: d.end });
+      }
+      const current = M.isCurrentCourse({ ...c, termId }, m, termsById);
       const entry = {
         id: cid,
         course_id: cid,
@@ -199,8 +204,11 @@
         enrollment_date: m.enrollmentDate || null,
         enrollment: m.enrollmentDate || null,
         role: m.courseRoleId || m.role || null,
-        term_id: c.termId || c.term_id || null,
-        term_name: (termsById.get(c.termId || c.term_id) || {}).name || null,
+        term_id: termId || null,
+        term_name: (termsById.get(termId) || {}).name || null,
+        term_start: U.normalizeTimestamp((termsById.get(termId) || {}).start),
+        term_end: U.normalizeTimestamp((termsById.get(termId) || {}).end),
+        course_status: current.status,
         final_grade: null,
         created: U.normalizeTimestamp(c.created),
         modified: U.normalizeTimestamp(c.modified),
@@ -222,7 +230,7 @@
         for (const c of data) {
           const cid = c.courseId || c.id;
           if (!cid || courseById.has(cid)) continue;
-          const e = { id: cid, course_id: cid, courseId: c.courseId || null, code: c.courseId || null, name: c.displayName || c.name || cid, availability: null, enrollment_date: null, role: null, term_id: null, term_name: null, final_grade: null, created: null, modified: null, is_current: true, current_reasons: ["fallback-listing"], url: courseUrl(origin, cid) };
+          const e = { id: cid, course_id: cid, courseId: c.courseId || null, code: c.courseId || null, name: c.displayName || c.name || cid, availability: null, enrollment_date: null, role: null, term_id: null, term_name: null, final_grade: null, created: null, modified: null, is_current: false, course_status: "unknown", current_reasons: ["fallback-listing"], url: courseUrl(origin, cid) };
           courseById.set(cid, e);
           courses.push(e);
         }
@@ -320,6 +328,7 @@
             },
             url: contentUrl(origin, cid, item.id),
             attachments: [],
+            file: (item.contentHandler && item.contentHandler.file) || null,
             external_link: (item.contentHandler && item.contentHandler.url) || item.externalLink || null
           };
           contentIndex.set(item.id, rec);
@@ -329,6 +338,7 @@
           if (isFolder) {
             try {
               const kids = await U.pagedGet(origin, `${base}/${encodeURIComponent(item.id)}/children`, { limit: 100, maxPages: 5, timeoutMs, retries });
+              if (kids.truncated) childErrors++;
               for (const k of kids) queue.push({ item: k, parentId: item.id, path: [...path, k.title || "(untitled)"] });
             } catch { childErrors++; /* keep what we have */ }
           }
@@ -344,10 +354,11 @@
       // 3b'. attachment metadata (documented); bytes are never fetched here.
       const attT0 = Date.now();
       let attListingErrors = 0;
-      await U.limitedMap(attachmentJobs.slice(0, 80), 2, async (rec) => {
+      await U.limitedMap(attachmentJobs, 2, async (rec) => {
         const listPath = `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/contents/${encodeURIComponent(rec.content_id)}/attachments`;
         try {
-          const res = await U.getJson(origin, listPath, { timeoutMs, retries: 1 });
+          const res = { results: await U.pagedGet(origin, listPath, { limit: 100, maxPages: 20, timeoutMs, retries: 1 }) };
+          if (res.results.truncated) attListingErrors++;
           sample("attachments", (res.results || [])[0]);
           rec.attachments = (res.results || []).filter((a) => a && a.id).map((a) => ({
             id: a.id || null,
@@ -360,11 +371,45 @@
           if (!(e && e.status === 404)) attListingErrors++; // 404 = no attachments, normal
         }
       }, true);
-      if (attachmentJobs.length) {
-        const attCount = attachmentJobs.reduce((n, r) => n + r.attachments.length, 0);
-        recordSource(`attachments:${cid}`, "GET public attachments", attListingErrors ? "partial" : "ok", attCount, Date.now() - attT0);
-        Object.assign(sources[sources.length - 1], { truncated: attachmentJobs.length > 80, listing_errors: attListingErrors });
+
+      // Some Original/Ultra materials expose files as links rather than attachment rows.
+      // Only use observed same-origin file URLs; never guess storage paths or follow LTI links.
+      for (const rec of per.content) {
+        const candidates = [];
+        const file = rec.file || {};
+        if (file.url || file.downloadUrl) candidates.push([file.url || file.downloadUrl, file.fileName || rec.title]);
+        const html = rec.body_html || "";
+        // Ultra embeds files in data-bbfile JSON. Their opaque WebDAV URLs have no
+        // extension; the filename lives in this metadata, not in the anchor text.
+        for (const match of html.matchAll(/data-bbfile\s*=\s*(["'])(.*?)\1/gi)) {
+          try {
+            const decoded = match[2].replace(/&quot;|&#34;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+              .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&");
+            const embeddedFile = JSON.parse(decoded);
+            if (typeof embeddedFile.resourceUrl === "string") {
+              candidates.push([embeddedFile.resourceUrl, embeddedFile.linkName || embeddedFile.displayName,
+                embeddedFile.mimeType]);
+            }
+          } catch { /* malformed embedded metadata is untrusted */ }
+        }
+        for (const match of html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) candidates.push([match[1], null]);
+        for (const [rawUrl, label, mime] of candidates) {
+          try {
+            const url = new URL(rawUrl.replace(/&amp;/g, "&"), origin);
+            if (url.origin !== origin || !(/\.(pdf|pptx?|docx|txt|md)(?:$|\/)/i.test(url.pathname)
+              || /\.(pdf|pptx?|docx|txt|md)$/i.test(label || ""))) continue;
+            if (rec.attachments.some((a) => a.download_url === url.href)) continue;
+            const name = label || decodeURIComponent(url.pathname.split("/").pop()) || rec.title;
+            rec.attachments.push({ id: `link:${url.pathname}`, name, mime: mime || file.mimeType || null,
+              size: null, download_url: url.href });
+          } catch { /* malformed course link */ }
+        }
+        delete rec.file;
       }
+      const attCount = per.content.reduce((n, r) => n + r.attachments.length, 0);
+      recordSource(`attachments:${cid}`, "GET public attachments + observed file links",
+        (!tops || tops.truncated || childErrors || attListingErrors) ? "partial" : "ok", attCount, Date.now() - attT0);
+      Object.assign(sources[sources.length - 1], { truncated: false, listing_errors: attListingErrors });
 
       // 3c. announcements (proven endpoint, kept) — fixed rich-text extraction.
       try {

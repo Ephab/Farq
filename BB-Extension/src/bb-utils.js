@@ -181,15 +181,21 @@
     const maxPages = opts.maxPages || 10;
     const out = [];
     let offset = 0;
+    let nextPath = null;
     for (let page = 0; page < maxPages; page++) {
       const sep = pathTemplate.includes("?") ? "&" : "?";
-      const path = `${pathTemplate}${sep}limit=${limit}&offset=${offset}`;
+      const path = nextPath || `${pathTemplate}${sep}limit=${limit}&offset=${offset}`;
       const data = await getJson(origin, path, opts);
       const results = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
       out.push(...results);
       if (!data.paging || !data.paging.nextPage) break;
-      offset += limit;
-      if (results.length < limit) break;
+      offset += results.length || limit;
+      if (typeof data.paging.nextPage === "string") {
+        const nextUrl = new URL(data.paging.nextPage, origin + path);
+        if (nextUrl.origin !== new URL(origin).origin) throw new Error("Refusing off-origin pagination");
+        nextPath = nextUrl.pathname + nextUrl.search;
+      }
+      if (page === maxPages - 1) Object.defineProperty(out, "truncated", { value: true });
     }
     return out;
   }

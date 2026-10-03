@@ -57,7 +57,7 @@ def status(request: Request, response: Response, db: Db):
             "provider": "desktop" if connection.tenant == desktop.TENANT else "token",
             "worker_enabled": os.getenv("OUTLOOK_SYNC_ENABLED", "false").lower() == "true",
             "coach_access": db.get(MailSession, auth.digest(request.cookies[auth.COOKIE])).coach_access,
-            "classifier": connection.classifier, "classifiers": decision_engines.engines_status(),
+            "classifier": "auto", "classifier_order": list(decision_engines.CHAIN),
             "classify_limit": connection.classify_limit,
             "pending": db.scalar(select(func.count()).select_from(MailItem).where(MailItem.connection_id == connection.id, MailItem.pending.is_(True), MailItem.removed.is_(False))),
             "auto_sync": connection.auto_sync, "status": connection.status,
@@ -165,12 +165,7 @@ class Classifier(BaseModel):
 def classifier(body: Classifier, request: Request, user: CurrentUser, db: Db):
     auth.require_origin(request)
     connection = connection_for(user, db)
-    # Laya is always selectable: choosing it withdraws cloud consent even when Laya isn't installed yet.
-    if body.engine != "laya" and not decision_engines.INFO[body.engine]().available:
-        raise HTTPException(409, "That classifier isn't set up on this server.")
-    connection.classifier = body.engine
-    db.commit()
-    return {"classifier": connection.classifier}
+    raise HTTPException(410, "Email classification is automatic: Jev, then Span, then Laya.")
 
 
 CLASSIFY_LIMITS = {25, 50, 100, 250, 500, 1000}
@@ -225,8 +220,8 @@ def disconnect(request: Request, response: Response, user: CurrentUser, db: Db):
     connection.token_cache, connection.lease_id, connection.status = "", "", "disconnected"
     connection.folder_scan_url, connection.folders_json = "", "[]"
     connection.label = ""
-    connection.classifier = "laya"
-    connection.classify_limit = None
+    connection.classifier = "auto"
+    connection.classify_limit = 50
     db.execute(delete(MailItem).where(MailItem.connection_id == connection.id))
     db.execute(delete(MailFolder).where(MailFolder.connection_id == connection.id))
     db.execute(delete(MailCoachGrant).where(MailCoachGrant.connection_id == connection.id))

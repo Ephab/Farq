@@ -19,6 +19,7 @@ import { DeckPreview } from "./DeckPreview";
 import type { ViewerSlide } from "@/lib/deck-viewer";
 import type { DeckVisualStatus } from "./SlidesView";
 import { cn } from "@/lib/utils";
+import { BlackboardFiles } from "./BlackboardFiles";
 
 // Shape lock for the Slides tab (preserve mode, matches app tokens):
 // cards rounded-2xl (16px), controls/inputs rounded-xl (12px),
@@ -201,6 +202,8 @@ export function SlidesHome(props: SlidesHomeProps) {
           <span className="max-w-40 truncate text-[13px] font-medium sm:max-w-56" title={modelLabel}>{modelLabel}</span>
         </div>
       </div>
+
+      <div className="mx-auto mt-6 w-full max-w-7xl"><BlackboardFiles onUse={onUpload} /></div>
 
       <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col gap-2 sm:flex-row">
         <button

@@ -5,7 +5,7 @@ import { BlackboardSyncCard } from "@/components/onboarding/BlackboardSyncCard"
 
 import { useCallback, useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
-import { AlertCircle, ArrowRight, BookOpen, Briefcase, CheckCircle2, FileText, FolderSearch, Globe, GraduationCap, Info, Link2, LoaderCircle, RotateCcw, Trash2, UserRound, type LucideIcon } from "lucide-react"
+import { AlertCircle, ArrowRight, BookOpen, Briefcase, CheckCircle2, ChevronDown, FileText, FolderSearch, Globe, GraduationCap, Info, Link2, LoaderCircle, Mail, RotateCcw, Trash2, UserRound, type LucideIcon } from "lucide-react"
 import { api, uploadSourceFile, type DataSourceItem, type Discipline, type EvidenceItem, type SourceKind, type StudentProfile, sourceKindLabel } from "@/lib/waypoint-api"
 import { EASE_OUT } from "@/lib/ease"
 import { cn } from "@/lib/utils"
@@ -45,6 +45,8 @@ interface SourcesStepProps {
   onNext: () => void
   title?: string
   backLabel?: string
+  organizeRecords?: boolean
+  onOpenEmails?: () => void
 }
 
 type KindStatus = "ready" | "reading" | "failed" | "idle"
@@ -56,7 +58,7 @@ function kindStatus(items: DataSourceItem[]): KindStatus {
   return "idle"
 }
 
-export function SourcesStep({ profile, onBack, onNext, title, backLabel }: SourcesStepProps) {
+export function SourcesStep({ profile, onBack, onNext, title, backLabel, organizeRecords = false, onOpenEmails }: SourcesStepProps) {
   const { t, fmt } = useI18n()
   const [discipline, setDiscipline] = useState<Discipline | null>(null)
   const [sources, setSources] = useState<DataSourceItem[]>([])
@@ -104,12 +106,12 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
         initial={reduce ? false : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: EASE_OUT }}
-        className="w-full px-4 py-6 sm:px-6"
+        className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6"
       >
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{title ?? t("onboarding.sources.title")}</h1>
-            <p className="mt-2 max-w-[62ch] text-[15px] text-muted-foreground">{t("onboarding.sources.subtitle")}</p>
+            <p className="mt-2 max-w-[62ch] text-[15px] text-muted-foreground">{t(organizeRecords ? "onboarding.myData.sourcesSubtitle" : "onboarding.sources.subtitle")}</p>
           </div>
           <motion.button
             type="button"
@@ -127,12 +129,35 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
           <span><strong className="font-semibold text-foreground">{t("onboarding.sources.nextTitle")}.</strong> {t("onboarding.sources.nextBody")}</span>
         </p>
 
+        {organizeRecords ? <section aria-labelledby="synced-records-title" className="mt-7">
+          <h2 id="synced-records-title" className="text-xl font-semibold tracking-tight">{t("onboarding.myData.syncedRecords")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("onboarding.myData.syncedRecordsHint")}</p>
+          <div className="mt-4 grid items-start gap-3 lg:grid-cols-2">
+            <details className="group rounded-2xl border border-border bg-card shadow-sm open:col-span-full">
+              <summary className="flex cursor-pointer list-none items-center gap-3 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><GraduationCap className="size-5" /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{t("blackboard.title")}</span><span className="mt-1 block text-xs text-muted-foreground">{t("onboarding.myData.blackboardRecordsHint")}</span></span>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="border-t border-border"><BlackboardSyncCard embedded onReview={onNext} /></div>
+            </details>
+            <details className="group rounded-2xl border border-border bg-card shadow-sm open:col-span-full">
+              <summary className="flex cursor-pointer list-none items-center gap-3 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Mail className="size-5" /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{t("emails.title")}</span><span className="mt-1 block text-xs text-muted-foreground">{t("onboarding.myData.emailRecordsHint")}</span></span>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="border-t border-border"><OutlookView connectionOnly onOpen={onOpenEmails} /></div>
+            </details>
+          </div>
+        </section> : <>
         <BlackboardSyncCard onReview={onNext} />
-
         <details className="mt-6 rounded-2xl border border-border p-4">
           <summary className="cursor-pointer text-sm font-semibold">{t("onboarding.sources.outlook")}</summary>
           <OutlookView />
         </details>
+        </>}
+        {organizeRecords && <div className="mt-8"><h2 className="text-xl font-semibold tracking-tight">{t("onboarding.myData.importedRecords")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("onboarding.myData.importedRecordsHint")}</p></div>}
         <div className="mt-7 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px] lg:grid-cols-[minmax(0,1fr)_340px]">
           <section className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
             {featuredKind ? (
@@ -169,7 +194,7 @@ export function SourcesStep({ profile, onBack, onNext, title, backLabel }: Sourc
                     transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.25), ease: EASE_OUT }}
                     className="rounded-2xl border border-border bg-background p-3 shadow-sm"
                   >
-                    <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3">
+                    <div className="grid grid-cols-[40px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[40px_minmax(0,1fr)_auto]">
                       <span className="grid size-10 place-items-center rounded-[13px] bg-muted text-foreground"><Icon className="size-4" /></span>
                       <span className="min-w-0">
                         <span className="flex flex-wrap items-center gap-2">
@@ -369,7 +394,7 @@ function SourceAction({ kind, studentId, active, onChange, featured = false, com
 
   if (meta.input === "file") {
     return (
-      <div className={cn(featured && "justify-self-start sm:justify-self-end")}>
+      <div className={cn(featured && "justify-self-start sm:justify-self-end", compact && "col-span-2 sm:col-span-1")}>
         <label className={cn("inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full px-5 text-sm font-semibold shadow-sm outline-none transition focus-within:ring-2 focus-within:ring-ring", featured ? "bg-primary text-primary-foreground hover:opacity-90" : "border border-border bg-card hover:bg-muted", working && "pointer-events-none opacity-40")}>
           {working ? t("onboarding.sources.readingEllipsis") : active.length ? t("onboarding.sources.chooseAnother") : featured ? t("onboarding.sources.choosePdf") : t("onboarding.sources.choose")}
           <input type="file" accept={meta.accept} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void run(file) }} />
@@ -381,9 +406,9 @@ function SourceAction({ kind, studentId, active, onChange, featured = false, com
 
   if (compact) {
     return (
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <div className="flex items-center gap-2">
-          <input value={value} onChange={(event) => setValue(event.target.value)} dir={inputDir} placeholder={placeholder} title={placeholder} aria-label={sourceKindLabel(kind)} onKeyDown={(event) => { if (event.key === "Enter" && value.trim() && !working) void run() }} className="h-9 w-40 rounded-xl border border-border bg-background px-3 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:w-48" />
+          <input value={value} onChange={(event) => setValue(event.target.value)} dir={inputDir} placeholder={placeholder} title={placeholder} aria-label={sourceKindLabel(kind)} onKeyDown={(event) => { if (event.key === "Enter" && value.trim() && !working) void run() }} className="h-9 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:w-48" />
           <button type="button" disabled={!value.trim() || working} onClick={() => void run()} className="inline-flex h-9 shrink-0 items-center rounded-full border border-border bg-card px-3.5 text-xs font-semibold outline-none transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">{working ? "…" : t("onboarding.sources.add")}</button>
         </div>
         {error ? <p className="mt-1.5 text-xs text-destructive">{error}</p> : null}

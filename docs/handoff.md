@@ -70,6 +70,41 @@ on every restart.
 
 ## Blackboard live sync (2026-10-03)
 
+- Session notice / missing lectures follow-up: sync acknowledges only the exact IAU
+  "Additional device logged out" Continue dialog, then checks the authenticated API. AD FS silent
+  redirects are handled while waiting for the login form; they never verify a typed password.
+  The extractor reads Ultra `data-bbfile` metadata for embedded files with opaque WebDAV URLs.
+  A live metadata-only sync succeeded and recovered NLP lectures 1–4 alongside 5–6, plus Ethics
+  lecture 1 and its updated version alongside 3–4. Originals remain remote until opened.
+  Newly catalogued NLP lecture 1 and updated Ethics lecture 1 both downloaded successfully
+  into memory with verified PDF signatures (2,140,195 and 1,043,322 bytes); nothing saved to disk.
+  Slides has subject folders and lecture/assignment/course-information/other-document filters,
+  plus term, format and search. Classification uses filenames and Blackboard paths.
+  Placeholder `ultraDocumentBody` titles display the filename in cards and collected records.
+  "Load previews on screen" snapshots the visible cards and loads PDF/PPTX first-slide covers
+  sequentially into memory; scrolling never triggers downloads. Stop, navigation and filter
+  changes cancel the batch. Desktop English and mobile Arabic browser checks verify viewport
+  scope, rendered covers and placeholder replacement.
+- Collection follow-up: My Data > Blackboard > View collected data exposes every stored course,
+  materials/announcements/assessments, grades, remote files, calendar events, diagnostics and a
+  redacted full export. The card now distinguishes **all courses** from current courses (the
+  student's observed 16 was the current count; their last sync listed 62 total).
+  Slides lists remote PDF/PPT/PPTX files by course and term with covers, in-memory previews on open,
+  optional workbench import and explicit Save to device. The catalog needs a new sync: older runs
+  discarded attachment metadata. Originals are not cached on disk. Owner-only, connector-gated
+  downloads use the saved session and enforce HTTPS redirects to IAU or its exact verified
+  file tenant (`alt-685da65a9aa3e.blackboard.com`), plus the 15 MB limit. The tenant receives a
+  separate request context with no IAU login cookies. A real-account PDF download (830,308 bytes,
+  verified PDF signature) and PPTX download (8,671,187 bytes, verified presentation archive)
+  succeeded through the IAU → storage redirect without storing the files.
+- Term IDs, names, dates and classification reasons are retained. Term dates override availability,
+  enrollment and year hints; statuses are current/past/upcoming/completed/unknown. A gradebook total
+  no longer proves completion. Missing dates are unknown. Attachment discovery no longer stops at
+  80 content items, follows attachment pagination, and catalogs observed same-origin document links.
+  Pagination caps are marked partial; filtered/failed course listings cannot delete past courses.
+  Backend/extension and browser fixture checks cover these flows; live sync and representative
+  ordinary and embedded-file downloads have also been verified.
+
 - Shipped: one extractor (`BB-Extension/src`) shared by the extension and the app; headless-Chromium AD FS
   sign-in, sealed credentials, 6 h periodic sync with lockout-safe retries, redacted attachment text,
   `blackboard_live` ingest (demo rows replaced), Hermes course tools with live standing/instructors/due-ordered

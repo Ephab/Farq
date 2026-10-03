@@ -2,7 +2,7 @@ import { TokenConnection } from "./TokenConnection"
 import { MailboxRail } from "./MailboxRail"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import { Mail, Search, ShieldCheck, X } from "lucide-react"
+import { ArrowRight, CheckCircle2, Mail, Search, ShieldCheck, X } from "lucide-react"
 
 import { localDay, outlookApi, type MailItem, type OutlookStatus } from "@/lib/outlook-api"
 import { useI18n } from "@/lib/i18n/context"
@@ -17,7 +17,7 @@ const views = ["important", "today", "review", "followup", "all", "dismissed"] a
 type View = typeof views[number]
 
 
-export function OutlookView({ compact = false, onOpen }: { compact?: boolean; onOpen?: () => void }) {
+export function OutlookView({ compact = false, connectionOnly = false, onOpen }: { compact?: boolean; connectionOnly?: boolean; onOpen?: () => void }) {
   const { t, fmt } = useI18n()
 
   const [status, setStatus] = useState<OutlookStatus | null>(null)
@@ -87,6 +87,7 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
       setStatus(next)
 
       if (!next.connected) { setItems([]); setTotal(0); return }
+      if (connectionOnly) return
 
       const page = await outlookApi<{ items: MailItem[]; total: number }>(`/messages?view=${view}&day=${localDay()}&timezone_offset=${new Date().getTimezoneOffset()}&offset=${offset}&limit=${pageSize}&preview=true&q=${encodeURIComponent(filters.q)}&category=${filters.category}&sort=${filters.sort}`)
 
@@ -106,7 +107,7 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
     }
 
-  }, [view, offset, pageSize, filters])
+  }, [view, offset, pageSize, filters, connectionOnly])
 
   useEffect(() => {
 
@@ -144,6 +145,16 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
 
   }
 
+  if (connectionOnly && status?.connected) return <section aria-label={t("emails.regionLabel")} className="p-4 sm:p-5">
+    <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" aria-hidden="true" /><div>
+      <h3 className="text-sm font-semibold">{t("emails.connectionSummary.connected")}</h3>
+      {status.account && <p className="mt-1 break-all text-sm text-muted-foreground" dir="auto">{status.account}</p>}
+      <p className="mt-1 text-sm text-muted-foreground">{t("emails.connectionSummary.hint")}</p>
+    </div></div>
+    {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+    {onOpen && <button type="button" className={`${button} mt-4`} onClick={onOpen}>{t("emails.connectionSummary.open")}<ArrowRight className="size-4 rtl:-scale-x-100" /></button>}
+  </section>
+
   if (compact && onOpen) return <section aria-label={t("emails.compact.title")} className="rounded-3xl border border-border bg-background p-5 shadow-sm">
     <div className="flex items-center gap-3"><Mail className="size-5 shrink-0 text-muted-foreground" /><h2 className="text-base font-semibold">{t("emails.compact.title")}</h2>{status?.connected && <span className="ms-auto rounded-full bg-muted px-2 py-0.5 text-xs">{fmt.number(total)}</span>}</div>
     {!status ? <p className="mt-4 text-sm text-muted-foreground">{t("emails.compact.loading")}</p> : !status.connected ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("emails.compact.notConnected")}</p> : <div className="mt-3 divide-y divide-border">{items.map(item => <button key={item.id} className="block w-full py-3 text-start hover:text-primary" onClick={onOpen}><span className="block truncate text-xs text-muted-foreground" dir="auto">{item.sender}</span><span className="mt-1 line-clamp-2 text-sm font-medium" dir="auto">{item.subject}</span>{item.due_date && <span className="mt-1 block text-xs text-muted-foreground">{t("emails.list.followUpOn", { date: fmt.date(dueDay(item.due_date), { month: "short", day: "numeric" }) })}</span>}</button>)}{!items.length && <p className="py-3 text-sm text-muted-foreground">{t("emails.compact.empty")}</p>}</div>}
@@ -151,8 +162,7 @@ export function OutlookView({ compact = false, onOpen }: { compact?: boolean; on
     <button className={`${button} mt-4 w-full`} onClick={onOpen}>{status?.connected ? t("emails.compact.viewAll") : t("emails.compact.connect")}</button>
   </section>
 
-  // The app bar already names the page and the rail shows the account, so the heading is for screen readers only.
-  const header = <h1 className="sr-only">{t("emails.title")}</h1>
+  const header = !connectionOnly && <header><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("emails.title")}</h1><p className="mt-2 text-[15px] text-muted-foreground">{t("emails.subtitle")}</p></header>
 
   const errorBanner = error && <p role="alert" dir="auto" className="rounded-xl bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">{error}</p>
 

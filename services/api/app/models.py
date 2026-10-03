@@ -91,6 +91,9 @@ class BlackboardCourse(Base):
     code: Mapped[str] = mapped_column(String(80), default="")
     title: Mapped[str] = mapped_column(String(240))
     term: Mapped[str] = mapped_column(String(120), default="")
+    term_id: Mapped[str] = mapped_column(String(160), default="")
+    lifecycle: Mapped[str] = mapped_column(String(16), default="unknown")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     description: Mapped[str] = mapped_column(Text, default="")
     source_kind: Mapped[str] = mapped_column(String(32), default="blackboard_demo")
     is_current: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -120,6 +123,24 @@ class BlackboardContentItem(Base):
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     modified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class BlackboardAttachment(Base):
+    """Remote file catalog only. Original bytes are never kept on disk."""
+    __tablename__ = "blackboard_attachments"
+    __table_args__ = (UniqueConstraint("course_id", "content_id", "external_id", name="uq_bb_attachment"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("blackboard_courses.id"), index=True)
+    content_id: Mapped[str] = mapped_column(String(200))
+    external_id: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(300), default="")
+    filename: Mapped[str] = mapped_column(String(300))
+    mime_type: Mapped[str] = mapped_column(String(120), default="")
+    size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    download_url: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text, default="")
+    text_indexed: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class BlackboardGrade(Base):
@@ -153,6 +174,7 @@ class BlackboardConnection(Base):
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    collection_json: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 

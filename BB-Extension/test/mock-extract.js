@@ -185,6 +185,25 @@ global.fetch = async (url) => {
   check("partial contents counts as a failed source", partial.summary.failed_sources >= 1 && partial.diagnostics.failed_sources.some((f) => f.startsWith("contents:_101_1: partial")), partial.diagnostics.failed_sources);
   check("children 500 keeps the items it could read", partial.content.some((m) => m.content_id === "_c1") && !partial.content.some((m) => m.content_id === "_file1"));
 
+  const originalFetch = global.fetch;
+  for (let i = 0; i < 85; i++) responses.pubChildrenF1.results.push({ id: `_extra${i}`, title: `Lecture ${i}.pptx`, contentHandler: { id: "resource/x-bb-file" } });
+  responses.pubChildrenF1.results.push({ id: "_linked", title: "Linked lecture", body: '<a href="/bbcswebdav/Lecture.pdf">Lecture</a><a href="https://evil.example/bad.pdf">Bad</a>', contentHandler: { id: "resource/x-bb-item" } });
+  const embedded = (url, name) => `<a data-bbfile="${JSON.stringify({ resourceUrl: url, linkName: name, mimeType: "application/pdf" }).replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" href="${url.replace(/&/g, "&amp;")}"></a>`;
+  responses.pubChildrenF1.results.push({ id: "_embedded", title: "ultraDocumentBody", body:
+    embedded("https://vle.iau.edu.sa/bbcswebdav/pid-123-dt-content-rid-456_1/xid-456_1?a=1&b=2", "Lecture 1.pdf")
+    + embedded("https://evil.example/xid-2", "Lecture 2.pdf")
+    + '<a data-bbfile="broken"></a>', contentHandler: { id: "resource/x-bb-document" } });
+  global.fetch = async (url, opts) => /\/contents\/_extra\d+\/attachments/.test(url)
+    ? { ok: true, headers: { get: () => "application/json" }, json: async () => ({ results: [{ id: "_a", fileName: "Lecture.pptx" }] }) } : originalFetch(url, opts);
+  const large = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all" });
+  check("attachment discovery covers files beyond the old 80-item cap", large.content.filter((c) => c.content_id.startsWith("_extra") && c.attachments.length).length === 85);
+  const linked = large.content.find((c) => c.content_id === "_linked");
+  check("observed same-origin file links discovered; external links excluded", linked.attachments.length === 1 && linked.attachments[0].download_url.endsWith("/bbcswebdav/Lecture.pdf"));
+  const ultra = large.content.find((c) => c.content_id === "_embedded");
+  check("Ultra embedded files use metadata names with opaque URLs; external and malformed metadata ignored",
+    ultra.attachments.length === 1 && ultra.attachments[0].name === "Lecture 1.pdf"
+    && ultra.attachments[0].mime === "application/pdf" && ultra.attachments[0].download_url.endsWith("?a=1&b=2"));
+
   const fail = checks.filter(([, ok]) => !ok);
   if (fail.length) { console.error(`\n${fail.length} failure(s)`); process.exit(1); }
   console.log("\nMock extract OK — all checks passed.");

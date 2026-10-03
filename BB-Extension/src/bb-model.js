@@ -43,67 +43,24 @@
   // Combines structured signals; never relies solely on name formatting.
   // Returns { current: bool, reasons: [] }.
   function isCurrentCourse(course, membership, termsById, nowMs) {
-    const now = nowMs || Date.now();
-    const reasons = [];
-    let score = 0;
+    const now = nowMs ?? Date.now();
     const c = course || {};
-    const m = membership || {};
-
-    const avail = (c.availability && c.availability.available) || c.availability;
-    if (avail === "Yes" || avail === "Term" || avail === true) {
-      score += 1;
-      reasons.push("available");
-    } else if (avail === "No" || avail === "Disabled" || avail === false) {
-      score -= 3;
-      reasons.push("unavailable");
+    const term = termsById && termsById.get(c.termId || c.term_id);
+    const duration = (c.availability && c.availability.duration) || c.duration || {};
+    const windows = [[term || {}, "term"], [duration, "course"]];
+    const result = (status, reason) => ({ current: status === "current", status,
+      score: status === "current" ? 3 : 0, reasons: [reason] });
+    if (c.isCompleted === true || c.status === "Completed") return result("completed", "Blackboard marks course completed");
+    // Term dates take precedence. Availability and year hints do not override them.
+    for (const [window, label] of windows) {
+      const start = Date.parse(window.start || "");
+      const end = Date.parse(window.end || "");
+      if (Number.isFinite(start) && start > now) return result("upcoming", `before ${label} start`);
+      if (Number.isFinite(end) && end < now) return result("past", `after ${label} end`);
+      if (Number.isFinite(start) && Number.isFinite(end) && start <= now && now <= end)
+        return result("current", `within ${label} dates`);
     }
-
-    const dur = (c.availability && (c.availability.duration || c.availability.adaptiveRelease)) || c.duration;
-    if (dur && (dur.start || dur.end)) {
-      const s = dur.start ? Date.parse(dur.start) : NaN;
-      const e = dur.end ? Date.parse(dur.end) : NaN;
-      if (!Number.isNaN(s) && !Number.isNaN(e)) {
-        if (s <= now && now <= e) { score += 3; reasons.push("within course dates"); }
-        else { score -= 2; reasons.push("outside course dates"); }
-      } else if (!Number.isNaN(e)) {
-        if (now <= e) { score += 1; reasons.push("before course end"); }
-        else { score -= 2; reasons.push("after course end"); }
-      }
-    }
-
-    const termId = c.termId || c.term_id;
-    const term = termId && termsById ? termsById.get(termId) : null;
-    if (term) {
-      const s = term.start ? Date.parse(term.start) : NaN;
-      const e = term.end ? Date.parse(term.end) : NaN;
-      if (!Number.isNaN(s) && !Number.isNaN(e)) {
-        if (s <= now && now <= e) { score += 3; reasons.push("current term"); }
-        else { score -= 2; reasons.push("non-current term"); }
-      }
-    }
-
-    // Enrollment recency: active enrollment within ~240 days suggests current.
-    const enroll = m.enrollmentDate || m.enrollment || c.enrollmentDate;
-    if (enroll) {
-      const t = Date.parse(enroll);
-      if (!Number.isNaN(t)) {
-        const days = (now - t) / 864e5;
-        if (days >= 0 && days <= 240) { score += 1; reasons.push("recent enrollment"); }
-        else if (days > 540) { score -= 1; reasons.push("old enrollment"); }
-      }
-    }
-
-    // Course-code year hint: weakest signal, tiebreaker only.
-    const code = [c.courseId, c.externalId, c.displayName, c.name].filter(Boolean).join(" ");
-    const yearMatch = code.match(/(20\d{2})/);
-    if (yearMatch) {
-      const y = parseInt(yearMatch[1], 10);
-      const nowY = new Date(now).getFullYear();
-      if (y === nowY || y === nowY - 0) { score += 1; reasons.push("current year hint"); }
-      else if (y < nowY - 1) { score -= 1; reasons.push("old year hint"); }
-    }
-
-    return { current: score > 0, score, reasons };
+    return result("unknown", "no authoritative term or course date range");
   }
 
   // ---- Stable assessment identity ----

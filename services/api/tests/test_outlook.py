@@ -315,23 +315,44 @@ def sync_one(factory, monkeypatch, message_id="m1", subject="Exam"):
         return json.loads(db.scalar(select(MailItem).where(MailItem.remote_id == message_id)).classification)
 
 
-def test_classifier_selector_lists_engines_and_defaults_to_laya(world, monkeypatch):
+def test_classifier_is_automatic_and_cutoff_defaults_to_50(world, monkeypatch):
     client, _, _ = world
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
     status = client.get("/api/outlook/status").json()
-    assert status["classifier"] == "laya"
-    assert [(e["id"], e["available"]) for e in status["classifiers"]][:2] == [("jev", False), ("span", False)]
-    assert client.patch("/api/outlook/classifier", json={"engine": "span"}).status_code == 409
+    assert status["classifier"] == "auto" and status["classify_limit"] == 50
+    assert status["classifier_order"] == ["jev", "span", "laya"]
+    assert "classifiers" not in status
+    assert client.patch("/api/outlook/classifier", json={"engine": "span"}).status_code == 410
     assert client.patch("/api/outlook/classifier", json={"engine": "gpt"}).status_code == 422
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
-    assert client.patch("/api/outlook/classifier", json={"engine": "span"}).json() == {"classifier": "span"}
+    assert client.patch("/api/outlook/classifier", json={"engine": "span"}).status_code == 410
     assert client.delete("/api/outlook/connection").status_code == 200
     with world[1]() as db:
-        assert db.get(MailConnection, "alice").classifier == "laya"
+        assert db.get(MailConnection, "alice").classifier == "auto"
+        assert db.get(MailConnection, "alice").classify_limit == 50
 
 
-def test_mail_reaches_cloud_only_when_chosen_and_falls_back_to_laya(world, monkeypatch):
+def test_legacy_email_defaults_migrate_once_and_preserve_new_preferences(monkeypatch):
+    from app import database
+    test_engine = create_engine("sqlite://")
+    monkeypatch.setattr(database, "engine", test_engine)
+    with test_engine.begin() as db:
+        db.exec_driver_sql("CREATE TABLE outlook_connections (id TEXT, classifier TEXT, classify_limit INTEGER)")
+        db.exec_driver_sql("INSERT INTO outlook_connections VALUES ('old', 'laya', NULL), ('custom', 'span', 100), ('new', 'auto', NULL)")
+    database.ensure_added_columns()
+    with test_engine.begin() as db:
+        assert db.exec_driver_sql("SELECT classifier, classify_limit FROM outlook_connections WHERE id='old'").one() == ("auto", 50)
+        assert db.exec_driver_sql("SELECT classify_limit FROM outlook_connections WHERE id='custom'").scalar() == 100
+        assert db.exec_driver_sql("SELECT classify_limit FROM outlook_connections WHERE id='new'").scalar() is None
+        db.exec_driver_sql("UPDATE outlook_connections SET classify_limit=NULL WHERE id='old'")
+    database.ensure_added_columns()
+    with test_engine.connect() as db:
+        assert db.exec_driver_sql("SELECT classify_limit FROM outlook_connections WHERE id='old'").scalar() is None
+    test_engine.dispose()
+
+
+def test_mail_automatically_uses_available_cloud_and_falls_back_to_laya(world, monkeypatch):
     client, factory, _ = world
     from app import decision_engines
     monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
@@ -346,10 +367,6 @@ def test_mail_reaches_cloud_only_when_chosen_and_falls_back_to_laya(world, monke
         return httpx.Response(200, json={"answers": answers}, request=httpx.Request("POST", url))
     monkeypatch.setattr(decision_engines.httpx, "post", post)
 
-    assert sync_one(factory, monkeypatch, "m1")["category"] == "coursework"  # Laya (fixture) by default
-    assert sent == []
-
-    client.patch("/api/outlook/classifier", json={"engine": "span"})
     result = sync_one(factory, monkeypatch, "m2")
     assert result["category"] == "administration" and "engine_span" in result["review_reasons"]
     assert sent == [decision_engines.OPENROUTER_URL]

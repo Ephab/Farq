@@ -72,7 +72,7 @@ export const core: CatalogShape<typeof en> = {
   },
   settings: {
     close: "إغلاق الإعدادات",
-    sections: { general: "عام", connections: "النماذج ومفاتيح API", memory: "الذاكرة", skills: "المهارات", connectors: "مصادر البيانات", data: "بياناتك" },
+    sections: { general: "عام", connections: "النماذج ومفاتيح API", emails: "البريد", memory: "الذاكرة", skills: "المهارات", connectors: "مصادر البيانات", data: "بياناتك" },
     generalHelp: "اللغة والألوان في هذا المتصفح.",
     dataHelp: "بدّل الطالب، أو ابدأ هذا العرض من جديد.",
     switchStudentHelp: "اختر سجل طالب آخر، أو أنشئ سجلًا جديدًا عبر الإعداد الأولي.",

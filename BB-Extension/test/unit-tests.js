@@ -97,6 +97,16 @@ async function main() {
       { enrollmentDate: "2021-01-01T00:00:00.000Z" },
       new Map(), now);
     assert(nameTrap.current === false, "current filter: name year hint alone cannot override unavailable", nameTrap);
+    for (const [id, start, end, status] of [
+      ["past", "2026-01-01", "2026-06-01", "past"],
+      ["future", "2027-01-01", "2027-06-01", "upcoming"],
+    ]) {
+      const result = M.isCurrentCourse({ availability: { available: "Yes" }, termId: id, courseId: "CS101-2026" },
+        { enrollmentDate: "2026-05-01" }, new Map([[id, { start, end }]]), now);
+      assert(!result.current && result.status === status, `term dates override availability/year/enrollment: ${status}`, result);
+    }
+    const unknown = M.isCurrentCourse({ availability: { available: "Yes" }, courseId: "CS101-2026" }, {}, new Map(), now);
+    assert(!unknown.current && unknown.status === "unknown", "missing dates remain unknown even when available");
   }
 
   // ---- assessment dedupe: shared IDs merge; similar titles do NOT ----
@@ -262,6 +272,21 @@ async function main() {
     assert(s.earned === 13 && s.possible === 15 && s.percentage === 86.7, "grade summary: earned/possible/percentage", s);
     assert(s.graded === 2 && s.pending === 1 && s.missing === 1, "grade summary: counts", s);
     assert(M.gradeSummary([], []).percentage === null, "grade summary: nothing graded -> null percentage");
+  }
+
+  {
+    const paths = [];
+    global.fetch = async (url) => {
+      paths.push(url);
+      const second = url.includes("offset=1");
+      return { ok: true, headers: { get: () => "application/json" }, json: async () => second
+        ? { results: [{ id: "second" }], paging: {} }
+        : { results: [{ id: "first" }], paging: { nextPage: "/learn/items?offset=1" } } };
+    };
+    const pages = await U.pagedGet("https://vle.iau.edu.sa", "/learn/items", { limit: 100 });
+    assert(pages.length === 2 && paths.length === 2, "pagination follows nextPage even after a short page");
+    const capped = await U.pagedGet("https://vle.iau.edu.sa", "/learn/items", { maxPages: 1 });
+    assert(capped.truncated === true, "pagination cap is reported rather than silently complete");
   }
 
   if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }

@@ -16,7 +16,8 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ..models import BlackboardContentItem, BlackboardCourse, BlackboardGrade, DataSource, now
+from ..models import BlackboardAttachment, BlackboardConnection, BlackboardContentItem, BlackboardCourse, BlackboardGrade, DataSource, now
+from ..sources.pdf_text import redact
 from ..schemas import EvidenceIn
 from ..sources import store_evidence
 
@@ -38,6 +39,7 @@ class IngestSummary:
     announcements: int = 0
     materials: int = 0
     files_read: int = 0
+    files: int = 0
     grades: int = 0
     new_evidence: int = 0
     partial: bool = False
@@ -80,6 +82,7 @@ def _ok_sources(export: dict) -> set[str]:
 
 
 def _delete_course(db: Session, course: BlackboardCourse) -> None:
+    db.execute(delete(BlackboardAttachment).where(BlackboardAttachment.course_id == course.id))
     db.execute(delete(BlackboardContentItem).where(BlackboardContentItem.course_id == course.id))
     db.execute(delete(BlackboardGrade).where(BlackboardGrade.course_id == course.id))
     db.delete(course)
@@ -191,9 +194,9 @@ def course_evidence(courses: list[dict]) -> list[EvidenceIn]:
             data["status"] = "in_progress"
             if standing.get("percentage") is not None:
                 data["running_percentage"] = standing["percentage"]
-        elif final.get("text") or final.get("percentage") is not None:
+        elif c.get("course_status") == "completed":
             state = "completed"
-            data["grade"] = final.get("text") or f"{final['percentage']}%"
+            data["grade"] = final.get("text") or (f"{final['percentage']}%" if final.get("percentage") is not None else "")
             if final.get("percentage") is not None:
                 data["percentage"] = final["percentage"]
         else:
@@ -230,6 +233,12 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         row.code = (c.get("code") or "")[:80]
         row.title = (c.get("name") or c["id"])[:240]
         row.term = (c.get("term_name") or "")[:120]
+        row.term_id = (c.get("term_id") or "")[:160]
+        row.lifecycle = c.get("course_status") if c.get("course_status") in {
+            "current", "past", "upcoming", "completed", "unknown"} else "unknown"
+        row.metadata_json = json.dumps({k: c.get(k) for k in (
+            "term_start", "term_end", "availability", "availability_duration", "enrollment_date",
+            "current_reasons", "current_score")})
         row.source_kind = LIVE
         row.is_current = bool(c.get("is_current"))
         row.instructors_json = json.dumps([{"name": i.get("name"), "email": i.get("email")} for i in c.get("instructors") or []])
@@ -237,9 +246,42 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         row.url = (c.get("url") or "")[:500]
         row.updated_at = now()
         by_ext[c["id"]] = row
-    for stale in db.scalars(select(BlackboardCourse).where(
-            BlackboardCourse.student_id == student_id, BlackboardCourse.external_id.not_in(list(by_ext)))).all():
-        _delete_course(db, stale)
+    # A filtered export or failed listing never proves that older courses disappeared.
+    complete_listing = "memberships" in ok_sources and export.get("summary", {}).get("scope", "all") == "all"
+    if complete_listing:
+        for stale in db.scalars(select(BlackboardCourse).where(
+                BlackboardCourse.student_id == student_id, BlackboardCourse.external_id.not_in(list(by_ext)))).all():
+            _delete_course(db, stale)
+
+    seen_files: dict[str, set[tuple[str, str]]] = {ext: set() for ext in by_ext}
+    for content in export.get("content", []):
+        course_ext, content_id = content.get("course_id"), content.get("content_id")
+        if course_ext not in by_ext or not content_id:
+            continue
+        for att in content.get("attachments") or []:
+            if not att.get("id") or not att.get("download_url"):
+                continue
+            ident = str(att["id"])
+            seen_files[course_ext].add((content_id, ident))
+            row = db.scalar(select(BlackboardAttachment).where(
+                BlackboardAttachment.course_id == by_ext[course_ext].id,
+                BlackboardAttachment.content_id == content_id, BlackboardAttachment.external_id == ident))
+            if row is None:
+                row = BlackboardAttachment(course_id=by_ext[course_ext].id, content_id=content_id, external_id=ident)
+                db.add(row)
+            row.title = redact(content.get("title") or "")[:300]
+            row.filename = redact(att.get("name") or "attachment")[:300]
+            row.mime_type = (att.get("mime") or "")[:120]
+            row.size = att.get("size") if isinstance(att.get("size"), int) else None
+            row.download_url = att["download_url"]
+            row.path = redact(content.get("path") or "")
+            row.text_indexed = row.text_indexed or bool(file_texts.get(f"{course_ext}:{content_id}:{ident}"))
+            row.updated_at = now()
+    for course_ext, course in by_ext.items():
+        if f"contents:{course_ext}" in ok_sources and f"attachments:{course_ext}" in ok_sources:
+            for row in db.scalars(select(BlackboardAttachment).where(BlackboardAttachment.course_id == course.id)).all():
+                if (row.content_id, row.external_id) not in seen_files[course_ext]:
+                    db.delete(row)
 
     seen: dict[str, set[str]] = {ext: set() for ext in by_ext}
     ext_of = {row.id: ext for ext, row in by_ext.items()}
@@ -251,7 +293,7 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         if course is None:
             continue
         seen[course_ext].add(item_ext)
-        body = fields.pop("body")[:MAX_BODY_CHARS]
+        body = redact(fields.pop("body"))[:MAX_BODY_CHARS]
         digest = hashlib.sha256(f"{fields['title']}\n{body}".encode("utf-8")).hexdigest()
         item = db.scalar(select(BlackboardContentItem).where(
             BlackboardContentItem.course_id == course.id, BlackboardContentItem.external_id == item_ext))
@@ -291,7 +333,7 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         row.title = (g.get("item") or ident)[:300]
         row.score, row.possible, row.percentage = g.get("score"), g.get("possible"), g.get("percentage")
         row.status = (g.get("status") or "")[:32]
-        row.feedback = plain(g.get("feedback"))
+        row.feedback = redact(plain(g.get("feedback")))
         row.posted_at = _dt(g.get("posted"))
         summary.grades += 1
     for course_ext, course in by_ext.items():
@@ -303,6 +345,24 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
     current = {c["id"] for c in courses_in if c.get("is_current")}
     summary.courses = len(courses_in)
     summary.current_courses = len(current)
+    db.flush()
+    summary.files = len(db.scalars(select(BlackboardAttachment.id).join(BlackboardCourse).where(
+        BlackboardCourse.student_id == student_id)).all())
+    connection = db.get(BlackboardConnection, student_id)
+    if connection is not None:
+        # The inspectable snapshot contains all extracted categories, but no identity or secrets.
+        def clean(value, key=""):
+            if key.lower() in {"user", "username", "userid", "email", "author", "password", "cookies", "samples"}:
+                return None
+            if isinstance(value, dict):
+                return {k: result for k, v in value.items() if (result := clean(v, k)) is not None}
+            if isinstance(value, list):
+                return [clean(v) for v in value]
+            if isinstance(value, str) and not (key.endswith("id") or "url" in key or key in {"code", "courseId"}):
+                return redact(value)
+            return value
+        connection.collection_json = json.dumps(clean({k: v for k, v in export.items()
+            if k not in {"user", "assignments", "materials"}}))
     summary.upcoming_deadlines = sum(1 for a in export.get("assessments", []) if a.get("is_upcoming") and a.get("course_id") in current)
     summary.overdue = sum(1 for a in export.get("assessments", []) if a.get("is_overdue") and a.get("course_id") in current)
 
@@ -313,7 +373,7 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         db.add(source)
         db.flush()
     source.status, source.error, source.last_synced_at = "ready", None, now()
-    # Without memberships the courses-fallback listing marks every course current: suggest nothing.
+    # A fallback course list lacks authoritative enrollment details: suggest nothing.
     trusted = "memberships" in ok_sources and "courses-fallback" not in ok_sources
     evidence = course_evidence(courses_in) if trusted else []
     summary.new_evidence = store_evidence(db, student_id, source.id, evidence) if evidence else 0

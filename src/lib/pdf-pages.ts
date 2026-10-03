@@ -11,7 +11,7 @@ export interface RenderedPdf {
 
 const MAX_PAGES = 60;
 
-export async function renderPdfPages(file: File, targetWidth = 960): Promise<RenderedPdf> {
+export async function renderPdfPages(file: File, targetWidth = 960, maxPages = MAX_PAGES): Promise<RenderedPdf> {
   const pdfjs = await import("pdfjs-dist");
   const { default: workerUrl } = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -20,7 +20,7 @@ export async function renderPdfPages(file: File, targetWidth = 960): Promise<Ren
   const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buf), useSystemFonts: true });
   try {
     const pdf = await loadingTask.promise;
-    const total = Math.min(pdf.numPages, MAX_PAGES);
+    const total = Math.min(pdf.numPages, MAX_PAGES, Math.max(1, maxPages));
     const images: string[] = [];
     let width = targetWidth;
     let height = Math.round((targetWidth * 9) / 16);
@@ -47,7 +47,7 @@ export async function renderPdfPages(file: File, targetWidth = 960): Promise<Ren
       }
     }
     if (images.length === 0) throw new Error("No readable pages found in this PDF.");
-    return { images, width, height, truncated: pdf.numPages > MAX_PAGES };
+    return { images, width, height, truncated: pdf.numPages > total };
   } finally {
     try {
       await loadingTask.destroy();

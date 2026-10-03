@@ -12,6 +12,10 @@ and runs the shared extractor in `BB-Extension/src`. Code: `services/api/app/bla
   zip-bomb guard (100 MB uncompressed, 2000 entries).
 - Redacted extracted text is kept in `blackboard_content_items`. Passwords are never returned by the
   API, logged, or chained into exception messages.
+- The remote file catalog (`blackboard_attachments`) stores filenames, course/content IDs, paths,
+  sizes and observed Blackboard URLs, never original bytes. The owner-facing collection also keeps
+  a redacted structured snapshot on the connection (without user identity, cookies or debug samples)
+  so folders, events, attempts and endpoint diagnostics remain inspectable. It never becomes facts.
 
 ## 2. Blast radius
 
@@ -23,6 +27,11 @@ remembered logins.
 ## 3. What the sync can do
 
 - Requests are GET-only, plus the AD FS sign-in form submit.
+- On the IAU Blackboard origin, sync may click Continue only on the exact "Additional device
+  logged out" notice with the single-active-session explanation. It then rechecks the authenticated
+  API. Other Continue buttons, MFA and consent screens remain manual extra-verification steps.
+- Embedded Ultra files are catalogued from `data-bbfile` metadata, including their filenames and
+  observed same-origin resource URLs. That metadata is untrusted; external URLs are excluded.
 - An attachment download is started only for a URL on the Blackboard origin. Redirects are followed
   (Playwright's request context, up to 20 hops, cookies sent only under normal cookie rules), and the
   body is kept only if the final URL is on the Blackboard origin or is `https://`. Intermediate hops
@@ -35,6 +44,18 @@ remembered logins.
 - It reads only the signed-in student's own data, with their own entitlements.
 - Hermes never sees credentials. It gets Blackboard data only through the existing read tools, behind
   the connector switch (enforced in the internal API routes).
+- On-demand file downloads use only a catalog record owned by the caller and their saved session;
+  the browser cannot supply a URL or cookies. The connector switch is checked server-side. No login
+  or password retries happen during download. Initial requests must stay on the HTTPS IAU Blackboard
+  origin. Redirects may also go to IAU's verified file tenant, `alt-685da65a9aa3e.blackboard.com`,
+  with a six-hop bound; every other host, HTTP URL, non-standard port and URL with embedded
+  credentials is rejected. This is an exact allowlist, not a wildcard for Blackboard or arbitrary
+  storage services. Storage downloads use a separate request context without the IAU login state;
+  only the signed redirect URL authorizes them. Signed URLs and response bodies are never logged.
+  Responses are capped at 15 MB, HTML sign-in pages are rejected, and originals are returned with
+  `Cache-Control: no-store` and attachment disposition. They are never saved to the server's disk.
+  The client keeps one opened original in memory, generates previews in the browser, and writes a
+  local copy only through the student's explicit "Save to device" action.
 
 ## 4. Lockout safety
 

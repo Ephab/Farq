@@ -80,6 +80,8 @@ def _course_dict(item: BlackboardCourse, count: int | None = None) -> dict:
         "code": item.code,
         "title": item.title,
         "term": item.term,
+        "term_id": item.term_id,
+        "course_status": item.lifecycle,
         "description": item.description,
         "source_kind": item.source_kind,
         "is_current": bool(item.is_current),

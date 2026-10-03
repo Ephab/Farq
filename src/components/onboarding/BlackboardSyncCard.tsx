@@ -3,12 +3,13 @@ import { AlertCircle, GraduationCap, LoaderCircle, RotateCcw } from "lucide-reac
 import { API_BASE, api, getCurrentStudentId, identityHeaders, type BlackboardSyncStatus } from "@/lib/waypoint-api"
 import { useI18n } from "@/lib/i18n/context"
 import { parseServerTime } from "@/lib/server-time"
+import { BlackboardCollection } from "./BlackboardCollection"
 
 const RUNNING = new Set(["queued", "logging_in", "extracting", "reading_files", "saving"])
-const STATS = ["current_courses", "upcoming_deadlines", "overdue", "materials", "files_read", "new_evidence"] as const
+const STATS = ["courses", "current_courses", "upcoming_deadlines", "materials", "files", "files_read"] as const
 
 /** My Data > Blackboard: one sign-in, then background sync. The password is sent once and never shown again. */
-export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
+export function BlackboardSyncCard({ onReview, embedded = false }: { onReview?: () => void; embedded?: boolean }) {
   const { t, fmt } = useI18n()
   const studentId = getCurrentStudentId()
   const [status, setStatus] = useState<BlackboardSyncStatus | null>(null)
@@ -18,6 +19,7 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showCollection, setShowCollection] = useState(false)
   const path = `/api/students/${studentId}/blackboard`
   const [shotUrl, setShotUrl] = useState<string | null>(null)
 
@@ -71,14 +73,14 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
   const summary = status?.summary ?? {}
 
   return (
-    <section aria-label={t("blackboard.title")} className="mt-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
-      <div className="flex items-start gap-3">
+    <section aria-label={t("blackboard.title")} className={embedded ? "p-4 sm:p-5" : "mt-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6"}>
+      {!embedded && <div className="flex items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary"><GraduationCap className="size-5" aria-hidden="true" /></span>
         <div className="min-w-0">
           <h2 className="text-[17px] font-semibold tracking-tight">{t("blackboard.title")}</h2>
           <p className="mt-0.5 text-[13px] text-muted-foreground">{t("blackboard.subtitle")}</p>
         </div>
-      </div>
+      </div>}
 
       {status?.status === "failed" && status.failure_reason ? (
         <p role="alert" className="mt-4 flex items-start gap-2 rounded-2xl bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
@@ -149,6 +151,8 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
           </div>
         </div>
       ) : null}
+      <button type="button" onClick={() => setShowCollection((v) => !v)} className="mt-4 inline-flex min-h-10 items-center rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted">{t(showCollection ? "blackboard.collection.close" : "blackboard.collection.view")}</button>
+      {showCollection && <BlackboardCollection onClose={() => setShowCollection(false)} syncedAt={status?.last_synced_at} />}
     </section>
   )
 }

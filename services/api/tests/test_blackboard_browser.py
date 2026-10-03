@@ -46,6 +46,8 @@ class Portal(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/auth-saml/saml/login"):
+            if "bb=silent" in (self.headers.get("Cookie") or ""):
+                return self._send(200, b"<html><body><script>setTimeout(() => location.href='/ultra/course', 250)</script></body></html>")
             return self._send(302, headers={"Location": "/adfs/ls/"})
         if self.path.startswith("/adfs/ls/mfa"):
             return self._send(200, b"<html><head><title>Verify your identity</title></head><body>Approve the sign-in</body></html>")
@@ -55,6 +57,16 @@ class Portal(BaseHTTPRequestHandler):
                 return self._send(200, b"<html><head><title>The URL you requested has been blocked</title></head></html>")
             return self._send(200, FORM.format(error="").encode())
         if self.path.startswith("/ultra"):
+            if any(f"bb={value}" in (self.headers.get("Cookie") or "") for value in ("pending", "silent")):
+                return self._send(200, b'''<html><body><div role="dialog">
+                  <h2>Additional device logged out</h2>
+                  <p>You are permitted to only have 1 active session and have been logged out from another device.</p>
+                  <button onclick="document.cookie='bb=1; Path=/'; this.parentElement.remove()">Continue</button>
+                </div></body></html>''')
+            if "bb=consent" in (self.headers.get("Cookie") or ""):
+                return self._send(200, b'''<html><body><div role="dialog"><h2>Accept new terms</h2>
+                  <button onclick="document.cookie='bb=1; Path=/'; this.parentElement.remove()">Continue</button>
+                </div></body></html>''')
             return self._send(200, b"<html><body>Ultra</body></html>") if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})
         if self.path == "/learn/api/v1/users/me":
             return self._send(200, b'{"id":"_1_1"}', "application/json") if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})
@@ -71,6 +83,9 @@ class Portal(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
         form = parse_qs(self.rfile.read(length).decode())
+        if form.get("p") in (["needs-notice"], ["needs-consent"]):
+            cookie = "pending" if form["p"] == ["needs-notice"] else "consent"
+            return self._send(302, headers={"Location": "/ultra/course", "Set-Cookie": f"bb={cookie}; Path=/"})
         if form.get("p") == [PASSWORD]:
             return self._send(302, headers={"Location": "/ultra/course", "Set-Cookie": "bb=1; Path=/"})
         if form.get("p") == ["needs-mfa"]:
@@ -134,6 +149,27 @@ def test_fake_portal_extra_step_reports_page_and_screenshot(portal):
     assert failure.detail.startswith("Verify your identity — 127.0.0.1:") and failure.detail.endswith("/adfs/ls/mfa")
     assert "SECRETCTX" not in failure.detail and "needs-mfa" not in failure.detail
     assert failure.screenshot and failure.screenshot[1:4] == b"PNG"
+
+
+def test_single_session_notice_is_acknowledged_before_api_check(portal):
+    origin, bundle = portal
+    result, _ = _run(_make(origin, bundle), "needs-notice")
+    assert result.export["courses"] and result.password_verified
+    assert any(c["name"] == "bb" and c["value"] == "1" for c in result.session_state["cookies"])
+
+
+def test_other_continue_dialog_is_not_acknowledged(portal):
+    origin, bundle = portal
+    with pytest.raises(browser.LoginFailure) as caught:
+        _run(_make(origin, bundle), "needs-consent")
+    assert caught.value.code == "extra_verification"
+
+
+def test_delayed_silent_signin_reaches_notice_without_waiting_for_form(portal):
+    origin, bundle = portal
+    state = {"cookies": [{"name": "bb", "value": "silent", "domain": "127.0.0.1", "path": "/"}], "origins": []}
+    result, _ = _run(_make(origin, bundle), "not-verified", state=state)
+    assert result.export["courses"] and result.password_verified is False
 
 
 def test_describe_page_drops_query_and_fragment():

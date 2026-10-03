@@ -224,9 +224,9 @@ def error_category(exc: Exception) -> str:
     return "invalid_response"
 
 
-def ask_chain(state: str, questions: dict, order: tuple[str, ...] | None = None) -> ChainResult:
+def ask_chain(state: str, questions: dict, order: tuple[str, ...] | None = None, *, respect_mode: bool = True) -> ChainResult:
     """First engine in `order` that is configured, allowed by the engine switch and answers wins."""
-    allowed = active_chain()
+    allowed = active_chain() if respect_mode else CHAIN
     order = tuple(name for name in (order or CHAIN) if name in allowed)
     failures: list[tuple[str, str]] = []
     for name in order:
@@ -262,7 +262,9 @@ def _cloud_email(result: ChainResult, failures: list[tuple[str, str]]):
 
 
 def classify_email(email, preferred: str, laya):
-    """Classify with the student's chosen engine, then fall back down the chain to Laya.
+    """Classify automatically with Jev -> Span -> Laya when preferred is 'auto'.
+
+    Legacy callers can still specify an engine and follow the roadmap mode switch.
 
     Cloud engines get redacted, capped subject/body; Laya (`laya.classify`) keeps its own
     windowing and language checks, and raises ClassifierUnavailable if it cannot run.
@@ -272,14 +274,16 @@ def classify_email(email, preferred: str, laya):
     from .email_classifier import QUESTIONS, clean_email_body
 
     failures: list[tuple[str, str]] = []
-    allowed = active_chain()
+    # Email's automatic policy is independent of the roadmap decision-engine switch.
+    automatic = preferred == "auto"
+    allowed = CHAIN if automatic else active_chain()
     cloud = [name for name in chain_from(preferred) if name in CLOUD and name in allowed and INFO[name]().available]
     if cloud:
         # redact_text also collapses whitespace, so the body joins the subject on one line.
         state = redact_text(f"Subject: {email.subject}\n\n{clean_email_body(email.body)}", limit=EMAIL_TEXT_CHARS)
         for name in cloud:
             try:
-                return _cloud_email(ask_chain(state, QUESTIONS, (name,)), failures)
+                return _cloud_email(ask_chain(state, QUESTIONS, (name,), respect_mode=not automatic), failures)
             except EngineUnavailable as error:
                 failures.append((name, str(error).split(":", 1)[-1]))
             except (KeyError, TypeError, ValueError):

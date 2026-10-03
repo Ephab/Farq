@@ -16,7 +16,7 @@ from sqlalchemy import select  # noqa: E402
 
 from app.database import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import BlackboardContentItem, BlackboardCourse, BlackboardGrade, EvidenceItem, Student  # noqa: E402
+from app.models import BlackboardAttachment, BlackboardContentItem, BlackboardCourse, BlackboardGrade, EvidenceItem, Student  # noqa: E402
 from app.blackboard_sync import ingest  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "fixtures" / "blackboard-export-sample.json"
@@ -105,12 +105,10 @@ def test_ingest_suggests_course_evidence_once(student):
     first = ingest_sample(student)
     evidence = rows(EvidenceItem, student_id=student)
     titles = sorted(e.title for e in evidence)
-    # Two sections of Deep Learning collapse to one; the completed course carries its grade.
-    assert titles == ["Deep Learning", "Machine learning"]
+    # Two sections collapse to one. A gradebook total alone never proves completion.
+    assert titles == ["Deep Learning"]
     assert all(e.status == "suggested" for e in evidence)
-    completed = next(e for e in evidence if e.title == "Machine learning")
-    assert json.loads(completed.data_json)["grade"] == "B+"
-    assert first.new_evidence == 2
+    assert first.new_evidence == 1
     assert ingest_sample(student).new_evidence == 0
 
 
@@ -664,3 +662,157 @@ def test_next_sync_clears_old_screenshot(client, student, fake_browser, monkeypa
     sync(client, student, username="2240000000", password=SECRET)
     status = client.get(f"/api/students/{student}/blackboard/sync").json()
     assert status["status"] == "done" and status["has_screenshot"] is False and status["stage_detail"] == ""
+
+
+def test_file_catalog_preserves_all_files_without_bytes(student):
+    export = sample()
+    base = export["content"][1]
+    base["attachments"] += [{"id": f"_slide{i}", "name": f"Lecture {i}.pptx", "download_url": f"https://vle.iau.edu.sa/bbcswebdav/lecture{i}.pptx"} for i in range(100)]
+    export["courses"][0].update(term_id="_fall", course_status="current", term_start="2026-08-01", term_end="2026-12-31")
+    result = ingest_sample(student, export)
+    course = next(c for c in rows(BlackboardCourse, student_id=student) if c.external_id == "_101_1")
+    files = rows(BlackboardAttachment, course_id=course.id)
+    assert len(files) == result.files == 101
+    assert all(not a.text_indexed for a in files)
+    assert course.term_id == "_fall" and course.lifecycle == "current"
+    assert json.loads(course.metadata_json)["term_end"] == "2026-12-31"
+
+
+def test_file_catalog_partial_listing_keeps_missing_files(student):
+    ingest_sample(student)
+    later = with_source(sample(), "attachments:_101_1", "partial")
+    later["content"][1]["attachments"] = []
+    ingest_sample(student, later)
+    course = next(c for c in rows(BlackboardCourse, student_id=student) if c.external_id == "_101_1")
+    assert len(rows(BlackboardAttachment, course_id=course.id)) == 1
+    with_source(later, "attachments:_101_1", "ok")
+    ingest_sample(student, later)
+    assert rows(BlackboardAttachment, course_id=course.id) == []
+
+
+def test_filtered_export_does_not_delete_past_courses(student):
+    ingest_sample(student)
+    later = sample()
+    later["summary"]["scope"] = "current"
+    later["courses"] = later["courses"][:1]
+    ingest_sample(student, later)
+    assert len(rows(BlackboardCourse, student_id=student)) == 3
+
+
+def test_completion_needs_explicit_blackboard_status():
+    export = sample()
+    assert len(ingest.course_evidence(export["courses"])) == 1
+    export["courses"][-1]["course_status"] = "completed"
+    completed = next(e for e in ingest.course_evidence(export["courses"]) if e.title == "Machine learning")
+    assert completed.data["grade"] == "B+"
+
+
+def test_collection_exposes_all_courses_files_grades_and_redacted_snapshot(client, student, fake_browser, monkeypatch):
+    export = sample()
+    export["user"] = {"userName": "PRIVATE-USER"}
+    export["events"] = [{"title": "Office hours", "description": "Call 2240003321 or person@iau.edu.sa"}]
+    monkeypatch.setattr(__name__ + ".sample", lambda: export)
+    sync(client, student, username="2240000000", password=SECRET)
+    response = client.get(f"/api/students/{student}/blackboard/collection")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["courses"]) == 3 and data["has_file_catalog"]
+    assert sum(len(c["files"]) for c in data["courses"]) == 1
+    assert sum(len(c["grades"]) for c in data["courses"]) == 1
+    assert "PRIVATE-USER" not in response.text and "2240003321" not in response.text and "person@iau.edu.sa" not in response.text
+    assert SECRET not in response.text
+    assert data["events"][0]["description"] == "Call [id] or [email]"
+    other = client.post("/api/students", json={"display_name": "Intruder"}).json()["student_id"]
+    assert client.get(f"/api/students/{student}/blackboard/collection", headers={"X-Waypoint-User": other}).status_code == 403
+
+
+def test_on_demand_download_is_owner_only_uncached_and_checks_connector(client, student, fake_browser, monkeypatch):
+    from app.blackboard_sync import catalog
+    sync(client, student, username="2240000000", password=SECRET)
+    files = client.get(f"/api/students/{student}/blackboard/slides").json()["files"]
+    assert len(files) == 1 and "download_url" not in files[0]
+    path = f"/api/students/{student}/blackboard/files/{files[0]['id']}/download"
+    calls = []
+    monkeypatch.setattr(catalog, "download_bytes", lambda url, state: calls.append(url) or b"%PDF-TEST")
+    other = client.post("/api/students", json={"display_name": "Intruder"}).json()["student_id"]
+    assert client.get(path, headers={"X-Waypoint-User": other}).status_code == 403
+    assert calls == []
+    response = client.get(path)
+    assert response.content == b"%PDF-TEST" and response.headers["cache-control"] == "no-store"
+    assert "filename*=UTF-8" in response.headers["content-disposition"]
+    monkeypatch.setattr(catalog, "disabled_connectors", lambda db, sid: ["blackboard"])
+    assert client.get(path).status_code == 409 and len(calls) == 1
+
+
+def test_download_rejects_untrusted_url_before_using_session():
+    from app.blackboard_sync.catalog import download_bytes
+    from fastapi import HTTPException
+    for url in ["http://vle.iau.edu.sa/file.pdf", "https://evil.example/file.pdf", "https://vle.iau.edu.sa.evil.example/file.pdf"]:
+        with pytest.raises(HTTPException) as error:
+            download_bytes(url, {"cookies": []})
+        assert error.value.status_code == 422
+
+
+@pytest.mark.parametrize("status,headers,expected", [
+    (302, {"location": "https://evil.example/file.pdf"}, 409),
+    (200, {"content-type": "text/html"}, 409),
+    (403, {}, 409),
+    (200, {"content-length": str(16 * 1024 * 1024)}, 413),
+])
+def test_download_checks_redirects_expired_sessions_and_sizes(monkeypatch, status, headers, expected):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from app.blackboard_sync.catalog import download_bytes
+    import playwright.sync_api
+    calls, body_reads = [], []
+    response = SimpleNamespace(status=status, headers=headers, ok=status == 200, body=lambda: body_reads.append(True) or b"file")
+    def get(url, **options):
+        calls.append((url, options))
+        return response
+    request = SimpleNamespace(get=get, dispose=lambda: None)
+    @contextmanager
+    def fake_playwright():
+        yield SimpleNamespace(request=SimpleNamespace(new_context=lambda **opts: request))
+    monkeypatch.setattr(playwright.sync_api, "sync_playwright", fake_playwright)
+    with pytest.raises(HTTPException) as error:
+        download_bytes("https://vle.iau.edu.sa/file.pdf", {"cookies": []})
+    assert error.value.status_code == expected and len(calls) == 1
+    assert calls[0][1]["max_redirects"] == 0 and body_reads == []
+
+
+def test_iau_storage_redirect_downloads_without_forwarding_login_state(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    from app.blackboard_sync.catalog import STORAGE_HOST, download_bytes
+    import playwright.sync_api
+    contexts, calls, disposed = [], [], []
+    storage_url = f"https://{STORAGE_HOST}/signed-file.pdf?signature=test"
+    def new_context(**options):
+        contexts.append(options)
+        index = len(contexts)
+        def get(url, **kwargs):
+            calls.append((url, kwargs))
+            if index == 1:
+                return SimpleNamespace(status=302, headers={"location": storage_url}, ok=False)
+            return SimpleNamespace(status=200, headers={"content-type": "application/pdf"}, ok=True, body=lambda: b"%PDF-TEST")
+        return SimpleNamespace(get=get, dispose=lambda: disposed.append(index))
+    @contextmanager
+    def fake_playwright():
+        yield SimpleNamespace(request=SimpleNamespace(new_context=new_context))
+    monkeypatch.setattr(playwright.sync_api, "sync_playwright", fake_playwright)
+    state = {"cookies": [{"name": "BbRouter", "value": "PRIVATE", "domain": "vle.iau.edu.sa"}]}
+    assert download_bytes("https://vle.iau.edu.sa/file.pdf", state) == b"%PDF-TEST"
+    assert contexts == [{"storage_state": state}, {}]
+    assert [c[0] for c in calls] == ["https://vle.iau.edu.sa/file.pdf", storage_url]
+    assert all(c[1]["max_redirects"] == 0 for c in calls) and sorted(disposed) == [1, 2]
+
+
+def test_file_host_allowlist_is_exact_and_storage_cannot_start_download():
+    from app.blackboard_sync.catalog import STORAGE_HOST, allowed_file_url
+    assert allowed_file_url(f"https://{STORAGE_HOST}/file.pdf")
+    assert not allowed_file_url(f"https://{STORAGE_HOST}/file.pdf", initial=True)
+    for url in [f"http://{STORAGE_HOST}/file.pdf", f"https://{STORAGE_HOST}.evil.example/file.pdf",
+                "https://other.blackboard.com/file.pdf", f"https://{STORAGE_HOST}:8443/file.pdf",
+                f"https://user:password@{STORAGE_HOST}/file.pdf"]:
+        assert not allowed_file_url(url)

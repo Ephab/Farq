@@ -24,7 +24,8 @@ router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 MAX_USERNAME = 120
 MAX_PASSWORD = 256
-DONE_STATUSES = {"graded", "needsgrading", "needs_grading", "submitted", "completed", "inprogress", "in_progress"}
+# InProgress is an unsubmitted draft in Blackboard: it stays on the deadlines list.
+DONE_STATUSES = {"graded", "needsgrading", "needs_grading", "submitted", "completed"}
 
 
 class SyncRequest(BaseModel):

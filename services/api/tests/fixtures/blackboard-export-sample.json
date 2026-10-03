@@ -44,7 +44,9 @@
   ],
   "events": [],
   "diagnostics": {"sources": [
-    {"source": "contents:_101_1", "status": "ok"}, {"source": "announcements:_101_1", "status": "ok"},
+    {"source": "identity", "status": "ok"}, {"source": "memberships", "status": "ok"},
+    {"source": "contents:_101_1", "status": "ok"}, {"source": "attachments:_101_1", "status": "ok"},
+    {"source": "announcements:_101_1", "status": "ok"},
     {"source": "columns:_101_1", "status": "ok"}, {"source": "usergrades:_101_1", "status": "ok"},
     {"source": "contents:_102_1", "status": "ok"}, {"source": "announcements:_102_1", "status": "ok"},
     {"source": "columns:_102_1", "status": "ok"}, {"source": "usergrades:_102_1", "status": "ok"}

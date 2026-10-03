@@ -85,18 +85,24 @@ def _delete_course(db: Session, course: BlackboardCourse) -> None:
     db.delete(course)
 
 
+FILE_BLOCK = re.compile(r"(?:^|(?<=\n\n))\[File: [^\n]*\]\n")
+
+
+def _file_blocks(previous: str) -> list[str]:
+    """Every stored `[File: name]` block (header and text) from an earlier sync, in order."""
+    previous = previous or ""
+    starts = [m.start() for m in FILE_BLOCK.finditer(previous)]
+    return [previous[start:end].strip() for start, end in zip(starts, starts[1:] + [len(previous)])]
+
+
 def _carried_block(previous: str, name: str) -> str:
     """The stored `[File: name]` block (header and text) from an earlier sync, or ''."""
     header = f"[File: {name}]\n"
-    start = previous.find(header)
-    if start == -1 or (start and previous[max(0, start - 2):start] != "\n\n"):
-        return ""
-    end = previous.find("\n\n[File: ", start)
-    return previous[start:end if end != -1 else len(previous)].strip()
+    return next((block for block in _file_blocks(previous) if block.startswith(header)), "")
 
 
 def _items(export: dict, file_texts: dict[str, str], summary: IngestSummary,
-           previous: dict[tuple[str, str], str] | None = None):
+           previous: dict[tuple[str, str], str] | None = None, ok_sources: set[str] | frozenset = frozenset()):
     """Yield (course external id, item external id, fields) for every item worth keeping."""
     for a in export.get("announcements", []):
         ident = a.get("announcement_id") or a.get("source_id")
@@ -119,8 +125,10 @@ def _items(export: dict, file_texts: dict[str, str], summary: IngestSummary,
             lines.append(f"Due: {a['due_date']}")
         if a.get("submission_status"):
             lines.append(f"Status: {a['submission_status']}")
-        if a.get("grade") or a.get("possible"):
-            lines.append(f"Grade: {a.get('grade') or '-'} / {a.get('possible') or '-'}")
+        grade = None if a.get("grade") == "" else a.get("grade")
+        possible = None if a.get("possible") == "" else a.get("possible")
+        if grade is not None or possible is not None:
+            lines.append(f"Grade: {'-' if grade is None else grade} / {'-' if possible is None else possible}")
         description = plain(a.get("description"))
         if description:
             lines.append(description)
@@ -136,15 +144,21 @@ def _items(export: dict, file_texts: dict[str, str], summary: IngestSummary,
             continue
         body = plain(c.get("body_text"))
         attachments = c.get("attachments") or []
-        for att in attachments:
-            text = file_texts.get(f"{c.get('course_id')}:{ident}:{att.get('id')}")
+        earlier = (previous or {}).get((c.get("course_id"), f"content:{ident}"), "")
+        texts = [(att, file_texts.get(f"{c.get('course_id')}:{ident}:{att.get('id')}")) for att in attachments]
+        if f"attachments:{c.get('course_id')}" not in ok_sources and not any(text for _, text in texts):
+            # The listing was not fully read, so `attachments` may be wrongly empty: keep every earlier block.
+            for block in _file_blocks(earlier):
+                body = f"{body}\n\n{block}".strip()
+            texts = []
+        for att, text in texts:
             name = att.get("name") or "attachment"
             if text:
                 summary.files_read += 1
                 body = f"{body}\n\n[File: {name}]\n{text}".strip()
             else:
                 # Not read this run (download failed, size cap): keep what an earlier sync extracted.
-                carried = _carried_block((previous or {}).get((c.get("course_id"), f"content:{ident}"), ""), name)
+                carried = _carried_block(earlier, name)
                 if carried:
                     body = f"{body}\n\n{carried}".strip()
         if c.get("type") == "Folder" and not body and not attachments:
@@ -232,7 +246,7 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
     previous = {(ext_of[i.course_id], i.external_id): i.body_text for i in db.scalars(
         select(BlackboardContentItem).where(BlackboardContentItem.course_id.in_(list(ext_of)),
                                             BlackboardContentItem.external_id.like("content:%"))).all()}
-    for course_ext, item_ext, fields in _items(export, file_texts, summary, previous):
+    for course_ext, item_ext, fields in _items(export, file_texts, summary, previous, ok_sources):
         course = by_ext.get(course_ext)
         if course is None:
             continue
@@ -299,6 +313,9 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         db.add(source)
         db.flush()
     source.status, source.error, source.last_synced_at = "ready", None, now()
-    summary.new_evidence = store_evidence(db, student_id, source.id, course_evidence(courses_in))
+    # Without memberships the courses-fallback listing marks every course current: suggest nothing.
+    trusted = "memberships" in ok_sources and "courses-fallback" not in ok_sources
+    evidence = course_evidence(courses_in) if trusted else []
+    summary.new_evidence = store_evidence(db, student_id, source.id, evidence) if evidence else 0
     db.flush()
     return summary

@@ -189,6 +189,84 @@ def test_unread_attachment_keeps_earlier_text_until_removed(student):
     assert "Midterm covers chapters 1-4." not in syllabus_body()
 
 
+def with_source(export: dict, name: str, status: str) -> dict:
+    """The export with exactly one diagnostics entry for `name`, at `status`."""
+    sources = [s for s in export["diagnostics"]["sources"] if s["source"] != name]
+    export["diagnostics"]["sources"] = sources + [{"source": name, "status": status}]
+    return export
+
+
+def course_items(sid: str, ext: str = "_101_1") -> dict:
+    course = next(c for c in rows(BlackboardCourse, student_id=sid) if c.external_id == ext)
+    return {i.external_id: i for i in rows(BlackboardContentItem, course_id=course.id)}
+
+
+def test_partial_contents_keeps_items_missing_from_export(student):
+    ingest_sample(student)
+    later = with_source(sample(), "contents:_101_1", "partial")  # a folder's children request failed
+    later["content"] = [c for c in later["content"] if c["content_id"] != "_file1"]
+    ingest_sample(student, later)
+    assert "content:_file1" in course_items(student)
+
+
+def test_ok_contents_deletes_items_missing_from_export(student):
+    ingest_sample(student)
+    later = sample()
+    later["content"] = [c for c in later["content"] if c["content_id"] != "_file1"]
+    ingest_sample(student, later)
+    assert "content:_file1" not in course_items(student)
+
+
+def test_course_missing_from_export_is_deleted(student):
+    ingest_sample(student)
+    later = sample()
+    later["courses"] = [c for c in later["courses"] if c["id"] != "_102_1"]
+    ingest_sample(student, later)
+    assert {c.external_id for c in rows(BlackboardCourse, student_id=student)} == {"_101_1", "_090_1"}
+
+
+def test_removed_grade_deleted_only_when_usergrades_ok(student):
+    def grade_ids():
+        course = next(c for c in rows(BlackboardCourse, student_id=student) if c.external_id == "_101_1")
+        return {g.external_id for g in rows(BlackboardGrade, course_id=course.id)}
+
+    ingest_sample(student)
+    assert grade_ids() == {"_col1"}
+    failed = with_source(sample(), "usergrades:_101_1", "http_500")
+    failed["grades"] = []
+    ingest_sample(student, failed)
+    assert grade_ids() == {"_col1"}  # grades could not be read: keep the old ones
+    removed = sample()
+    removed["grades"] = []
+    ingest_sample(student, removed)
+    assert grade_ids() == set()
+
+
+def test_partial_attachment_listing_keeps_earlier_file_text(student):
+    ingest_sample(student, texts={SYLLABUS_KEY: "Midterm covers chapters 1-4."})
+    later = with_source(sample(), "attachments:_101_1", "partial")
+    next(c for c in later["content"] if c["content_id"] == "_file1")["attachments"] = []  # listing failed
+    ingest_sample(student, later, texts={})
+    body = course_items(student)["content:_file1"].body_text
+    assert "[File: Course Syllabus.pdf]\nMidterm covers chapters 1-4." in body
+    assert body.count("[File: ") == 1
+
+
+def test_assessment_grade_zero_is_shown(student):
+    export = sample()
+    next(a for a in export["assessments"] if a["source_id"] == "_col2").update(grade=0)
+    ingest_sample(student, export)
+    assert "Grade: 0 / 5" in course_items(student)["asmt:_col2"].body_text
+
+
+def test_memberships_failure_suggests_no_course_evidence(student):
+    export = with_source(sample(), "memberships", "http_500")
+    export["diagnostics"]["sources"].append({"source": "courses-fallback", "status": "ok"})
+    result = ingest_sample(student, export)
+    assert result.new_evidence == 0 and rows(EvidenceItem, student_id=student) == []
+    assert len(rows(BlackboardCourse, student_id=student)) == 3  # course data is still synced
+
+
 import io  # noqa: E402
 
 from cryptography.fernet import Fernet  # noqa: E402
@@ -473,6 +551,18 @@ def test_deadlines_exclude_needs_grading_status(client, student, fake_browser):
     db.commit()
     db.close()
     assert client.get(f"/api/students/{student}/blackboard/deadlines").json()["items"] == []
+
+
+def test_deadlines_list_in_progress_draft(client, student, fake_browser):
+    sync(client, student, username="2240000000", password=SECRET)
+    db = SessionLocal()
+    item = db.scalars(select(BlackboardContentItem).join(BlackboardCourse, BlackboardContentItem.course_id == BlackboardCourse.id)
+                      .where(BlackboardCourse.student_id == student, BlackboardContentItem.title == "Project report")).first()
+    item.body_text = "Brief\nStatus: InProgress"
+    db.commit()
+    db.close()
+    items = client.get(f"/api/students/{student}/blackboard/deadlines").json()["items"]
+    assert [i["title"] for i in items] == ["Project report"]
 
 
 def test_crash_sets_retry_time(client, student, fake_browser):

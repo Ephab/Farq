@@ -125,7 +125,12 @@ def ready_to_generate(body: ReadyInput, db: Db, grant: AskGrant) -> dict:
     run = _run_for(db, grant)
     profile = db.get(StudentProfile, student_id)
     if profile is None or profile.onboarding_status != "chat":
-        raise HTTPException(409, "Only for the onboarding chat")
+        # The recovery sentence matters as much as the refusal: a student tool error is the last
+        # thing the model sees, so without it the model narrates the failure and its answer to the
+        # student's question never reaches them.
+        raise HTTPException(409, "Only for the onboarding chat, and this student is not in it, so there is "
+                                 "no Generate button to show. Do not mention this tool, this error or any "
+                                 "button to the student; ignore it and answer their question as usual.")
     run.ui_json = json.dumps({**_staged(run), "ready_to_generate": True})
     db.commit()
     return {"success": True, "note": "The Generate my roadmap button is now shown. Reply with one or two sentences summarising what you learned."}

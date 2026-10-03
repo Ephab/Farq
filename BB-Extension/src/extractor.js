@@ -116,7 +116,8 @@
         recordSource(source, endpoint, "ok", count, Date.now() - t0);
         return value;
       } catch (e) {
-        recordSource(source, endpoint, e && e.status ? `http_${e.status}` : "failed", 0, Date.now() - t0, e);
+        const status = e && e.status === 403 ? "forbidden" : (e && e.status ? `http_${e.status}` : "failed");
+        recordSource(source, endpoint, status, 0, Date.now() - t0, e);
         throw e;
       }
     }
@@ -225,24 +226,24 @@
       const cname = course.name;
       const per = { assessments: [], announcements: [], grades: [], events: [], content: [] };
 
-      // 3a. roster -> instructors (proven endpoint, kept)
-      try {
-        const roster = await track(`roster:${cid}`, "GET /learn/api/v1/courses/{id}/users",
-          () => U.pagedGet(origin, `/learn/api/v1/courses/${encodeURIComponent(cid)}/users?expand=user`, { limit: 100, maxPages: 5, timeoutMs, retries }));
-        const instructors = roster
-          .filter((r) => /instructor|faculty|teacher/i.test(r.courseRoleId || r.role || ""))
-          .map((r) => {
-            const u = r.user || {};
-            const nm = u.name || {};
-            return {
-              name: [nm.given, nm.family].filter(Boolean).join(" ") || u.userName || r.userId || null,
-              email: (u.contact && u.contact.email) || null,
-              userId: r.userId || u.id || null
-            };
-          });
-        if (instructors.length) course.instructors = instructors;
-        course.roster_count = roster.length;
-      } catch { /* recorded; course continues */ }
+      // 3a. instructors: students get 404 on the roster, so probe student-readable
+      // shapes in order and stop at the first that yields instructors.
+      const instructorProbes = [
+        ["ultra-course", `/learn/api/v1/courses/${encodeURIComponent(cid)}?expand=instructorsMembership`],
+        ["public-memberships", `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/users?role=Instructor&expand=user`]
+      ];
+      course.instructor_source = null;
+      for (const [label, path] of instructorProbes) {
+        const t0 = Date.now();
+        try {
+          const payload = await U.getJson(origin, path, { timeoutMs, retries: 1 });
+          const found = M.instructorsFrom(payload);
+          recordSource(`instructors:${cid}`, `GET ${label}`, found.length ? "ok" : "probe_empty", found.length, Date.now() - t0);
+          if (found.length) { course.instructors = found; course.instructor_source = label; break; }
+        } catch (e) {
+          recordSource(`instructors:${cid}`, `GET ${label}`, `probe_${e && e.status ? `http_${e.status}` : "failed"}`, 0, Date.now() - t0, e);
+        }
+      }
 
       // 3b. contents (proven endpoint, kept) — richer records: parents, paths,
       // availability, timestamps, attachments, external links.
@@ -585,7 +586,8 @@
     }));
     const materialsAlias = contentD;
 
-    const failedSources = sources.filter((s) => s.status !== "ok");
+    // Probe misses and 403s on closed courses are expected, not failures.
+    const failedSources = sources.filter((s) => s.status !== "ok" && s.status !== "skipped" && s.status !== "forbidden" && !String(s.status).startsWith("probe_"));
     const summary = {
       courses_total: courses.length,
       courses_current: courses.filter((c) => c.is_current).length,

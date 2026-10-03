@@ -252,7 +252,29 @@
     return { is_upcoming: !done && due >= nowMs, is_overdue: !done && due < nowMs };
   }
 
-  const api = { normKey, classifyAssessment, isCurrentCourse, assessmentMergeKey, mergeAssessments, redactExport, deadlineFlags };
+  // Instructor records from either the public memberships list or Ultra's
+  // course `instructorsMembership` expansion. Students are filtered out.
+  function instructorsFrom(payload) {
+    if (!payload || typeof payload !== "object") return [];
+    const rows = Array.isArray(payload.instructorsMembership) ? payload.instructorsMembership
+      : Array.isArray(payload.results) ? payload.results
+      : Array.isArray(payload) ? payload : [];
+    const fromUltra = Array.isArray(payload.instructorsMembership);
+    const out = [];
+    for (const r of rows) {
+      if (!r || typeof r !== "object") continue;
+      const role = String(r.courseRoleId || r.role || (r.courseRole && r.courseRole.roleId) || "");
+      if (!fromUltra && !/instructor|faculty|teacher|ta/i.test(role)) continue;
+      const u = r.user || r;
+      const nm = u.name || {};
+      const name = [nm.given || u.givenName, nm.family || u.familyName].filter(Boolean).join(" ") || u.userName || null;
+      const email = (u.contact && u.contact.email) || u.emailAddress || u.email || null;
+      if (name || email) out.push({ name, email, userId: r.userId || u.id || null });
+    }
+    return out;
+  }
+
+  const api = { normKey, classifyAssessment, isCurrentCourse, assessmentMergeKey, mergeAssessments, redactExport, deadlineFlags, instructorsFrom };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.BBModel = api;
 })(typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : globalThis));

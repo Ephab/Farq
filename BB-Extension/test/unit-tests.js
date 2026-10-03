@@ -185,6 +185,20 @@ async function main() {
     assert(f({ due_date: null }).is_upcoming === false && f({}).is_overdue === false, "deadline: no due date -> no flags");
   }
 
+  // ---- instructorsFrom: tolerant of the shapes Blackboard returns ----
+  {
+    const pub = { results: [
+      { userId: "_9_1", courseRoleId: "Instructor", user: { name: { given: "Sara", family: "Ali" }, contact: { email: "s@iau.edu.sa" } } },
+      { userId: "_8_1", courseRoleId: "Student", user: { name: { given: "X", family: "Y" } } }
+    ] };
+    const a = M.instructorsFrom(pub);
+    assert(a.length === 1 && a[0].name === "Sara Ali" && a[0].email === "s@iau.edu.sa", "instructors: public memberships shape", a);
+    const ultra = { instructorsMembership: [{ user: { givenName: "Omar", familyName: "Saad", emailAddress: "o@iau.edu.sa", id: "_7_1" } }] };
+    const b = M.instructorsFrom(ultra);
+    assert(b.length === 1 && b[0].name === "Omar Saad" && b[0].email === "o@iau.edu.sa", "instructors: ultra instructorsMembership shape", b);
+    assert(M.instructorsFrom(null).length === 0 && M.instructorsFrom({}).length === 0, "instructors: empty input -> []");
+  }
+
   if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
   console.log("\nAll unit tests passed.");
 }

@@ -187,3 +187,88 @@ def test_unread_attachment_keeps_earlier_text_until_removed(student):
     next(c for c in removed["content"] if c["content_id"] == "_file1")["attachments"] = []
     ingest_sample(student, removed, texts={})
     assert "Midterm covers chapters 1-4." not in syllabus_body()
+
+
+import io  # noqa: E402
+
+from cryptography.fernet import Fernet  # noqa: E402
+
+from app.blackboard_sync import credentials, files  # noqa: E402
+from app.models import BlackboardConnection  # noqa: E402
+
+
+@pytest.fixture()
+def fernet_key(monkeypatch):
+    monkeypatch.setenv("WAYPOINT_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+
+
+def test_password_and_session_are_sealed(fernet_key):
+    conn = BlackboardConnection(student_id="s1", username="2240000000")
+    credentials.remember_password(conn, "hunter2-secret")
+    credentials.save_session(conn, {"cookies": [{"name": "BbRouter", "value": "abc"}]})
+    assert "hunter2-secret" not in (conn.password_enc or "")
+    assert "BbRouter" not in (conn.session_enc or "")
+    assert credentials.saved_password(conn) == "hunter2-secret"
+    assert credentials.saved_session(conn)["cookies"][0]["value"] == "abc"
+    credentials.forget_password(conn)
+    credentials.clear_session(conn)
+    assert credentials.saved_password(conn) is None and credentials.saved_session(conn) is None
+
+
+def test_without_key_password_is_not_remembered(monkeypatch):
+    monkeypatch.setenv("WAYPOINT_TOKEN_ENCRYPTION_KEY", "")
+    assert credentials.can_remember() is False
+    conn = BlackboardConnection(student_id="s-nokey", username="u")
+    credentials.save_session(conn, {"cookies": []})
+    assert conn.session_enc is None and credentials.saved_session(conn) == {"cookies": []}  # memory only
+    credentials.clear_session(conn)
+
+
+def test_rotated_key_reads_as_not_saved(fernet_key, monkeypatch):
+    conn = BlackboardConnection(student_id="s2", username="u")
+    credentials.remember_password(conn, "pw")
+    monkeypatch.setenv("WAYPOINT_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    assert credentials.saved_password(conn) is None
+
+
+def test_select_attachments_prefers_current_syllabus_and_caps():
+    export = sample()
+    picked = files.select_attachments(export)
+    assert [a.key for a in picked] == [SYLLABUS_KEY]
+    assert picked[0].url.endswith("/attachments/_att9/download")
+    many = copy.deepcopy(export)
+    base = many["content"][1]
+    many["content"] = [dict(base, content_id=f"_x{i}", attachments=[dict(base["attachments"][0], id=f"_a{i}", name=f"f{i}.pdf")]) for i in range(90)]
+    many["content"].append(dict(base, content_id="_big", attachments=[dict(base["attachments"][0], id="_big", size=files.MAX_FILE_BYTES + 1)]))
+    many["content"].append(dict(base, content_id="_zip", attachments=[dict(base["attachments"][0], id="_zip", name="code.zip")]))
+    chosen = files.select_attachments(many)
+    assert len(chosen) == files.MAX_FILES
+    assert not any(a.key.endswith(":_big") or a.key.endswith(":_zip") for a in chosen)
+
+
+def test_extract_text_from_office_files_redacts_ids():
+    from docx import Document
+    from pptx import Presentation
+
+    doc = Document()
+    doc.add_paragraph("Midterm covers chapters 1-4. Contact 2240003321 for questions about grading policy.")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    text = files.extract_text("Syllabus.docx", buffer.getvalue())
+    assert "Midterm covers chapters 1-4." in text and "2240003321" not in text
+
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[1])
+    slide.shapes.title.text = "Backpropagation"
+    slide.placeholders[1].text = "Chain rule applied layer by layer through the network graph."
+    buffer = io.BytesIO()
+    deck.save(buffer)
+    assert "Chain rule" in files.extract_text("Lecture 3.pptx", buffer.getvalue())
+
+
+def test_extract_text_rejects_garbage_and_oversize():
+    assert files.extract_text("broken.pdf", b"%PDF-not-really") is None
+    assert files.extract_text("archive.zip", b"PK...") is None
+    assert files.extract_text("huge.txt", b"a" * (files.MAX_FILE_BYTES + 1)) is None
+    long = files.extract_text("notes.txt", ("word " * 20_000).encode())
+    assert long is not None and len(long) <= files.MAX_CHARS

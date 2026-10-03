@@ -137,6 +137,8 @@ global.fetch = async (url) => {
   check("content type from public handler", syl && syl.type === "File" && all.content.some((m) => m.type === "Folder"), syl);
   check("embedded URL is not a description", syl && syl.body_text === null && syl.embedded_url && syl.embedded_url.includes("/embedded/"), syl);
   check("attachment has download_url", syl && syl.attachments.length === 1 && syl.attachments[0].download_url === "https://vle.iau.edu.sa/learn/api/public/v1/courses/_101_1/contents/_file1/attachments/_att9/download", syl && syl.attachments);
+  const attSrc = all.diagnostics.sources.find((x) => x.source === "attachments:_101_1");
+  check("attachments source recorded ok with count", attSrc && attSrc.status === "ok" && attSrc.count === 1 && attSrc.truncated === false && attSrc.listing_errors === 0, attSrc);
   check("content body is plain text", all.content.find((m) => m.content_id === "_c1").body_text === "Hello & welcome");
   check("category title resolves classification", all.assessments.find((a) => a.column_id === "_col2").type === "Quiz" && all.assessments.find((a) => a.column_id === "_col2").gradebook_category === "Quizzes");
   check("legacy aliases present", Array.isArray(all.assignments) && Array.isArray(all.materials));

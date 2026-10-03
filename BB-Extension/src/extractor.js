@@ -323,19 +323,28 @@
       }
 
       // 3b'. attachment metadata (documented); bytes are never fetched here.
+      const attT0 = Date.now();
+      let attListingErrors = 0;
       await U.limitedMap(attachmentJobs.slice(0, 80), 2, async (rec) => {
         const listPath = `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/contents/${encodeURIComponent(rec.content_id)}/attachments`;
         try {
           const res = await U.getJson(origin, listPath, { timeoutMs, retries: 1 });
-          rec.attachments = (res.results || []).map((a) => ({
+          rec.attachments = (res.results || []).filter((a) => a && a.id).map((a) => ({
             id: a.id || null,
             name: a.fileName || a.name || null,
             mime: a.mimeType || null,
             size: a.fileSize ?? a.size ?? null,
-            download_url: a.id ? `${origin}${listPath}/${encodeURIComponent(a.id)}/download` : null
+            download_url: `${origin}${listPath}/${encodeURIComponent(a.id)}/download`
           }));
-        } catch { /* not every handler has attachments */ }
+        } catch (e) {
+          if (!(e && e.status === 404)) attListingErrors++; // 404 = no attachments, normal
+        }
       }, true);
+      if (attachmentJobs.length) {
+        const attCount = attachmentJobs.reduce((n, r) => n + r.attachments.length, 0);
+        recordSource(`attachments:${cid}`, "GET public attachments", attListingErrors ? "partial" : "ok", attCount, Date.now() - attT0);
+        Object.assign(sources[sources.length - 1], { truncated: attachmentJobs.length > 80, listing_errors: attListingErrors });
+      }
 
       // 3c. announcements (proven endpoint, kept) — fixed rich-text extraction.
       try {

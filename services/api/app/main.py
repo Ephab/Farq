@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -34,6 +35,7 @@ from .pipeline.review_step import decide_evidence as decide_evidence_step
 from .roadmap_gen import planner as roadmap_planner
 from .roadmap_gen import stage as roadmap_stage
 from .roadmap_gen import stitch as roadmap_stitch
+from .roadmap_gen import runs as generation_runs
 from .roadmap_gen import store as staged_store
 from .roadmaps import apply_operations
 from .projects import router as projects_router
@@ -224,6 +226,10 @@ async def startup() -> None:
     ensure_indexes()
     db = SessionLocal()
     try:
+        # Generation runs live in memory; after a restart none exist, so nobody can still be "generating".
+        for stuck in db.scalars(select(StudentProfile).where(StudentProfile.onboarding_status == "generating")).all():
+            stuck.onboarding_status = "chat"
+        db.commit()
         if db.get(Student, DEMO_STUDENT_ID) is None:
             db.add(Student(id=DEMO_STUDENT_ID, display_name="Demo Student"))
             db.flush()
@@ -473,6 +479,9 @@ def update_profile(student_id: str, _owner: OwnedStudent, body: ProfileUpdate, d
         profile = StudentProfile(student_id=student_id)
         db.add(profile)
     changes = body.model_dump(exclude_none=True)
+    if changes.get("onboarding_status") not in (None, "generating") and generation_runs.live(student_id) is not None:
+        # Moving the student back a step would orphan the run; they can stop it first.
+        raise HTTPException(409, "Your roadmap is still being built. Stop it first to change your answers.")
     for key, value in changes.items():
         setattr(profile, key, value.strip() if isinstance(value, str) else value)
     if "program" in changes and "discipline" not in changes:
@@ -873,24 +882,17 @@ def finalize_staged_roadmap(student_id: str, _owner: OwnedStudent, body: Finaliz
     return proposal
 
 
-@app.get("/api/students/{student_id}/onboarding/generate/stream")
-async def generate_staged_stream(
-    student_id: str,
-    _owner: OwnedStudent,
-    provider: str | None = None,
-    model: str | None = None,
-    x_hermes_api_key: Annotated[str | None, Header()] = None,
-) -> StreamingResponse:
-    """Sequential staged generation as SSE: plan, then each finished stage
-    with the snapshot so far, then done. The canvas renders each stage as
-    it arrives. Only the finalize step writes the proposal.
+def _sse(name: str, payload: dict) -> str:
+    return f"event: {name}\ndata: {json.dumps(payload)}\n\n"
 
-    Whatever happens (an error, a closed tab), the student is never left in
-    `generating` and the in-memory job is dropped."""
-    hermes = _hermes_opts(provider, model, x_hermes_api_key)
 
-    def event(name: str, payload: dict) -> str:
-        return f"event: {name}\ndata: {json.dumps(payload)}\n\n"
+async def _run_generation(run: generation_runs.GenerationRun, hermes: dict) -> None:
+    """Generate the first roadmap stage by stage into `run`'s event log.
+
+    This is a server-side task, not part of any request: closing the page or navigating away does not
+    stop it. It ends in exactly one of done / error / cancelled, and the student is never left in
+    `generating` unless it finished."""
+    student_id = run.student_id
 
     def prepare() -> tuple[str, dict]:
         db = SessionLocal()
@@ -899,7 +901,7 @@ async def generate_staged_stream(
             _require_ready(db, student_id)
             brief = build_profile_brief(db, student_id)
             profile = db.get(StudentProfile, student_id)
-            if profile is not None:
+            if profile is not None and not _regenerating(profile):
                 profile.onboarding_status = "generating"
                 db.commit()
             return current.id, brief
@@ -913,59 +915,119 @@ async def generate_staged_stream(
         finally:
             db.close()
 
-    async def stream():
+    job_id: str | None = None
+    done = False
+    try:
         try:
             base_id, brief = await asyncio.to_thread(prepare)
         except HTTPException as exc:
-            yield event("error", {"error": exc.detail})
+            await run.publish("error", {"error": exc.detail})
             return
-        job_id: str | None = None
-        done = False
-        try:
-            plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
-            job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
-            yield event("plan", {"job_id": job_id, "plan": plan.model_dump()})
-            for item in plan.stages:
-                job = staged_store.get_job(job_id)
-                if job is None:
-                    raise RuntimeError("This generation job expired; try again")
-                prior, used = staged_store.prior_node_summaries(job, item.id)
-                try:
-                    nodes = await asyncio.to_thread(
-                        roadmap_stage.generate_stage_nodes,
-                        brief, plan, item.id, prior, used, job["confirmed"], hermes,
-                    )
-                except Exception as exc:
-                    yield event("error", {"error": str(exc), "stage_id": item.id})
-                    return
-                wiring_error = roadmap_stitch.check_wiring(plan, {**job["completed"], item.id: nodes})
-                if wiring_error:
-                    yield event("error", {"error": wiring_error, "stage_id": item.id})
-                    return
-                staged_store.append_stage(job_id, item.id, nodes)
-                snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(job_id)["completed"])
-                yield event("stage", {"job_id": job_id, "stage_id": item.id, "nodes": [n.model_dump() for n in nodes], "snapshot": snapshot.model_dump()})
+        plan = await asyncio.to_thread(roadmap_planner.generate_plan, brief, hermes)
+        job_id = staged_store.create_job(student_id, base_id, brief, plan, hermes)
+        await run.publish("plan", {"job_id": job_id, "plan": plan.model_dump()})
+        for item in plan.stages:
             job = staged_store.get_job(job_id)
-            snapshot = roadmap_stitch.merge_stages(plan.title, plan, job["completed"])
+            if job is None:
+                raise RuntimeError("This generation job expired; try again")
+            prior, used = staged_store.prior_node_summaries(job, item.id)
             try:
-                finished = validate_generated(snapshot, job["confirmed"])
-            except ValueError as exc:
-                yield event("error", {"error": str(exc)})
+                nodes = await asyncio.to_thread(
+                    roadmap_stage.generate_stage_nodes,
+                    brief, plan, item.id, prior, used, job["confirmed"], hermes,
+                )
+            except Exception as exc:
+                await run.publish("error", {"error": str(exc), "stage_id": item.id})
                 return
-            proposal = await asyncio.to_thread(finish, base_id, finished)
-            done = True
-            yield event("done", {"job_id": job_id, "proposal_id": proposal["id"]})
-        except Exception as exc:
-            logger.exception("Staged roadmap generation failed")
-            yield event("error", {"error": str(exc) or "Roadmap generation failed"})
-        finally:
-            # Runs on errors and when the client disconnects (the generator is closed).
-            if job_id is not None:
-                staged_store.drop_job(job_id)
-            if not done:
-                await asyncio.to_thread(_reset_to_chat, student_id)
+            wiring_error = roadmap_stitch.check_wiring(plan, {**job["completed"], item.id: nodes})
+            if wiring_error:
+                await run.publish("error", {"error": wiring_error, "stage_id": item.id})
+                return
+            staged_store.append_stage(job_id, item.id, nodes)
+            snapshot = roadmap_stitch.merge_stages(plan.title, plan, staged_store.get_job(job_id)["completed"])
+            await run.publish("stage", {"job_id": job_id, "stage_id": item.id, "nodes": [n.model_dump() for n in nodes], "snapshot": snapshot.model_dump()})
+        job = staged_store.get_job(job_id)
+        snapshot = roadmap_stitch.merge_stages(plan.title, plan, job["completed"])
+        try:
+            finished = validate_generated(snapshot, job["confirmed"])
+        except ValueError as exc:
+            await run.publish("error", {"error": str(exc)})
+            return
+        proposal = await asyncio.to_thread(finish, base_id, finished)
+        done = True
+        await run.publish("done", {"job_id": job_id, "proposal_id": proposal["id"]})
+    except asyncio.CancelledError:
+        await run.publish("cancelled", {})
+        raise
+    except Exception as exc:
+        logger.exception("Staged roadmap generation failed")
+        await run.publish("error", {"error": str(exc) or "Roadmap generation failed"})
+    finally:
+        if job_id is not None:
+            staged_store.drop_job(job_id)
+        if not done:
+            await asyncio.to_thread(_reset_to_chat, student_id)
+        # Every path above ends the log; this covers a failure that skipped them.
+        await run.publish("error", {"error": "Roadmap generation stopped"})
+
+
+@app.get("/api/students/{student_id}/onboarding/generate/stream")
+async def generate_staged_stream(
+    student_id: str,
+    _owner: OwnedStudent,
+    provider: str | None = None,
+    model: str | None = None,
+    attach: bool = False,
+    x_hermes_api_key: Annotated[str | None, Header()] = None,
+) -> StreamingResponse:
+    """Staged generation as SSE: plan, then each finished stage with the snapshot so far, then done.
+
+    Generation runs in the background (`_run_generation`), so this stream only watches it: the first
+    call starts a run, later calls (a reload, a second tab) replay and follow the same one, and closing
+    the stream does not stop it. `attach=true` never starts a run; it only follows one that exists."""
+    hermes = _hermes_opts(provider, model, x_hermes_api_key)
+    run = generation_runs.live(student_id)
+    if run is None:
+        previous = generation_runs.get(student_id)
+        if attach and previous is not None:
+            run = previous
+        elif attach:
+            _reset_to_chat(student_id)
+
+            async def nothing_running():
+                yield _sse("error", {"error": "No roadmap is being generated. Start again from the chat."})
+
+            return StreamingResponse(nothing_running(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+        else:
+            run = generation_runs.GenerationRun(student_id)
+            generation_runs.register(run)
+            run.task = asyncio.create_task(_run_generation(run, hermes))
+
+    async def stream():
+        async for name, payload in run.follow():
+            yield _sse(name, payload)
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/students/{student_id}/onboarding/generate/status")
+def generation_status(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
+    """Cheap progress for the app shell, which polls this while the student explores."""
+    require_student(db, student_id)
+    run = generation_runs.get(student_id)
+    return run.summary() if run is not None else {"state": "idle", "title": None, "total_stages": 0, "completed_stage_ids": [], "proposal_id": None, "error": None}
+
+
+@app.post("/api/students/{student_id}/onboarding/generate/cancel")
+async def cancel_generation(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
+    require_student(db, student_id)
+    run = generation_runs.live(student_id)
+    if run is not None and run.task is not None:
+        run.task.cancel()
+        # Wait for the task's cleanup so the student is back in `chat` when this returns.
+        with contextlib.suppress(asyncio.CancelledError):
+            await run.task
+    return {"cancelled": run is not None}
 
 
 def _reset_to_chat(student_id: str) -> None:

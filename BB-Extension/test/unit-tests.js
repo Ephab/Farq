@@ -196,6 +196,12 @@ async function main() {
     const ultra = { instructorsMembership: [{ user: { givenName: "Omar", familyName: "Saad", emailAddress: "o@iau.edu.sa", id: "_7_1" } }] };
     const b = M.instructorsFrom(ultra);
     assert(b.length === 1 && b[0].name === "Omar Saad" && b[0].email === "o@iau.edu.sa", "instructors: ultra instructorsMembership shape", b);
+    const roles = M.instructorsFrom({ results: [
+      { userId: "_1_1", courseRoleId: "Facilitator", user: { name: { given: "F", family: "X" } } },
+      { userId: "_2_1", courseRoleId: "Guest", user: { name: { given: "G", family: "Y" } } },
+      { userId: "_3_1", courseRoleId: "TA", user: { name: { given: "T", family: "Z" } } }
+    ] });
+    assert(roles.length === 1 && roles[0].userId === "_3_1", "instructors: Facilitator/Guest excluded, TA kept", roles);
     assert(M.instructorsFrom(null).length === 0 && M.instructorsFrom({}).length === 0, "instructors: empty input -> []");
   }
 

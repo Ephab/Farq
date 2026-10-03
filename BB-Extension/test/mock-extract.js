@@ -63,7 +63,7 @@ global.fetch = async (url) => {
   if (p === "/learn/api/v1/courses/_101_1/contents") return ok(responses.contents101);
   if (p === "/learn/api/v1/courses/_102_1/contents") return ok(responses.contents102);
   if (p === "/learn/api/v1/courses/_101_1/announcements") return ok(responses.ann101);
-  if (p === "/learn/api/v1/courses/_102_1/announcements") return ok(responses.ann102);
+  if (p === "/learn/api/v1/courses/_102_1/announcements") return miss(403);
   if (p === "/learn/api/public/v2/courses/_101_1/gradebook/columns") return ok(responses.cols101);
   if (p === "/learn/api/public/v2/courses/_102_1/gradebook/columns") return ok(responses.cols102);
   if (p === "/learn/api/public/v1/courses/_101_1/gradebook/users/_1_1") return ok(responses.userGrades101);
@@ -95,7 +95,8 @@ global.fetch = async (url) => {
   check("instructor extracted", (all.courses.find((c) => c.id === "_101_1").instructors || []).length === 1);
   check("instructor source recorded", all.courses.find((c) => c.id === "_101_1").instructor_source === "ultra-course", all.courses[0]);
   check("old roster path no longer called", !all.diagnostics.sources.some((s) => s.endpoint === "GET /learn/api/v1/courses/{id}/users"));
-  check("probe misses and 403s are not failures", !all.diagnostics.failed_sources.some((f) => /probe_|forbidden/.test(f)), all.diagnostics.failed_sources);
+  const srcs = all.diagnostics.sources;
+  check("probe misses and 403s are not failures", srcs.some((s) => String(s.status).startsWith("probe_")) && srcs.some((s) => s.status === "forbidden") && !all.diagnostics.failed_sources.some((f) => /probe_|forbidden/.test(f)), all.diagnostics.failed_sources);
   const ann = all.announcements.find((a) => a.announcement_id === "_a1");
   check("announcement object body -> real text", ann && ann.body_text === "Welcome plain", ann && ann.body_text);
   check("announcement keeps HTML + dates + author", ann && ann.body_html.includes("<p>") && ann.created_at && ann.author === "prof.a", ann);

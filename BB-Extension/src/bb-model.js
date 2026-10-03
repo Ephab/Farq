@@ -264,7 +264,7 @@
     for (const r of rows) {
       if (!r || typeof r !== "object") continue;
       const role = String(r.courseRoleId || r.role || (r.courseRole && r.courseRole.roleId) || "");
-      if (!fromUltra && !/instructor|faculty|teacher|ta/i.test(role)) continue;
+      if (!fromUltra && !/instructor|faculty|teacher|\bta\b/i.test(role)) continue;
       const u = r.user || r;
       const nm = u.name || {};
       const name = [nm.given || u.givenName, nm.family || u.familyName].filter(Boolean).join(" ") || u.userName || null;

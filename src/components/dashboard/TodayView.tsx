@@ -1011,7 +1011,7 @@ export function TodayView({ onNavigate }: TodayViewProps) {
           </div>
         </div>
 
-        <Reveal delay={0.12} className="mt-5">
+        <Reveal delay={0.12}>
           <BlackboardDeadlines />
         </Reveal>
 

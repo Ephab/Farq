@@ -12,7 +12,8 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
   const { t, fmt } = useI18n()
   const studentId = getCurrentStudentId()
   const [status, setStatus] = useState<BlackboardSyncStatus | null>(null)
-  const [username, setUsername] = useState("")
+  const [typed, setTyped] = useState<string | null>(null)
+  const username = typed ?? status?.username ?? ""
   const [password, setPassword] = useState("")
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -20,7 +21,7 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
   const path = `/api/students/${studentId}/blackboard`
 
   const load = useCallback(async () => {
-    try { setStatus(await api<BlackboardSyncStatus>(`${path}/sync`)) } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+    try { setStatus(await api<BlackboardSyncStatus>(`${path}/sync`)); setError(null) } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
   }, [path])
 
   useEffect(() => { void load() }, [load])
@@ -37,10 +38,10 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
     try {
       const body = withLogin ? JSON.stringify({ username: username.trim(), password, remember: remember && !!status?.can_remember }) : undefined
       setStatus(await api<BlackboardSyncStatus>(`${path}/sync`, { method: "POST", body }))
-      setPassword("")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
+      if (withLogin) setPassword("")
       setBusy(false)
     }
   }
@@ -50,7 +51,7 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
     try { await api(`${path}/connection`, { method: "DELETE" }); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } finally { setBusy(false) }
   }
 
-  const needsLogin = !status?.connected || (status.status === "failed" && ["bad_password", "needs_login"].includes(status.failure_reason ?? "") && !status.has_saved_login)
+  const needsLogin = !status?.connected || (status.status === "failed" && !status.has_saved_login)
   const summary = status?.summary ?? {}
 
   return (
@@ -79,7 +80,7 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
       ) : needsLogin ? (
         <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); if (username.trim() && password && !busy) void start(true) }}>
           <label className="grid gap-1 text-[13px] font-medium">{t("blackboard.username")}
-            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" dir="ltr" className="h-11 rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            <input value={username} onChange={(e) => setTyped(e.target.value)} autoComplete="username" dir="ltr" className="h-11 rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
           <label className="grid gap-1 text-[13px] font-medium">{t("blackboard.password")}
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" dir="ltr" className="h-11 rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring" />
@@ -93,7 +94,7 @@ export function BlackboardSyncCard({ onReview }: { onReview?: () => void }) {
             </label>
           )}
           <button type="submit" disabled={!username.trim() || !password || busy} className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50 sm:col-span-2 sm:justify-self-start">
-            {t(status?.connected ? "blackboard.signInAgain" : "blackboard.sync")}
+            {t(status?.connected || status?.status === "failed" ? "blackboard.signInAgain" : "blackboard.sync")}
           </button>
         </form>
       ) : status ? (

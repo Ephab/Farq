@@ -44,5 +44,6 @@ export const blackboard = {
     overdue: "Overdue",
     due: "Due {when}",
     open: "Open in Blackboard",
+    openItem: "Open {title} in Blackboard",
   },
 } as const

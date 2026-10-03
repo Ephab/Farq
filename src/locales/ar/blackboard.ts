@@ -47,5 +47,6 @@ export const blackboard: CatalogShape<typeof en> = {
     overdue: "متأخر",
     due: "الموعد {when}",
     open: "افتح في Blackboard",
+    openItem: "افتح {title} في Blackboard",
   },
 }

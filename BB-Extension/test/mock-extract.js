@@ -25,7 +25,7 @@ const responses = {
   roster102: { results: [], paging: {} },
   contents101: { results: [{ id: "_c1", title: "Week 1 slides", body: "<p>Hello</p>", contentHandler: { id: "resource/x-bb-document" }, hasChildren: false, created: "2026-09-02T00:00:00.000Z", modified: "2026-09-03T00:00:00.000Z", availability: { available: "Yes" } }], paging: {} },
   pubContents101: { results: [
-    { id: "_f1", title: "Week 1", contentHandler: { id: "resource/x-bb-folder" }, hasChildren: true, created: "2026-09-01T00:00:00.000Z", modified: "2026-09-02T00:00:00.000Z", availability: { available: "Yes" } },
+    { id: "_f1", title: "Week 1", description: "x".repeat(300), contentHandler: { id: "resource/x-bb-folder" }, hasChildren: true, created: "2026-09-01T00:00:00.000Z", modified: "2026-09-02T00:00:00.000Z", availability: { available: "Yes" } },
     { id: "_c1", title: "Week 1 slides", body: "<p>Hello &amp; welcome</p>", contentHandler: { id: "resource/x-bb-document" }, hasChildren: false, created: "2026-09-02T00:00:00.000Z", modified: "2026-09-03T00:00:00.000Z", availability: { available: "Yes" } }
   ], paging: {} },
   pubChildrenF1: { results: [
@@ -166,7 +166,9 @@ global.fetch = async (url) => {
 
   const dbg = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all", captureSamples: true });
   check("captureSamples records raw shapes", dbg.diagnostics.samples && dbg.diagnostics.samples.contents && dbg.diagnostics.samples.contents.id === "_f1", dbg.diagnostics.samples && Object.keys(dbg.diagnostics.samples));
-  check("samples strip user keys", !JSON.stringify(dbg.diagnostics.samples).includes("a@iau.edu.sa"));
+  const sampJson = JSON.stringify(dbg.diagnostics.samples);
+  check("samples strip user keys", !sampJson.includes("a@iau.edu.sa") && !sampJson.includes("Prof") && !sampJson.includes('"givenName"'), sampJson.slice(0, 300));
+  check("samples truncate strings to 120 chars", typeof dbg.diagnostics.samples.contents.description === "string" && dbg.diagnostics.samples.contents.description.length === 120);
   check("no samples by default", all.diagnostics.samples === undefined);
 
   const fail = checks.filter(([, ok]) => !ok);

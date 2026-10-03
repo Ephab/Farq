@@ -103,10 +103,11 @@
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
     const prog = (m) => { try { if (onProgress) onProgress(m); } catch { /* ignore */ } };
     const samples = options.captureSamples ? {} : null;
-    const USER_KEYS = /^(email|emailAddress|userName|studentId|contact|name|givenName|familyName)$/;
+    const USER_KEYS = /^(email|emailAddress|userName|studentId|contact|name|givenName|familyName|displayName|nickName|middleName|externalId|uuid|userId|createdBy|creator)$/;
+    const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
     function sample(family, raw) {
       if (!samples || samples[family] || !raw || typeof raw !== "object") return;
-      samples[family] = JSON.parse(JSON.stringify(raw, (k, v) => (USER_KEYS.test(k) ? undefined : (typeof v === "string" ? v.slice(0, 120) : v))));
+      samples[family] = JSON.parse(JSON.stringify(raw, (k, v) => (USER_KEYS.test(k) ? undefined : (typeof v === "string" ? (EMAIL_RE.test(v) ? "REDACTED" : v.slice(0, 120)) : v))));
     }
 
     const startedAt = Date.now();

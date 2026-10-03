@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, BriefcaseBusiness, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
+import { Bot, BriefcaseBusiness, Command, Database, FileText, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { AnimatePresence, useReducedMotion } from "motion/react"
 import {
@@ -31,6 +31,7 @@ import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
+import { CvView } from "@/components/cv/CvView"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { LoaderCircle } from "lucide-react"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/waypoint-api"
@@ -49,6 +50,7 @@ const VIEW_LABELS: Record<string, MessageKey> = {
   "Group Projects": "nav.items.teams",
   "Emails": "nav.items.emails",
   "Co-op": "nav.items.coop",
+  "CV": "nav.items.cv",
   "Slides": "nav.items.slides",
   "My data": "nav.items.myData",
 }
@@ -234,6 +236,7 @@ function AppShell() {
               </NavSection>
               <NavSection label={t("nav.sections.career")}>
                 <NavItem label="Co-op" text={t("nav.items.coop")} icon={<BriefcaseBusiness className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="CV" text={t("nav.items.cv")} icon={<FileText className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
               <NavSection label={t("nav.sections.create")}>
                 <NavItem label="Slides" text={t("nav.items.slides")} icon={<Presentation className="size-4" />} active={active} onSelect={setActive} />
@@ -309,7 +312,9 @@ function AppShell() {
               ) : active === "Group Projects" ? (
                 <TeamsView />
               ) : active === "Co-op" ? (
-                <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
+                <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} onNavigate={(tab) => setActive(tab)} />
+              ) : active === "CV" ? (
+                <CvView />
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
               ) : null}

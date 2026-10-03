@@ -16,6 +16,23 @@ import tempfile  # noqa: E402
 
 os.environ["WAYPOINT_HERMES_HOME"] = tempfile.mkdtemp(prefix="waypoint-hermes-home-")
 
+# Tests run without cloud engine keys, so the decision chain (jev -> span -> laya) would fall through to the
+# real local Laya model on every app startup (blackboard seeding observes items) and pin the CPU for minutes.
+# Laya is never available unless a test installs its own fake via monkeypatch.setitem(engines.INFO/ASK, "laya", ...).
+from app import decision_engines as _engines  # noqa: E402
+
+
+def _laya_off():
+    return _engines.EngineInfo("laya", "Laya", "disabled in tests", "local", "", False, "disabled in tests")
+
+
+def _laya_never(state, questions, timeout):
+    raise _engines.EngineUnavailable("laya disabled in tests")
+
+
+_engines.INFO["laya"] = _laya_off
+_engines.ASK["laya"] = _laya_never
+
 OWNED_PREFIXES = ("/api/students/", "/api/chat/threads/", "/api/agent-runs/", "/api/roadmap-proposals/",
                   "/api/projects/", "/api/evaluations/")
 NO_AUTO = "x-test-no-auto"

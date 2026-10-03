@@ -392,6 +392,71 @@ main {
   }
 }
 
+/* ---- CV Builder: isolated A4 print ------------------------------------------------------------- */
+/* On screen the A4 page is scaled to fit its panel (see cv/A4Frame.tsx); printing always uses the
+   page's true A4 size regardless of that on-screen scale. Everything outside .cv-print-root, and
+   any .no-print element inside it (provenance chips, the editor, nav chrome), is hidden so the
+   printed sheet shows only the CV itself. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .cv-print-root,
+  .cv-print-root * {
+    visibility: visible;
+  }
+
+  .cv-print-root {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .cv-page {
+    transform: none !important;
+    width: auto !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ask Hermes's "what just changed" highlight is a screen-only review aid; the printed sheet
+     shows only the final text. */
+  .cv-highlight {
+    background: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 14mm 16mm;
+  }
+}
+
+/* On screen, Ask Hermes briefly washes the field(s) it just changed in the CV's own accent color
+   so a pending edit is easy to spot before Accept/Undo; it never appears in print (see above). */
+.cv-highlight {
+  background: color-mix(in srgb, var(--cv-accent, #f59e0b) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cv-accent, #f59e0b) 28%, transparent);
+  border-radius: 4px;
+  transition: background-color 0.4s var(--ease-glide), box-shadow 0.4s var(--ease-glide);
+}
+
+.cv-highlight-section {
+  padding: 6px 8px;
+  margin-inline: -8px;
+}
+
 /* Quiz generation fluid tube */
 @keyframes quiz-wave-slide {
   from {

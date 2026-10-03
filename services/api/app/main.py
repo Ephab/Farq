@@ -21,6 +21,7 @@ from .blackboard import router as blackboard_router, seed_demo_snapshot
 from .connections import router as connections_router
 from .coop import router as coop_router, seed_coop_catalog
 from .coop_refresh import router as coop_refresh_router, start_scheduler as start_coop_scheduler, stop_scheduler as stop_coop_scheduler
+from .cv import router as cv_router
 from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
@@ -78,6 +79,7 @@ app.include_router(teams_router)
 app.include_router(blackboard_router)
 app.include_router(coop_router)
 app.include_router(coop_refresh_router)
+app.include_router(cv_router)
 app.include_router(suggestions_router)
 app.include_router(connections_router)
 app.include_router(hermes_skills_router)
@@ -1496,12 +1498,33 @@ def cancel_latest_run(thread_id: str, db: Db, user: CurrentUser) -> dict:
 
 
 def _live_progress(run: AgentRun) -> dict | None:
-    """What the run is doing right now (phase, tool, model, tokens/s, reply so far); see hermes.RunProgress.
-    `server_now` lets the browser tick elapsed times without trusting its own clock."""
+    """What the student is shown about a run right now: phase, tool and finished steps only.
+
+    `hermes.RunProgress`/`LIVE_PROGRESS` also tracks the model name, token count/speed and a raw
+    interim/preview of the reply text — useful server-side (logs, the settings test), but none of
+    it is for the student: a model name or raw reasoning/preview text leaking into the chat UI is
+    exactly what AGENTS.md says to prevent in the API, not only in the prompt or the frontend. This
+    is the one place that response crosses the wire, so it's sanitized here regardless of what the
+    frontend currently chooses to render. `server_now` lets the browser tick elapsed times without
+    trusting its own clock.
+    """
     live = LIVE_PROGRESS.get(run.id)
     if live is None or run.status in {"completed", "failed", "cancelled"}:
         return None
-    return {**live, "server_now": time.time()}
+    return {
+        "phase": live.get("phase"),
+        "tool": live.get("tool"),
+        "model": None,
+        "started_at": live.get("started_at"),
+        "phase_since": live.get("phase_since"),
+        "tokens": 0,
+        "tps": None,
+        "preview": "",
+        "steps": live.get("steps", []),
+        "notice": None,
+        "attempt": live.get("attempt", 0),
+        "server_now": time.time(),
+    }
 
 
 def _run_status(run_id: str) -> tuple[str, bool] | None:

@@ -290,7 +290,9 @@ def fetch_linkedin_candidates(client: httpx.Client | None = None) -> list[CoopCa
     actor = quote(LINKEDIN_ACTOR_ID, safe="")
     payload = {
         "keywords": "cooperative training internship software engineering artificial intelligence data cybersecurity engineering",
-        "location": "Saudi Arabia", "datePosted": "past month", "maxItems": 25, "scrapeCompany": False,
+        # The actor rejects anything outside its own enum ("pastMonth", not "past month") — this
+        # is why every LinkedIn sync was failing with a 400 (see docs/handoff.md Phase B notes).
+        "location": "Saudi Arabia", "datePosted": "pastMonth", "maxItems": 25, "scrapeCompany": False,
     }
     try:
         charge_cap = os.getenv("APIFY_MAX_TOTAL_CHARGE_USD", "0.06")

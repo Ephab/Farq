@@ -18,6 +18,8 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -111,7 +113,6 @@ function useIsMobile() {
 
 interface AnimatedSidebarContextValue {
   isMobile: boolean;
-  layoutId: string;
   open: boolean;
   openMobile: boolean;
   reduce: boolean;
@@ -188,7 +189,6 @@ export function AnimatedSidebarProvider({
     useState(defaultOpenMobile);
   const isMobile = useIsMobile();
   const reduce = useReducedMotion() ?? false;
-  const generatedId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const desktopOpen = open ?? internalOpen;
   const mobileOpen = openMobile ?? internalOpenMobile;
@@ -236,7 +236,6 @@ export function AnimatedSidebarProvider({
     <AnimatedSidebarContext.Provider
       value={{
         isMobile,
-        layoutId: `${generatedId}-active`,
         open: desktopOpen,
         openMobile: mobileOpen,
         reduce,
@@ -667,19 +666,166 @@ export const AnimatedSidebarHeader = forwardRef<
 export const AnimatedSidebarContent = forwardRef<
   HTMLDivElement,
   HTMLAttributes<HTMLDivElement>
->(function AnimatedSidebarContent({ className, ...props }, forwardedRef) {
+>(function AnimatedSidebarContent(
+  { children, className, ...props },
+  forwardedRef,
+) {
+  const scope = useSidebarNavScopeValue();
+  const setContainerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      scope.containerRef.current = node;
+      if (typeof forwardedRef === "function") forwardedRef(node);
+      else if (forwardedRef) forwardedRef.current = node;
+    },
+    [forwardedRef, scope.containerRef],
+  );
   return (
     <div
       {...props}
-      ref={forwardedRef}
+      ref={setContainerRef}
       data-slot="sidebar-content"
       className={cn(
-        "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-2",
+        "relative flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-2",
         className,
       )}
-    />
+    >
+      <SidebarNavScopeContext.Provider value={scope.value}>
+        {/* One gray background for the whole sidebar: it measures the active
+            button and glides to it, so switching sections always visibly
+            slides instead of remounting per menu. */}
+        <SidebarActivePill />
+        {children}
+      </SidebarNavScopeContext.Provider>
+    </div>
   );
 });
+
+/** Shared measurement scope for the travelling active pill. One instance lives
+    in each AnimatedSidebarContent (desktop panel and mobile sheet), so the
+    pill never has to cross trees — it simply follows the active button in its
+    own container. */
+interface SidebarNavScope {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  nodesRef: React.RefObject<Map<string, HTMLElement>>;
+  items: Record<string, boolean>;
+  register: (id: string, node: HTMLElement | null, active: boolean) => void;
+  unregister: (id: string) => void;
+}
+
+const SidebarNavScopeContext = createContext<SidebarNavScope | null>(null);
+
+function useSidebarNavScopeValue() {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const nodesRef = useRef(new Map<string, HTMLElement>());
+  const [items, setItems] = useState<Record<string, boolean>>({});
+  const register = useCallback<SidebarNavScope["register"]>(
+    (id, node, active) => {
+      if (node) nodesRef.current.set(id, node);
+      else nodesRef.current.delete(id);
+      setItems((previous) =>
+        previous[id] === active ? previous : { ...previous, [id]: active },
+      );
+    },
+    [],
+  );
+  const unregister = useCallback<SidebarNavScope["unregister"]>(
+    (id) => {
+      nodesRef.current.delete(id);
+      setItems((previous) => {
+        if (!(id in previous)) return previous;
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+    },
+    [],
+  );
+  const value = useMemo<SidebarNavScope>(
+    () => ({ containerRef, nodesRef, items, register, unregister }),
+    [items, register, unregister],
+  );
+  return { containerRef, value };
+}
+
+interface PillGeometry {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+function SidebarActivePill() {
+  const scope = useContext(SidebarNavScopeContext);
+  const reduce = useReducedMotion() ?? false;
+  const [geometry, setGeometry] = useState<PillGeometry | null>(null);
+  const activeId = useMemo(() => {
+    if (!scope) return null;
+    for (const [id, active] of Object.entries(scope.items)) {
+      if (active) return id;
+    }
+    return null;
+  }, [scope]);
+  useLayoutEffect(() => {
+    if (!scope || !activeId) {
+      setGeometry(null);
+      return;
+    }
+    const container = scope.containerRef.current;
+    const node = scope.nodesRef.current.get(activeId);
+    if (!container || !node) {
+      setGeometry(null);
+      return;
+    }
+    const measure = () => {
+      // Content coordinates: the pill is absolutely positioned inside the
+      // scrolling container, so it rides along with the scroll itself.
+      const containerBox = container.getBoundingClientRect();
+      const nodeBox = node.getBoundingClientRect();
+      // Hidden (e.g. the desktop tree below the mobile breakpoint): keep the
+      // last geometry instead of collapsing to zero.
+      if (nodeBox.width === 0 && nodeBox.height === 0) return;
+      const next: PillGeometry = {
+        top: nodeBox.top - containerBox.top + container.scrollTop,
+        left: nodeBox.left - containerBox.left,
+        width: nodeBox.width,
+        height: nodeBox.height,
+      };
+      setGeometry((previous) =>
+        previous &&
+        Math.abs(previous.top - next.top) < 0.5 &&
+        Math.abs(previous.left - next.left) < 0.5 &&
+        Math.abs(previous.width - next.width) < 0.5 &&
+        Math.abs(previous.height - next.height) < 0.5
+          ? previous
+          : next,
+      );
+    };
+    measure();
+    // Follows badges mounting, font swaps, zoom and the expand/collapse rail
+    // morph without ever measuring a stale position.
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [scope, activeId]);
+  if (!scope || !geometry) return null;
+  return (
+    <motion.div
+      aria-hidden="true"
+      initial={false}
+      animate={{
+        top: geometry.top,
+        left: geometry.left,
+        width: geometry.width,
+        height: geometry.height,
+      }}
+      transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+      className="pointer-events-none absolute rounded-lg bg-foreground/[0.06]"
+    >
+      <span className="absolute start-1 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-primary" />
+    </motion.div>
+  );
+}
 
 export const AnimatedSidebarFooter = forwardRef<
   HTMLDivElement,
@@ -801,6 +947,28 @@ export function AnimatedSidebarMenuButton({
   const { dir } = useI18n();
   const panel = useAnimatedSidebarPanel();
   const textLabel = typeof children === "string" ? children : undefined;
+  // The travelling gray registers every button with the sidebar scope; the
+  // scope's pill measures the active one and glides to it. register/unregister
+  // are stable across renders, so this effect only re-runs when this button's
+  // own identity or active flag changes — depending on the scope object itself
+  // would re-register on every other button's update (unregister always sets
+  // state) and loop forever.
+  const navScope = useContext(SidebarNavScopeContext);
+  const navId = useId();
+  const nodeRef = useRef<HTMLElement | null>(null);
+  const register = navScope?.register;
+  const unregister = navScope?.unregister;
+  useEffect(() => {
+    if (!register || !unregister) return;
+    register(navId, nodeRef.current, isActive);
+    return () => unregister(navId);
+  }, [register, unregister, navId, isActive]);
+  const setAnchorRef = useCallback((node: HTMLAnchorElement | null) => {
+    nodeRef.current = node;
+  }, []);
+  const setButtonRef = useCallback((node: HTMLButtonElement | null) => {
+    nodeRef.current = node;
+  }, []);
 
   const select = (
     event: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>,
@@ -826,21 +994,6 @@ export function AnimatedSidebarMenuButton({
 
   const content = (
     <>
-      {isActive ? (
-        <>
-          {/* The active page: a quiet ground, and a waypoint bead that travels the nav's leading edge. */}
-          <motion.span
-            layoutId={`${context.layoutId}-ground`}
-            transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
-            className="absolute inset-0 rounded-lg bg-foreground/[0.06]"
-          />
-          <motion.span
-            layoutId={context.layoutId}
-            transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
-            className="absolute start-1 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-primary"
-          />
-        </>
-      ) : null}
       {icon ? (
         <span
           aria-hidden="true"
@@ -905,6 +1058,7 @@ export function AnimatedSidebarMenuButton({
 
   return href ? (
     <motion.a
+      ref={setAnchorRef}
       href={href}
       target={target}
       rel={
@@ -926,6 +1080,7 @@ export function AnimatedSidebarMenuButton({
     </motion.a>
   ) : (
     <motion.button
+      ref={setButtonRef}
       type="button"
       disabled={disabled}
       aria-current={isActive ? "page" : undefined}

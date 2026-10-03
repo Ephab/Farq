@@ -215,6 +215,13 @@ body,
   height: 100%;
 }
 
+/* Reserve the vertical scrollbar gutter up front: section content varies in
+   height, and without this the whole page shifts a few pixels sideways each
+   time the viewport scrollbar appears or disappears on load/navigation. */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   background: var(--background);

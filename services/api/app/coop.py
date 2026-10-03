@@ -556,9 +556,11 @@ def sync_official_coop_sources(db: Session, client: httpx.Client | None = None) 
                 elif posting is not None:
                     posting.active = False
                     posting.status = "closed" if closed else "unknown"
-            except Exception:
+            except Exception as exc:
                 # One unreachable or odd page never stops the other companies.
-                logger.warning("Official co-op source failed: %s", company.slug, exc_info=True)
+                # Keep this to one line: network failures (DNS, timeouts) are routine
+                # and the slug list is already recorded in the sync run's error field.
+                logger.warning("Official co-op source failed: %s (%s: %s)", company.slug, type(exc).__name__, str(exc)[:200])
                 failures.append(company.slug)
         total = len(db.scalars(select(CoopCompany.slug).where(CoopCompany.active.is_(True))).all())
         run.status = "failed" if failures and len(failures) >= total else "partial" if failures else "completed"

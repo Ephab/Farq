@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, BriefcaseBusiness, Command, Database, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
+import { Bot, BriefcaseBusiness, Command, Database, FileText, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { AnimatePresence, useReducedMotion } from "motion/react"
 import {
@@ -31,7 +31,11 @@ import { useActiveRun } from "@/components/hermes/use-hermes-chat"
 import { MyDataView } from "@/components/onboarding/MyDataView"
 import { EmailsView } from "@/components/emails/EmailsView"
 import { CoopView } from "@/components/coop/CoopView"
+import { CvView } from "@/components/cv/CvView"
+import { GenerationPanel } from "@/components/onboarding/GenerationPanel"
+import { GenerationBanner } from "@/components/onboarding/GenerationBanner"
 import { OnboardingView } from "@/components/onboarding/OnboardingView"
+import { useGenerationStatus } from "@/hooks/use-generation-status"
 import { LoaderCircle } from "lucide-react"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/waypoint-api"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
@@ -49,6 +53,7 @@ const VIEW_LABELS: Record<string, MessageKey> = {
   "Group Projects": "nav.items.teams",
   "Emails": "nav.items.emails",
   "Co-op": "nav.items.coop",
+  "CV": "nav.items.cv",
   "Slides": "nav.items.slides",
   "My data": "nav.items.myData",
 }
@@ -117,6 +122,9 @@ function AppShell() {
   // null = still checking; a student who hasn't finished onboarding sees only onboarding.
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [onboarding, setOnboarding] = useState(!hasChosenStudent())
+  // The first roadmap generates on the server, so a student mid-onboarding can open the app meanwhile.
+  const [exploring, setExploring] = useState(false)
+  const generation = useGenerationStatus(exploring ? getCurrentStudentId() : null, exploring)
   // A remembered student's profile decides between the app and onboarding: wait for it instead
   // of flashing the app (and firing its requests) for someone who is still onboarding.
   const [profileChecked, setProfileChecked] = useState(!hasChosenStudent())
@@ -147,7 +155,12 @@ function AppShell() {
 
   useEffect(() => { loadProfile() }, [loadProfile])
   // Stable so OnboardingView's profile load does not re-run on every App render.
-  const finishOnboarding = useCallback(() => { setActive("Roadmap"); loadProfile() }, [loadProfile])
+  const finishOnboarding = useCallback(() => { setExploring(false); setActive("Roadmap"); loadProfile() }, [loadProfile])
+  const startExploring = useCallback(() => { setActive("Home"); setExploring(true); loadProfile() }, [loadProfile])
+  const backToGeneration = useCallback(() => { setExploring(false); loadProfile() }, [loadProfile])
+
+  // Home and Roadmap have nothing to show until the first roadmap is accepted: say what is happening instead.
+  const showGenerationPanel = exploring && (active === "Home" || active === "Roadmap")
 
   if (!profileChecked) {
     return (
@@ -159,10 +172,10 @@ function AppShell() {
     )
   }
 
-  if (onboarding) {
+  if (onboarding && !exploring) {
     return (
       <ThemeProvider>
-        <OnboardingView onDone={finishOnboarding} />
+        <OnboardingView onDone={finishOnboarding} onExplore={startExploring} />
       </ThemeProvider>
     )
   }
@@ -234,6 +247,7 @@ function AppShell() {
               </NavSection>
               <NavSection label={t("nav.sections.career")}>
                 <NavItem label="Co-op" text={t("nav.items.coop")} icon={<BriefcaseBusiness className="size-4" />} active={active} onSelect={setActive} />
+                <NavItem label="CV" text={t("nav.items.cv")} icon={<FileText className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
               <NavSection label={t("nav.sections.create")}>
                 <NavItem label="Slides" text={t("nav.items.slides")} icon={<Presentation className="size-4" />} active={active} onSelect={setActive} />
@@ -260,6 +274,7 @@ function AppShell() {
           </AnimatedSidebar>
 
           <AnimatedSidebarInset className="bg-background">
+            {exploring && !showGenerationPanel ? <GenerationBanner status={generation} onOpen={backToGeneration} /> : null}
             <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
               <AnimatedSidebarTrigger className="text-muted-foreground hover:bg-muted hover:text-foreground">
                 <PanelLeft aria-hidden="true" className="size-4 rtl:-scale-x-100" />
@@ -294,7 +309,9 @@ function AppShell() {
             <main className="flex min-h-0 flex-1 flex-col bg-background">
               {/* Each page comes into focus as it opens. Hermes Coach is outside: it never remounts. */}
               <div key={active} className={active === "Hermes Coach" ? "hidden" : "wp-view flex min-h-0 flex-1 flex-col"}>
-              {active === "Home" ? (
+              {showGenerationPanel ? (
+                <GenerationPanel status={generation} onOpen={backToGeneration} />
+              ) : active === "Home" ? (
                 <TodayView onNavigate={(tab) => setActive(tab)} />
               ) : active === "Roadmap" ? (
                 <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} onAskCoach={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
@@ -309,7 +326,9 @@ function AppShell() {
               ) : active === "Group Projects" ? (
                 <TeamsView />
               ) : active === "Co-op" ? (
-                <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
+                <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} onNavigate={(tab) => setActive(tab)} />
+              ) : active === "CV" ? (
+                <CvView />
               ) : active === "Projects" ? (
                 <ProjectsView selectedProjectId={activeProjectId} onSelectProject={setActiveProjectId} onAskHermes={(draft) => setCoachDraft(draft)} onNavigate={(tab) => setActive(tab)} />
               ) : null}

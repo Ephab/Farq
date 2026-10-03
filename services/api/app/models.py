@@ -354,6 +354,12 @@ class CoopPosting(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Structured fields a tool-less JSON prompt extracted from the raw posting text (coop_extraction.py):
+    # title/company/disciplines/seniority/skill & eligibility requirements/location/duration/apply window.
+    # pending | done | failed | skipped (demo postings are never sent to a model).
+    extracted_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extraction_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CoopPostingSource(Base):
@@ -392,6 +398,29 @@ class StudentCoopVisit(Base):
     last_visit_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class CoopRelevance(Base):
+    """Cached per (student, posting) Jev decision (coop_relevance.py): relevant/hidden, a fit
+    score, a reason grounded in real overlaps, gaps traceable to the posting's own extracted
+    requirements, and an eligibility checklist. Recomputed only when student_fingerprint or
+    posting_fingerprint changes — never on every page load."""
+    __tablename__ = "coop_relevance"
+    __table_args__ = (UniqueConstraint("student_id", "posting_id", name="uq_coop_relevance_student_posting"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    posting_id: Mapped[str] = mapped_column(ForeignKey("coop_postings.id"), index=True)
+    engine: Mapped[str] = mapped_column(String(24), default="fallback")
+    relevant: Mapped[bool] = mapped_column(Boolean, default=True)
+    fit_score: Mapped[int] = mapped_column(Integer, default=40)
+    reason_text: Mapped[str] = mapped_column(Text, default="")
+    hidden_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    matched_json: Mapped[str] = mapped_column(Text, default="[]")
+    gaps_json: Mapped[str] = mapped_column(Text, default="[]")
+    eligibility_json: Mapped[str] = mapped_column(Text, default="[]")
+    target_disciplines_json: Mapped[str] = mapped_column(Text, default="[]")
+    student_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    posting_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 
 class AppSetting(Base):
     """Server-wide switches that must survive restarts without touching .env (e.g. decision engine)."""
@@ -415,6 +444,17 @@ class StudentMemory(Base):
     # hermes | student
     origin: Mapped[str] = mapped_column(String(16), default="hermes")
     source_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class CvDraft(Base):
+    """A student's one in-progress CV (app.cv): the full document (template, theme, section order,
+    edits) as JSON. Generated content, never a StudentFact — see AGENTS.md."""
+    __tablename__ = "cv_drafts"
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), primary_key=True)
+    document_json: Mapped[str] = mapped_column(Text)
+    posting_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 

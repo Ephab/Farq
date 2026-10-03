@@ -71,6 +71,9 @@ ADDED_COLUMNS = {
         "canonical_key": "VARCHAR(64) NOT NULL DEFAULT ''",
         "published_at": "DATETIME",
         "last_seen_at": "DATETIME",
+        "extracted_json": "TEXT",
+        "extraction_status": "VARCHAR(16) NOT NULL DEFAULT 'pending'",
+        "extracted_at": "DATETIME",
     },
 }
 

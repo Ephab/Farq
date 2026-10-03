@@ -109,6 +109,8 @@ export const coach: CatalogShape<typeof en> = {
       folder: "يقرأ مجلد مشروعك",
       courses: "يتحقق من مقرراتك",
       skill: "يفتح دليل عمل",
+      quizHistory: "يراجع سجل الاختبارات",
+      generateQuestions: "يولّد الأسئلة",
       generic: "يستخدم {tool}",
     },
     elapsed: "الوقت حتى الآن",
@@ -171,6 +173,48 @@ export const coach: CatalogShape<typeof en> = {
   stage: {
     starting: "جارٍ تشغيل Hermes",
     working: "Hermes يعمل",
+  },
+  elements: {
+    code: {
+      copy: "نسخ",
+      plain: "كود",
+    },
+    quiz: {
+      questionLabel: "السؤال {n} من {total}",
+      check: "تحقق من الإجابة",
+      next: "السؤال التالي",
+      finish: "عرض النتيجة",
+      correct: "إجابة صحيحة!",
+      incorrect: "ليست صحيحة",
+      correctAnswer: "الإجابة المرجعية",
+      typeAnswer: "اكتب إجابتك…",
+      selfGrade: "قيّم نفسك:",
+      gotIt: "أجبت بشكل صحيح",
+      missedIt: "أخطأت",
+      scoreTitle: "اكتمل الاختبار",
+      scoreFraction: "{correct}/{total} إجابة صحيحة",
+      retry: "إعادة الاختبار",
+      timeUp: "انتهى الوقت",
+    },
+    timer: {
+      label: "المؤقت",
+      start: "ابدأ",
+      pause: "إيقاف مؤقت",
+      reset: "إعادة ضبط",
+      timeUp: "انتهى الوقت",
+    },
+    progress: {
+      stepOf: "الخطوة {current} من {total}",
+    },
+    flashcards: {
+      cardOf: "البطاقة {current} من {total}",
+      flip: "قلب البطاقة",
+      prev: "البطاقة السابقة",
+      next: "البطاقة التالية",
+    },
+    checklist: {
+      doneCount: "{done}/{total} منجز",
+    },
   },
   errors: {
     streamLost: "انقطع بث تقدّم Hermes. رسالتك محفوظة؛ حدّث الصفحة للتحقق منها.",

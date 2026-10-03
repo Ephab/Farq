@@ -107,6 +107,8 @@ export const coach = {
       folder: "Reading your project folder",
       courses: "Checking your courses",
       skill: "Opening a playbook",
+      quizHistory: "Reviewing quiz history",
+      generateQuestions: "Generating questions",
       generic: "Using {tool}",
     },
     elapsed: "Time so far",
@@ -169,6 +171,48 @@ export const coach = {
   stage: {
     starting: "Starting Hermes",
     working: "Hermes is working",
+  },
+  elements: {
+    code: {
+      copy: "Copy",
+      plain: "Code",
+    },
+    quiz: {
+      questionLabel: "Question {n} of {total}",
+      check: "Check answer",
+      next: "Next question",
+      finish: "See results",
+      correct: "Correct!",
+      incorrect: "Not quite",
+      correctAnswer: "Reference answer",
+      typeAnswer: "Type your answer…",
+      selfGrade: "Mark yourself:",
+      gotIt: "Got it",
+      missedIt: "Missed it",
+      scoreTitle: "Quiz complete",
+      scoreFraction: "{correct}/{total} correct",
+      retry: "Retry quiz",
+      timeUp: "Time's up",
+    },
+    timer: {
+      label: "Timer",
+      start: "Start",
+      pause: "Pause",
+      reset: "Reset",
+      timeUp: "Time's up",
+    },
+    progress: {
+      stepOf: "Step {current} of {total}",
+    },
+    flashcards: {
+      cardOf: "Card {current} of {total}",
+      flip: "Flip card",
+      prev: "Previous card",
+      next: "Next card",
+    },
+    checklist: {
+      doneCount: "{done}/{total} done",
+    },
   },
   errors: {
     streamLost: "Lost the Hermes progress stream. Your message is saved; refresh to check it.",

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { API_BASE, api, runErrorMessage, withIdentityQuery } from "@/lib/waypoint-api"
 import { parseServerTime } from "@/lib/server-time"
 import type { RunProgress } from "@/components/hermes/RunProgress"
+import type { ChatElement } from "@/components/hermes/elements/types"
 
 export interface OpportunityCard {
   id: string
@@ -43,6 +44,11 @@ export interface ChatMessageMetadata {
   interaction?: ChatInteractionMetadata
   /** Onboarding: Hermes said it knows enough (waypoint_ready_to_generate). */
   ready_to_generate?: boolean
+  /** Rich UI elements Hermes attached to this reply (quiz, timer, flashcards, …).
+   *  Phase A: populated only by the dev `?mock=elements` fixtures; Phase B will have
+   *  the server stage these via a `waypoint_show_element` tool, mirroring how
+   *  `choice_group`/`follow_ups` are staged today. */
+  elements?: ChatElement[]
 }
 export interface ChatMessage { id: string; role: "user" | "assistant"; content: string; metadata?: ChatMessageMetadata | null; created_at: string }
 export interface ChatInteractionInput {

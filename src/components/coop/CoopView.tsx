@@ -6,6 +6,8 @@ import { ApiError, api, getCurrentStudentId } from "@/lib/waypoint-api"
 import { useModalFocus } from "@/lib/use-modal-focus"
 import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
+import { CoopMatchesPreview } from "./CoopMatchesPreview"
+import { readMockCoopParams } from "./fixtures"
 
 type TargetState = "neutral" | "saved" | "dismissed"
 type FitTier = "strong" | "good" | "explore"
@@ -157,7 +159,11 @@ function postingLink(posting: CoopPosting): { url: string; official: boolean } {
   return { url: posting.detail_url, official }
 }
 
-export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => void }) {
+export function CoopView({ onAskHermes, onNavigate }: { onAskHermes: (prompt: string) => void; onNavigate?: (tab: string) => void }) {
+  // Dev-only fixture preview for the redesigned Matches tab (Phase A, UI only — see
+  // src/components/coop/fixtures.ts). Never active outside a dev build, and never wired to
+  // the real student data below.
+  const mock = import.meta.env.DEV ? readMockCoopParams(window.location.search) : { active: false as const, persona: "cs" as const }
   const studentId = getCurrentStudentId()
   const { t, fmt } = useI18n()
   const [data, setData] = useState<CoopOverview | null>(null)
@@ -219,9 +225,11 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
     }
   }, [studentId])
 
-  useEffect(() => { void load() }, [load])
-  useEffect(() => { void loadList() }, [loadList])
-  useEffect(() => { void loadSources() }, [loadSources])
+  // The fixture preview (mock.active) never touches the real API — including the visit
+  // marker below — so these stay inert while it's shown.
+  useEffect(() => { if (!mock.active) void load() }, [load, mock.active])
+  useEffect(() => { if (!mock.active) void loadList() }, [loadList, mock.active])
+  useEffect(() => { if (!mock.active) void loadSources() }, [loadSources, mock.active])
   useEffect(() => { if (data) viewed.current = true }, [data])
 
   // Poll fast while a refresh runs, slowly otherwise: background refreshes show up on their own.
@@ -267,7 +275,9 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
 
   const companies = list ? list.companies : tab === "matches" ? data?.companies ?? [] : []
   const postings = list ? list.postings : []
-  const fresh = (data?.postings ?? []).filter((posting) => !posting.is_demo).slice(0, 4)
+  // The default Matches view (no search) is now the personalized Jev-backed experience; the old
+  // company/posting grid below stays for search results and the Openings/Saved/Hidden tabs.
+  const isPersonalizedMatches = tab === "matches" && !debounced
 
   const setState = async (type: "company" | "posting", id: string, status: TargetState) => {
     try {
@@ -288,6 +298,10 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
   }
   const reasonsOf = useReasons()
 
+  // All hooks above run unconditionally either way; only the render output branches here,
+  // so this never changes React's hook order.
+  if (mock.active) return <CoopMatchesPreview persona={mock.persona} onNavigate={onNavigate} />
+
   if (loading) return <div aria-label={t("dashboard.coop.loadingLabel")} className="mx-auto grid w-full max-w-6xl gap-4 p-4 sm:p-8"><div className="h-32 animate-pulse rounded-3xl bg-muted" /><div className="h-80 animate-pulse rounded-3xl bg-muted" /></div>
 
   return (
@@ -305,28 +319,30 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
         </div>
       </header>
 
-      <section aria-label={t("dashboard.coop.live.sectionLabel")} className="mb-5 rounded-2xl border border-border p-3 sm:p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-            {refreshStatus === "running" ? t("dashboard.coop.live.refreshing") : updatedAt ? t("dashboard.coop.live.updated", { time: fmt.relative(updatedAt) }) : t("dashboard.coop.live.neverUpdated")}
-          </p>
-          <button type="button" onClick={() => void refreshNow()} disabled={refreshStatus === "running"} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
-            <RefreshCw className={cn("size-4", refreshStatus === "running" && "animate-spin")} aria-hidden="true" />{t("dashboard.coop.live.refresh")}
-          </button>
-        </div>
-        {refreshError ? <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{refreshError}</p> : null}
-        {sources ? (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {sources.sources.map((row) => (
-              <li key={row.key} title={[row.last_run_at ? t("dashboard.coop.live.lastRun", { time: fmt.relative(row.last_run_at), count: fmt.number(row.fetched) }) : "", row.error ?? ""].filter(Boolean).join(" · ") || undefined} className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs">
-                <span aria-hidden="true" className={cn("size-2 rounded-full", statusTone(row.status), row.status === "running" && "animate-pulse")} />
-                <span className="font-medium">{t(`dashboard.coop.live.source.${row.key}`)}</span>
-                <span className="text-muted-foreground">{row.status === "not_configured" && row.hint ? t("dashboard.coop.live.needs", { hint: row.hint }) : t(`dashboard.coop.live.status.${row.status}`)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+      {isPersonalizedMatches ? null : (
+        <section aria-label={t("dashboard.coop.live.sectionLabel")} className="mb-5 rounded-2xl border border-border p-3 sm:p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+              {refreshStatus === "running" ? t("dashboard.coop.live.refreshing") : updatedAt ? t("dashboard.coop.live.updated", { time: fmt.relative(updatedAt) }) : t("dashboard.coop.live.neverUpdated")}
+            </p>
+            <button type="button" onClick={() => void refreshNow()} disabled={refreshStatus === "running"} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
+              <RefreshCw className={cn("size-4", refreshStatus === "running" && "animate-spin")} aria-hidden="true" />{t("dashboard.coop.live.refresh")}
+            </button>
+          </div>
+          {refreshError ? <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{refreshError}</p> : null}
+          {sources ? (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {sources.sources.map((row) => (
+                <li key={row.key} title={[row.last_run_at ? t("dashboard.coop.live.lastRun", { time: fmt.relative(row.last_run_at), count: fmt.number(row.fetched) }) : "", row.error ?? ""].filter(Boolean).join(" · ") || undefined} className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs">
+                  <span aria-hidden="true" className={cn("size-2 rounded-full", statusTone(row.status), row.status === "running" && "animate-pulse")} />
+                  <span className="font-medium">{t(`dashboard.coop.live.source.${row.key}`)}</span>
+                  <span className="text-muted-foreground">{row.status === "not_configured" && row.hint ? t("dashboard.coop.live.needs", { hint: row.hint }) : t(`dashboard.coop.live.status.${row.status}`)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      )}
 
       {error ? <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600">{error}</div> : null}
 
@@ -342,22 +358,10 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
         </label>
       </div>
 
-      {tab === "matches" && !debounced ? (
-        <section className="mb-6" aria-label={t("dashboard.coop.live.freshTitle")}>
-          <h2 className="mb-3 text-lg font-semibold">{t("dashboard.coop.live.freshTitle")}</h2>
-          {fresh.length ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              {fresh.map((posting) => (
-                <button key={posting.id} type="button" onClick={() => setSelected({ type: "posting", item: posting })} className="rounded-2xl border border-border bg-background p-4 text-start outline-none transition hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring">
-                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"><bdi>{posting.company_name}</bdi></p><p dir="auto" className="mt-1 font-semibold">{posting.title}</p></div><FitPill item={posting} /></div>
-                  <PostingSignals posting={posting} />
-                </button>
-              ))}
-            </div>
-          ) : <p className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">{t("dashboard.coop.live.freshEmpty")}</p>}
-        </section>
-      ) : null}
-
+      {isPersonalizedMatches ? (
+        <CoopMatchesPreview studentId={studentId} embedded onNavigate={onNavigate} />
+      ) : (
+      <>
       <div className="grid gap-4 md:grid-cols-2">
         {companies.map((company) => (
           <article key={company.id} className="group flex min-h-64 flex-col rounded-3xl border border-border bg-background p-5 transition hover:-translate-y-0.5 hover:shadow-lg">
@@ -386,6 +390,8 @@ export function CoopView({ onAskHermes }: { onAskHermes: (prompt: string) => voi
       </div>
 
       {companies.length === 0 && postings.length === 0 ? <div className="grid min-h-64 place-items-center rounded-3xl border border-dashed border-border text-center"><div><BriefcaseBusiness className="mx-auto size-6 text-muted-foreground" /><p className="mt-3 font-semibold">{t("dashboard.coop.emptyTitle")}</p><p className="mt-1 text-sm text-muted-foreground">{t("dashboard.coop.emptyBody")}</p></div></div> : null}
+      </>
+      )}
 
       {selected ? <DetailSheet selected={selected} reasons={reasonsOf(selected.item)} onClose={() => setSelected(null)} onState={setState} onAsk={ask} /> : null}
     </div>

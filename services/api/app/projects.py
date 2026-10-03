@@ -23,7 +23,7 @@ from .internal_auth import internal_token_ok
 from .ownership import OwnedStudent, StreamUser, assert_owner
 from .tool_grants import HermesToolGrant, ProjectsGrant
 from .models import Project, ProjectEvaluation, ProjectRevision, ProjectSubmission, RoadmapVersion, StudentProfile, now
-from .schemas import EvaluationComplete, EvaluationFailure, EvaluationProgress, ProjectBrief, ProjectEvaluationCreate, ProjectRevisionCreate, ProjectSubmissionCreate, RoadmapSnapshot
+from .schemas import EvaluationReasonRequest, EvaluationComplete, EvaluationFailure, EvaluationProgress, ProjectBrief, ProjectEvaluationCreate, ProjectRevisionCreate, ProjectSubmissionCreate, RoadmapSnapshot
 
 
 router = APIRouter()
@@ -302,11 +302,32 @@ def claim_evaluation(db: Db) -> dict:
     return {"job": {"id": item.id, "lease_token": token, "project": _project_dict(db, project), "submission": {"id": submission.id, "source_type": submission.source_type, "source_ref": submission.source_ref, "manifest": json.loads(submission.manifest_json)}, "brief": json.loads(revision.brief_json) if revision else None}}
 
 
+@router.post("/internal/evaluator/jobs/{evaluation_id}/reason", dependencies=[Depends(_require_worker)])
+def evaluation_reason(evaluation_id: str, body: EvaluationReasonRequest, db: Db) -> dict:
+    item = db.get(ProjectEvaluation, evaluation_id)
+    if item is None or item.status != "running" or not secrets.compare_digest(item.lease_token or "", body.lease_token):
+        raise HTTPException(409, "Evaluation lease is invalid")
+    project = _require_project(db, item.project_id)
+    revision = db.get(ProjectRevision, project.current_revision_id)
+    brief = json.loads(revision.brief_json) if revision else {}
+    db.rollback()  # release SQLite before waiting for a model
+    from .evaluation_agent import reason
+    from .hermes import HermesJsonError
+    try:
+        return reason(body, brief)
+    except (ValueError, HermesJsonError) as exc:
+        raise HTTPException(502, f"Evaluator reasoning failed: {str(exc)[:600]}") from exc
+
+
 @router.post("/internal/evaluator/jobs/{evaluation_id}/progress", dependencies=[Depends(_require_worker)])
 def evaluation_progress(evaluation_id: str, body: EvaluationProgress, db: Db) -> dict:
     item = db.get(ProjectEvaluation, evaluation_id)
     if item is None or not secrets.compare_digest(item.lease_token or "", body.lease_token):
         raise HTTPException(409, "Evaluation lease is invalid")
+    if body.observations is not None:
+        from .evaluation_agent import redact_block
+        observations = [{**row.model_dump(), "output": redact_block(row.output, 16000)} for row in body.observations]
+        item.report_json = json.dumps({"summary": "Runtime evidence collected; rubric review pending.", "criteria": [], "strengths": [], "improvements": [], "limitations": [], "observations": observations, "screenshots": []})
     item.stage = body.stage; item.lease_expires_at = now() + timedelta(minutes=10); db.commit()
     return {"status": item.status, "stage": item.stage}
 
@@ -317,6 +338,29 @@ def complete_evaluation(evaluation_id: str, body: EvaluationComplete, db: Db) ->
     if item is None or not secrets.compare_digest(item.lease_token or "", body.lease_token):
         raise HTTPException(409, "Evaluation lease is invalid")
     project = _require_project(db, item.project_id)
+    if body.observations:
+        revision = db.get(ProjectRevision, project.current_revision_id)
+        rubric = json.loads(revision.brief_json).get("rubric", []) if revision else []
+        if sorted(row.criterion_id for row in body.criteria) != sorted(row["id"] for row in rubric):
+            raise HTTPException(422, "Review must cover every accepted rubric criterion exactly once")
+        ids = {row.id for row in body.observations}
+        if len(ids) != len(body.observations) or any(not row.evidence or any(ref not in ids for ref in row.evidence) for row in body.criteria):
+            raise HTTPException(422, "Review must cite actual observations")
+        body.score = round(sum(row.score * next(c["weight"] for c in rubric if c["id"] == row.criterion_id) for row in body.criteria) / sum(c["weight"] for c in rubric))
+        from .evaluation_agent import redact_block
+        for row in body.observations:
+            row.output = redact_block(row.output, 16000)
+    if body.screenshots:
+        import base64
+        if sum(len(shot.png_base64) for shot in body.screenshots) > 12000000:
+            raise HTTPException(422, "Screenshot evidence exceeds its total size limit")
+        for shot in body.screenshots:
+            try:
+                png = base64.b64decode(shot.png_base64, validate=True)
+                if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+                    raise ValueError("Not a PNG")
+            except ValueError as exc:
+                raise HTTPException(422, "Screenshot must be a valid PNG") from exc
     item.status = "completed"; item.stage = "Evaluation complete"; item.adapter = body.adapter; item.score = body.score; item.coverage = body.coverage; item.report_json = body.model_dump_json(exclude={"lease_token"}); item.finished_at = now(); item.lease_token = None
     project.lifecycle = "evaluated"; project.latest_score = body.score; project.best_score = max(project.best_score or 0, body.score)
     roadmap = _active_roadmap(db, project.student_id)

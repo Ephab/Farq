@@ -156,6 +156,35 @@ async function main() {
     delete global.fetch;
   }
 
+  // ---- calendar windows (Blackboard rejects > 16 weeks with HTTP 400) ----
+  {
+    const w = U.calendarWindows("2026-06-05T00:00:00.000Z", "2027-04-01T00:00:00.000Z");
+    assert(w.length === 3, "calendar windows: 300 days -> 3 windows", w);
+    assert(w.every((x) => Date.parse(x.until) - Date.parse(x.since) <= 112 * 864e5), "calendar windows: each <= 112 days", w);
+    assert(w[0].since === "2026-06-05T00:00:00.000Z" && w[w.length - 1].until === "2027-04-01T00:00:00.000Z", "calendar windows: cover the whole range");
+    assert(U.calendarWindows("bad", "2027-01-01").length === 0, "calendar windows: invalid input -> []");
+  }
+
+  // ---- findKey (due dates hide in handler-specific shapes) ----
+  {
+    const item = { contentDetail: { "resource/x-bb-asmt-test-link": { test: { deploymentSettings: { dueDate: "2026-11-01T20:59:00.000Z" } } } } };
+    assert(U.findKey(item, ["dueDate"]) === "2026-11-01T20:59:00.000Z", "findKey: nested dueDate found");
+    assert(U.findKey({ a: { b: { c: { d: { e: { dueDate: "x" } } } } } }, ["dueDate"], 3) === null, "findKey: depth bounded");
+    assert(U.findKey(null, ["dueDate"]) === null, "findKey: null safe");
+  }
+
+  // ---- deadline flags ----
+  {
+    const now = Date.parse("2026-10-03T00:00:00.000Z");
+    const f = (a) => M.deadlineFlags(a, now);
+    assert(f({ due_date: "2026-10-10T00:00:00.000Z" }).is_upcoming === true, "deadline: future + not done -> upcoming");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z" }).is_overdue === true, "deadline: past + not done -> overdue");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", submission_status: "NeedsGrading" }).is_overdue === false, "deadline: submitted is not overdue");
+    assert(f({ due_date: "2026-10-10T00:00:00.000Z", grade: "9/10" }).is_upcoming === false, "deadline: graded is not upcoming");
+    assert(f({ due_date: "2026-09-01T00:00:00.000Z", type: "Attendance" }).is_overdue === false, "deadline: attendance never overdue");
+    assert(f({ due_date: null }).is_upcoming === false && f({}).is_overdue === false, "deadline: no due date -> no flags");
+  }
+
   if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
   console.log("\nAll unit tests passed.");
 }

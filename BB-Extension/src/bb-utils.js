@@ -212,9 +212,41 @@
       .replace(/(BbRouter|JSESSIONID|session_id|authenti?cation|authorization|cookie|token|secret|password)[^\s;]*/gi, "$1=[redacted]");
   }
 
+  // Blackboard's calendar API rejects ranges longer than 16 weeks (HTTP 400).
+  const MAX_CALENDAR_DAYS = 112;
+  function calendarWindows(since, until, maxDays = MAX_CALENDAR_DAYS) {
+    const out = [];
+    let start = Date.parse(since);
+    const end = Date.parse(until);
+    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return out;
+    const step = maxDays * 864e5;
+    while (start < end) {
+      const stop = Math.min(start + step, end);
+      out.push({ since: new Date(start).toISOString(), until: new Date(stop).toISOString() });
+      start = stop;
+    }
+    return out;
+  }
+
+  // First non-empty value under any of `keys`, breadth-first and depth-bounded.
+  // Blackboard nests due dates in handler-specific contentDetail shapes.
+  function findKey(obj, keys, maxDepth = 4) {
+    let level = [obj];
+    for (let depth = 0; depth <= maxDepth && level.length; depth++) {
+      const next = [];
+      for (const o of level) {
+        if (!o || typeof o !== "object") continue;
+        for (const k of keys) if (o[k] != null && o[k] !== "") return o[k];
+        for (const v of Object.values(o)) if (v && typeof v === "object") next.push(v);
+      }
+      level = next;
+    }
+    return null;
+  }
+
   const api = {
     extractRichText, htmlToText, normalizeTimestamp, getJson, pagedGet,
-    limitedMap, sanitizeError, isTransientStatus, sleep
+    limitedMap, sanitizeError, isTransientStatus, sleep, calendarWindows, findKey
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.BBUtils = api;

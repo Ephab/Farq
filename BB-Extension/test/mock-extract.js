@@ -37,13 +37,14 @@ const responses = {
     results: [
       { id: "_col1", name: "Assignment 1", description: "<p>Do it</p>", grading: { due: "2026-02-10T20:59:00.000Z" }, score: { possible: 10 }, contentId: "_c1", gradebookCategoryId: "Assignment" },
       { id: "_col2", name: "Quiz 1", grading: { due: "2026-03-01T20:59:00.000Z" }, score: { possible: 5 }, gradebookCategoryId: "Test" },
-      { id: "_col3", name: "Attendance Week 1", score: { possible: 1 }, gradebookCategoryId: "Attendance" }
+      { id: "_col3", name: "Attendance Week 1", score: { possible: 1 }, gradebookCategoryId: "Attendance" },
+      { id: "_col4", name: "Project report", grading: { due: "2099-01-15T20:59:00.000Z" }, score: { possible: 20 }, gradebookCategoryId: "Assignment" }
     ], paging: {}
   },
   cols102: { results: [], paging: {} },
   userGrades101: { results: [{ columnId: "_col1", userId: "_1_1", status: "Graded", score: 9, displayGrade: { score: 9, possible: 10, text: "9/10" }, feedback: "Good work", modified: "2026-02-12T00:00:00.000Z" }] },
   attemptsCol1: { results: [{ id: "_att1", status: "Graded", created: "2026-02-09T00:00:00.000Z", modified: "2026-02-10T20:00:00.000Z" }] },
-  cal101: { results: [{ id: "_cal1", title: "Assignment 1", start: "2026-02-10T20:59:00.000Z", end: "2026-02-10T20:59:00.000Z", type: "GradebookColumn", calendarId: "_101_1", calendarName: "Intro to Computing", dynamicCalendarItemProps: { id: "_col1" } }] },
+  cal101: { results: [{ id: "_cal1", title: "Assignment 1", start: "2026-02-10T20:59:00.000Z", end: "2026-02-10T20:59:00.000Z", type: "GradebookColumn", calendarId: "_101_1", calendarName: "Intro to Computing", dynamicCalendarItemProps: { id: "_col1" } }, { id: "_cal2", title: "Lab session", start: "2026-10-05T08:00:00.000Z", end: "2026-10-05T10:00:00.000Z", type: "Course", calendarId: "_101_1", calendarName: "Intro to Computing" }] },
   cal102: { results: [] },
   calGlobal: { results: [] }
 };
@@ -70,6 +71,8 @@ global.fetch = async (url) => {
   if (p === "/learn/api/public/v1/courses/_101_1/gradebook/columns/_col1/users/_1_1") return ok(responses.userGrades101.results[0]);
   if (p === "/learn/api/public/v2/courses/_101_1/gradebook/columns/_col1/users/_1_1/attempts") return ok(responses.attemptsCol1);
   if (p === "/learn/api/public/v1/calendars/items") {
+    const span = Date.parse(u.searchParams.get("until")) - Date.parse(u.searchParams.get("since"));
+    if (!(span > 0) || span > 112 * 864e5) return miss(400); // real Blackboard behaviour
     if (u.searchParams.get("courseId") === "_101_1") return ok(responses.cal101);
     if (u.searchParams.get("courseId") === "_102_1") return ok(responses.cal102);
     return ok(responses.calGlobal);
@@ -98,6 +101,14 @@ global.fetch = async (url) => {
   check("attempt captured", a1 && a1.attempt_id === "_att1" && a1.submitted_at === "2026-02-10T20:00:00.000Z", a1);
   check("grade record with feedback + posted", all.grades.some((g) => g.feedback === "Good work" && g.posted), all.grades.length);
   check("calendar event normalized", all.events.some((e) => e.source_id === "cal:_cal1" && e.due_date === "2026-02-10T20:59:00.000Z"));
+  check("calendar windows never exceed 16 weeks (no 400s)", !all.diagnostics.sources.some((s) => s.source.startsWith("calendar") && s.status === "http_400"));
+  check("non-assessment calendar event kept", all.events.some((e) => e.source_id === "cal:_cal2" && e.type === "Course"));
+  const quiz = all.assessments.find((a) => a.column_id === "_col2");
+  check("ungraded past quiz is overdue", quiz && quiz.is_overdue === true && quiz.is_upcoming === false, quiz);
+  const report = all.assessments.find((a) => a.column_id === "_col4");
+  check("future ungraded item is upcoming", report && report.is_upcoming === true, report);
+  check("graded item neither upcoming nor overdue", a1 && !a1.is_upcoming && !a1.is_overdue, a1);
+  check("summary counts deadlines", all.summary.upcoming_deadlines >= 1 && all.summary.overdue >= 1, all.summary);
   check("content has parent/path/type/timestamps", all.content.some((m) => m.parent_id === null && m.path && m.type === "Document" && m.created));
   check("legacy aliases present", Array.isArray(all.assignments) && Array.isArray(all.materials));
   check("diagnostics sources recorded", all.diagnostics.sources.length > 5 && all.summary.assessments >= 3, all.summary);

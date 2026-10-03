@@ -242,7 +242,17 @@
     return clone;
   }
 
-  const api = { normKey, classifyAssessment, isCurrentCourse, assessmentMergeKey, mergeAssessments, redactExport };
+  // Submitted/graded work is never "overdue"; attendance columns are not deadlines.
+  const DONE_STATUS = /^(graded|needsgrading|needs_grading|submitted|completed|inprogress|in_progress)$/i;
+  function deadlineFlags(a, nowMs) {
+    const due = a && a.due_date ? Date.parse(a.due_date) : NaN;
+    if (Number.isNaN(due) || (a && a.type === "Attendance")) return { is_upcoming: false, is_overdue: false };
+    const done = DONE_STATUS.test(String(a.submission_status || "")) ||
+      (Array.isArray(a.attempts) && a.attempts.length > 0) || (a.grade != null && a.grade !== "");
+    return { is_upcoming: !done && due >= nowMs, is_overdue: !done && due < nowMs };
+  }
+
+  const api = { normKey, classifyAssessment, isCurrentCourse, assessmentMergeKey, mergeAssessments, redactExport, deadlineFlags };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.BBModel = api;
 })(typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : globalThis));

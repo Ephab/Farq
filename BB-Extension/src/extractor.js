@@ -92,8 +92,9 @@
     const concurrency = Math.max(1, Math.min(options.concurrency || 3, 5));
     const timeoutMs = options.timeoutMs || 20000;
     const retries = options.retries != null ? options.retries : 2;
-    const since = options.since || new Date(Date.now() - 30 * 864e5).toISOString();
+    const since = options.since || new Date(Date.now() - 120 * 864e5).toISOString();
     const until = options.until || new Date(Date.now() + 180 * 864e5).toISOString();
+    const windows = U.calendarWindows(since, until);
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
     const prog = (m) => { try { if (onProgress) onProgress(m); } catch { /* ignore */ } };
 
@@ -274,11 +275,11 @@
             available_until: U.normalizeTimestamp(item.availability && item.availability.adaptiveRelease && item.availability.adaptiveRelease.end),
             created: U.normalizeTimestamp(item.created),
             modified: U.normalizeTimestamp(item.modified),
-            dates: item.dates ? {
-              due: U.normalizeTimestamp(item.dates.due),
-              start: U.normalizeTimestamp(item.dates.start),
-              end: U.normalizeTimestamp(item.dates.end)
-            } : null,
+            dates: {
+              due: U.normalizeTimestamp((item.dates && item.dates.due) || U.findKey(item.contentDetail || {}, ["dueDate", "due"])),
+              start: U.normalizeTimestamp(item.dates && item.dates.start),
+              end: U.normalizeTimestamp(item.dates && item.dates.end)
+            },
             url: contentUrl(origin, cid, item.id),
             attachments: Array.isArray(item.attachments) ? item.attachments.map((a) => ({
               id: a.id || a.attachmentId || null,
@@ -348,7 +349,7 @@
           course: cname, course_id: cid,
           title: col.name || col.displayName || "(graded item)",
           description: descR.text,
-          due_date: U.normalizeTimestamp(grading.due || col.due),
+          due_date: U.normalizeTimestamp(grading.due || col.due || U.findKey(col, ["dueDate"])),
           available_from: U.normalizeTimestamp(grading.availableFrom || (col.availability && col.availability.start)),
           available_until: U.normalizeTimestamp(grading.availableUntil || (col.availability && col.availability.end)),
           submission_status: null, submitted_at: null,
@@ -479,35 +480,37 @@
         }
       }
 
-      // 3g. structured calendar sweep per course (kept) — ICS stays the fallback.
-      try {
-        const cal = await track(`calendar:${cid}`, "GET /learn/api/public/v1/calendars/items",
-          () => U.getJson(origin, `/learn/api/public/v1/calendars/items?courseId=${encodeURIComponent(cid)}&since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, { timeoutMs, retries }));
-        for (const it of (cal.results || [])) {
-          const dynId = it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.id;
-          per.events.push({
-            title: it.title || "(event)",
-            course: cname, course_id: cid,
-            description: U.extractRichText(it.description).text,
-            start: U.normalizeTimestamp(it.start),
-            end: U.normalizeTimestamp(it.end),
-            due_date: U.normalizeTimestamp(it.end || it.start),
-            type: it.type || null,
-            calendar_id: it.id || null,
-            uid: it.id || null,
-            url: (it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.link) || courseUrl(origin, cid),
-            source_id: it.id ? `cal:${it.id}` : null,
-            source: "api-calendar"
-          });
-          if (it.type === "GradebookColumn" && dynId) {
-            const ax = per.assessments.find((x) => x.column_id === dynId);
-            if (ax) {
-              ax.calendar_id = it.id || ax.calendar_id;
-              if (!ax.due_date) ax.due_date = U.normalizeTimestamp(it.end || it.start);
+      // 3g. structured calendar sweep per course, in <= 16-week windows (longer -> HTTP 400).
+      for (const w of windows) {
+        try {
+          const cal = await track(`calendar:${cid}`, "GET /learn/api/public/v1/calendars/items",
+            () => U.getJson(origin, `/learn/api/public/v1/calendars/items?courseId=${encodeURIComponent(cid)}&since=${encodeURIComponent(w.since)}&until=${encodeURIComponent(w.until)}`, { timeoutMs, retries }));
+          for (const it of (cal.results || [])) {
+            const dynId = it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.id;
+            per.events.push({
+              title: it.title || "(event)",
+              course: cname, course_id: cid,
+              description: U.extractRichText(it.description).text,
+              start: U.normalizeTimestamp(it.start),
+              end: U.normalizeTimestamp(it.end),
+              due_date: U.normalizeTimestamp(it.end || it.start),
+              type: it.type || null,
+              calendar_id: it.id || null,
+              uid: it.id || null,
+              url: (it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.link) || courseUrl(origin, cid),
+              source_id: it.id ? `cal:${it.id}` : null,
+              source: "api-calendar"
+            });
+            if (it.type === "GradebookColumn" && dynId) {
+              const ax = per.assessments.find((x) => x.column_id === dynId);
+              if (ax) {
+                ax.calendar_id = it.id || ax.calendar_id;
+                if (!ax.due_date) ax.due_date = U.normalizeTimestamp(it.end || it.start);
+              }
             }
           }
-        }
-      } catch { /* recorded */ }
+        } catch { /* recorded */ }
+      }
 
       return per;
     }, true);
@@ -522,25 +525,27 @@
     }
 
     // ---- 4. global calendar sweep (kept) ----
-    try {
-      const g = await track("calendar-global", "GET /learn/api/public/v1/calendars/items",
-        () => U.getJson(origin, `/learn/api/public/v1/calendars/items?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, { timeoutMs, retries }));
-      for (const it of (g.results || [])) {
-        const cid = it.calendarId || it.courseId || null;
-        const cname = it.calendarName || (cid && courseById.get(cid)?.name) || null;
-        events.push({
-          title: it.title || "(event)", course: cname, course_id: cid,
-          description: U.extractRichText(it.description).text,
-          start: U.normalizeTimestamp(it.start),
-          end: U.normalizeTimestamp(it.end),
-          due_date: U.normalizeTimestamp(it.end || it.start),
-          type: it.type || null, calendar_id: it.id || null, uid: it.id || null,
-          url: cid ? courseUrl(origin, cid) : null,
-          source_id: it.id ? `cal:${it.id}` : null,
-          source: "api-calendar"
-        });
-      }
-    } catch { /* recorded */ }
+    for (const w of windows) {
+      try {
+        const g = await track("calendar-global", "GET /learn/api/public/v1/calendars/items",
+          () => U.getJson(origin, `/learn/api/public/v1/calendars/items?since=${encodeURIComponent(w.since)}&until=${encodeURIComponent(w.until)}`, { timeoutMs, retries }));
+        for (const it of (g.results || [])) {
+          const cid = it.calendarId || it.courseId || null;
+          const cname = it.calendarName || (cid && courseById.get(cid)?.name) || null;
+          events.push({
+            title: it.title || "(event)", course: cname, course_id: cid,
+            description: U.extractRichText(it.description).text,
+            start: U.normalizeTimestamp(it.start),
+            end: U.normalizeTimestamp(it.end),
+            due_date: U.normalizeTimestamp(it.end || it.start),
+            type: it.type || null, calendar_id: it.id || null, uid: it.id || null,
+            url: cid ? courseUrl(origin, cid) : null,
+            source_id: it.id ? `cal:${it.id}` : null,
+            source: "api-calendar"
+          });
+        }
+      } catch { /* recorded */ }
+    }
 
     // ---- 5. ICS merge (kept as fallback/supplement) ----
     if (Array.isArray(options.icsEvents)) {
@@ -561,6 +566,8 @@
 
     // ---- 6. ID-stable dedupe/merge (titles alone NEVER merge) ----
     const assessmentsM = M.mergeAssessments(assessments);
+    const nowMs = Date.now();
+    for (const a of assessmentsM) Object.assign(a, M.deadlineFlags(a, nowMs));
     const announcementsD = dedupeByKey(announcements, (a) => a.source_id || a.announcement_id || null);
     const gradesD = dedupeByKey(grades, (g) => g.source_id || (g.column_id ? `grade:${g.course_id}:${g.column_id}` : null));
     const eventsD = dedupeByKey(events, (e) => e.source_id || (e.uid ? `uid:${e.uid}` : null));
@@ -573,7 +580,8 @@
       submission_status: a.submission_status, grade: a.grade,
       possible: a.possible, url: a.url, source_id: a.source_id,
       content_id: a.content_id, column_id: a.column_id, attempt_id: a.attempt_id,
-      type: a.type
+      type: a.type,
+      is_upcoming: a.is_upcoming, is_overdue: a.is_overdue
     }));
     const materialsAlias = contentD;
 
@@ -588,6 +596,8 @@
       grades: gradesD.length,
       events: eventsD.length,
       content: contentD.length,
+      upcoming_deadlines: assessmentsM.filter((a) => a.is_upcoming).length,
+      overdue: assessmentsM.filter((a) => a.is_overdue).length,
       failed_sources: failedSources.length,
       elapsed_ms: Date.now() - startedAt,
       ...(scopedNote ? { note: scopedNote } : {})

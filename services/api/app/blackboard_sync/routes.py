@@ -5,7 +5,8 @@ Validation is manual so a rejected password is never echoed back in a 422 body."
 from __future__ import annotations
 
 import json
-from datetime import timezone
+import re
+from datetime import timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,6 +24,7 @@ router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 MAX_USERNAME = 120
 MAX_PASSWORD = 256
+DONE_STATUSES = {"graded", "needsgrading", "needs_grading", "submitted", "completed", "inprogress", "in_progress"}
 
 
 class SyncRequest(BaseModel):
@@ -62,6 +64,10 @@ def start_sync(student_id: str, _owner: OwnedStudent, db: Db, body: SyncRequest 
     if "blackboard" in disabled_connectors(db, student_id):
         raise HTTPException(409, "Blackboard is turned off in Settings > Connectors.")
     body = body or SyncRequest()
+    if worker.is_running(student_id):
+        if (body.username or "").strip() or body.password:
+            raise HTTPException(409, "A sync is running. Try again in a minute.")
+        return status_dict(db.get(BlackboardConnection, student_id))
     username = (body.username or "").strip()
     password = body.password or None
     if len(username) > MAX_USERNAME or (password and len(password) > MAX_PASSWORD):
@@ -82,8 +88,7 @@ def start_sync(student_id: str, _owner: OwnedStudent, db: Db, body: SyncRequest 
         conn.username = username
     elif not credentials.saved_password(conn) and not credentials.saved_session(conn):
         raise HTTPException(422, "Sign in again to keep syncing.")
-    if not worker.is_running(student_id):
-        conn.status, conn.failure_reason, conn.stage_detail = "queued", None, ""
+    conn.status, conn.failure_reason, conn.stage_detail = "queued", None, ""
     db.commit()
     worker.start(student_id, password, body.remember)
     db.refresh(conn)
@@ -105,7 +110,6 @@ def forget_connection(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
 @router.get("/api/students/{student_id}/blackboard/deadlines")
 def deadlines(student_id: str, _owner: OwnedStudent, db: Db, limit: int = 8) -> dict:
     """Upcoming (and up to 7-day overdue) graded work in current courses, soonest first."""
-    from datetime import timedelta
     window_start = now() - timedelta(days=7)
     rows = db.execute(
         select(BlackboardContentItem, BlackboardCourse)
@@ -117,7 +121,8 @@ def deadlines(student_id: str, _owner: OwnedStudent, db: Db, limit: int = 8) -> 
     items = []
     for item, course in rows:
         due = item.due_at if item.due_at.tzinfo else item.due_at.replace(tzinfo=timezone.utc)
-        done = any(f"Status: {s}" in item.body_text for s in ("Graded", "NeedsGrading", "Submitted", "Completed"))
+        match = re.search(r"^Status:[ \t]*(\S+)", item.body_text or "", re.M)
+        done = bool(match) and match.group(1).lower() in DONE_STATUSES
         if due < window_start or done:
             continue
         items.append({"id": item.id, "title": item.title, "course": course.title, "due_at": due.isoformat(),

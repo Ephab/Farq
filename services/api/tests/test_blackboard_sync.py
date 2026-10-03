@@ -451,3 +451,32 @@ def test_reset_interrupted_marks_running_rows_failed(client, student):
     worker.reset_interrupted(db)
     assert db.get(BlackboardConnection, student).failure_reason == "interrupted"
     db.close()
+
+
+def test_post_with_credentials_while_running_is_rejected_untouched(client, student, fake_browser, monkeypatch):
+    sync(client, student, username="2240000000", password=SECRET)
+    monkeypatch.setattr(worker, "_running", {student})
+    response = sync(client, student, username="someone-else", password="other-pass")
+    assert response.status_code == 409 and "other-pass" not in response.text
+    db = SessionLocal()
+    conn = db.get(BlackboardConnection, student)
+    assert conn.username == "2240000000" and credentials.saved_password(conn) == SECRET
+    db.close()
+
+
+def test_deadlines_exclude_needs_grading_status(client, student, fake_browser):
+    sync(client, student, username="2240000000", password=SECRET)
+    db = SessionLocal()
+    item = db.scalars(select(BlackboardContentItem).where(BlackboardContentItem.title == "Project report")).first()
+    item.body_text = "Brief\nStatus: needs_grading"
+    db.commit()
+    db.close()
+    assert client.get(f"/api/students/{student}/blackboard/deadlines").json()["items"] == []
+
+
+def test_crash_sets_retry_time(client, student, fake_browser):
+    sync(client, student, username="2240000000", password=SECRET)
+    fake_browser.outcome = RuntimeError("boom")
+    sync(client, student)
+    status = client.get(f"/api/students/{student}/blackboard/sync").json()
+    assert status["failure_reason"] == "extract_failed" and status["next_sync_at"] is not None

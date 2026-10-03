@@ -58,7 +58,8 @@ def _guarded(student_id: str, password: str | None, remember: bool) -> None:
         run_sync(student_id, password, remember)
     except Exception as exc:  # never log the message: it can echo page content
         logger.error("Blackboard sync crashed for %s (%s)", student_id, type(exc).__name__)
-        _update(student_id, status="failed", failure_reason="extract_failed", stage_detail="")
+        _update(student_id, status="failed", failure_reason="extract_failed", stage_detail="",
+                next_sync_at=now() + RETRY_UNREACHABLE)
     finally:
         with _lock:
             _running.discard(student_id)

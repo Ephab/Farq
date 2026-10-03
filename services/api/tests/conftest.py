@@ -19,6 +19,11 @@ os.environ["WAYPOINT_HERMES_HOME"] = tempfile.mkdtemp(prefix="waypoint-hermes-ho
 # Tests run without cloud engine keys, so the decision chain (jev -> span -> laya) would fall through to the
 # real local Laya model on every app startup (blackboard seeding observes items) and pin the CPU for minutes.
 # Laya is never available unless a test installs its own fake via monkeypatch.setitem(engines.INFO/ASK, "laya", ...).
+# decision_engines imports database before individual test modules can choose
+# their TEST_DB. Keep that first import away from the real student store.
+_TEST_DATABASE_ROOT = Path(tempfile.mkdtemp(prefix="waypoint-pytest-db-"))
+os.environ["DATABASE_URL"] = f"sqlite:///{(_TEST_DATABASE_ROOT / 'waypoint.db').as_posix()}"
+
 from app import decision_engines as _engines  # noqa: E402
 
 

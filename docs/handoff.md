@@ -1,6 +1,6 @@
 # Handoff: project state
 
-State as of 2026-10-03 (commit `646ff83` on `main`). Read this, then `AGENTS.md`,
+State as of 2026-10-03 (native QA evaluator follow-up on `main`). Read this, then `AGENTS.md`,
 `docs/hermes-architecture.md` and `docs/future-work.md` before changing an area.
 
 ## Current state at a glance
@@ -13,7 +13,7 @@ State as of 2026-10-03 (commit `646ff83` on `main`). Read this, then `AGENTS.md`
 | Co-op | Rebuilt 2026-10-03: extraction + per-student Jev relevance, gaps → roadmap proposal | Co-op |
 | CV builder (Career > CV) | New 2026-10-03: generate from confirmed data, drafts, Ask Hermes edits, fit, PDF | CV builder |
 | Group Projects | Built (plans 1–3); Plan 4 (animations, Playwright demo) open; user bug report pending | Group Projects |
-| Projects + evaluator | Built; user bug report pending | Project milestones |
+| Projects + evaluator | Native QA agent verified; screenshot-based VLM review is the next step | Project milestones |
 | Quizzes / Slides | Built (separate tool-less JSON prompts) | — |
 | Outlook, Blackboard demo, hackathons | Built | respective sections |
 | Memory / skills / connectors | Built; "Hermes self-adapting" (learned skills) under-used, see Next steps | 5a |
@@ -30,8 +30,7 @@ every chat element plus the loader), `?mock=coop&persona=cs|medicine` (Co-op), `
 Open the URL, then pick the view in the sidebar.
 
 **Phone access while developing:** `cloudflared tunnel --url http://127.0.0.1:5173 --http-host-header 127.0.0.1:5173`
-needs `server.allowedHosts: ['.trycloudflare.com']` in `vite.config.ts`. That setting is not checked
-in; keep it local. A quick tunnel dies when the laptop sleeps or loses network, and the URL changes
+needs `server.allowedHosts: ['.trycloudflare.com']` in `vite.config.ts`. That setting is checked in for phone-preview access. A quick tunnel dies when the laptop sleeps or loses network, and the URL changes
 on every restart.
 
 ## Jev / TypeSafe decision layer
@@ -229,6 +228,8 @@ real postings scored per student:
   Smoke: `.venv\Scripts\python.exe scripts\smoke_blackboard_tools.py`.
 
 ### Project milestones and evaluator backbone
+**Current limit / next step:** captured screenshots are evidence for the student; no VLM currently reviews their pixels. Implement screenshot-based VLM review next (see Next steps).
+
 - Staged generation now labels stage types and requires one final project for each new
   `skill_sequence`; legacy plans without stage types remain readable.
 - Roadmap project nodes materialize into persistent briefs with weighted rubrics, explicit draft
@@ -237,10 +238,10 @@ real postings scored per student:
   nodes open it on double-click/right-click; normal nodes keep their completion shortcut.
 - Hermes has bounded `waypoint_get_project` / `waypoint_submit_project_refinement` tools and a
   `waypoint-project-coach` skill. Drafts never apply themselves.
-- `scripts/evaluator.ps1` starts the authenticated host worker. It accepts public GitHub, ZIP and
-  local-directory snapshots and runs only fixed recipes inside disposable limited Docker containers.
-- Evaluation progress is available through SSE. A successful evaluation marks the milestone done at
-  any score; the rating communicates quality separately and can be improved through retakes.
+- Native run scripts start the authenticated evaluator automatically; `scripts/evaluator.ps1` also starts it standalone. It accepts GitHub, ZIP and local-directory snapshots. Native execution for trusted local directories is enabled with `WAYPOINT_EVALUATOR_NATIVE=1` (authorized on this machine). A JSON-only QA agent chooses typed native CLI/test, local HTTP and Playwright browser checks, then writes an evidence-cited rubric review. Logs, limitations and desktop/mobile screenshots appear in Evaluations. No Docker is required; ZIP/GitHub execution is refused without a sandbox. See `docs/evaluator-threat-model.md`. Setup installs the evaluator Chromium browser. The Windows runner also recovers stale uv Hermes trampolines read-only using a matching managed Python under `UV_PYTHON_INSTALL_DIR`.
+- Evaluation progress is available through SSE and the workspace poller. Each check is saved before further model reasoning, so failures preserve evidence. Final review must echo the exact accepted scope, cite actual check IDs and cover every rubric criterion; the server computes the weighted score. A completed evaluation marks the milestone done at any score.
+- Live verification (2026-10-03): `VLM-System2` CLI unit tests/demo/schema and independent probes ran natively. The probe exposed numeric-substring and negated-answer false positives in the submitted harness; its accepted project received 82/100 with medium coverage and explicit HF/Docker limitations. A separate local web fixture passed POST and desktop/mobile form workflows with two screenshots; the real Waypoint report UI was captured and had no page errors.
+- Backend test isolation: `conftest.py` selects a temporary database before importing `decision_engines`, which otherwise imports the database before individual test modules select their `TEST_DB`. Test runs never write the real student store.
 
 ### Current Saudi hackathons
 - Hackathonat is the primary cached source. FastAPI refreshes its public JSON feed every six hours
@@ -446,6 +447,8 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - Hermes Coach and onboarding chat share `use-hermes-chat.ts` + `ChatThreadView.tsx`.
 
 ## Verification status
+
+- Native evaluator follow-up (2026-10-03): **509 backend tests passed**, frontend build passed; real CLI evaluation completed, HTTP/browser form flow and desktop/mobile screenshots verified, and the completed Waypoint report UI had no page errors. Visual screenshot grading has not been implemented or verified.
 - **Automated (2026-10-03):** 492 backend tests (~60 s), `npm run build` and 70 Vitest tests pass.
   Test modules share one SQLite file in a full run (the engine binds to the first `DATABASE_URL`
   set at collection), so use unique titles and ids in test data.
@@ -521,15 +524,17 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
   is untested (the tests stub Hermes).
 
 ## Next steps (in order)
-0. Pending user test reports (2026-10-03): **project evaluation**, **Group Projects** and **Hermes
-   self-adapting**. Learned skills via `skill_manage` exist but are barely used: decide when Hermes
+
+1. **Project evaluator: screenshot-based VLM review.** Screenshots are captured today, but the reviewer only receives source context, DOM text, logs and test results; it does **not** inspect screenshot pixels. Next, send the captured desktop/mobile PNGs to a server-selected vision-capable model, combine its visual findings with runtime evidence, and show screenshot-cited feedback for UI behavior, layout, usability and accessibility. Keep model/provider selection and keys server-side, preserve ownership and lease checks, and update `docs/evaluator-threat-model.md` for image disclosure and image-based prompt injection. Validate with labeled visual defects and a live web-project evaluation. CLI-only projects such as `VLM-System2` have no UI and should continue to receive behavior-based CLI review.
+2. Remaining user test reports (2026-10-03): **Group Projects** and **Hermes
+   self-adapting**. Project evaluation now runs natively; visual VLM review is step 1. Learned skills via `skill_manage` exist but are barely used: decide when Hermes
    should write a skill, and show it to the student. Chat and co-op fixes from the same round are done.
-1. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.
-2. Dry-run a non-CS student (e.g. Medicine with only a CV) and check discipline cards + roadmap shape.
-3. Put `HF_TOKEN` in `.env`, restart, confirm a Hugging Face run through the gateway.
-4. Replace placeholders (Home/Dashboard) with roadmap progress + recent proposals for the demo.
-5. Proposal visual diff in Hermes Coach; feed quiz scores into proposals.
-6. Real sign-in (replace `current_user()`), then the folder-tool threat model, then OCR and the
+3. Restart (`run.bat` on Windows or `bash run.sh` on macOS) and run the full onboarding live with a real model; fix what breaks.
+4. Dry-run a non-CS student (e.g. Medicine with only a CV) and check discipline cards + roadmap shape.
+5. Put `HF_TOKEN` in `.env`, restart, confirm a Hugging Face run through the gateway.
+6. Replace placeholders (Home/Dashboard) with roadmap progress + recent proposals for the demo.
+7. Proposal visual diff in Hermes Coach; feed quiz scores into proposals.
+8. Real sign-in (replace `current_user()`), then the folder-tool threat model, then OCR and the
    "coming soon" sources.
 
 ## Key files

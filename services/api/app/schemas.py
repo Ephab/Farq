@@ -591,7 +591,46 @@ class EvaluationCriterionResult(BaseModel):
     feedback: str = Field(default="", max_length=3000)
 
 
+class EvaluationObservation(BaseModel):
+    id: str = Field(pattern=r"^check-[0-9]+$", max_length=40)
+    title: str = Field(min_length=1, max_length=200)
+    kind: str = Field(max_length=40)
+    passed: bool
+    output: str = Field(max_length=16000)
+    duration_ms: int = Field(ge=0)
+
+
+class EvaluationScreenshot(BaseModel):
+    id: str = Field(pattern=r"^shot-[0-9]+$", max_length=40)
+    title: str = Field(max_length=200)
+    png_base64: str = Field(max_length=2800000)
+
+
+class EvaluationAction(BaseModel):
+    kind: Literal["run_script", "node_cli", "probe_harness", "install_dependencies", "python_tests", "start_server", "http", "browser", "finish"]
+    title: str = Field(min_length=1, max_length=200)
+    script: str = Field(default="", pattern=r"^[A-Za-z0-9_:.-]*$", max_length=80)
+    entry: str = Field(default="", max_length=200)
+    args: list[str] = Field(default_factory=list, max_length=12)
+    path: str = Field(default="/", max_length=500)
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
+    body: dict | None = None
+    expected_status: int = Field(default=200, ge=100, le=599)
+    expected_text: str = Field(default="", max_length=1000)
+    steps: list[dict] = Field(default_factory=list, max_length=15)
+
+
+class EvaluationReasonRequest(BaseModel):
+    lease_token: str = Field(min_length=16, max_length=64)
+    phase: Literal["next", "review"]
+    context: str = Field(max_length=60000)
+    observations: list[EvaluationObservation] = Field(default_factory=list, max_length=14)
+    remaining: int = Field(default=0, ge=0, le=12)
+
+
 class EvaluationComplete(BaseModel):
+    observations: list[EvaluationObservation] = Field(default_factory=list, max_length=14)
+    screenshots: list[EvaluationScreenshot] = Field(default_factory=list, max_length=8)
     lease_token: str = Field(min_length=16, max_length=64)
     adapter: Literal["software", "web", "data_ml", "document", "cad", "circuit", "generic"]
     score: int = Field(ge=0, le=100)
@@ -604,6 +643,7 @@ class EvaluationComplete(BaseModel):
 
 
 class EvaluationProgress(BaseModel):
+    observations: list[EvaluationObservation] | None = Field(default=None, max_length=14)
     lease_token: str = Field(min_length=16, max_length=64)
     stage: str = Field(min_length=1, max_length=100)
 

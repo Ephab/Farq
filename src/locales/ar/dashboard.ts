@@ -253,7 +253,7 @@ export const dashboard: CatalogShape<typeof en> = {
         project: "المشروع",
         deliverables: "المخرجات",
         milestones: "المراحل",
-        rubric: "معايير التقييم",
+        rubric: "مراجعة معايير التقييم",
       },
       refine: {
         title: "اجعل هذه الفكرة خاصة بك",
@@ -277,6 +277,10 @@ export const dashboard: CatalogShape<typeof en> = {
         intake: "رفع ملفات ZIP والمجلدات من المتصفح متاح عبر خدمة استقبال المقيّم.",
       },
       evaluations: {
+        rubric: "?????? ?????? ???????",
+        checks: "الاختبارات وأدلة التشغيل",
+        screenshots: "لقطات الشاشة",
+        limitations: "ما لم يتم التحقق منه",
         none: "لا توجد محاولات تقييم بعد.",
         coverage: {
           unknown: "{adapter} · تغطية غير معروفة",

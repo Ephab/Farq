@@ -4,6 +4,8 @@ The backbone deliberately ships only chat-driven memory and roadmap revision.
 
 ## Near term
 
+- **Next: screenshot-based VLM evaluation.** Feed captured desktop/mobile screenshots to a server-selected vision model and combine screenshot-cited visual findings with DOM/log/test evidence. The current evaluator captures PNGs but never sends their pixels to its reviewer. Validate visual defect detection and document image disclosure/prompt-injection boundaries before enabling it.
+
 - Threat model for Group Projects team chat → Hermes: teammate-written prompt injection,
   proposal flooding (rate-limit proposals per run), and what a malicious section draft can contain.
 - Group Projects sub-projects 4-6: teammate finder (opt-in matching), peer evaluation and viva
@@ -57,8 +59,7 @@ connector contract and merge duplicate registration URLs while preserving both s
   application/interview tracker.
 - Group-project agents with bounded task assignment and student ownership.
 - Add Playwright interaction/screenshot capture and richer headless CAD/KiCad adapters to the project
-  evaluator. The current worker deeply runs common Python/Node recipes and performs bounded structural
-  review for document, CAD and circuit artifacts; physical claims remain explicitly unverified.
+  evaluator. The native QA agent now executes authorized local CLI/test, HTTP and Playwright checks and produces an evidence-cited rubric review. Remote submissions still need a real sandbox. Visual model review of screenshot pixels, broader launch adapters, CAD/circuit behavior and physical claims remain unverified.
 - Notifications, calendars, and deadline-aware study plans.
 - Production database, encrypted secrets, backups, observability, quotas, and deployment.
 

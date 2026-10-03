@@ -172,6 +172,10 @@ export const dashboard = {
         intake: "ZIP and browser directory upload are available through the evaluator worker intake.",
       },
       evaluations: {
+        rubric: "Rubric review",
+        checks: "Checks and runtime evidence",
+        screenshots: "Screenshots",
+        limitations: "What was not verified",
         none: "No evaluation attempts yet.",
         coverage: {
           unknown: "{adapter} · unknown coverage",

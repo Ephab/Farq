@@ -108,3 +108,24 @@ def test_setup_checks_hermes_and_laya_before_reporting_success(monkeypatch, setu
     assert ["npm", "ci"] in calls
     assert calls[-1] == "runtime"
     assert read_env(setup_root / ".env")["HERMES_API_KEY"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows uv trampoline recovery")
+def test_stale_windows_hermes_reuses_matching_managed_python(monkeypatch, tmp_path):
+    from scripts import runtime
+    install = tmp_path / "hermes"
+    shim = install / "bin/hermes.exe"; shim.parent.mkdir(parents=True); shim.write_bytes(b"shim")
+    venv = install / "hermes-agent/venv"; venv.mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("version_info = 3.11\n")
+    (venv / "Lib/site-packages").mkdir(parents=True)
+    managed = tmp_path / "managed"
+    python = managed / "cpython-3.11.16-windows-x86_64-none/python.exe"
+    python.parent.mkdir(parents=True); python.write_bytes(b"python")
+    monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", str(managed))
+    monkeypatch.setattr(runtime, "executable", lambda _: str(shim))
+    monkeypatch.setattr(runtime, "_probe", lambda command, env: command[0] == str(python))
+    before = (venv / "pyvenv.cfg").read_bytes()
+    command = runtime.hermes_command()
+    assert command[:3] == [str(python), "-I", "-c"]
+    assert "site.addsitedir" in command[3]
+    assert (venv / "pyvenv.cfg").read_bytes() == before

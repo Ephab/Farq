@@ -2,8 +2,8 @@
 """Waypoint's host-side project evaluator.
 
 The worker is intentionally outside the Hermes container. It accepts only
-server-validated jobs, snapshots the source, and runs fixed framework recipes
-inside disposable Docker containers. Model output never becomes a host command.
+server-validated jobs, snapshots the source, and performs structural inspection
+using a bounded native QA agent. No Docker is required. See docs/evaluator-threat-model.md.
 """
 
 from __future__ import annotations
@@ -14,6 +14,9 @@ import shutil
 import subprocess
 import tempfile
 import time
+import ast
+import re
+import threading
 import urllib.error
 import urllib.request
 import zipfile
@@ -25,6 +28,7 @@ API = os.getenv("WAYPOINT_API_URL", "http://127.0.0.1:8000").rstrip("/")
 TOKEN = os.getenv("WAYPOINT_INTERNAL_TOKEN", "")
 MAX_FILES = 5000
 MAX_BYTES = 250 * 1024 * 1024
+REPO = Path(__file__).resolve().parents[1]
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__", ".next"}
 SECRET_NAMES = {".env", ".env.local", ".npmrc", ".pypirc", "credentials", "secrets.json", "id_rsa", "id_ed25519"}
 
@@ -32,8 +36,12 @@ SECRET_NAMES = {".env", ".env.local", ".npmrc", ".pypirc", "credentials", "secre
 def request(method: str, path: str, payload: dict | None = None) -> dict:
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers={"Content-Type": "application/json", "X-Waypoint-Internal-Token": TOKEN})
-    with urllib.request.urlopen(req, timeout=30) as response:
-        return json.loads(response.read())
+    try:
+        with urllib.request.urlopen(req, timeout=150 if path.endswith("/reason") else 30) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read(2000).decode("utf-8", errors="replace")
+        raise RuntimeError(f"Evaluator API HTTP {exc.code}: {detail}") from exc
 
 
 def request_bytes(path: str) -> bytes:
@@ -45,20 +53,24 @@ def request_bytes(path: str) -> bytes:
 def safe_copy(source: Path, target: Path) -> dict:
     files = total = 0
     extensions: dict[str, int] = {}
-    for path in source.rglob("*"):
-        relative = path.relative_to(source)
-        if any(part in SKIP_DIRS for part in relative.parts) or path.name.lower() in SECRET_NAMES or path.is_symlink():
-            continue
-        if not path.is_file():
-            continue
-        size = path.stat().st_size
-        files += 1; total += size
-        if files > MAX_FILES or total > MAX_BYTES:
-            raise RuntimeError("Project exceeds the evaluator snapshot limit")
-        destination = target / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, destination)
-        extensions[path.suffix.lower()] = extensions.get(path.suffix.lower(), 0) + 1
+    for directory, dirs, names in os.walk(source, followlinks=False):
+        dirs[:] = [name for name in dirs if name not in SKIP_DIRS
+                   and not (Path(directory) / name).is_symlink()
+                   and not getattr(Path(directory) / name, "is_junction", lambda: False)()]
+        for name in names:
+            path = Path(directory) / name
+            if path.is_symlink() or name.lower() in SECRET_NAMES or name.lower().startswith(".env") or path.suffix.lower() in {".pem", ".key", ".p12", ".pfx"}:
+                continue
+            if not path.is_file():
+                continue
+            size = path.stat().st_size
+            files += 1; total += size
+            if files > MAX_FILES or total > MAX_BYTES:
+                raise RuntimeError("Project exceeds the evaluator snapshot limit")
+            destination = target / path.relative_to(source)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination)
+            extensions[path.suffix.lower()] = extensions.get(path.suffix.lower(), 0) + 1
     return {"files": files, "bytes": total, "extensions": extensions}
 
 
@@ -98,80 +110,155 @@ def materialize(job: dict, target: Path) -> dict:
     return safe_copy(source, target)
 
 
-def detect_adapter(root: Path) -> tuple[str, str | None, str | None]:
+def detect_adapter(root: Path) -> str:
     if (root / "package.json").exists():
-        package = json.loads((root / "package.json").read_text(encoding="utf-8", errors="replace"))
-        scripts = package.get("scripts", {})
-        command = "npm ci --ignore-scripts && " + ("npm test -- --runInBand" if "test" in scripts else "npm run build" if "build" in scripts else "npm --version")
-        adapter = "web" if any(name in json.dumps(package).lower() for name in ["react", "vite", "next", "vue", "svelte"]) else "software"
-        return adapter, "node:22-alpine", command
+        package = json.loads((root / "package.json").read_text(encoding="utf-8-sig"))
+        return "web" if any(name in json.dumps(package).lower() for name in ["react", "vite", "next", "vue", "svelte"]) else "software"
     if (root / "requirements.txt").exists() or (root / "pyproject.toml").exists():
-        install = "pip install --no-cache-dir -r requirements.txt" if (root / "requirements.txt").exists() else "pip install --no-cache-dir ."
-        return "data_ml" if any(root.rglob("*.ipynb")) else "software", "python:3.12-slim", f"{install} && (python -m pytest -q || python -m compileall -q .)"
+        return "data_ml" if any(root.rglob("*.ipynb")) else "software"
     extensions = {path.suffix.lower() for path in root.rglob("*") if path.is_file()}
-    if extensions & {".kicad_pcb", ".kicad_sch", ".sch"}: return "circuit", None, None
-    if extensions & {".step", ".stp", ".stl", ".fcstd", ".dwg", ".dxf"}: return "cad", None, None
-    if extensions & {".pdf", ".docx", ".pptx", ".md", ".tex"}: return "document", None, None
-    return "generic", None, None
+    if extensions & {".kicad_pcb", ".kicad_sch", ".sch"}: return "circuit"
+    if extensions & {".step", ".stp", ".stl", ".fcstd", ".dwg", ".dxf"}: return "cad"
+    if extensions & {".pdf", ".docx", ".pptx", ".md", ".tex"}: return "document"
+    return "generic"
 
 
-def docker_run(root: Path, image: str, command: str) -> tuple[bool, str]:
-    result = subprocess.run([
-        "docker", "run", "--rm", "--cpus", "1", "--memory", "1g", "--pids-limit", "256",
-        "--network", "bridge", "-v", f"{root}:/workspace", "-w", "/workspace", image,
-        "sh", "-lc", command,
-    ], capture_output=True, text=True, timeout=300)
-    output = (result.stdout + "\n" + result.stderr)[-12000:]
-    return result.returncode == 0, output
+def native_inspect(root: Path) -> tuple[bool, str]:
+    """Parse source without importing it or executing submitted scripts."""
+    issues = []
+    checked = 0
+    for path in root.rglob("*.py"):
+        try:
+            ast.parse(path.read_bytes(), filename=str(path.relative_to(root)))
+            checked += 1
+        except (SyntaxError, ValueError) as exc:
+            issues.append(f"{path.relative_to(root)}: {exc}")
+    package_path = root / "package.json"
+    if package_path.exists():
+        package = json.loads(package_path.read_text(encoding="utf-8-sig"))
+        if not isinstance(package, dict):
+            raise RuntimeError("package.json must contain an object")
+        checked += 1
+    return not issues, f"Parsed {checked} Python/package files. No project code, test scripts, or builds were executed.\n" + "\n".join(issues)[:10000]
 
 
-def report(job: dict, adapter: str, manifest: dict, executed: bool, passed: bool, output: str) -> dict:
-    brief = job.get("brief") or {}
-    rubric = brief.get("rubric") or [{"id": "artifact", "title": "Artifact", "weight": 100}]
-    base = 82 if executed and passed else 58 if executed else 52
-    if manifest["files"] < 2: base = min(base, 35)
-    criteria = []
-    for index, criterion in enumerate(rubric):
-        score = max(0, min(100, base - index * 2))
-        evidence = [f"Inspected {manifest['files']} files ({manifest['bytes']} bytes)"]
-        if executed: evidence.append("Sandbox recipe completed successfully" if passed else "Sandbox recipe reported failures")
-        criteria.append({"criterion_id": criterion["id"], "score": score, "evidence": evidence, "feedback": "Supported by the captured project snapshot and evaluator output."})
-    weighted = round(sum(item["score"] * next(c.get("weight", 0) for c in rubric if c["id"] == item["criterion_id"]) for item in criteria) / 100)
-    limitations = []
-    if not executed: limitations.append("This artifact type received structural review; no executable recipe was available.")
-    if adapter in {"cad", "circuit"}: limitations.append("Digital inspection does not verify physical safety, manufacturability, or real-world behavior.")
-    if adapter == "document": limitations.append("The evaluator does not certify professional, clinical, or legal correctness.")
-    return {"lease_token": job["lease_token"], "adapter": adapter, "score": weighted, "coverage": "high" if executed else "medium", "criteria": criteria, "strengths": ["A concrete artifact was submitted and inspected", "The submission can be evaluated against an explicit rubric"], "improvements": [] if passed else ["Resolve the captured build or test failures", "Add clearer verification evidence and usage instructions"], "limitations": limitations, "summary": f"Evaluated {brief.get('title') or job['project']['title']} from a real project snapshot. " + ("The automated recipe passed." if passed else "Review the evidence and prioritize the reported gaps."), "raw_output": output[-2000:]}
+def redact(value: str) -> str:
+    for name, secret in os.environ.items():
+        if any(word in name.upper() for word in ("TOKEN", "KEY", "SECRET", "PASSWORD")) and len(secret) >= 8:
+            value = value.replace(secret, "[secret]")
+    value = re.sub(r"(?i)((?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s,;]+", r"\1[secret]", value)
+    return value
+
+
+def project_context(root: Path, manifest: dict) -> str:
+    paths = sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
+    parts = ["Snapshot: " + json.dumps(manifest), "Files: " + json.dumps(paths[:250])]
+    candidates = [root / name for name in ("README.md", "package.json", "pyproject.toml", "requirements.txt")]
+    candidates += sorted(path for path in root.rglob("*") if path.is_file() and path.suffix in {".js", ".mjs", ".py", ".tsx", ".ts", ".html"} and "runs" not in path.parts)[:16]
+    seen = set()
+    for path in candidates:
+        if not path.is_file() or path in seen:
+            continue
+        seen.add(path)
+        text = path.read_text(encoding="utf-8-sig", errors="replace")[:9000]
+        parts.append(f"UNTRUSTED FILE {path.relative_to(root)}:\n{text}")
+    return redact("\n\n".join(parts))[:60000]
 
 
 def run_job(job: dict) -> None:
+    from evaluator_native import NativeSession
     job_id = job["id"]
+    lease = job["lease_token"]
+    def stage(text):
+        print(f"Evaluation {job_id}: {text}", flush=True)
+        request("POST", f"/internal/evaluator/jobs/{job_id}/progress", {"lease_token": lease, "stage": text[:100]})
     try:
-        request("POST", f"/internal/evaluator/jobs/{job_id}/progress", {"lease_token": job["lease_token"], "stage": "Snapshotting project safely"})
+        if job["submission"]["source_type"] != "local_directory":
+            raise RuntimeError("Native execution is authorized only for explicitly submitted local directories. Remote/ZIP execution needs a sandbox.")
+        if os.getenv("WAYPOINT_EVALUATOR_NATIVE", "0") != "1":
+            raise RuntimeError("Native execution is disabled. Set WAYPOINT_EVALUATOR_NATIVE=1 locally only for trusted submitted projects.")
+        stage("Snapshotting your project")
         with tempfile.TemporaryDirectory(prefix="waypoint-eval-") as temporary:
             root = Path(temporary) / "project"; root.mkdir()
             manifest = materialize(job, root)
-            adapter, image, command = detect_adapter(root)
-            executed = image is not None and command is not None
-            passed, output = (docker_run(root, image, command) if executed else (False, "No executable adapter; artifact inspected statically."))
-            request("POST", f"/internal/evaluator/jobs/{job_id}/progress", {"lease_token": job["lease_token"], "stage": "Scoring rubric from captured evidence"})
-            payload = report(job, adapter, manifest, executed, passed, output)
-            payload.pop("raw_output", None)
-            request("POST", f"/internal/evaluator/jobs/{job_id}/complete", payload)
+            context = project_context(root, manifest)
+            adapter = detect_adapter(root)
+            observations = []
+            runtime_checks = 0
+            session = NativeSession(root)
+            try:
+                seen_actions = set()
+                for index in range(8):
+                    stage(f"QA agent choosing check {index + 1}")
+                    payload = {"lease_token": lease, "phase": "next", "context": context,
+                               "observations": observations, "remaining": 8 - index}
+                    try:
+                        answer = request("POST", f"/internal/evaluator/jobs/{job_id}/reason", payload)
+                    except Exception as exc:
+                        if not runtime_checks:
+                            raise
+                        observations.append({"id": f"check-{index+1}", "title": "Agent could not plan another valid check", "kind": "planning",
+                                             "passed": False, "output": redact(str(exc))[:16000], "duration_ms": 0})
+                        break
+                    action = answer["action"]
+                    if action["kind"] == "finish":
+                        break
+                    signature = json.dumps({key: value for key, value in action.items() if key != "title"}, sort_keys=True)
+                    if signature in seen_actions:
+                        break
+                    seen_actions.add(signature)
+                    stage(action["title"])
+                    started = time.monotonic()
+                    before = session.executed_checks
+                    try:
+                        passed, output = session.execute(action)
+                    except Exception as exc:
+                        passed, output = False, str(exc)
+                    if action["kind"] not in {"install_dependencies", "start_server"} and session.executed_checks > before:
+                        runtime_checks += 1
+                    observations.append({"id": f"check-{index+1}", "title": action["title"], "kind": action["kind"],
+                                         "passed": passed, "output": redact(output)[-16000:], "duration_ms": int((time.monotonic()-started)*1000)})
+                    request("POST", f"/internal/evaluator/jobs/{job_id}/progress", {"lease_token": lease, "stage": "Recorded runtime evidence", "observations": observations})
+                    print(f"Evaluation {job_id}: {observations[-1]['id']} {'PASS' if passed else 'FAIL'}", flush=True)
+                if not observations or not runtime_checks:
+                    raise RuntimeError("The QA agent did not produce runtime evidence; no score was published")
+                stage("Reviewing observed behavior against your rubric")
+                answer = request("POST", f"/internal/evaluator/jobs/{job_id}/reason",
+                                 {"lease_token": lease, "phase": "review", "context": context, "observations": observations})
+                review = answer["review"]
+                review.setdefault("limitations", []).append("Native execution used a temporary copy and stripped credentials; it is not an OS sandbox.")
+                payload = {**review, "lease_token": lease, "adapter": adapter, "observations": observations, "screenshots": session.screenshots}
+                request("POST", f"/internal/evaluator/jobs/{job_id}/complete", payload)
+                print(f"Evaluation {job_id}: review complete ({review['score']}/100)", flush=True)
+            finally:
+                session.close()
     except Exception as exc:
-        try: request("POST", f"/internal/evaluator/jobs/{job_id}/fail", {"lease_token": job["lease_token"], "error": str(exc)[:3000]})
-        except Exception: pass
+        print(f"Evaluation {job_id} failed: {exc}", flush=True)
+        try: request("POST", f"/internal/evaluator/jobs/{job_id}/fail", {"lease_token": lease, "error": str(exc)[:3000]})
+        except Exception as failure: print(f"Could not report evaluation failure: {failure}", flush=True)
 
 
 def main() -> None:
     print(f"Waypoint evaluator connected to {API}. Ctrl+C to stop.")
+    if not TOKEN:
+        raise RuntimeError("WAYPOINT_INTERNAL_TOKEN is missing; run setup first.")
+    def heartbeat():
+        while True:
+            try:
+                request("POST", "/internal/evaluator/heartbeat", {})
+            except (urllib.error.URLError, TimeoutError, OSError):
+                pass
+            time.sleep(2)
+    threading.Thread(target=heartbeat, daemon=True).start()
     while True:
         try:
             request("POST", "/internal/evaluator/heartbeat", {})
             payload = request("POST", "/internal/evaluator/jobs/claim", {})
             if payload.get("job"): run_job(payload["job"])
             else: time.sleep(2)
-        except (urllib.error.URLError, TimeoutError): time.sleep(3)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            print(f"Evaluator waiting for API: {exc}", flush=True)
+            time.sleep(3)
 
 
 if __name__ == "__main__": main()

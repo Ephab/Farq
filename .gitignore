@@ -48,3 +48,7 @@ __pycache__/
 # Keep old pairing files ignored so upgrades cannot accidentally commit a secret.
 .local-outlook-key
 data/docker-backup/
+
+# Generated launch-video renders and intermediate frames.
+/brag-output/
+/brag-output-*/

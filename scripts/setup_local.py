@@ -70,6 +70,8 @@ def main() -> None:
     print(f"Installing locked Python dependencies ({extra}; MPS detected at runtime on macOS)...", flush=True)
     subprocess.run([args.uv, "sync", "--locked", "--extra", extra], cwd=ROOT, check=True)
     python = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    # Headless Chromium for the Blackboard sync (services/api/app/blackboard_sync/browser.py).
+    subprocess.run([str(python), "-m", "playwright", "install", "chromium"], cwd=ROOT, check=True)
     env = dict(os.environ, USE_TF="0", HF_HUB_DISABLE_TELEMETRY="1")
     # Setup may download; runtime never does. Respect HF_HOME for cache placement.
     env.pop("HF_HUB_OFFLINE", None)

@@ -50,6 +50,9 @@ class Portal(BaseHTTPRequestHandler):
         if self.path.startswith("/adfs/ls/mfa"):
             return self._send(200, b"<html><head><title>Verify your identity</title></head><body>Approve the sign-in</body></html>")
         if self.path.startswith("/adfs/ls"):
+            # Like IAU's firewall: a "HeadlessChrome" user agent gets a block page, not the form.
+            if "Headless" in (self.headers.get("User-Agent") or ""):
+                return self._send(200, b"<html><head><title>The URL you requested has been blocked</title></head></html>")
             return self._send(200, FORM.format(error="").encode())
         if self.path.startswith("/ultra"):
             return self._send(200, b"<html><body>Ultra</body></html>") if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})

@@ -97,6 +97,12 @@ def classify_after_submit(url: str, error_text: str | None, origin: str = ORIGIN
     return "extra_verification"
 
 
+def desktop_user_agent(version: str) -> str:
+    """The user agent desktop Chrome of this version sends (headless Chromium says "HeadlessChrome")."""
+    return (f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+            f"Chrome/{version} Safari/537.36")
+
+
 class PlaywrightBrowser:
     def __init__(self, origin: str = ORIGIN, login_url: str = LOGIN_URL, bundle_dir: Path | None = None,
                  headless: bool | None = None, login_wait_ms: int = LOGIN_WAIT_MS,
@@ -124,7 +130,11 @@ class PlaywrightBrowser:
             except PlaywrightError as exc:
                 raise LoginFailure("browser_missing") from exc
             try:
-                context = chromium.new_context(storage_state=session_state) if session_state else chromium.new_context()
+                # IAU's firewall blocks the AD FS page for a "HeadlessChrome" user agent, so present as plain Chrome.
+                options = {"user_agent": desktop_user_agent(chromium.version)}
+                if session_state:
+                    options["storage_state"] = session_state
+                context = chromium.new_context(**options)
                 context.set_default_timeout(60_000)
                 page = context.new_page()
                 page.expose_function("waypointProgress", lambda message: progress("extracting", str(message)[:200]))

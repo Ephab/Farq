@@ -125,6 +125,20 @@ async function main() {
     assert(r.assessments[0].column_id === "_col1", "redact: column IDs preserved");
     assert(!r.diagnostics.userId && !r.diagnostics.userName, "redact: diagnostics user keys removed");
     assert(r.courses[0].instructors[0].email === "REDACTED", "redact: instructor email removed");
+    const d2 = {
+      user: { id: "_1_1", userName: "s12345" }, courses: [], assessments: [], grades: [],
+      announcements: [{ id: "_a1", author: "prof.a" }, { id: "_a2", author: "prof.a" }, { id: "_a3", author: "prof.b" }],
+      content: [{ id: "_c1", userId: "_7_1", email: "x@iau.edu.sa", author: "prof.a" }],
+      materials: [{ id: "_c1", userId: "_7_1", email: "x@iau.edu.sa" }],
+      events: [{ id: "e1", email: "x@iau.edu.sa", createdById: "_7_1" }],
+      assignments: [{ id: "as1", userId: "_7_1", email: "x@iau.edu.sa" }],
+      diagnostics: { samples: { contents: { userId: "_7_1", email: "x@iau.edu.sa", author: "prof.a" } } }
+    };
+    const r2 = M.redactExport(d2);
+    const j2 = JSON.stringify(r2);
+    assert(!j2.includes("prof.a") && !j2.includes("prof.b"), "redact: author strings pseudonymized everywhere", j2);
+    assert(r2.announcements[0].author === r2.announcements[1].author && r2.announcements[0].author !== r2.announcements[2].author, "redact: same author -> same token, different -> different");
+    assert(!j2.includes("x@iau.edu.sa") && !j2.includes("_7_1"), "redact: content/materials/events/assignments/samples walked", j2);
   }
 
   // ---- malformed / missing fields never throw ----

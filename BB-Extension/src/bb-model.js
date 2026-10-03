@@ -229,7 +229,7 @@
           else if ((k === "email" || k === "studentId" || k === "userName") && typeof o[k] === "string") o[k] = "REDACTED";
           else if (k === "instructors" && Array.isArray(o[k])) {
             o[k] = o[k].map((ins) => ({ ...(ins || {}), email: ins && ins.email ? "REDACTED" : ins && ins.email, userId: ins && ins.userId ? redactUserId(ins.userId) : ins && ins.userId }));
-          } else if (k === "author" && typeof o[k] === "string" && /^_/.test(o[k])) {
+          } else if (k === "author" && typeof o[k] === "string") {
             o[k] = redactUserId(o[k]);
           } else walk(o[k]);
         }
@@ -239,6 +239,11 @@
     walk(clone.assessments);
     walk(clone.announcements);
     walk(clone.grades);
+    walk(clone.content);
+    walk(clone.materials);
+    walk(clone.events);
+    walk(clone.assignments);
+    if (clone.diagnostics) walk(clone.diagnostics.samples);
     return clone;
   }
 

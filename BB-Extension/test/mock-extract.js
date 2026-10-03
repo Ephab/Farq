@@ -163,6 +163,9 @@ global.fetch = async (url) => {
   check("redact: user id pseudonymized", red.user.id !== "_1_1" && red.user.userName === "REDACTED");
   check("redact: course/column IDs preserved", red.courses.some((c) => c.id === "_101_1") && red.assessments.some((a) => a.column_id === "_col1"));
   check("redact: no raw userName leak", !JSON.stringify(red).includes('"userName":"student"'));
+  check("redact: announcement author pseudonymized", !JSON.stringify(red).includes("prof.a") && red.announcements.every((x) => x.author !== "prof.a"));
+  const redS = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all", redact: true, captureSamples: true });
+  check("redact+captureSamples: no prof.a leak", !JSON.stringify(redS).includes("prof.a") && !!redS.diagnostics.samples);
 
   const dbg = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all", captureSamples: true });
   check("captureSamples records raw shapes", dbg.diagnostics.samples && dbg.diagnostics.samples.contents && dbg.diagnostics.samples.contents.id === "_f1", dbg.diagnostics.samples && Object.keys(dbg.diagnostics.samples));

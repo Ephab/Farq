@@ -25,6 +25,21 @@
 - Emails: the student picks the classifier (default Laya) in the Emails panel; cloud engines fall
   back down the same chain. See `outlook-threat-model.md`.
 
+## Blackboard live sync (2026-10-03)
+
+- Shipped: one extractor (`BB-Extension/src`) shared by the extension and the app; headless-Chromium AD FS
+  sign-in, sealed credentials, 6 h periodic sync with lockout-safe retries, redacted attachment text,
+  `blackboard_live` ingest (demo rows replaced), Hermes course tools with live standing/instructors/due-ordered
+  assignments, and the My data Blackboard card plus Today deadlines panel (en/ar). Threat model:
+  `docs/blackboard-threat-model.md`.
+- Manual live-smoke result: NOT run yet. Only the student may type their IAU credentials, so this is
+  unverified against the real portal. To run it: start with `run.bat`, open My data, use the Blackboard card
+  to sign in, wait for the sync to finish, then compare counts with the 2026-10-03 export: 62 courses
+  (16 current), 341 assessments, 305 announcements, 314 grades, 275 content items; that export had 0 events
+  and 189 failed sources, so events should now be non-zero and failed sources far fewer.
+- Follow-ups: MFA support (`extra_verification` today), a hosted secret store, and the extractor's
+  `captureSamples` debug option for diagnosing new portal shapes.
+
 State as of 2026-09-25. Read this, then `AGENTS.md`, `docs/hermes-architecture.md` and
 `docs/future-work.md` before changing this area.
 

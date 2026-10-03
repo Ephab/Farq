@@ -23,6 +23,11 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   a per-run capability from `services/api/app/outlook/coach.py` (opt-in mailbox session, running
   AgentRun, unchanged connection generation). Enforce that in the API, never only in the prompt.
   Email text is untrusted and never becomes a `StudentFact`. See `docs/outlook-threat-model.md`.
+- Blackboard sync (`services/api/app/blackboard_sync/`) signs in to IAU with the student's own credentials
+  in headless Chromium and runs `BB-Extension/src` (one extractor for the extension and the app). The password
+  and session are Fernet-sealed, never returned, logged or given to Hermes; a saved password that fails once is
+  wiped. Requests are GET-only except the AD FS form submit. Synced data is `blackboard_live`; only course-level
+  records become `suggested` evidence. See `docs/blackboard-threat-model.md`.
 - Uploaded files are never stored; only redacted, extracted evidence is.
 - Keep Gemini and Hermes keys server-side. The provider/model choice is server-side too
   (`app_settings` row `hermes_model`, set in Settings); browsers never send a model or key.
@@ -66,6 +71,7 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 - Frontend check: `npm run build`
 - Backend tests: `.venv/Scripts/python -m pytest services/api/tests` (also covers the plugin scanner)
 - Regenerate the backend roadmap seed after editing the TypeScript seed: `node scripts/export-roadmap.mjs`
+- Extension tests: `node BB-Extension/test/run-tests.js` (regenerate the console snippet with `node BB-Extension/tools/build-console.js`)
 
 Read `docs/handoff.md` (current state, gaps, next steps), `docs/hermes-architecture.md` and
 `docs/future-work.md` before extending agent access.

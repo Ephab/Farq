@@ -1,4 +1,3 @@
-import { ProfilePanel } from "./ProfilePanel"
 "use client"
 
 import { useState } from "react"
@@ -12,11 +11,13 @@ import { ManageOpening } from "./OpeningsPanel"
 import { MoveToShared } from "./MoveToShared"
 import { InviteCode } from "./InviteCode"
 
-interface MemberListProps { store: TeamStore; canInvite: boolean; onError: (reason: unknown) => void }
+interface MemberListProps { store: TeamStore; canInvite: boolean; onError: (reason: unknown) => void; onLeft: () => void }
 
-export function MemberList({ store, canInvite, onError }: MemberListProps) {
+export function MemberList({ store, canInvite, onError, onLeft }: MemberListProps) {
   const teams = useTeamClient()
   const { t } = useI18n()
+  const [leaving, setLeaving] = useState(false)
+  const [leaveBusy, setLeaveBusy] = useState(false)
   const [picking, setPicking] = useState(false)
   const [classmates, setClassmates] = useState<Classmate[] | null>(null)
   const [invited, setInvited] = useState<string[]>([])
@@ -105,10 +106,17 @@ export function MemberList({ store, canInvite, onError }: MemberListProps) {
           <button type="button" className="tm-back" onClick={() => setPicking(false)}>{t("teams.common.done")}</button>
         </div>
       ) : null}
-      {teams.central && team.members.some(member => member.user_id === teams.userId) ? <details className="gp-details gp-details-tight">
-        <summary>{t("teams.gp.teamSummary")}</summary>
-        <ProfilePanel key={team.id} teamId={team.id} classProject={Boolean(team.assignment.id)} />
-      </details> : null}
+      {canInvite ? <div className="gp-rail-actions">
+        {!leaving ? <button type="button" className="tm-btn tm-btn-sm" onClick={() => setLeaving(true)}>{t("teams.members.leave")}</button>
+          : <div className="tm-list">
+            <p className="gp-muted">{t(team.lead_user_id === teams.userId ? "teams.members.leaveLeadHint" : "teams.members.leaveHint")}</p>
+            <button type="button" className="tm-btn tm-btn-sm" disabled={leaveBusy} onClick={() => {
+              setLeaveBusy(true)
+              void teams.leaveTeam(team.id).then(onLeft).catch(onError).finally(() => setLeaveBusy(false))
+            }}>{t("teams.members.leave")}</button>
+            <button type="button" className="tm-back" disabled={leaveBusy} onClick={() => setLeaving(false)}>{t("teams.common.cancel")}</button>
+          </div>}
+      </div> : null}
     </section>
   )
 }

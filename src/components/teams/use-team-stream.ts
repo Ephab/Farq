@@ -12,6 +12,7 @@ export function useTeamStream(teamId: string) {
   const [store, setStore] = useState<TeamStore | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [live, setLive] = useState(false)
+  const [latestChatSeq, setLatestChatSeq] = useState(0)
 
   // Recent stream events, so a reload can re-apply anything that arrived
   // while its /state request was in flight (see rebase).
@@ -27,6 +28,9 @@ export function useTeamStream(teamId: string) {
   useEffect(() => {
     let source: TeamEventSource | null = null
     let cancelled = false
+    setLive(false)
+    setLatestChatSeq(0)
+    recent.current = []
     reload()
       .then((initial) => {
         if (cancelled) return
@@ -37,21 +41,26 @@ export function useTeamStream(teamId: string) {
         }
         const onEvent = (raw: Event) => {
           const event = parse<TeamEvent>(raw)
-          if (!event) return
+          if (!event || cancelled) return
+          setLive(true)
+          if (event.type === "message.created" && event.actor_user_id !== teams.userId) setLatestChatSeq(current => Math.max(current, event.seq))
           recent.current = [...recent.current.slice(-199), event]
           setStore((current) => (current ? applyEvent(current, event) : current))
-          if (event.type === "team.updated" && "lead_user_id" in event.payload) {
+          if ((event.type === "team.updated" && "lead_user_id" in event.payload)
+            || (event.type === "member.removed" && event.payload.user_id === teams.userId)) {
             void reload().catch(reason => { if (!cancelled) setError(errorMessage(reason)) })
           }
         }
         for (const type of TEAM_EVENT_TYPES) source.addEventListener(type, onEvent)
         source.addEventListener("presence", (raw) => {
           const presence = parse<PresenceEntry[]>(raw)
-          if (!presence) return
+          if (!presence || cancelled) return
+          setLive(true)
           setStore((current) => (current ? { ...current, presence } : current))
         })
-        source.onopen = () => setLive(true)
+        source.onopen = () => { if (!cancelled) setLive(true) }
         source.onerror = () => {
+          if (cancelled) return
           setLive(false)
           if (teams.central) void reload().catch(reason => {
             if (!cancelled) { setStore(null); setError(errorMessage(reason)) }
@@ -66,7 +75,7 @@ export function useTeamStream(teamId: string) {
   }, [teams, teamId, reload])
 
   const update = useCallback<StoreUpdate>((fn) => setStore((current) => (current ? fn(current) : current)), [])
-  return { store, error, live, reload, update }
+  return { store, error, live, reload, update, unseenChat: latestChatSeq > (store?.lastSeenSeq ?? latestChatSeq) }
 }
 
 /** Tell teammates what this member is looking at, every 20 s while open. */

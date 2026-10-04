@@ -43,6 +43,23 @@ describe("authenticated event stream", () => {
     stream.close()
   })
 
+  it("reports an already open stream to a late subscriber", async () => {
+    let controller: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+    const stream = new CollaborationStream("https://collab.example/events", 0, async () => ({}),
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(body)))
+    // Let response headers arrive before the workspace registers its handler.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const open = vi.fn()
+    stream.onopen = open
+    expect(open).toHaveBeenCalledOnce()
+    stream.close()
+    controller!.close()
+    const afterClose = vi.fn()
+    stream.onopen = afterClose
+    expect(afterClose).not.toHaveBeenCalled()
+  })
+
   it("cancels reconnection when the view closes", async () => {
     vi.useFakeTimers()
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error("Offline"))

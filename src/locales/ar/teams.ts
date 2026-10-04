@@ -2,6 +2,15 @@ import type { CatalogShape } from "@/lib/i18n/core"
 import type { teams as en } from "../en/teams"
 
 export const teams: CatalogShape<typeof en> = {
+  ui: {
+    createJoin: "إنشاء أو انضمام", settings: "إعدادات المشاريع الجماعية", projects: "المشاريع", classes: "الصفوف",
+    peopleSettings: "الأعضاء والإعدادات", noClasses: "لا توجد صفوف بعد", noClassesHint: "أنشئ صفًا أو انضم باستخدام رمز دعوة.",
+    importDescription: "استيراد وصف المشروع", importHint: "دع هيرمس يجهّز إعدادًا لمراجعته",
+    emptyBrief: "أضف الهدف والنطاق والتسليمات، أو استورد وصف مشروعك.",
+    sectionTools: "أدوات القسم", noMilestones: "لا توجد مراحل بعد. أضف تاريخًا لنقطة التحقق التالية.",
+    emptyAssignment: "أضف متطلبات فريقك والتسليمات المتوقعة.",
+    newMessages: "رسائل فريق جديدة",
+  },
   profiles: {
     loadDraft: "تحميل مسودة مدربي", noDraft: "لم يجهّز مدربك مسودة لهذا الصف.",
     draftLoaded: "تم تحميل المسودة في النموذج. راجع كل حقل ثم انشرها بنفسك.",
@@ -81,7 +90,7 @@ export const teams: CatalogShape<typeof en> = {
     class: { placeholder: "سمِّ صفّك أو مجموعتك", action: "إنشاء الصف", hint: "اجمع عدة فرق في مكان واحد وشارك رمز دعوة واحدًا." },
     join: { placeholder: "الصق رمز الدعوة", action: "انضمام", hint: "رمز صديقك يعمل لصف أو لمشروع، مثل 5H3P-3WDZ-DPVX-N4R6." },
     projects: "مشاريعك", classes: "صفوفك", invitations: "دعوات لك", assignmentsNeedTeam: "يحتاج إلى فريق",
-    noProjectsTitle: "لا توجد مشاريع بعد", noProjectsBody: "سمِّ مشروعًا في الأعلى لتبدأ، أو انضم إلى مشروع صديق برمزه.",
+    noProjectsTitle: "لا توجد مشاريع بعد", noProjectsBody: "استخدم إنشاء أو انضمام لبدء مشروع أو إدخال رمز دعوة صديق.",
     archivedProjects: "المشاريع المؤرشفة", organizer: "منظّم", memberRole: "عضو", archived: "مؤرشف", open: "فتح",
     coachTitle: "وصول المدرب", coachLabel: "اسمح لمدربي بالبحث عن صفوف وفرق",
     coachHint: "للقراءة فقط ولمدة ساعتين. يرى مدربك ما تراه أنت فقط، ولا ينضم ولا يدعو ولا يراسل أحدًا نيابةً عنك.",
@@ -231,7 +240,7 @@ export const teams: CatalogShape<typeof en> = {
       docs: "المستندات",
       decisions: "القرارات",
       activity: "النشاط",
-      charter: "الميثاق والتكليف",
+      charter: "إعداد المشروع",
     },
     allTeams: "كل الفرق",
     backToAll: "العودة إلى كل الفرق",
@@ -246,6 +255,9 @@ export const teams: CatalogShape<typeof en> = {
     resizeRailHint: "اسحب لتغيير حجم الشريط الجانبي (انقر مرتين للاستعادة)",
   },
   members: {
+    leave: "مغادرة المشروع",
+    leaveHint: "هل تريد مغادرة المشروع؟ ستفقد الوصول إلى المحادثة ومساحة العمل.",
+    leaveLeadHint: "هل تريد مغادرة المشروع؟ تنتقل القيادة إلى أقدم عضو متبقٍ. إذا كنت آخر عضو، يُغلق المشروع.",
     heading: "الفريق · {count}/{limit}",
     lead: "القائد",
     typing: "يكتب…",
@@ -458,6 +470,19 @@ export const teams: CatalogShape<typeof en> = {
     },
   },
   charter: {
+    editTitle: "العنوان",
+    editProblem: "المشكلة",
+    editObjective: "الهدف",
+    editScope: "النطاق",
+    editConstraints: "القيود (واحد في كل سطر)",
+    editTools: "الأدوات (واحدة في كل سطر)",
+    editDeliverables: "المخرجات (واحد في كل سطر)",
+    editDue: "الموعد النهائي",
+    editDocKind: "نوع المستند",
+    editNoDoc: "بدون نوع مستند",
+    addDeliverable: "إضافة مخرج",
+    removeDeliverable: "حذف المخرج",
+
     title: "الميثاق",
     meetings: "الاجتماعات: {value}",
     none: "لا يوجد ميثاق بعد.",

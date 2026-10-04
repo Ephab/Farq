@@ -199,6 +199,8 @@ export function teamClient(userId: string, transport?: TeamTransport) {
   archiveClass: (id: string, action: "archive" | "restore") => teamApi(`/api/classes/${id}/${action}`, send("POST")),
   archiveProject: (id: string, action: "archive" | "restore") => teamApi(`/api/teams/${id}/${action}`, send("POST")),
   archivedProjects: () => teamApi<Array<{ id: string; name: string; can_restore: boolean; class_archived: boolean }>>("/api/me/archived-teams"),
+  editProjectDetails: (id: string, body: { project?: { brief: ProjectBrief; deliverables: ProjectDeliverable[] }; assignment?: { title: string; problem: string; objective: string; deliverables: string[]; constraints: string[] } }) => teamApi<TeamInfo>(`/api/teams/${id}/project-details`, send("PATCH", body)),
+  leaveTeam: (id: string) => teamApi<{ left: boolean }>(`/api/teams/${id}/leave`, send("POST")),
   ownTeamProfile: (id: string) => teamApi<{ version: number; published: boolean; discovery: boolean; profile: SharedProfileBody }>(`/api/teams/${id}/profile`),
   publishTeamProfile: (id: string, version: number, profile: SharedProfileBody, discovery: boolean) => teamApi(`/api/teams/${id}/profile`, send("PUT", { reviewed: true, expected_version: version, profile, discovery })),
   withdrawTeamProfile: (id: string, version: number) => teamApi(`/api/teams/${id}/profile/withdraw`, send("POST", { expected_version: version })),

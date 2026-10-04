@@ -1,6 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import { Plus } from "lucide-react"
+import { Sheet } from "./ui"
+import { errorMessage } from "@/lib/teams-api"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { dueLabel, fromDateInput, shortDate } from "@/lib/team-format"
 import { upsertMilestone, type TeamStore } from "@/lib/team-store"
@@ -14,6 +17,9 @@ export function TaskTimeline({ store, canEdit, update, onError }: TaskTimelinePr
   const { t, locale } = useI18n()
   const [title, setTitle] = useState("")
   const [due, setDue] = useState("")
+  const [adding, setAdding] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const tasks = Object.values(store.tasks)
   const milestones = Object.values(store.milestones).sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999"))
   const deadline = store.team.assignment.deadline
@@ -22,19 +28,25 @@ export function TaskTimeline({ store, canEdit, update, onError }: TaskTimelinePr
     .sort((a, b) => (a.due ?? "").localeCompare(b.due ?? ""))
 
   const add = async () => {
+    setBusy(true); setError(null)
     try {
       const created = await teams.createMilestone(store.team.id, { title: title.trim(), due: fromDateInput(due) })
       update((current) => upsertMilestone(current, created))
       setTitle("")
       setDue("")
+      setAdding(false)
     } catch (reason) {
       onError(reason)
-    }
+      setError(errorMessage(reason))
+    } finally { setBusy(false) }
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <h2 className="tm-h2" style={{ marginBottom: 0 }}>{t("teams.timeline.title")}</h2>
+    <div className="gp-timeline-view">
+      <div className="tm-board-head"><h2 className="tm-h2" style={{ marginBottom: 0 }}>{t("teams.timeline.title")}</h2>
+        {canEdit ? <button type="button" className="tm-btn tm-btn-primary" onClick={() => { setError(null); setAdding(true) }}><Plus className="size-4" aria-hidden="true" />{t("teams.timeline.addMilestone")}</button> : null}
+      </div>
+      {!milestones.length && !deadline ? <p className="tm-muted">{t("teams.ui.noMilestones")}</p> : null}
       <ol className="tm-timeline">
         {milestones.map((milestone) => {
           const own = tasks.filter((task) => task.milestone_id === milestone.id)
@@ -64,7 +76,7 @@ export function TaskTimeline({ store, canEdit, update, onError }: TaskTimelinePr
           <h2 className="tm-h2">{t("teams.timeline.datedTasks")}</h2>
           <div className="tm-list">
             {dated.map((task) => (
-              <div key={task.id} className="tm-card flex justify-between gap-3">
+              <div key={task.id} className="gp-dated-task">
                 <span dir="auto">{task.title}</span>
                 <small>{task.due ? shortDate(task.due, locale) : ""}</small>
               </div>
@@ -72,17 +84,18 @@ export function TaskTimeline({ store, canEdit, update, onError }: TaskTimelinePr
           </div>
         </section>
       ) : null}
-      {canEdit ? (
-        <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); void add() }}>
-          <label className="tm-field" style={{ minWidth: 220 }}>{t("teams.timeline.newMilestone")}
+      {canEdit && adding ? <Sheet title={t("teams.timeline.newMilestone")} onClose={() => setAdding(false)}>
+        <form className="flex flex-col gap-4" onSubmit={(event) => { event.preventDefault(); void add() }}>
+          <label className="tm-field">{t("teams.timeline.newMilestone")}
             <input className="tm-input" dir="auto" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <label className="tm-field">{t("teams.timeline.due")}
             <input type="date" className="tm-input" value={due} onChange={(event) => setDue(event.target.value)} />
           </label>
-          <button type="submit" className="tm-btn tm-btn-primary" disabled={!title.trim()}>{t("teams.timeline.addMilestone")}</button>
+          {error ? <p className="tm-banner" role="alert">{error}</p> : null}
+          <button type="submit" className="tm-btn tm-btn-primary" disabled={busy || !title.trim()}>{t("teams.timeline.addMilestone")}</button>
         </form>
-      ) : null}
+      </Sheet> : null}
     </div>
   )
 }

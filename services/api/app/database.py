@@ -66,6 +66,7 @@ ADDED_COLUMNS = {
         "ui_json": "TEXT",
     },
     "teams": {
+        "assignment_override_json": "TEXT NOT NULL DEFAULT '{}'",
         "size_limit": "INTEGER",
         "brief_json": "TEXT NOT NULL DEFAULT '{}'",
         "deliverables_json": "TEXT NOT NULL DEFAULT '[]'",

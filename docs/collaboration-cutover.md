@@ -11,7 +11,7 @@ SQLite database. New teams created on the shared service never need this.
 - **Consent per person.** The lead becomes the only member of the new shared project. Teammates join through
   ordinary invitations or codes and may decline. Their old tasks and section ownership arrive unassigned with a
   plain-text note of the former owner.
-- **Minimum data.** Moved: name, charter, project brief/deliverables/rubric (the assignment's, when the team has
+- **Minimum data.** Moved: name, the team's edited assignment brief, project brief/deliverables/rubric (the assignment's, when the team has
   none of its own), milestones, tasks (status, estimate, dependencies, milestone links), decisions, document
   sections. Not moved: chat, reactions, polls, proposals, Hermes runs, activity events, and anything from a
   personal profile: student facts, roadmaps, evidence, mail, memory.

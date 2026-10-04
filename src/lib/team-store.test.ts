@@ -39,6 +39,17 @@ function event(type: string, payload: Record<string, unknown>): TeamEvent {
 }
 
 describe("applyEvent", () => {
+  it("shows lead edits to project and assignment details without losing team membership", () => {
+    const initial = fromSnapshot(snapshot())
+    const assignment = { ...initial.team.assignment, title: "Revised assignment", brief: { problem: "A team-specific brief" } }
+    const project = { ...initial.team.project, brief: { problem: "Our project" } }
+    const next = applyEvent(initial, event("team.updated", { assignment, project }))
+    expect(next.team.assignment).toEqual(assignment)
+    expect(next.team.project).toEqual(project)
+    expect(next.team.members).toEqual(initial.team.members)
+    expect(initial.team.assignment.title).toBe("Project")
+  })
+
   it("removes a departed member and advances over code events", () => {
     const removed = applyEvent(fromSnapshot(snapshot()), event("member.removed", { user_id: "u1" }))
     expect(removed.team.members).toEqual([])

@@ -12,6 +12,7 @@ from .policy import authorize, is_member
 from .proposals import expire_stalled, proposal_dict
 from .tasks import milestone_dict, task_dict
 from .teams import team_dict
+from .imports import open_imports, import_dict
 
 router = APIRouter()
 MESSAGE_WINDOW = 200
@@ -21,6 +22,7 @@ MESSAGE_WINDOW = 200
 def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
     team = require_team(db, team_id)
     role = authorize(db, user, team, "view")
+    imports = open_imports(db, team)
     expire_stalled(db, team)
     db.commit()
     # Read the cursor first: anything written after this point arrives on the stream.
@@ -51,7 +53,7 @@ def team_state(team_id: str, db: Db, user: CurrentUser) -> dict:
         "team": team_dict(db, team, role), "tasks": [task_dict(item) for item in tasks],
         "milestones": [milestone_dict(item) for item in milestones], "decisions": [decision_dict(item) for item in decisions],
         "documents": documents, "messages": messages, "proposals": [proposal_dict(item) for item in proposals],
-        "imports": [], "last_seq": last_seq, "last_seen_seq": last_seen,
+        "imports": [import_dict(item) for item in imports], "last_seq": last_seq, "last_seen_seq": last_seen,
     }
 
 

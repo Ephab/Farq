@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight, LayoutGrid } from "lucide-react"
 import { coverFor } from "@/lib/team-cover"
 import { dueLabel } from "@/lib/team-format"
 import type { TeamCard } from "@/lib/teams-api"
@@ -24,51 +24,25 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void }) {
-  const { t, fmt } = useI18n()
+  const { t } = useI18n()
   const cover = coverFor(card.cover_seed)
   const due = dueLabel(card.assignment.deadline, t)
-  const clamped = Math.max(0, Math.min(100, card.progress))
   // A project made on its own has no course or assignment, so say what it is instead of showing blanks.
   const solo = !card.assignment.id
   return (
     <button
       type="button"
-      className="tm-folder"
+      className="gp-project-row"
       onClick={onOpen}
       aria-label={t("teams.cover.open", { name: card.name })}
     >
-      <span
-        className="tm-folder-cover"
-        style={{ backgroundImage: cover.image, backgroundColor: cover.color }}
-      >
-        <span className="tm-folder-toprow">
-          <span className="tm-cover-chip">{solo ? t("teams.gp.projectLabel") : <>{card.course.code}{due ? ` · ${due}` : ""}</>}</span>
-          {card.unread ? <span className="tm-cover-unread">{t("teams.cover.unread", { count: card.unread })}</span> : null}
-        </span>
-        {card.risk ? <span className="tm-folder-risk" title={card.risk}>⚠ {t("teams.cover.atRisk")}</span> : null}
-        <span className="tm-folder-info" aria-hidden="true">
-          <span className="tm-folder-info-title" dir="auto">{solo ? card.name : card.assignment.title}</span>
-          <span className="tm-folder-info-meta">
-            {solo ? null : <>{due ?? t("teams.cover.noDueDate")} · </>}{t("teams.cover.members", { count: card.members.length })} · {fmt.percent(clamped / 100)}
-          </span>
-          <span className="tm-folder-info-bar"><i style={{ width: `${clamped}%` }} /></span>
-          {card.next_task ? <span className="tm-folder-info-next" dir="auto">{t("teams.cover.next", { task: card.next_task.title })}</span> : null}
-        </span>
-      </span>
-      <span className="tm-folder-body">
-        <span className="tm-folder-tab" aria-hidden="true" />
-        <ArrowUpRight className="tm-folder-arrow rtl:-scale-x-100" aria-hidden="true" />
-        <span className="tm-folder-title-row">
-          <span className="tm-folder-name" dir="auto">{card.name}</span>
-        </span>
-        <span className="tm-cover-sub tm-folder-sub" dir="auto">{solo ? t("teams.cover.members", { count: card.members.length }) : card.assignment.title}</span>
-        <span className="tm-folder-foot">
-          <span className="tm-cover-members" aria-label={t("teams.cover.members", { count: card.members.length })}>
-            {card.members.slice(0, 6).map((id) => <span key={id} className="tm-cover-dot" />)}
-          </span>
-          <ProgressRing value={card.progress} />
-        </span>
-      </span>
+      <span className="gp-project-mark" style={{ backgroundColor: cover.color }} aria-hidden="true"><LayoutGrid className="size-5" /></span>
+      <span className="gp-project-info"><strong dir="auto">{card.name}</strong><small dir="auto">{solo ? t("teams.gp.projectLabel") : <>{card.course.code} · {card.assignment.title}</>}</small></span>
+      <span className="gp-project-meta"><span>{t("teams.cover.members", { count: card.members.length })}</span>{due ? <small>{due}</small> : null}</span>
+      {card.unread ? <span className="gp-project-unread">{t("teams.cover.unread", { count: card.unread })}</span> : null}
+      {card.risk ? <span className="gp-project-risk" title={card.risk}>{t("teams.cover.atRisk")}</span> : null}
+      <ProgressRing value={card.progress} />
+      <ArrowUpRight className="size-4 rtl:-scale-x-100 gp-project-arrow" aria-hidden="true" />
     </button>
   )
 }

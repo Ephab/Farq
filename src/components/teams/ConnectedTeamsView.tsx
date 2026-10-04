@@ -1,7 +1,7 @@
 "use client"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CloudOff } from "lucide-react"
-import { useAnimatedSidebar } from "@/components/motion/animated-sidebar"
+import { CloudOff, Plus, Settings2 } from "lucide-react"
+import { Sheet } from "./ui"
 import { AccountChip } from "./AccountChip"
 import { ClassesSection } from "./ClassesSection"
 import { ClassPage } from "./ClassPage"
@@ -23,7 +23,6 @@ type Route = { kind: "home" } | { kind: "class"; id: string } | { kind: "team"; 
  * the first time the page opens (see the local API's device broker), so the page goes straight to what you can do. */
 export function ConnectedTeamsView() {
   const { t } = useI18n()
-  const sidebar = useAnimatedSidebar()
   const [session, setSession] = useState<CollaborationSession | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,6 +30,8 @@ export function ConnectedTeamsView() {
   const [startError, setStartError] = useState<string | null>(null)
   const [route, setRoute] = useState<Route>({ kind: "home" })
   const [revision, setRevision] = useState(0)
+  const [homeTab, setHomeTab] = useState<"projects" | "classes">("projects")
+  const [dialog, setDialog] = useState<"start" | "settings" | null>(null)
   const [capabilities, setCapabilities] = useState<CentralCapabilities | null>(null)
   const account = session?.account
   const connect = useCallback(async () => {
@@ -56,8 +57,8 @@ export function ConnectedTeamsView() {
   [account?.id, session?.api_origin, capabilities])
 
   const refresh = () => setRevision(value => value + 1)
-  const openTeam = (id: string) => { setRoute({ kind: "team", id }); sidebar.setOpen(false); sidebar.setOpenMobile(false) }
-  const openClass = (id: string) => { setRoute({ kind: "class", id }); sidebar.setOpen(false); sidebar.setOpenMobile(false) }
+  const openTeam = (id: string) => setRoute({ kind: "team", id })
+  const openClass = (id: string) => setRoute({ kind: "class", id })
   const home = () => { setRoute({ kind: "home" }); refresh() }
   const start = async (mode: StartMode, value: string): Promise<boolean> => {
     if (!client) return false
@@ -71,6 +72,7 @@ export function ConnectedTeamsView() {
         else if (joined.class_id) openClass(joined.class_id)
         else refresh()
       }
+      setDialog(null)
       return true
     } catch (reason) { setStartError(errorMessage(reason)); return false }
     finally { setBusy(false) }
@@ -95,15 +97,24 @@ export function ConnectedTeamsView() {
           : <div className="gp-home">
             <header className="gp-head">
               <div><h1 className="gp-title">{t("teams.page.title")}</h1><p className="gp-sub">{t("teams.gp.subtitle")}</p></div>
-              <AccountChip id={account.id} name={account.display_name} />
+              <div className="gp-head-actions">
+                <button type="button" className="tm-btn tm-btn-primary" onClick={() => { setStartError(null); setDialog("start") }}><Plus className="size-4" aria-hidden="true" />{t("teams.ui.createJoin")}</button>
+                <button type="button" className="tm-icon-btn" onClick={() => setDialog("settings")} aria-label={t("teams.ui.settings")} title={t("teams.ui.settings")}><Settings2 className="size-5" aria-hidden="true" /></button>
+              </div>
             </header>
-            <StartPanel busy={busy} error={startError} onSubmit={start} />
-            <ProjectsSection key={`p:${account.id}:${revision}`} onOpenTeam={openTeam} />
-            <ClassesSection key={`c:${account.id}:${revision}`} onOpenClass={openClass} />
-            <LocalTeams />
-            <CoachAccess />
-            <button type="button" className="gp-disconnect" onClick={() => void setCollaborationConsent(false).catch(() => undefined)}>{t("teams.gp.disconnect")}</button>
+            <nav className="gp-tabs" aria-label={t("teams.page.title")}>
+              {(["projects", "classes"] as const).map(tab => <button type="button" key={tab} className="gp-tab" aria-current={homeTab === tab ? "page" : undefined} onClick={() => setHomeTab(tab)}>{t(`teams.ui.${tab}`)}</button>)}
+            </nav>
+            {homeTab === "projects" ? <ProjectsSection key={`p:${account.id}:${revision}`} onOpenTeam={openTeam} />
+              : <ClassesSection key={`c:${account.id}:${revision}`} onOpenClass={openClass} />}
           </div>}
+        {dialog === "start" ? <Sheet title={t("teams.ui.createJoin")} onClose={() => setDialog(null)}><StartPanel busy={busy} error={startError} onSubmit={start} /></Sheet> : null}
+        {dialog === "settings" ? <Sheet title={t("teams.ui.settings")} onClose={() => setDialog(null)}>
+          <AccountChip id={account.id} name={account.display_name} />
+          <CoachAccess />
+          <LocalTeams />
+          <button type="button" className="gp-disconnect" onClick={() => void setCollaborationConsent(false).catch(() => undefined)}>{t("teams.gp.disconnect")}</button>
+        </Sheet> : null}
       </TeamClientContext.Provider>
     </div>
   )

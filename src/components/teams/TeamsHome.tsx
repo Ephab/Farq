@@ -1,10 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Sparkles, UserPlus, Users } from "lucide-react"
+import { UserPlus } from "lucide-react"
 import { TeamCover } from "@/components/teams/TeamCover"
 import { coverFor } from "@/lib/team-cover"
-import { briefingLines, dueLabel } from "@/lib/team-format"
+import { dueLabel } from "@/lib/team-format"
 import { errorMessage, type NeedsTeam, type TeamInvite, type TeamsHomeData } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
 import { useI18n } from "@/lib/i18n/context"
@@ -30,7 +30,7 @@ export function TeamsHome({ onOpenTeam }: { onOpenTeam: (teamId: string) => void
   if (!home) return <div className="tm-empty">{t("teams.home.loading")}</div>
   const instructor = home.user.role === "instructor"
   return (
-    <div className="tm-home tm-home-split">
+    <div className="tm-home">
       <div className="tm-home-main">
       {home.invites.length > 0 ? (
         <section>
@@ -55,13 +55,6 @@ export function TeamsHome({ onOpenTeam }: { onOpenTeam: (teamId: string) => void
         </section>
       ) : null}
       </div>
-      <aside className="tm-briefing-side" aria-label={t("teams.home.insights")}>
-        <h2 className="tm-h2">{t("teams.home.insights")}</h2>
-        <div className="tm-briefing">
-          <Sparkles className="size-4 shrink-0 text-[var(--fq-accent)]" aria-hidden="true" />
-          <ul>{briefingLines(home, t).map((line) => <li key={line} dir="auto">{line}</li>)}</ul>
-        </div>
-      </aside>
     </div>
   )
 }
@@ -140,9 +133,6 @@ export function NeedsTeamRow({ item, onCreated }: { item: NeedsTeam; onCreated: 
         </form>
       ) : (
         <>
-          <button type="button" className="tm-btn" disabled title={t("teams.home.findTeammatesSoon")}>
-            <Users className="size-4" aria-hidden="true" /> {t("teams.home.findTeammates")}
-          </button>
           <button type="button" className="tm-btn tm-btn-primary" onClick={() => setNaming(true)}>{t("teams.home.createTeam")}</button>
         </>
       )}

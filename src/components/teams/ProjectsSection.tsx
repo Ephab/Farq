@@ -7,7 +7,7 @@ import { useTeamClient } from "@/components/teams/team-client-context"
 import { errorMessage, type TeamsHomeData } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
 
-/** Invitations waiting for you, your projects as cover tiles, and assignments that still need a team. */
+/** Invitations, compact project rows, and assignments that still need a team. */
 export function ProjectsSection({ onOpenTeam }: { onOpenTeam: (teamId: string) => void }) {
   const api = useTeamClient()
   const { t } = useI18n()

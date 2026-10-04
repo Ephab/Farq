@@ -23,7 +23,7 @@ from starlette.routing import Route
 
 PUBLIC_PREFIXES = ("/v1/", "/health/")
 METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
-MAX_BODY = 8 * 1024 * 1024
+MAX_BODY = 11 * 1024 * 1024  # 10 MB document plus multipart overhead
 HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding",
               "upgrade", "host", "content-length"}
 # (bucket, path fragment, method, allowed per window, window seconds). Creating an account solves a proof of work and counts
@@ -92,6 +92,8 @@ def create_app(central: str, public_host: str, transport: httpx.AsyncBaseTranspo
             if len(body) > MAX_BODY:
                 return JSONResponse({"detail": "Request too large"}, status_code=413)
         headers = {name: value for name, value in request.headers.items() if name.lower() not in HOP_BY_HOP}
+        if path.startswith("/v1/teams/") and path.endswith("/events"):
+            headers["accept-encoding"] = "identity"  # Compression can buffer live frames.
         headers.update({"x-forwarded-for": who, "x-forwarded-proto": "https", "x-forwarded-host": public_host})
         url = base + path + (f"?{request.url.query}" if request.url.query else "")
         try:

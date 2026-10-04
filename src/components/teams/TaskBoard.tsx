@@ -58,9 +58,9 @@ export function TaskBoard({ store, canEdit, update, onError, onOpenTask, onNewTa
         <h2 className="tm-h2" style={{ marginBottom: 0 }}>{t("teams.board.title")}</h2>
         {canEdit ? (
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="tm-btn" disabled={asking} onClick={() => void askToSplit()}>
+            {teams.teamAI ? <button type="button" className="tm-btn" disabled={asking} onClick={() => void askToSplit()}>
               <Sparkles className="size-4" aria-hidden="true" /> {t("teams.board.split")}
-            </button>
+            </button> : null}
             <button type="button" className="tm-btn tm-btn-primary" onClick={onNewTask}>
               <Plus className="size-4" aria-hidden="true" /> {t("teams.board.newTask")}
             </button>
@@ -72,6 +72,7 @@ export function TaskBoard({ store, canEdit, update, onError, onOpenTask, onNewTa
           <section
             key={column.status}
             className="tm-col"
+            data-status={column.status}
             aria-label={t(`teams.status.${column.status}`)}
             data-over={over === column.status ? "" : undefined}
             onDragOver={canEdit ? (event) => { event.preventDefault(); setOver(column.status) } : undefined}

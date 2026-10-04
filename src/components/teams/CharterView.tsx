@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
+import { FileUp } from "lucide-react"
+import { ProjectDetailsEditor } from "./ProjectDetailsEditor"
 import { ProjectSetup } from "@/components/teams/ProjectSetup"
-import { Avatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
-import { memberName, type TeamStore } from "@/lib/team-store"
+import { type TeamStore } from "@/lib/team-store"
 import { useI18n } from "@/lib/i18n/context"
 import { useTeamClient } from "./team-client-context"
 
@@ -12,7 +14,9 @@ interface CharterViewProps { store: TeamStore; canEdit: boolean; update: StoreUp
 export function CharterView({ store, canEdit, update }: CharterViewProps) {
   const { t, fmt } = useI18n()
   const teams = useTeamClient()
-  const { charter, assignment, project } = store.team
+  const lead = store.team.viewer_role === "lead"
+  const [editing, setEditing] = useState<"project" | "assignment" | null>(null)
+  const { assignment, project } = store.team
   const brief = assignment.brief as { problem?: string; objective?: string; deliverables?: string[]; constraints?: string[] }
   const own = project?.brief ?? {}
   const hasOwnBrief = Boolean(own.problem || own.objective || own.scope)
@@ -21,35 +25,17 @@ export function CharterView({ store, canEdit, update }: CharterViewProps) {
     ? project.rubric.map((item) => ({ key: item.name, title: item.name, description: item.description, weight: item.weight }))
     : assignment.rubric.map((item) => ({ key: item.id, title: item.title, description: item.description, weight: item.weight }))
   return (
-    <div className="flex flex-col gap-6">
-      {canEdit && teams.projectImport ? <ProjectSetup store={store} update={update} /> : null}
-      <section>
-        <h2 className="tm-h2">{t("teams.charter.title")}</h2>
-        {charter.goal ? (
-          <div className="tm-card flex flex-col gap-1">
-            <p className="m-0 font-semibold" dir="auto">{charter.goal}</p>
-            {charter.meetings ? <small>{t("teams.charter.meetings", { value: charter.meetings })}</small> : null}
-          </div>
-        ) : <p className="tm-muted">{t("teams.charter.none")}</p>}
-        {charter.roles ? (
-          <div className="tm-list mt-3">
-            {Object.entries(charter.roles).map(([userId, role]) => (
-              <div key={userId} className="tm-member">
-                <Avatar userId={userId} name={memberName(store, userId)} size={24} />
-                <span dir="auto">{memberName(store, userId)}</span>
-                <small className="ms-auto" dir="auto">{role}</small>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {charter.working_agreement?.length ? (
-          <ul className="mt-3 list-disc ps-5 text-sm">{charter.working_agreement.map((item) => <li key={item} dir="auto">{item}</li>)}</ul>
-        ) : null}
-      </section>
-      {hasOwnBrief || project?.deliverables.length ? (
-        <section>
-          <h2 className="tm-h2">{t("teams.charter.project")}</h2>
+    <div className="gp-setup">
+      {canEdit && teams.projectImport ? <details className="gp-import-disclosure" open={Object.values(store.imports).some(item => ["reading", "review", "failed"].includes(item.status))}>
+        <summary><FileUp className="size-4" aria-hidden="true" /><span>{t("teams.ui.importDescription")}</span><small>{t("teams.ui.importHint")}</small></summary>
+        <div className="gp-import-content"><ProjectSetup store={store} update={update} /></div>
+      </details> : null}
+      {lead || hasOwnBrief || project?.deliverables.length ? (
+        <section className="gp-brief">
+          <div className="flex items-center justify-between gap-3"><h2 className="tm-h2">{t("teams.charter.project")}</h2>{lead && editing !== "project" ? <button className="tm-btn tm-btn-sm" onClick={() => setEditing("project")}>{t("teams.common.edit")}</button> : null}</div>
+          {lead && editing === "project" ? <ProjectDetailsEditor kind="project" store={store} update={update} onClose={() => setEditing(null)} /> : (
           <div className="tm-card flex flex-col gap-2">
+            {!hasOwnBrief && !project.deliverables.length ? <p className="tm-muted m-0">{t("teams.ui.emptyBrief")}</p> : null}
             {own.problem ? <p className="m-0" dir="auto">{own.problem}</p> : null}
             {own.objective ? <p className="m-0 text-[var(--fq-muted)]" dir="auto">{own.objective}</p> : null}
             {own.scope ? <p className="m-0 text-[var(--fq-muted)]" dir="auto">{own.scope}</p> : null}
@@ -69,25 +55,27 @@ export function CharterView({ store, canEdit, update }: CharterViewProps) {
                 </ul>
               </>
             ) : null}
-          </div>
+          </div>)}
         </section>
       ) : null}
-      <section>
-        <h2 className="tm-h2">{t("teams.charter.brief")}</h2>
+      <section className="gp-brief">
+        <div className="flex items-center justify-between gap-3"><h2 className="tm-h2">{t("teams.charter.brief")}</h2>{lead && editing !== "assignment" ? <button className="tm-btn tm-btn-sm" onClick={() => setEditing("assignment")}>{t("teams.common.edit")}</button> : null}</div>
+        {lead && editing === "assignment" ? <ProjectDetailsEditor kind="assignment" store={store} update={update} onClose={() => setEditing(null)} /> : (
         <div className="tm-card flex flex-col gap-2">
-          <strong dir="auto">{assignment.title}</strong>
+          {assignment.title ? <strong dir="auto">{assignment.title}</strong> : null}
+          {!assignment.title && !brief.problem && !brief.objective && !brief.deliverables?.length ? <p className="tm-muted m-0">{t("teams.ui.emptyAssignment")}</p> : null}
           {brief.problem ? <p className="m-0" dir="auto">{brief.problem}</p> : null}
           {brief.objective ? <p className="m-0 text-[var(--fq-muted)]" dir="auto">{brief.objective}</p> : null}
           {brief.deliverables?.length ? <ul className="m-0 list-disc ps-5 text-sm">{brief.deliverables.map((item) => <li key={item} dir="auto">{item}</li>)}</ul> : null}
           {brief.constraints?.length ? <small>{t("teams.charter.constraints", { value: brief.constraints.join(" · ") })}</small> : null}
-        </div>
+        </div>)}
       </section>
       {rubric.length > 0 ? (
-        <section>
+        <section className="gp-rubric">
           <h2 className="tm-h2">{t("teams.charter.rubric")}</h2>
           <div className="tm-list">
             {rubric.map((criterion) => (
-              <div key={criterion.key} className="tm-card flex items-start justify-between gap-3">
+              <div key={criterion.key} className="gp-rubric-row">
                 <div>
                   <strong dir="auto">{criterion.title}</strong>
                   <small className="block" dir="auto">{criterion.description}</small>

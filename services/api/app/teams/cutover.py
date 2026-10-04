@@ -47,7 +47,7 @@ def build_bundle(db, team, user) -> dict:
             {"id": s.id, "key": s.key, "title": s.title, "position": s.position, "owner_local_id": s.owner_user_id,
              "content_md": s.content_md, "status": s.status} for s in sections]})
     return {
-        "version": BUNDLE_VERSION, "source_team_id": team.id, "name": team.name, "charter": loads(team.charter_json, {}), "project": project,
+        "version": BUNDLE_VERSION, "source_team_id": team.id, "name": team.name, "charter": {}, "assignment_override": loads(team.assignment_override_json, {}), "project": project,
         "members": [{"local_user_id": m.user_id, "display_name": (db.get(User, m.user_id).display_name if db.get(User, m.user_id) else "Teammate"),
                      "is_lead": m.user_id == team.lead_user_id} for m in members],
         "milestones": [{"id": m.id, "title": m.title, "due": iso(m.due), "deliverable_key": m.deliverable_key, "completed_at": iso(m.completed_at)}

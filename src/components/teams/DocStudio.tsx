@@ -3,7 +3,7 @@
 import { useI18n, type MessageKey } from "@/lib/i18n/context"
 
 import { useEffect, useState } from "react"
-import { FileText, Lock, PencilLine, Sparkles } from "lucide-react"
+import { FileText, Lock, MoreHorizontal, PencilLine, Sparkles } from "lucide-react"
 import { MarkdownText } from "@/components/hermes/markdown"
 import { DocTitle, ExportMenu, SectionTools } from "@/components/teams/DocTools"
 import { ProposalCard } from "@/components/teams/ProposalCard"
@@ -35,6 +35,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
   const [docId, setDocId] = useState<string | null>(null)
   const [sectionId, setSectionId] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [text, setText] = useState("")
   const [version, setVersion] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -94,6 +95,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
   })
   const select = (id: string) => {
     setEditing(false)
+    setToolsOpen(false)
     setSectionId(id)
   }
 
@@ -147,7 +149,7 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
       <div className="tm-board-head">
         <div className="tm-doc-tabs">
           {docs.map((item) => (
-            <button key={item.id} type="button" aria-current={item.id === doc.id} onClick={() => { setDocId(item.id); setSectionId(null); setEditing(false) }}>
+            <button key={item.id} type="button" aria-current={item.id === doc.id} onClick={() => { setDocId(item.id); setSectionId(null); setEditing(false); setToolsOpen(false) }}>
               {DOC_KINDS.find((kind) => kind.kind === item.kind)?.label ?? item.title}
             </button>
           ))}
@@ -199,24 +201,14 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
             <div className="tm-section-head">
               <h3 dir="auto">{section.key} {section.title}</h3>
               <div className="flex flex-wrap items-center gap-2">
-                <select
-                  className="tm-select"
-                  style={{ width: "auto" }}
-                  aria-label={t("teams.docs.sectionOwner")}
-                  value={section.owner_user_id ?? ""}
-                  disabled={!canEdit || busy}
-                  onChange={(event) => void setOwner(section, event.target.value)}
-                >
-                  <option value="">{t("teams.docs.noOwner")}</option>
-                  {store.team.members.map((member) => <option key={member.user_id} value={member.user_id}>{member.display_name}</option>)}
-                </select>
+                {section.owner_user_id ? <Avatar userId={section.owner_user_id} name={memberName(store, section.owner_user_id)} size={24} /> : null}
                 {canEdit && editing ? (
                   <>
                     <button type="button" className="tm-btn" onClick={() => setEditing(false)}>{t("teams.common.cancel")}</button>
                     <button type="button" className="tm-btn tm-btn-primary" disabled={busy} onClick={() => void save(section)}>{t("teams.common.save")}</button>
                   </>
                 ) : null}
-                {canEdit && !editing ? (
+                {canEdit && teams.teamAI && !editing ? (
                   <button type="button" className="tm-btn" disabled={busy || blocked || Boolean(pendingDraft)} onClick={() => void draft(section)}>
                     <Sparkles className="size-4" aria-hidden="true" /> {t("teams.docs.draftThis")}
                   </button>
@@ -226,11 +218,23 @@ export function DocStudio({ store, canEdit, update, onFocus }: DocStudioProps) {
                     <PencilLine className="size-4" aria-hidden="true" /> {t("teams.common.edit")}
                   </button>
                 ) : null}
+                {canEdit && !editing ? <button type="button" className="tm-icon-btn" aria-label={t("teams.ui.sectionTools")} title={t("teams.ui.sectionTools")} aria-expanded={toolsOpen} onClick={() => setToolsOpen(value => !value)}><MoreHorizontal className="size-5" /></button> : null}
               </div>
             </div>
-            {canEdit && !editing ? (
+            {canEdit && toolsOpen && !editing ? <div className="gp-section-tools">
+              <label className="tm-field">{t("teams.docs.sectionOwner")}<select
+                  className="tm-select"
+                  style={{ width: "auto" }}
+                  aria-label={t("teams.docs.sectionOwner")}
+                  value={section.owner_user_id ?? ""}
+                  disabled={!canEdit || busy}
+                  onChange={(event) => void setOwner(section, event.target.value)}
+                >
+                  <option value="">{t("teams.docs.noOwner")}</option>
+                  {store.team.members.map((member) => <option key={member.user_id} value={member.user_id}>{member.display_name}</option>)}
+                </select></label>
               <SectionTools key={section.id} doc={doc} section={section} busy={busy || blocked} run={run} update={update} onSelect={setSectionId} />
-            ) : null}
+            </div> : null}
             {blocked ? (
               <p className="tm-muted"><Lock className="me-1 inline size-3.5" aria-hidden="true" />{t("teams.docs.isEditing", { name: memberName(store, section.lock_user_id) })}</p>
             ) : null}

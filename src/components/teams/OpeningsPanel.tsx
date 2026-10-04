@@ -34,7 +34,6 @@ export function ClassOpenings({ classId, onOpenTeam }: { classId: string; onOpen
     {openings.length === 0 ? <p>{t("teams.openings.empty")}</p> : null}
     {openings.map(opening => <div className="tm-card" key={opening.team_id}>
       <h5><bdi>{opening.team_name}</bdi> · <bdi>{opening.assignment_title}</bdi></h5>
-      <p dir="auto">{opening.summary}</p><p dir="auto">{opening.roles.join(", ")} · {opening.commitment}</p>
       <small>{t("teams.openings.places", { count: opening.places })}</small>
       {opening.request ? <p>{t(`teams.openings.status.${opening.request.status}`)}</p> : <form onSubmit={event => { event.preventDefault(); void act(() => api.requestJoin(opening.team_id, notes[opening.team_id] ?? "")) }}>
         <label className="tm-field">{t("teams.openings.note")}<textarea className="tm-input" value={notes[opening.team_id] ?? ""} maxLength={500} onChange={event => setNotes(values => ({ ...values, [opening.team_id]: event.target.value }))} /></label>
@@ -53,16 +52,13 @@ export function ClassOpenings({ classId, onOpenTeam }: { classId: string; onOpen
 export function ManageOpening({ teamId }: { teamId: string }) {
   const api = useTeamClient()
   const { t } = useI18n()
-  const [summary, setSummary] = useState("")
-  const [roles, setRoles] = useState("")
-  const [commitment, setCommitment] = useState("")
   const [open, setOpen] = useState(false)
   const [requests, setRequests] = useState<JoinRequestInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const load = useCallback(async () => setRequests(await api.joinRequests(teamId)), [api, teamId])
   useEffect(() => {
-    void api.opening(teamId).then(value => { setSummary(value.summary); setRoles(value.roles.join(", ")); setCommitment(value.commitment); setOpen(value.open) }).catch(reason => setError(errorMessage(reason)))
+    void api.opening(teamId).then(value => { setOpen(value.open) }).catch(reason => setError(errorMessage(reason)))
     const refresh = () => { void load().catch(reason => setError(errorMessage(reason))) }
     refresh(); const timer = window.setInterval(refresh, 15000)
     return () => window.clearInterval(timer)
@@ -76,12 +72,9 @@ export function ManageOpening({ teamId }: { teamId: string }) {
     <h3>{t("teams.openings.manage")}</h3>
     {error ? <p role="alert">{error}</p> : null}
     <form onSubmit={event => { event.preventDefault(); void act(async () => {
-      await api.publishOpening(teamId, { summary: summary.trim(), roles: roles.split(",").map(value => value.trim()).filter(Boolean), commitment: commitment.trim() }); setOpen(true)
+      await api.publishOpening(teamId, { summary: "", roles: [], commitment: "" }); setOpen(true)
     }) }}>
-      <label className="tm-field">{t("teams.openings.summary")}<textarea className="tm-input" maxLength={500} value={summary} onChange={event => setSummary(event.target.value)} /></label>
-      <label className="tm-field">{t("teams.openings.roles")}<input className="tm-input" maxLength={640} value={roles} onChange={event => setRoles(event.target.value)} /></label>
-      <label className="tm-field">{t("teams.openings.commitment")}<input className="tm-input" maxLength={160} value={commitment} onChange={event => setCommitment(event.target.value)} /></label>
-      <button className="tm-btn" disabled={busy || summary.trim().length < 2}>{t("teams.openings.publish")}</button>
+      <button className="tm-btn" disabled={busy}>{t("teams.openings.publish")}</button>
       {open ? <button type="button" className="tm-btn" disabled={busy} onClick={() => void act(async () => { await api.closeOpening(teamId); setOpen(false) })}>{t("teams.openings.close")}</button> : null}
     </form>
     <h4>{t("teams.openings.requests")}</h4>

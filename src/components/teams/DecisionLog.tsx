@@ -36,7 +36,7 @@ export function DecisionLog({ store, canEdit, update, onError, onJump }: Decisio
       ) : (
         <div className="tm-list">
           {decisions.map((decision) => (
-            <div key={decision.id} className="tm-card flex items-start justify-between gap-3">
+            <div key={decision.id} className="gp-decision-row">
               {onJump && decision.source_message_id ? (
                 <button type="button" className="tm-decision-link" title={t("teams.decisions.showInChat")} onClick={() => onJump(decision.source_message_id as string)}>
                   <p className="m-0" dir="auto">{decision.text}</p>

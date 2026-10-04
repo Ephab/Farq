@@ -95,7 +95,7 @@ def stream_events(team_id: str, request: Request, db: Db, user: CurrentUser,
 
     def stream():
         cursor, polls, last_beat, last_presence = start, 0, time.monotonic(), 0.0
-        yield "retry: 2000\n\n"
+        yield "retry: 2000\n: " + " " * 2048 + "\n\n"
         while time.time() < expires:
             with team_session(sessions) as session:
                 account = session.get(User, user_id)
@@ -126,6 +126,6 @@ def stream_events(team_id: str, request: Request, db: Db, user: CurrentUser,
         # Client reconnects using a freshly refreshed token and its last event ID.
 
     return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+                             headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})
 
 

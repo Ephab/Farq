@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waypoint · خط واحد</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<div id="stage">
+
+  <!-- the one line: lives behind every scene, shows through the logo's road -->
+  <svg id="lines" viewBox="0 0 1920 1080">
+    <defs>
+      <filter id="blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9"/></filter>
+      <filter id="blur-s" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="5"/></filter>
+    </defs>
+    <path id="ln-glow"/>
+    <path id="ln" pathLength="1"/>
+    <path id="ln-flow"/>
+    <g id="nodes"></g>
+    <circle id="tip" r="14"/>
+    <path id="road-src" style="visibility:hidden"/>
+  </svg>
+
+  <!-- 0 · cold open -->
+  <section class="scene" id="s-open">
+    <div class="logo-wrap"><img id="logo-a" src="assets/img/logo-white.png" alt="Waypoint"></div>
+    <div class="ripple" id="ripple-a"></div>
+    <p class="abs center-x tagline split" id="tag-a">رفيقك من أول يوم في الجامعة… لين التخرّج</p>
+    <div class="credits" id="cred-a">
+      <img src="assets/img/farq-white.png" alt="FARQ" style="height:74px">
+      <span class="x">×</span>
+      <img src="assets/img/yamamah-white.png" alt="جامعة اليمامة" style="height:52px">
+    </div>
+    <div class="hint" id="hint">→</div>
+  </section>
+
+  <!-- 1 · third year -->
+  <section class="scene" id="s-year">
+    <h1 class="abs center-x mega split" style="top:330px" data-b="0" data-until="0">السنة الثالثة…<br>وما زلت ضايع</h1>
+    <h1 class="abs center-x mega split" style="top:400px" data-b="1">القصة مو قصتي بس</h1>
+  </section>
+
+  <!-- 2 · four problems -->
+  <section class="scene" id="s-four">
+    <h1 class="abs h1 split" style="top:200px; right:140px" data-b="0">أربع مشاكل… <span class="mute">يعيشها كل طالب</span></h1>
+    <div class="four">
+      <div class="card"><img src="assets/img/i-lost.png" alt=""><span class="n">01</span><h3>الطلاب يحسّون بالضياع</h3></div>
+      <div class="card"><img src="assets/img/i-time.png" alt=""><span class="n">02</span><h3>الجامعة متأخرة عن سوق العمل</h3></div>
+      <div class="card"><img src="assets/img/i-ai.png" alt=""><span class="n">03</span><h3>الطلاب يسلّمون تفكيرهم للـ AI</h3></div>
+      <div class="card"><img src="assets/img/i-scatter.png" alt=""><span class="n">04</span><h3>كل شيء مبعثر</h3></div>
+    </div>
+  </section>
+
+  <!-- 3 · lost -->
+  <section class="scene" id="s-p1">
+    <header class="chap" data-b="0"><span class="num">01</span><h2>الطلاب يحسّون بالضياع</h2></header>
+    <div class="qs">
+      <p class="split" data-b="0" data-until="2">وش أتعلم بعدها؟</p>
+      <p class="split" data-b="1" data-until="2">وش علاقة المواد ببعض؟</p>
+      <p class="split" data-b="2" data-until="2">ووين رايح بعد التخرج؟</p>
+    </div>
+    <div class="dotfield" id="dotfield" data-b="3"></div>
+    <p class="abs punch split" style="top:430px; right:120px; width:820px" data-b="3">مرشد واحد…<br><span class="mint">لمئات الطلاب</span></p>
+  </section>
+
+  <!-- 4 · late -->
+  <section class="scene" id="s-p2">
+    <header class="chap" data-b="0"><span class="num">02</span><h2>الجامعة متأخرة عن سوق العمل</h2></header>
+    <div class="yr yr-a" data-b="0"><span class="lbl">المنهج</span><b>2019</b></div>
+    <div class="yr yr-b" data-b="0"><span class="lbl">السوق</span><b>2026</b></div>
+    <ul class="facts row">
+      <li class="split" data-b="1">كلمة <span class="ltr">agent</span>… ما انذكرت ولا مرة</li>
+      <li class="split" data-b="2">تعرفها نظري، ما تقدر تبنيها</li>
+      <li class="split" data-b="3">الـ co-op؟ تدوّر عليه آخر لحظة</li>
+    </ul>
+  </section>
+
+  <!-- 5 · AI -->
+  <section class="scene" id="s-p3">
+    <header class="chap" data-b="0"><span class="num">03</span><h2>الطلاب يسلّمون تفكيرهم للـ AI</h2></header>
+    <div class="chat">
+      <div class="bub me" data-b="0">حل لي الـ lab بسرعة</div>
+      <div class="bub ai" data-b="0" data-delay="1.1">تفضل، الحل كامل.<div class="code"><i style="width:92%"></i><i style="width:70%"></i><i style="width:84%"></i><i style="width:55%"></i></div></div>
+      <div class="bub me big" data-b="1">وبعدين؟</div>
+    </div>
+    <ul class="facts side">
+      <li class="split" data-b="2">الشغل ينسلّم… والتعلّم لا</li>
+      <li class="split" data-b="3">واحد يشتغل… والباقي يتفرجون</li>
+      <li class="split" data-b="4">والـ chatbot ما يعرفك أصلاً</li>
+    </ul>
+  </section>
+
+  <!-- 6 · scattered -->
+  <section class="scene" id="s-p4">
+    <header class="chap" data-b="0"><span class="num">04</span><h2>كل شيء مبعثر</h2></header>
+    <div class="apps" data-b="0"></div>
+    <p class="abs center-x punch split" style="top:440px" data-b="0" data-delay=".5">سبع تطبيقات… ولا واحد يعرفك</p>
+    <p class="abs center-x lead split" style="top:580px; font-size:42px" data-b="1">وكل مرة تبدأ من الصفر</p>
+  </section>
+
+  <!-- 7 · convergence -->
+  <section class="scene" id="s-one">
+    <div class="apps" id="apps-one"></div>
+    <img class="logo-sm" id="logo-sm" src="assets/img/logo-white.png" alt="Waypoint" style="opacity:0">
+    <p class="abs center-x h1 split" style="top:430px" data-b="0" data-delay="1.6">سبع تطبيقات… صارت <span class="mint">تطبيق واحد يعرفك</span></p>
+    <div class="trio" data-b="1"><span>مدرّب واحد.</span><span>خريطة طريق واحدة.</span><span>رحلتك الجامعية كلها.</span></div>
+  </section>
+
+  <!-- 8 · product: ten steps along the road -->
+  <section class="scene" id="s-prod">
+    <div class="frame" id="frame">
+      <div class="shot" data-s="0"><img src="assets/img/onboarding.webp" alt=""><div class="chip" style="left:30px; bottom:30px"><b>✓</b> أنت تأكّد كل معلومة</div></div>
+      <div class="shot" data-s="1"><video src="assets/video/roadmap.mp4" muted loop playsinline preload="auto"></video></div>
+      <div class="shot" data-s="2"><img src="assets/img/roadmap.webp" alt="" class="zoom" style="transform-origin:62% 10%"><div class="chip" style="left:30px; top:30px"><b>●</b> جديد من سوق العمل<small class="ltr">Agents · Tool Use · RAG</small></div></div>
+      <div class="shot" data-s="3"><video src="assets/video/coach.mp4" muted loop playsinline preload="auto"></video></div>
+      <div class="shot" data-s="4"><img src="assets/img/coach.webp" alt="" class="dimmed">
+        <div class="quiz card"><div class="hd">سؤال سريع · <span class="ltr">Probability</span></div>
+          <div class="qq">Counting successes in n independent trials follows which distribution?</div>
+          <div class="opt" id="q-ok">Binomial</div><div class="opt">Poisson</div><div class="opt">Normal</div></div></div>
+      <div class="shot" data-s="5"><img src="assets/img/projects.webp" alt=""><div class="chip" style="left:30px; bottom:30px"><b>◆</b> مشروع لكل مرحلة</div></div>
+      <div class="shot" data-s="6"><img src="assets/img/projects.webp" alt="" class="dimmed">
+        <div class="eval card">
+          <div class="hd"><b>Agentic Tool Playground</b><span>تقييم المشروع</span></div>
+          <div class="ring"><svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="42"/><circle class="fg" id="ring-fg" cx="50" cy="50" r="42" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg><div class="val"><span id="score">0</span><small>/100</small></div></div>
+          <div class="checks" id="checks"><div class="y">Project test suite (npm test)</div><div class="y">Demo returns the right answer</div><div class="y">Six JSON tool schemas validate</div><div class="n">Scoring accepts 4000 for 400</div><div class="n">Accepts a negated answer</div></div>
+          <div class="bars" id="bars"><div>Requirements 90<i style="--v:90%"></i></div><div>Correctness 65<i style="--v:65%"></i></div><div>Quality 85<i style="--v:85%"></i></div><div>Communication 95<i style="--v:95%"></i></div></div>
+        </div></div>
+      <div class="shot" data-s="7"><video src="assets/video/coop.mp4" muted loop playsinline preload="auto"></video><div class="chip" id="gap-chip" style="left:30px; bottom:30px">خريطتك · <b>أُضيف</b><small class="ltr">MLOps / model deployment</small></div></div>
+      <div class="shot" data-s="8"><img src="assets/img/cv.webp" alt=""><div class="chip" style="left:30px; bottom:30px"><b>✓</b> من بياناتك المؤكدة فقط</div></div>
+      <div class="shot" data-s="9"><div class="split2"><div><img src="assets/img/coop-med.webp" alt=""><div class="chip">التدريب التعاوني · طب</div></div><div><img src="assets/img/cv-med.webp" alt=""><div class="chip">السيرة الذاتية · طب</div></div></div></div>
+    </div>
+    <div id="caps"></div>
+    <div id="nlabels"></div>
+  </section>
+
+  <!-- 9 · group projects -->
+  <section class="scene" id="s-team">
+    <div class="heads">
+      <div class="eyebrow">المشاريع الجماعية</div>
+      <div class="head" data-b="0" data-until="0"><div class="h2 split">واحد يشتغل… والباقي يتفرجون</div></div>
+      <div class="head" data-b="1" data-until="1"><div class="h2 split">ارفع ملف المشروع… وخلّ Hermes يرتّبه</div><p class="lead">يطلّع الـ deliverables والـ rubric والمواعيد، وأنت تراجع قبل ما يدخل</p></div>
+      <div class="head" data-b="2" data-until="2"><div class="h2 split">Hermes يعرف كل واحد فيكم</div><p class="lead">مهاراته، أهدافه، ووين وصل في خريطته</p></div>
+      <div class="head" data-b="3" data-until="3"><div class="h2 split">توزيع عادل… وكل واحد ياخذ اللي يطوّره</div><p class="lead">حسب المهارات والضغط، ومع كل مهمة سببها</p></div>
+      <div class="head" data-b="4" data-until="4"><div class="h2 split">Hermes يقترح… <span class="mint">الفريق يقرر</span></div></div>
+      <div class="head" data-b="5" data-until="5"><div class="h2 split">يشتغل معكم… مو بدالكم</div></div>
+      <div class="head" data-b="6"><div class="h2 split">ويتابعكم قبل لا تتأخرون</div></div>
+    </div>
+    <div id="members"></div>
+    <div id="tasks"></div>
+    <div class="pool-l" data-b="1" data-until="2">المهام المقترحة</div>
+    <div class="panel" data-b="1" data-until="1">
+      <div class="file"><i></i>Term project.pdf</div>
+      <div class="rows" id="rows">
+        <div><b>الوصف</b><span class="v">Campus lost &amp; found web app</span></div>
+        <div><b>المخرجات</b><span class="v">SRS · SDS · Prototype</span></div>
+        <div><b>المواعيد</b><span class="v">Week 6 · Week 10 · Week 14</span></div>
+        <div><b>الـ Rubric</b><span class="v">Req 25 · Design 25 · Impl 30 · Process 20</span></div>
+      </div>
+    </div>
+    <div class="panel" data-b="2" data-until="3"><span class="slash">/split</span></div>
+    <div class="panel" data-b="4" data-until="4">
+      <div class="prop"><div class="t">اقتراح من Hermes · توزيع المهام</div><div class="s">6 مهام · 4 أعضاء · توزيع متوازن</div>
+        <div class="votes" id="votes"><span>أ</span><span>س</span><span>ع</span><span>ن</span></div>
+        <div class="stamp" id="stamp">✓ تم التطبيق · بأغلبية الفريق</div></div>
+    </div>
+    <div class="panel" data-b="5" data-until="5">
+      <div class="bub me">يا Hermes، اشرح لي مهمة الـ ERD</div>
+      <div class="bub ai">قسّمتها لـ 4 خطوات… ابدأ بالكيانات</div>
+      <div class="draft"><div class="t">مسودة من Hermes</div><code>/draft srs 3.2</code>
+        <p>FR-3 The system shall let a student report a lost item with a photo, location and time.</p>
+        <div class="back">↩ تروح لصاحب القسم، وهو يقرر</div></div>
+    </div>
+    <div class="panel" data-b="6">
+      <div class="cmd"><code>/standup</code><span>ملخص يومي للفريق</span></div>
+      <div class="cmd"><code>/risks</code><span>الـ deadline في خطر؟ يقولك</span></div>
+      <div class="cmd"><code>/catchup</code><span>غبت يومين؟ يلخّص لك اللي فاتك</span></div>
+    </div>
+    <p class="finale split" data-b="6" data-delay="1">بالـ AI… <span class="mint">مو ضده</span></p>
+  </section>
+
+  <!-- 10 · how it works -->
+  <section class="scene arch" id="s-arch">
+    <div class="abs" style="top:110px; right:110px; text-align:right">
+      <div class="eyebrow">كيف يشتغل</div>
+      <div class="h2 split" data-b="4">Hermes يقترح… <span class="mint">الطالب يقرر</span></div>
+    </div>
+    <div class="col" style="right:90px; width:330px; top:400px" data-b="0">
+      <div class="grp"><h4>بياناتك</h4><p>CV · GitHub · Transcript</p></div>
+      <div class="grp"><h4>الجامعة والفرص</h4><p>Blackboard · Outlook · Hackathonat</p></div>
+      <div class="grp"><h4>الوظائف</h4><p>LinkedIn · Apify</p></div>
+      <div class="grp"><h4>الويب والسوشال</h4><p>Reddit · X · Telegram</p></div>
+    </div>
+    <div class="col" style="right:490px; width:250px; top:440px" data-b="1">
+      <div class="box"><h3>Jev</h3><p>يفلتر · يقيّم<br>يحمي البيانات</p><p class="ltr" style="font-size:16px">Jev → Span → Laya<br>(local fallback)</p></div>
+    </div>
+    <div class="col" style="right:810px; width:250px; top:460px" data-b="2">
+      <div class="box"><h3>SQLite</h3><p>مصدر الحقيقة<br>حقائق أكّدها الطالب فقط</p></div>
+    </div>
+    <div class="col" style="right:1130px; width:300px; top:430px" data-b="3">
+      <div class="box mint"><h3>Hermes</h3><div class="pills"><span>Tools</span><span>Skills</span><span>Memory</span><span>Learned skills</span></div><p class="ltr">self-improving ↻</p></div>
+    </div>
+    <div class="col out" style="right:1500px; width:330px; top:420px" data-b="4">
+      <div>Roadmap</div><div>Group Projects</div><div>Evaluation</div>
+      <div class="app-row">Waypoint ⟷ الطالب</div>
+    </div>
+  </section>
+
+  <!-- 11 · ending -->
+  <section class="scene" id="s-end">
+    <p class="abs center-x h1 split" style="top:360px" data-b="0" data-until="1">لو كان عندي Waypoint من أول يوم…</p>
+    <p class="abs center-x h1 split mint" style="top:520px" data-b="1" data-until="1">…ما كنت بوصل السنة الثالثة ضايع</p>
+    <div class="logo-wrap"><img id="logo-b" src="assets/img/logo-white.png" alt="Waypoint"></div>
+    <div class="ripple" id="ripple-b"></div>
+    <p class="abs center-x tagline split" data-b="3" data-until="3">الخريطة الي كلنا نستحقها</p>
+    <div class="abs center-x names" data-b="3" data-until="3"><span>قاسم آل محفوظ</span><span>فراس آل صواب</span><span>راشد الخثلان</span></div>
+    <p class="abs center-x h1 split" style="top:740px" data-b="4">شكراً · <span class="mint">أسئلتكم؟</span></p>
+  </section>
+
+  <div class="bar top" id="bar-t"></div><div class="bar bot" id="bar-b"></div>
+  <div id="vignette"></div>
+  <div id="grain"></div>
+</div>
+<div id="progress"></div>
+<div id="notes"><div class="meta"><span id="n-pos"></span><span id="n-time">00:00</span></div><div class="txt" id="n-txt"></div></div>
+
+<script src="assets/gsap.min.js"></script>
+<script src="assets/road.js"></script>
+<script src="assets/deck.js"></script>
+</body>
+</html>

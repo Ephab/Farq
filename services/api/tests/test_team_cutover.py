@@ -65,7 +65,7 @@ def test_dry_run_sends_the_bundle_without_chat_or_facts_and_freezes_nothing(clie
     assert bundle["tasks"][0]["assignee_local_id"] == member
     text = json.dumps(payload)
     assert "private chat line" not in text and "facts" not in text and "roadmap" not in text
-    assert set(bundle) == {"version", "source_team_id", "name", "charter", "project", "members", "milestones", "tasks", "decisions", "documents"}
+    assert set(bundle) == {"version", "source_team_id", "name", "charter", "assignment_override", "project", "members", "milestones", "tasks", "decisions", "documents"}
     with SessionLocal() as db:
         assert db.get(TeamCutover, world["team_id"]) is None
     assert client.post(f"/api/teams/{world['team_id']}/tasks", json={"title": "Still writable"}, headers=hdr(lead)).status_code == 201

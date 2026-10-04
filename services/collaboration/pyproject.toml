@@ -12,6 +12,9 @@ dependencies = [
   "alembic>=1.16,<2",
   "PyJWT[crypto]>=2.12,<3",
   "python-docx==1.2.0",
+  "python-multipart==0.0.20",
+  "pypdf==6.0.0",
+  "httpx==0.28.1",
 ]
 
 [dependency-groups]

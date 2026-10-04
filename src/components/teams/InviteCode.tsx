@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Check, Copy, UserPlus } from "lucide-react"
 import { Sheet } from "@/components/teams/ui"
 import { useTeamClient } from "@/components/teams/team-client-context"
@@ -19,6 +19,7 @@ export function InviteCode({ kind, id, label, compact = false }: { kind: "classe
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
   const run = async (action: () => Promise<void>) => {
     setBusy(true); setError(null)
     try { await action() } catch (reason) { setError(errorMessage(reason)) } finally { setBusy(false) }
@@ -30,11 +31,11 @@ export function InviteCode({ kind, id, label, compact = false }: { kind: "classe
     try { await navigator.clipboard.writeText(groupCode(issued.code)); setCopied(true); window.setTimeout(() => setCopied(false), 1600) } catch { /* blocked clipboard */ }
   }
   return <div className="gp-invite">
-    <button type="button" className={`tm-btn tm-btn-primary${compact ? " tm-btn-sm" : ""}`} disabled={busy} onClick={() => (issued ? setOpen(true) : void make())}>
+    <button ref={trigger} type="button" className={`tm-btn tm-btn-primary${compact ? " tm-btn-sm" : ""}`} disabled={busy} onClick={() => (issued ? setOpen(true) : void make())}>
       <UserPlus className="size-4" aria-hidden="true" /> {label}
     </button>
     {error && !open ? <p className="gp-error" role="alert">{error}</p> : null}
-    {open && issued ? <Sheet title={label} onClose={() => setOpen(false)} footer={<button type="button" className="tm-btn" onClick={() => setOpen(false)}>{t("teams.gp.done")}</button>}>
+    {open && issued ? <Sheet title={label} returnFocus={trigger} onClose={() => setOpen(false)} footer={<button type="button" className="tm-btn" onClick={() => setOpen(false)}>{t("teams.gp.done")}</button>}>
       <div className="gp-invite-sheet">
         <p className="gp-muted">{t("teams.gp.inviteHint")}</p>
         <strong className="gp-code gp-code-big" dir="ltr" aria-label={groupCode(issued.code)}>{groupCode(issued.code)}</strong>

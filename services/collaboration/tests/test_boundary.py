@@ -76,7 +76,7 @@ def test_health_schema_and_cors(harness):
     assert client.get("/health/ready").status_code == 503
     with app.state.sessions() as db:
         db.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
-        db.execute(text("INSERT INTO alembic_version VALUES ('0010_device_auth')"))
+        db.execute(text("INSERT INTO alembic_version VALUES ('0011_project_details')"))
         db.commit()
     assert client.get("/health/ready").status_code == 200
     for origin, status in [("https://app.example", 200), ("https://attacker.example", 400)]:

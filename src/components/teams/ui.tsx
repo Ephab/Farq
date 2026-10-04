@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, type ReactNode } from "react"
+import { useEffect, useRef, type ReactNode, type RefObject } from "react"
 import { X } from "lucide-react"
 import { avatarColor, avatarLetter } from "@/lib/team-cover"
 import { DOCK_DEFAULT, DOCK_MIN } from "@/lib/team-layout"
@@ -43,15 +43,15 @@ export function Banner({ message, onDismiss }: { message: string; onDismiss: () 
   )
 }
 
-interface SheetProps { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }
+interface SheetProps { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; returnFocus?: RefObject<HTMLElement | null> }
 
-export function Sheet({ title, onClose, children, footer }: SheetProps) {
+export function Sheet({ title, onClose, children, footer, returnFocus }: SheetProps) {
   const { t } = useI18n()
   const sheetRef = useRef<HTMLElement>(null)
   // Latest onClose without re-running the focus setup when the parent re-renders.
   const closeRef = useRef(onClose)
   useEffect(() => { closeRef.current = onClose }, [onClose])
-  useModalFocus(sheetRef, () => closeRef.current())
+  useModalFocus(sheetRef, () => closeRef.current(), undefined, returnFocus)
   return (
     <div className="tm-sheet-backdrop" onClick={onClose}>
       <aside ref={sheetRef} className="tm-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>

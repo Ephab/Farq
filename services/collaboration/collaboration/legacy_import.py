@@ -136,6 +136,7 @@ class Bundle(BaseModel):
     source_team_id: str = Ident
     name: str = Field(min_length=2, max_length=80)
     charter: dict = Field(default_factory=dict)
+    assignment_override: dict = Field(default_factory=dict)
     project: dict = Field(default_factory=dict)
     members: list[BMember] = Field(default_factory=list, max_length=60)
     milestones: list[BMilestone] = Field(default_factory=list, max_length=LIMITS["milestones"])
@@ -208,7 +209,8 @@ def import_team(body: ImportInput, db: Db, user: CurrentUser):
     mine = body.importer_local_id
     team = Team(id=sid("team", bundle.source_team_id), name=bundle.name.strip(), assignment_id=None, lead_user_id=user.id,
                 cover_seed=hashlib.sha256(sid("cover", bundle.source_team_id).encode()).hexdigest()[:12],
-                charter_json=json.dumps(bundle.charter, ensure_ascii=False),
+                charter_json="{}",
+                assignment_override_json=json.dumps(bundle.assignment_override, ensure_ascii=False),
                 brief_json=json.dumps(bundle.project.get("brief", {}), ensure_ascii=False),
                 deliverables_json=json.dumps(bundle.project.get("deliverables", []), ensure_ascii=False),
                 rubric_json=json.dumps(bundle.project.get("rubric", []), ensure_ascii=False))

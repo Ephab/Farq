@@ -60,6 +60,7 @@ class Team(Base):
     # Lead-chosen cap, within the assignment's limits; None means the assignment maximum.
     size_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # The team's own project (from an accepted import), layered over the shared assignment brief.
+    assignment_override_json: Mapped[str] = mapped_column(Text, default="{}")
     brief_json: Mapped[str] = mapped_column(Text, default="{}")
     deliverables_json: Mapped[str] = mapped_column(Text, default="[]")
     rubric_json: Mapped[str] = mapped_column(Text, default="[]")

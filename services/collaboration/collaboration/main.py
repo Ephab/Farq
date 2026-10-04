@@ -87,7 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return JSONResponse({"detail": "Update Waypoint to keep using collaboration", "min_client_version": settings.min_client_version},
                                     status_code=426, headers={"Cache-Control": "no-store"})
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        response.headers["Cache-Control"] = ("no-store, no-transform" if response.headers.get("content-type", "").startswith("text/event-stream") else "no-store")
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
@@ -100,7 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             with app.state.sessions() as db:
                 revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                if revision != "0010_device_auth":
+                if revision != "0011_project_details":
                     return JSONResponse({"status": "not_ready"}, status_code=503)
                 db.execute(text("SELECT id FROM accounts LIMIT 1"))
                 if settings.teams_enabled:
@@ -116,6 +116,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/capabilities")
     def capabilities(user: CurrentUser):
-        return {"api_version": API_VERSION, "min_client_version": settings.min_client_version, "teams": settings.teams_enabled, "team_ai": settings.team_ai_enabled, "project_import": False, "discovery": settings.teams_enabled}
+        return {"api_version": API_VERSION, "min_client_version": settings.min_client_version, "teams": settings.teams_enabled, "team_ai": settings.team_ai_enabled, "project_import": settings.team_ai_enabled, "discovery": settings.teams_enabled}
 
     return app

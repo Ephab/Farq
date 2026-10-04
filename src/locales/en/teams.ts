@@ -1,5 +1,14 @@
 // Group Projects: team home, workspace, board, chat, proposals, documents and instructor view.
 export const teams = {
+  ui: {
+    createJoin: "Create or join", settings: "Group Projects settings", projects: "Projects", classes: "Classes",
+    peopleSettings: "People & settings", noClasses: "No classes yet", noClassesHint: "Create a class or join one with an invitation code.",
+    importDescription: "Import a project description", importHint: "Let Hermes prepare a setup for your review",
+    emptyBrief: "Add the goal, scope, and deliverables, or import your project description.",
+    sectionTools: "Section tools", noMilestones: "No milestones yet. Add a date to mark your next checkpoint.",
+    emptyAssignment: "Add the requirements and expected deliverables for your team.",
+    newMessages: "New team messages",
+  },
   profiles: {
     loadDraft: "Load my coach's draft", noDraft: "Your coach has not prepared a draft for this class.",
     draftLoaded: "Draft loaded into the form. Review every field, then publish it yourself.",
@@ -79,7 +88,7 @@ export const teams = {
     class: { placeholder: "Name your class or group", action: "Create class", hint: "Keep several teams in one place and share a single invitation code." },
     join: { placeholder: "Paste an invitation code", action: "Join", hint: "A friend's code works for a class or a project, for example 5H3P-3WDZ-DPVX-N4R6." },
     projects: "Your projects", classes: "Your classes", invitations: "Invitations for you", assignmentsNeedTeam: "Needs a team",
-    noProjectsTitle: "No projects yet", noProjectsBody: "Name one above to start, or join a friend's with their code.",
+    noProjectsTitle: "No projects yet", noProjectsBody: "Use Create or join to start a project or enter a friend's invitation code.",
     archivedProjects: "Archived projects", organizer: "Organizer", memberRole: "Member", archived: "Archived", open: "Open",
     coachTitle: "Coach access", coachLabel: "Let my coach look for classes and teams",
     coachHint: "Read-only, for two hours. Your coach sees only what you see and never joins, invites or messages anyone for you.",
@@ -196,7 +205,7 @@ export const teams = {
       docs: "Docs",
       decisions: "Decisions",
       activity: "Activity",
-      charter: "Charter & brief",
+      charter: "Project setup",
     },
     allTeams: "All teams",
     backToAll: "Back to all teams",
@@ -211,6 +220,9 @@ export const teams = {
     resizeRailHint: "Drag to resize the sidebar (double-click to reset)",
   },
   members: {
+    leave: "Leave project",
+    leaveHint: "Leave this project? You will lose access to its chat and workspace.",
+    leaveLeadHint: "Leave this project? Leadership passes to the earliest remaining member. If you are the last member, the project closes.",
     heading: "Team · {count}/{limit}",
     lead: "Lead",
     typing: "typing…",
@@ -373,6 +385,19 @@ export const teams = {
     loadMore: "Load older activity",
   },
   charter: {
+    editTitle: "Title",
+    editProblem: "Problem",
+    editObjective: "Objective",
+    editScope: "Scope",
+    editConstraints: "Constraints (one per line)",
+    editTools: "Tools (one per line)",
+    editDeliverables: "Deliverables (one per line)",
+    editDue: "Due date",
+    editDocKind: "Document type",
+    editNoDoc: "No document type",
+    addDeliverable: "Add deliverable",
+    removeDeliverable: "Remove deliverable",
+
     title: "Charter",
     meetings: "Meetings: {value}",
     none: "No charter yet.",

@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waypoint · العرض</title>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<link rel="stylesheet" href="assets/logo-mask.css">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+
+<!-- Icon set -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="19" r="2.2"/><path d="M12 7.2v4M12 11.2l-5 5.6M12 11.2l5 5.6"/></symbol>
+    <symbol id="i-coach" viewBox="0 0 24 24"><path d="M4 5h16v11H9.5L5 20v-4H4z"/><path d="M12 7.6l.9 1.9 1.9.9-1.9.9-.9 1.9-.9-1.9-1.9-.9 1.9-.9z"/></symbol>
+    <symbol id="i-build" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="2.5"/><path d="M8 11.5l2.4 2.4L16 8.6"/></symbol>
+    <symbol id="i-brief" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5h6v2M3 12.5h18"/></symbol>
+    <symbol id="i-team" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15.5 14.4c3 0 5.5 2.2 5.5 5.2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.6 4.6L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.8 12l2.2 2.2 4.2-4.4"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5.2 8.8A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-3.2L14 9V3"/><path d="M7.5 15h9"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9.5L5 20v-4H4z"/></symbol>
+    <symbol id="i-q" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.7.3-1 .8-1 1.5v.4M12 17h.01"/></symbol>
+  </defs>
+</svg>
+
+<div id="stage">
+  <div id="viewport">
+    <div id="camera">
+      <div id="world">
+        <div id="world-bg"></div>
+        <div id="depth"></div>
+
+        <svg id="thread" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="g-thread" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="11700"></linearGradient>
+            <mask id="m-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="11700">
+              <rect x="0" y="0" width="1920" height="11700" fill="#fff"/>
+              <rect x="800" y="2700" width="330" height="320" fill="#000"/>
+            </mask>
+          </defs>
+          <path id="guide"/>
+          <g mask="url(#m-gap)">
+            <path id="glow"/>
+            <path id="main"/>
+          </g>
+          <path id="gapdash" d="M1130 2876 C 1040 2879, 900 2878, 800 2876"/>
+          <path id="trail"/>
+        </svg>
+
+        <!-- ============ TITLE ============ -->
+        <div class="st on" id="s-title" style="top:0">
+          <img class="t-farq" src="assets/img/farq.png" alt="Farq">
+          <img class="t-yu" src="assets/img/yamamah.png" alt="Al Yamamah University">
+          <div class="t-logo"><img src="assets/img/logo-ink.png" alt="Waypoint"></div>
+          <p class="t-tag">رفيقك من أول يوم في الجامعة… <b>لين التخرّج</b></p>
+          <div class="t-hint">اتبع الخيط <span>↓</span></div>
+        </div>
+
+        <!-- ============ PROBLEM 1 · LOST ============ -->
+        <div class="st prob" id="s-lost" style="top:1180px">
+          <div class="p-text">
+            <div class="kicker r" style="--d:.1"><i>01</i> الضياع</div>
+            <h2 class="r" style="--d:.2">السنة الثالثة…<br><span class="hl">وما زلت ضايع</span></h2>
+            <p class="r" style="--d:.35">الجامعة تعطيك مواد ومواعيد… بس مو الصورة الكاملة.</p>
+            <div class="mini r" style="--d:.5"><svg class="i"><use href="#i-compass"/></svg>مرشد أكاديمي واحد… لمئات الطلاب</div>
+          </div>
+          <div class="qb r" style="--d:.55;left:150px;top:150px">وش أتعلم بعدها؟</div>
+          <div class="qb r" style="--d:.75;left:760px;top:330px">وش علاقة المواد ببعض؟</div>
+          <div class="qb r" style="--d:.95;left:120px;top:820px">وين رايح بعد التخرّج؟</div>
+        </div>
+
+        <!-- ============ PROBLEM 2 · GAP ============ -->
+        <div class="st prob" id="s-gap" style="top:2360px">
+          <div class="gap-head">
+            <div class="kicker r" style="--d:.1"><i>02</i> الفجوة</div>
+            <h2 class="r" style="--d:.2">تعرفها نظري…<br><span class="hl">ما تقدر تبنيها</span></h2>
+          </div>
+          <div class="island uni r" style="--d:.35">
+            <div class="is-top"></div>
+            <div class="is-label">الجامعة <em>المنهج · 2019</em></div>
+            <div class="chips"><span>خوارزميات</span><span>قواعد بيانات</span><span>نظري</span></div>
+          </div>
+          <div class="island mkt r" style="--d:.5">
+            <div class="is-top"></div>
+            <div class="is-label">سوق العمل <em>2026</em></div>
+            <div class="chips"><span>Agents</span><span>RAG</span><span>Docker</span><span>Git</span><span>System design</span></div>
+          </div>
+          <div class="gap-q r" style="--d:.8">؟</div>
+          <div class="gap-notes">
+            <p class="r" style="--d:.9">كلمة <b>agent</b>… ما انذكرت ولا مرة</p>
+            <p class="r" style="--d:1.05">والـ <b>co-op</b>؟ تدوّر عليه آخر لحظة</p>
+          </div>
+        </div>
+
+        <!-- ============ PROBLEM 3 · AI ============ -->
+        <div class="st prob" id="s-ai" style="top:3560px">
+          <div class="chatwin r" style="--d:.15">
+            <div class="cw-bar"><span></span><span></span><span></span><b>AI Chat</b></div>
+            <div class="cw-body">
+              <div class="msg me r" style="--d:.45">حل لي الـ lab بسرعة</div>
+              <div class="msg bot r" style="--d:.8">تفضل، الحل كامل ✓
+                <div class="code"><i style="width:82%"></i><i style="width:64%"></i><i style="width:90%"></i><i style="width:48%"></i><i style="width:72%"></i></div>
+              </div>
+              <div class="msg me r" style="--d:1.25">…وبعدين؟</div>
+            </div>
+          </div>
+          <div class="exam r" style="--d:1.5"><svg class="i"><use href="#i-q"/></svg>الاختبار النهائي<br><small>بدون AI</small></div>
+          <div class="p-text">
+            <div class="kicker r" style="--d:.1"><i>03</i> الاعتماد على الـ AI</div>
+            <h2 class="r" style="--d:.2">الشغل ينسلّم…<br><span class="hl">والتعلّم لا</span></h2>
+            <p class="r" style="--d:.35">والـ chatbot ما يعرفك أصلاً. وفي المشروع الجماعي؟ واحد يشتغل… والباقي يتفرجون.</p>
+          </div>
+        </div>
+
+        <!-- ============ PROBLEM 4 · SCATTERED ============ -->
+        <div class="st prob" id="s-apps" style="top:4810px">
+          <div class="p-text">
+            <div class="kicker r" style="--d:.1"><i>04</i> كل شيء مبعثر</div>
+            <h2 class="r" style="--d:.2">تطبيقات كثيرة…<br><span class="hl">ولا واحد يعرفك</span></h2>
+            <p class="r" style="--d:.35">وكل مرة ترفع نفس الملفات وتشرح نفسك من الصفر.</p>
+          </div>
+          <div class="apps">
+            <div class="app" style="--x:150px;--y:150px;--c:#111;--d:.3"><b>N</b>Notion</div>
+            <div class="app" style="--x:560px;--y:110px;--c:#10A37F;--d:.4"><b>✦</b>ChatGPT</div>
+            <div class="app" style="--x:330px;--y:330px;--c:#E2231A;--d:.5"><b>Bb</b>Blackboard</div>
+            <div class="app" style="--x:60px;--y:470px;--c:#4285F4;--d:.6"><b>31</b>Calendar</div>
+            <div class="app" style="--x:620px;--y:520px;--c:#8B5CF6;--d:.7"><b>Q</b>Quiz AI</div>
+            <div class="app" style="--x:250px;--y:660px;--c:#229ED9;--d:.8"><b>✈</b>Telegram</div>
+            <div class="app" style="--x:20px;--y:860px;--c:#0A66C2;--d:.9"><b>in</b>LinkedIn</div>
+            <div class="app" style="--x:520px;--y:830px;--c:#000;--d:1"><b>𝕏</b>X</div>
+            <div class="app" style="--x:1180px;--y:880px;--c:#0F6CBD;--d:1.1"><b>O</b>Outlook</div>
+            <div class="app" style="--x:900px;--y:940px;--c:#24292F;--d:1.2"><b>⌥</b>GitHub</div>
+          </div>
+        </div>
+
+        <!-- ============ CONVERGENCE ============ -->
+        <div class="st" id="s-conv" style="top:5910px">
+          <div class="burst"><i></i><i></i><i></i></div>
+          <div class="orb"><svg class="i"><use href="#i-pin"/></svg></div>
+          <div class="cv-left r" style="--d:.9">
+            <div class="logo-rainbow cv-logo"></div>
+            <p>تطبيق واحد… <b>يعرفك</b></p>
+          </div>
+          <div class="cv-right">
+            <h2 class="r" style="--d:1"><span>مدرّب واحد.</span> <span>خريطة واحدة.</span><br><span class="hl rb">رحلتك الجامعية كلها.</span></h2>
+          </div>
+        </div>
+
+        <!-- ============ ROADMAP OVERVIEW ============ -->
+        <div class="st" id="s-ov" style="top:6830px">
+          <div class="ov-head r" style="--d:.2">
+            <div class="kicker"><i>✦</i> الحل</div>
+            <h2>ست محطات…<br>طريق <span class="hl rb">واحد</span></h2>
+          </div>
+          <div class="legend r" style="--d:.5">
+            <div class="lg-t">قاعدة كل محطة: <b>Hermes يقترح… وأنت تقرر</b></div>
+            <div class="lg-row">
+              <span class="st-chip ev">دليل مستورد <small>مقترح</small></span>
+              <span class="st-arrow">←</span>
+              <span class="st-chip ap"><svg class="i"><use href="#i-check"/></svg>تأشيرك</span>
+              <span class="st-arrow">←</span>
+              <span class="st-chip fact"><svg class="i"><use href="#i-check"/></svg>حقيقة مؤكدة</span>
+            </div>
+            <div class="lg-row">
+              <span class="st-chip prop"><svg class="i"><use href="#i-spark"/></svg>اقتراح من Hermes</span>
+              <span class="st-arrow">←</span>
+              <span class="st-chip ap"><svg class="i"><use href="#i-check"/></svg>موافقتك</span>
+              <span class="st-arrow">←</span>
+              <span class="st-chip live">يتفعّل</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ CARDS ============ -->
+        <div class="card" id="card-1" style="left:1030px;top:7460px;--c:#FF5E57;--c2:#FF9A6B;--tint:#FFF1EC">
+          <div class="c-num">01</div><div class="c-ic"><svg class="i"><use href="#i-doc"/></svg></div>
+          <h3>عرّف Waypoint<br>بنفسك</h3>
+          <p>دليل مقترح ← أنت تأكّد</p>
+          <div class="c-thumb" style="background-image:url(assets/img/onboarding.webp)"></div>
+          <div class="c-done"><svg class="i"><use href="#i-check"/></svg></div>
+        </div>
+        <div class="card" id="card-2" style="left:290px;top:8060px;--c:#12B07A;--c2:#7BE0A8;--tint:#EAFBF2">
+          <div class="c-num">02</div><div class="c-ic"><svg class="i"><use href="#i-map"/></svg></div>
+          <h3>خريطة طريق<br>مبنية عليك</h3>
+          <p>Hermes يقترح ← أنت تفعّل</p>
+          <div class="c-thumb" style="background-image:url(assets/img/roadmap.webp)"></div>
+          <div class="c-done"><svg class="i"><use href="#i-check"/></svg></div>
+        </div>
+        <div class="card" id="card-3" style="left:1030px;top:8660px;--c:#7457FF;--c2:#B49CFF;--tint:#F2EFFF">
+          <div class="c-num">03</div><div class="c-ic"><svg class="i"><use href="#i-coach"/></svg></div>
+          <h3>مدرّب يعرفك…<br>ما يحل عنك</h3>
+          <p>يشرح، يسأل، يتأكد إنك فهمت</p>
+          <div class="c-thumb" style="background-image:url(assets/img/coach.webp)"></div>
+          <div class="c-done"><svg class="i"><use href="#i-check"/></svg></div>
+        </div>
+        <div class="card" id="card-4" style="left:290px;top:9260px;--c:#F29A00;--c2:#FFD166;--tint:#FFF7E3">
+          <div class="c-num">04</div><div class="c-ic"><svg class="i"><use href="#i-build"/></svg></div>
+          <h3>مشروع لكل مرحلة…<br>وتقييم بالأدلة</h3>
+          <p>تبني شيء تقدر توريه</p>
+          <div class="c-thumb" style="background-image:url(assets/img/projects.webp)"></div>
+          <div class="c-done"><svg class="i"><use href="#i-check"/></svg></div>
+        </div>
+        <div class="card" id="card-5" style="left:1030px;top:9860px;--c:#2C7BFF;--c2:#7FB5FF;--tint:#EBF3FF">
+          <div class="c-num">05</div><div class="c-ic"><svg class="i"><use href="#i-brief"/></svg></div>
+          <h3>فرص تناسبك…<br>وسيرة من شغلك</h3>
+          <p>الناقص يدخل خريطتك</p>
+          <div class="c-thumb" style="background-image:url(assets/img/coop.webp)"></div>
+          <div class="c-done"><svg class="i"><use href="#i-check"/></svg></div>
+        </div>
+        <div class="card" id="card-6" style="left:290px;top:10460px;--c:#EC3F93;--c2:#FF8CC4;--tint:#FFEEF6">
+          <div class="c-num">06</div><div class="c-ic"><svg class="i"><use href="#i-team"/></svg></div>
+          <h3>المشاريع<br>الجماعية</h3>
+          <p>Hermes زميل… والفريق يقرر</p>
+          <div class="c-thumb" style="background-image:url(assets/img/teams.webp)"></div>
+          <div class="c-done"><svg class="i"><use href="#i-check"/></svg></div>
+        </div>
+
+        <!-- ============ DESTINATION ============ -->
+        <div class="st" id="s-dest" style="top:10780px">
+          <div class="dest-pin"><svg class="i"><use href="#i-flag"/></svg></div>
+          <div class="dest-text r" style="--d:.5">
+            <h2>من أول يوم… <span class="hl rb">لين التخرّج</span></h2>
+            <p>وصلت، وأنت عارف ليش.</p>
+          </div>
+          <div class="confetti"></div>
+        </div>
+
+        <div id="traveler"><i></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FINALE (screen space) ============ -->
+  <div id="finale">
+    <p class="fx f1">لو كان عندي <b>Waypoint</b> من أول يوم…</p>
+    <p class="fx f2">…ما كنت بوصل السنة الثالثة <span class="hl rb">ضايع</span></p>
+    <div class="fin">
+      <div class="logo-rainbow fin-logo"></div>
+      <h2 class="fin-tag">الخريطة اللي <span class="hl rb">كلنا</span> نستحقها</h2>
+      <div class="fin-names"><span>قاسم آل محفوظ</span><i></i><span>فراس آل صواب</span><i></i><span>راشد الخثلان</span></div>
+      <div class="fin-thanks">شكراً · <b>أسئلتكم؟</b></div>
+      <div class="fin-logos"><img src="assets/img/farq.png" alt="Farq"><img src="assets/img/yamamah.png" alt="Al Yamamah University"></div>
+    </div>
+  </div>
+
+  <!-- ============ EXPANDED SECTIONS ============ -->
+  <div id="panel">
+    <div id="ghost"></div>
+
+    <!-- 1 · Onboarding & evidence -->
+    <section class="sec" id="sec-1" style="--c:#FF5E57;--c2:#FF9A6B;--tint:#FFF1EC">
+      <div class="sec-bg"></div>
+      <div class="sec-text">
+        <div class="kicker r2" style="--d:.15"><i>01</i> البداية</div>
+        <h2 class="r2" style="--d:.25">عرّف Waypoint <span class="hl">بنفسك</span></h2>
+        <p class="lead r2" style="--d:.35">يقرأ سجلك الأكاديمي والـ CV والـ GitHub ومجلدات مشاريعك… وما يعتمد شيء إلا بموافقتك.</p>
+        <ul class="pts">
+          <li class="r2" style="--d:.5"><svg class="i"><use href="#i-doc"/></svg><span>كل اللي ينقرأ يدخل <b>«دليل مقترح»</b>… مو حقيقة عنك</span></li>
+          <li class="r2" style="--d:.6"><svg class="i"><use href="#i-check"/></svg><span>تراجع وتؤشّر، و<b>بس اللي أشّرت عليه</b> يصير حقيقة مؤكدة</span></li>
+          <li class="r2" style="--d:.7"><svg class="i"><use href="#i-shield"/></svg><span>الملفات نفسها <b>ما تنحفظ</b>، بس المعلومة المستخرجة بعد حجب الحساس</span></li>
+        </ul>
+      </div>
+      <div class="sec-media">
+        <div class="frame f-main r2" style="--d:.3"><div class="fbar"><i></i><i></i><i></i></div><img src="assets/img/onboarding.webp" alt=""></div>
+      </div>
+      <div class="widget w-evid r2" style="--d:.55">
+        <div class="w-h"><svg class="i"><use href="#i-doc"/></svg>مراجعة الأدلة<span class="w-sub">مستورد ← أنت تقرر</span></div>
+        <div class="ev" style="--k:0"><span class="box"><svg class="i"><use href="#i-check"/></svg></span><span class="ev-t">Data Structures · A<small>السجل الأكاديمي</small></span><span class="ev-s"><em class="s0">مقترح</em><em class="s1">حقيقة مؤكدة</em></span></div>
+        <div class="ev" style="--k:1"><span class="box"><svg class="i"><use href="#i-check"/></svg></span><span class="ev-t">Python · FastAPI<small>GitHub</small></span><span class="ev-s"><em class="s0">مقترح</em><em class="s1">حقيقة مؤكدة</em></span></div>
+        <div class="ev" style="--k:2"><span class="box"><svg class="i"><use href="#i-check"/></svg></span><span class="ev-t">مشروع: Lost &amp; Found<small>مجلد مشاريعك</small></span><span class="ev-s"><em class="s0">مقترح</em><em class="s1">حقيقة مؤكدة</em></span></div>
+        <div class="ev skip" style="--k:3"><span class="box"></span><span class="ev-t">Excel متقدم<small>LinkedIn</small></span><span class="ev-s"><em class="s0">مقترح</em><em class="s1">ما أشّرت: يبقى مقترح</em></span></div>
+        <div class="w-foot"><span>ملفك المؤكد</span><b class="count" data-to="3">0</b></div>
+      </div>
+    </section>
+
+    <!-- 2 · Roadmap -->
+    <section class="sec" id="sec-2" style="--c:#12B07A;--c2:#7BE0A8;--tint:#EAFBF2">
+      <div class="sec-bg"></div>
+      <div class="sec-text">
+        <div class="kicker r2" style="--d:.15"><i>02</i> خريطة الطريق</div>
+        <h2 class="r2" style="--d:.25">خريطة <span class="hl">مبنية عليك</span></h2>
+        <p class="lead r2" style="--d:.35">من مقرراتك واهتماماتك ووقتك وهدفك… وفيها اللي يطلبه السوق اليوم: <bdi>Agents</bdi>، <bdi>RAG</bdi>، <bdi>Docker</bdi>، <bdi>Git</bdi>.</p>
+        <ul class="pts">
+          <li class="r2" style="--d:.5"><svg class="i"><use href="#i-spark"/></svg><span>حتى أول خريطة <b>اقتراح من Hermes</b>، وأنت اللي تفعّلها</span></li>
+          <li class="r2" style="--d:.6"><svg class="i"><use href="#i-lock"/></svg><span>غيّرت رأيك؟ يقترح مسار جديد، و<b>المنجز والجاري ما ينلمس</b></span></li>
+          <li class="r2" style="--d:.7"><svg class="i"><use href="#i-target"/></svg><span>خطوة واضحة اليوم… وفروع مرنة لبكرة</span></li>
+        </ul>
+      </div>
+      <div class="sec-media">
+        <div class="frame f-main r2" style="--d:.3"><div class="fbar"><i></i><i></i><i></i></div><video src="assets/video/roadmap.mp4" poster="assets/img/roadmap.webp" muted loop playsinline preload="auto"></video></div>
+      </div>
+      <div class="widget w-road r2" style="--d:.55">
+        <div class="w-h"><svg class="i"><use href="#i-map"/></svg>خريطتك<span class="w-sub">اقتراح ← موافقتك</span></div>
+        <div class="rn done"><span class="dot"><svg class="i"><use href="#i-check"/></svg></span><span class="rn-t">Python &amp; Data<small>منجز</small></span><svg class="i lk"><use href="#i-lock"/></svg></div>
+        <div class="rn doing"><span class="dot"></span><span class="rn-t">Probability &amp; Statistics<small>جاري</small></span><svg class="i lk"><use href="#i-lock"/></svg></div>
+        <div class="rn prop"><span class="dot"><svg class="i"><use href="#i-spark"/></svg></span><span class="rn-t">Agents, Tool Use &amp; RAG<small class="s0">اقتراح من Hermes</small><small class="s1">فعّال · بموافقتك</small></span>
+          <span class="rn-btns"><b class="acc">اقبل</b><b>ارفض</b></span></div>
+      </div>
+    </section>
+
+    <!-- 3 · Coach -->
+    <section class="sec" id="sec-3" style="--c:#7457FF;--c2:#B49CFF;--tint:#F2EFFF">
+      <div class="sec-bg"></div>
+      <div class="sec-text">
+        <div class="kicker r2" style="--d:.15"><i>03</i> Hermes</div>
+        <h2 class="r2" style="--d:.25">مدرّب يعرفك… <span class="hl">ما يحل عنك</span></h2>
+        <p class="lead r2" style="--d:.35">يعرف خريطتك ومشاريعك، ويشرح لك من خلال اللي تعرفه… ثم يتأكد إنك فهمت.</p>
+        <ul class="pts">
+          <li class="r2" style="--d:.5"><svg class="i"><use href="#i-q"/></svg><span>أسئلة، تمارين، بطاقات مراجعة ومؤقّت… <b>داخل المحادثة</b></span></li>
+          <li class="r2" style="--d:.6"><svg class="i"><use href="#i-target"/></svg><span>يعطيك خيارات تختار منها، و<b>اختيارك أنت</b> اللي ينحفظ</span></li>
+          <li class="r2" style="--d:.7"><svg class="i"><use href="#i-shield"/></svg><span>ذاكرة لك وحدك، وما يتذكّر إلا <b>اللي قلته أنت</b></span></li>
+        </ul>
+      </div>
+      <div class="sec-media">
+        <div class="frame f-main r2" style="--d:.3"><div class="fbar"><i></i><i></i><i></i></div><video src="assets/video/coach.mp4" poster="assets/img/coach.webp" muted loop playsinline preload="auto"></video></div>
+      </div>
+      <div class="widget w-quiz r2" style="--d:.55">
+        <div class="w-h"><svg class="i"><use href="#i-coach"/></svg>سؤال سريع · <bdi>Probability</bdi></div>
+        <p class="qz-q" dir="ltr">Counting successes in <i>n</i> independent trials follows which distribution?</p>
+        <div class="qz-opts" dir="ltr"><span class="ok">Binomial</span><span>Poisson</span><span>Normal</span></div>
+        <div class="qz-fb"><svg class="i"><use href="#i-check"/></svg>صح! <bdi>n</bdi> محاولات مستقلة، كل وحدة نجاح أو فشل.</div>
+      </div>
+    </section>
+
+    <!-- 4 · Projects & evaluation -->
+    <section class="sec" id="sec-4" style="--c:#F29A00;--c2:#FFD166;--tint:#FFF7E3">
+      <div class="sec-bg"></div>
+      <div class="sec-text">
+        <div class="kicker r2" style="--d:.15"><i>04</i> المشاريع</div>
+        <h2 class="r2" style="--d:.25">كل مرحلة تنتهي <span class="hl">بمشروع حقيقي</span></h2>
+        <p class="lead r2" style="--d:.35">مو بس تتعلم… تبني شيء تقدر توريه. ووكيل يشغّل مشروعك ويقيّمه بالأدلة.</p>
+        <ul class="pts">
+          <li class="r2" style="--d:.5"><svg class="i"><use href="#i-spark"/></svg><span>تطوّر فكرة المشروع مع Hermes لين تصير <b>شيء تبي تبنيه</b></span></li>
+          <li class="r2" style="--d:.6"><svg class="i"><use href="#i-flask"/></svg><span>يشغّل اختباراتك ويجرّب التطبيق في <b>متصفح محلي</b></span></li>
+          <li class="r2" style="--d:.7"><svg class="i"><use href="#i-target"/></svg><span>كل درجة مربوطة <b>بملاحظة فعلية</b>، واللي فشل ينعرض بوضوح</span></li>
+        </ul>
+      </div>
+      <div class="sec-media">
+        <div class="frame f-main r2" style="--d:.3"><div class="fbar"><i></i><i></i><i></i></div><img src="assets/img/projects.webp" alt=""></div>
+      </div>
+      <div class="widget w-eval r2" style="--d:.55">
+        <div class="w-h"><svg class="i"><use href="#i-flask"/></svg>تقييم المشروع<span class="w-sub" dir="ltr">Agentic Tool Playground</span></div>
+        <div class="ev-grid">
+          <div class="ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50"/><circle class="arc" cx="60" cy="60" r="50"/></svg><b class="count" data-to="82">0</b><small>/100</small></div>
+          <ul class="checks" dir="ltr">
+            <li class="y" style="--k:0"><svg class="i"><use href="#i-check"/></svg>Project test suite (npm test)</li>
+            <li class="y" style="--k:1"><svg class="i"><use href="#i-check"/></svg>Demo returns the right answer</li>
+            <li class="y" style="--k:2"><svg class="i"><use href="#i-check"/></svg>Six JSON tool schemas validate</li>
+            <li class="n" style="--k:3"><svg class="i"><use href="#i-x"/></svg>Scoring accepts 4000 for 400</li>
+            <li class="n" style="--k:4"><svg class="i"><use href="#i-x"/></svg>Accepts a negated answer</li>
+          </ul>
+        </div>
+        <div class="bars" dir="ltr">
+          <div style="--v:90"><span>Requirements</span><i></i><b>90</b></div>
+          <div style="--v:65"><span>Correctness</span><i></i><b>65</b></div>
+          <div style="--v:85"><span>Quality</span><i></i><b>85</b></div>
+          <div style="--v:95"><span>Communication</span><i></i><b>95</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 · Career -->
+    <section class="sec" id="sec-5" style="--c:#2C7BFF;--c2:#7FB5FF;--tint:#EBF3FF">
+      <div class="sec-bg"></div>
+      <div class="sec-text">
+        <div class="kicker r2" style="--d:.15"><i>05</i> المستقبل</div>
+        <h2 class="r2" style="--d:.25">فرص تناسبك… <span class="hl">وسيرة من شغلك</span></h2>
+        <p class="lead r2" style="--d:.35">فرص تدريب تعاوني في شركات سعودية، مع سبب التوافق والمهارة الناقصة.</p>
+        <ul class="pts">
+          <li class="r2" style="--d:.5"><svg class="i"><use href="#i-plus"/></svg><span>«أضف لخريطتي» يصنع <b>اقتراح</b>، وما يتفعّل إلا بموافقتك</span></li>
+          <li class="r2" style="--d:.6"><svg class="i"><use href="#i-doc"/></svg><span>السيرة الذاتية من <b>بياناتك المؤكدة فقط</b>، وتنزّلها PDF</span></li>
+          <li class="r2" style="--d:.7"><svg class="i"><use href="#i-compass"/></svg><span>ومو بس للحاسب: <b>طب، هندسة، أي تخصص</b></span></li>
+        </ul>
+      </div>
+      <div class="sec-media">
+        <div class="frame f-main r2" style="--d:.3"><div class="fbar"><i></i><i></i><i></i></div><video src="assets/video/coop.mp4" poster="assets/img/coop.webp" muted loop playsinline preload="auto"></video></div>
+        <div class="frame f-side r2" style="--d:.45"><div class="fbar"><i></i><i></i><i></i></div><img src="assets/img/cv-med.webp" alt=""></div>
+      </div>
+      <div class="widget w-job r2" style="--d:.55">
+        <div class="job">
+          <div class="job-h"><b dir="ltr">AI/ML Co-op Engineer</b><span class="fit">94<small>توافق</small></span></div>
+          <p class="job-why"><svg class="i"><use href="#i-check"/></svg>يناسب مشاريعك في Python وPyTorch</p>
+          <div class="job-gap"><span class="gap-chip" dir="ltr">MLOps / model deployment</span><b class="add"><svg class="i"><use href="#i-plus"/></svg>أضف لخريطتي</b></div>
+        </div>
+        <div class="job-prop">
+          <svg class="i"><use href="#i-spark"/></svg>
+          <span>اقتراح لخريطتك: <bdi>MLOps</bdi><small>بانتظار موافقتك</small></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 · Group projects -->
+    <section class="sec" id="sec-6" style="--c:#EC3F93;--c2:#FF8CC4;--tint:#FFEEF6">
+      <div class="sec-bg"></div>
+      <div class="sec-text">
+        <div class="kicker r2" style="--d:.15"><i>06</i> المشاريع الجماعية</div>
+        <h2 class="r2" style="--d:.25">زميل في الفريق… <span class="hl">مو بدالكم</span></h2>
+        <p class="lead r2" style="--d:.35">ارفع ملف المشروع: يطلّع المخرجات والـ rubric والمواعيد، ويقترح توزيع عادل حسب مهارة وهدف كل واحد.</p>
+        <ul class="pts">
+          <li class="r2" style="--d:.5"><svg class="i"><use href="#i-check"/></svg><span>بس الصفوف اللي تؤشّر عليها من الملف <b>تصير اقتراح</b> للفريق</span></li>
+          <li class="r2" style="--d:.6"><svg class="i"><use href="#i-team"/></svg><span>الفريق يصوّت: <b>الأغلبية تعتمد</b>، وبعد 48 ساعة يحسم القائد</span></li>
+          <li class="r2" style="--d:.7"><svg class="i"><use href="#i-chat"/></svg><span dir="rtl"><bdi>/standup</bdi> · <bdi>/risks</bdi> · <bdi>/catchup</bdi>: يتابعكم قبل لا تتأخرون</span></li>
+        </ul>
+      </div>
+      <div class="sec-media">
+        <div class="frame f-main r2" style="--d:.3"><div class="fbar"><i></i><i></i><i></i></div><video src="assets/video/team.mp4" poster="assets/img/teams.webp" muted loop playsinline preload="auto"></video></div>
+      </div>
+      <div class="widget w-team r2" style="--d:.55">
+        <div class="w-h"><svg class="i"><use href="#i-spark"/></svg>اقتراح من Hermes · توزيع المهام<span class="w-sub">6 مهام · 4 أعضاء</span></div>
+        <div class="tasks">
+          <div><span dir="ltr">Non-functional requirements</span><em>ع</em><small>↗ تطوير: كتابة متطلبات</small></div>
+          <div><span dir="ltr">Data model (ERD)</span><em>س</em><small>يناسب مهارته</small></div>
+          <div><span dir="ltr">Report &amp; search wireframes</span><em>ن</em><small>يناسب مهارتها</small></div>
+        </div>
+        <div class="votes">
+          <span class="v" style="--k:0">أ</span><span class="v" style="--k:1">س</span><span class="v" style="--k:2">ع</span><span class="v wait" style="--k:3">ن</span>
+          <b class="vote-res"><em class="s0">التصويت مفتوح</em><em class="s1"><svg class="i"><use href="#i-check"/></svg>اعتُمد بالأغلبية</em></b>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="hud"><div id="hud-bar"><i></i></div></div>
+  <div id="notes" hidden><div id="notes-meta"></div><div id="notes-text"></div></div>
+</div>
+
+<script src="assets/vendor/gsap.min.js"></script>
+<script src="assets/deck.js"></script>
+</body>
+</html>

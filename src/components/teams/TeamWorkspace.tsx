@@ -1,7 +1,7 @@
 "use client"
 
-import { useRef, useState, type CSSProperties } from "react"
-import { ArrowLeft, CalendarRange, FileText, Gavel, History, LayoutGrid, ScrollText, type LucideIcon } from "lucide-react"
+import { useRef, useState } from "react"
+import { ArrowLeft, CalendarRange, FileText, Gavel, History, LayoutGrid, MessageSquare, ScrollText, Users, type LucideIcon } from "lucide-react"
 import { ActivityLog } from "@/components/teams/ActivityLog"
 import { CharterView } from "@/components/teams/CharterView"
 import { DecisionLog } from "@/components/teams/DecisionLog"
@@ -13,10 +13,9 @@ import { TaskSheet, type TaskSheetState } from "@/components/teams/TaskSheet"
 import { TaskTimeline } from "@/components/teams/TaskTimeline"
 import { TeamChat } from "@/components/teams/TeamChat"
 import { TeamSettings } from "@/components/teams/TeamSettings"
-import { Banner, DockResizer } from "@/components/teams/ui"
+import { Avatar, Banner, Sheet } from "@/components/teams/ui"
 import { useMarkSeen, usePresence, useTeamStream } from "@/components/teams/use-team-stream"
 import { coverFor } from "@/lib/team-cover"
-import { RAIL_MIN, RAIL_WIDTH, clampDockWidth, clampRailWidth, readDockWidth, readRailWidth, saveDockWidth, saveRailWidth } from "@/lib/team-layout"
 import { errorMessage } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
 
@@ -33,30 +32,29 @@ const VIEWS: { id: View; icon: LucideIcon }[] = [
 
 export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () => void }) {
   const { t } = useI18n()
-  const { store, error, live, reload, update } = useTeamStream(teamId)
+  const { store, error, live, reload, update, unseenChat } = useTeamStream(teamId)
   const [view, setView] = useState<View>("board")
   const [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
   const [focus, setFocus] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [sheet, setSheet] = useState<TaskSheetState | null>(null)
-  const studioRef = useRef<HTMLDivElement>(null)
-  const [dockWidth, setDockWidth] = useState(readDockWidth)
-  const [railWidth, setRailWidth] = useState(readRailWidth)
-  const available = () => studioRef.current?.clientWidth ?? window.innerWidth
-  const resizeDock = (requested: number) => {
-    const next = clampDockWidth(requested, available(), railWidth)
-    setDockWidth(next)
-    saveDockWidth(next)
+  const [chatOpen, setChatOpen] = useState(true)
+  const [peopleOpen, setPeopleOpen] = useState(false)
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const chatTrigger = useRef<HTMLButtonElement>(null)
+  const selectView = (next: View) => {
+    setView(next)
+    if (window.matchMedia("(max-width: 900px)").matches) setChatOpen(false)
   }
-  const resizeRail = (requested: number) => {
-    const next = clampRailWidth(requested, available(), dockWidth)
-    setRailWidth(next)
-    saveRailWidth(next)
+  const closeChat = () => {
+    setChatOpen(false)
+    chatTrigger.current?.focus()
   }
   const role = store?.team.viewer_role
   const member = role === "lead" || role === "member"
   usePresence(teamId, member, focus)
-  useMarkSeen(teamId, member ? store : null, update)
+  // Chat is optional now: visiting the board must not mark hidden messages as read.
+  useMarkSeen(teamId, member && chatOpen ? store : null, update)
 
   if (error) {
     return (
@@ -76,39 +74,36 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   const cover = coverFor(store.team.cover_seed)
 
   return (
-    <div ref={studioRef} className="tm-studio" style={{ "--tm-dock-width": `${dockWidth}px`, "--tm-rail-width": `${railWidth}px` } as CSSProperties}>
-      <div className="tm-rail-slot">
-      <DockResizer
-        edge="end"
-        width={railWidth}
-        onResize={resizeRail}
-        min={RAIL_MIN}
-        initial={RAIL_WIDTH}
-        label={t("teams.workspace.resizeRail")}
-        hint={t("teams.workspace.resizeRailHint")}
-      />
-      <aside className="tm-panel tm-rail" aria-label={t("teams.workspace.railLabel")}>
-        <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" /> {t("teams.gp.backShort")}</button>
-        <div className="tm-rail-cover" style={{ backgroundImage: cover.image, backgroundColor: cover.color }}>
-          <span>{store.team.assignment.id ? <><bdi>{store.team.course.code}</bdi> · <bdi>{store.team.assignment.title}</bdi></> : t("teams.gp.projectLabel")}</span>
-          <strong dir="auto">{store.team.name}</strong>
+    <div className="gp-workspace">
+      <header className="gp-workspace-head">
+        <button type="button" className="gp-workspace-back tm-icon-btn" onClick={onBack} aria-label={t("teams.gp.backShort")} title={t("teams.gp.backShort")}><ArrowLeft className="size-5 rtl:-scale-x-100" aria-hidden="true" /></button>
+        <span className="gp-project-mark" style={{ backgroundColor: cover.color }} aria-hidden="true"><LayoutGrid className="size-5" /></span>
+        <div className="gp-workspace-title">
+          <h1 dir="auto">{store.team.name}</h1>
+          <p>{store.team.assignment.id ? <><bdi>{store.team.course.code}</bdi> · <bdi>{store.team.assignment.title}</bdi></> : t("teams.gp.projectLabel")}</p>
         </div>
-        <TeamSettings store={store} update={update} onError={fail} />
-        <nav className="tm-views" aria-label={t("teams.workspace.viewsLabel")}>
+        <div className="gp-workspace-actions">
+          <p className="tm-live" data-live={live ? "" : undefined} role="status"><i aria-hidden="true" />{live ? t("teams.workspace.live") : t("teams.workspace.connecting")}</p>
+          <button type="button" className="tm-btn gp-people-trigger" onClick={() => setPeopleOpen(true)} aria-label={t("teams.ui.peopleSettings")}>
+            <span className="gp-avatar-stack" aria-hidden="true">{store.team.members.slice(0, 3).map(person => <Avatar key={person.user_id} userId={person.user_id} name={person.display_name} size={24} />)}</span>
+            <Users className="size-4 gp-people-icon" aria-hidden="true" /><span>{t("teams.gp.people")}</span>
+          </button>
+          {member ? <button ref={chatTrigger} type="button" className="tm-btn" aria-label={t("teams.chat.title")} aria-pressed={chatOpen} aria-controls="gp-project-chat" onClick={() => setChatOpen(value => !value)}><MessageSquare className="size-4" aria-hidden="true" />{t("teams.chat.title")}{unseenChat && !chatOpen ? <span className="gp-chat-unread" role="status" aria-label={t("teams.ui.newMessages")} /> : null}</button>
+            : <button type="button" className="tm-btn" onClick={() => setOverviewOpen(true)}>{t("teams.instructor.title")}</button>}
+        </div>
+      </header>
+      <nav className="gp-workspace-tabs" aria-label={t("teams.workspace.viewsLabel")}>
           {VIEWS.map((item) => {
             const Icon = item.icon
             return (
-              <button key={item.id} type="button" className="tm-view" aria-current={view === item.id ? "page" : undefined} onClick={() => setView(item.id)}>
+              <button key={item.id} type="button" className="gp-workspace-tab" aria-current={view === item.id ? "page" : undefined} onClick={() => selectView(item.id)}>
                 <Icon className="size-4" aria-hidden="true" /> {t(`teams.workspace.views.${item.id}`)}
               </button>
             )
           })}
-        </nav>
-        <MemberList store={store} canInvite={member} onError={fail} />
-        <p className="tm-live" data-live={live ? "" : undefined}><i aria-hidden="true" />{live ? t("teams.workspace.live") : t("teams.workspace.connecting")}</p>
-      </aside>
-      </div>
-      <main className="tm-panel tm-center">
+      </nav>
+      <div className="gp-workspace-body" data-chat={chatOpen && member ? "" : undefined}>
+      <main className="gp-workspace-content" aria-label={t(`teams.workspace.views.${view}`)}>
         {notice ? <Banner message={notice} onDismiss={() => setNotice(null)} /> : null}
         {view === "board" ? (
           <TaskBoard
@@ -124,27 +119,31 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
         ) : view === "docs" ? (
           <DocStudio store={store} canEdit={member} update={update} onFocus={setFocus} />
         ) : view === "decisions" ? (
-          <DecisionLog store={store} canEdit={member} update={update} onError={fail} onJump={member ? (id) => setJump({ id, nonce: Date.now() }) : undefined} />
+          <DecisionLog store={store} canEdit={member} update={update} onError={fail} onJump={member ? (id) => { setChatOpen(true); setJump({ id, nonce: Date.now() }) } : undefined} />
         ) : view === "activity" ? (
           <ActivityLog store={store} />
         ) : (
           <CharterView store={store} canEdit={member} update={update} />
         )}
       </main>
-      <div className="tm-dock-slot">
-        <DockResizer width={dockWidth} onResize={resizeDock} />
-        {member ? (
+      {member ? <div id="gp-project-chat" className="gp-chat-panel" hidden={!chatOpen}>
           <TeamChat
             store={store}
             update={update}
             onMakeTask={(title) => setSheet({ mode: "create", title })}
             jumpTo={jump}
-            onOpenDecisions={() => setView("decisions")}
+            active={chatOpen}
+            onClose={closeChat}
+            onOpenDecisions={() => selectView("decisions")}
           />
-        ) : (
-          <InstructorPanel store={store} />
-        )}
+      </div> : null}
       </div>
+      {peopleOpen ? <Sheet title={t("teams.ui.peopleSettings")} onClose={() => setPeopleOpen(false)}>
+        {notice ? <Banner message={notice} onDismiss={() => setNotice(null)} /> : null}
+        <MemberList store={store} canInvite={member} onError={fail} onLeft={onBack} />
+        <TeamSettings store={store} update={update} onError={fail} />
+      </Sheet> : null}
+      {overviewOpen && !member ? <Sheet title={t("teams.instructor.title")} onClose={() => setOverviewOpen(false)}><InstructorPanel store={store} /></Sheet> : null}
       {sheet ? (
         <TaskSheet state={sheet} store={store} canEdit={member} update={update} onError={fail} onClose={() => { setSheet(null); setFocus(null) }} />
       ) : null}

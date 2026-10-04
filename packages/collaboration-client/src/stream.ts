@@ -1,6 +1,13 @@
 /** Fetch-based SSE: bearer headers, cursor replay, token refresh on reconnect. */
 export class CollaborationStream extends EventTarget {
-  onopen: (() => void) | null = null
+  private opened = false
+  private openHandler: (() => void) | null = null
+  get onopen() { return this.openHandler }
+  set onopen(handler: (() => void) | null) {
+    this.openHandler = handler
+    // A subscriber attached after headers arrived still receives the current state.
+    if (this.opened && handler) handler()
+  }
   onerror: (() => void) | null = null
   private controller = new AbortController()
   private cursor: number
@@ -19,7 +26,7 @@ export class CollaborationStream extends EventTarget {
     void this.run()
   }
 
-  close() { this.controller.abort() }
+  close() { this.opened = false; this.controller.abort() }
 
   private async run() {
     while (!this.controller.signal.aborted) {
@@ -35,6 +42,7 @@ export class CollaborationStream extends EventTarget {
         })
         terminal = [401, 403, 404].includes(response.status)
         if (!response.ok || !response.body) throw new Error("Collaboration stream unavailable")
+        this.opened = true
         this.onopen?.()
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
@@ -69,6 +77,7 @@ export class CollaborationStream extends EventTarget {
         // User-visible state is handled by the subscriber; never log bearer headers.
       }
       if (this.controller.signal.aborted) return
+      this.opened = false
       this.onerror?.()
       if (terminal) return
       await new Promise<void>((resolve) => {

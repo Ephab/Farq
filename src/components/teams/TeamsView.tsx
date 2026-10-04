@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useAnimatedSidebar } from "@/components/motion/animated-sidebar"
 import { TeamWorkspace } from "@/components/teams/TeamWorkspace"
 import { TeamsHome } from "@/components/teams/TeamsHome"
 import { ViewAsSwitcher } from "@/components/teams/ViewAsSwitcher"
@@ -11,6 +10,7 @@ import { useI18n } from "@/lib/i18n/context"
 import "@/components/hermes/coach-concept.css"
 import "./teams.css"
 import "./groups.css"
+import "./workspace.css"
 import { ConnectedTeamsView } from "./ConnectedTeamsView"
 import { ConnectPane } from "./ConnectPane"
 import { useCollaborationMode } from "@/lib/collaboration-mode"
@@ -31,13 +31,7 @@ function LocalTeamsView() {
   // One client per acting user: views bound to it keep acting as that user
   // until they unmount, even if View-as changes mid-request.
   const client = useMemo(() => teamClient(actingUser), [actingUser])
-  const sidebar = useAnimatedSidebar()
-  // A team workspace needs the width, so opening one collapses the app sidebar.
-  const openTeam = (id: string) => {
-    setTeamId(id)
-    sidebar.setOpen(false)
-    sidebar.setOpenMobile(false)
-  }
+  const openTeam = (id: string) => setTeamId(id)
 
   useEffect(() => {
     const onChange = () => {
@@ -50,14 +44,14 @@ function LocalTeamsView() {
 
   return (
     <TeamClientContext.Provider value={client}>
-    <div className={`fq tm-page${teamId ? "" : " tm-page-home"}`}>
-      <div className="tm-topbar">
+    <div className={`fq tm-page gp-page${teamId ? " gp-page-wide" : " tm-page-home"}`}>
+      {!teamId ? <div className="gp-head">
         <div>
-          <h1 className="tm-title">{t("teams.page.title")}</h1>
-          <p className="tm-sub">{t("teams.page.subtitle")}</p>
+          <h1 className="gp-title">{t("teams.page.title")}</h1>
+          <p className="gp-sub">{t("teams.page.subtitle")}</p>
         </div>
         <ViewAsSwitcher value={actingUser} />
-      </div>
+      </div> : null}
       {teamId ? (
         <TeamWorkspace key={`${actingUser}:${teamId}`} teamId={teamId} onBack={() => setTeamId(null)} />
       ) : (

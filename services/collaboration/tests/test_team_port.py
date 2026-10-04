@@ -206,3 +206,93 @@ def test_agent_and_import_capabilities_are_explicitly_unavailable(world):
     assert capabilities == {"api_version": 1, "min_client_version": "0.0.0", "teams": True, "team_ai": False, "project_import": False, "discovery": True}
     assert client.get("/api/demo/users").status_code == 404
     assert client.post("/internal/hermes/waypoint_get_team_context").status_code == 404
+
+
+def test_students_can_leave_and_access_is_revoked(world):
+    client, app, ids, _ = world
+    team = room(client)
+    join(client, team, ids)
+    assert client.post(f"/v1/teams/{team}/leave", headers=hdr("outsider")).status_code == 403
+    assert client.post(f"/v1/teams/{team}/leave", headers=hdr("bob")).json() == {"left": True}
+    assert client.get(f"/v1/teams/{team}/state", headers=hdr("bob")).status_code == 403
+    assert client.post(f"/v1/teams/{team}/messages", json={"content": "blocked"}, headers=hdr("bob")).status_code == 403
+    assert client.get(f"/v1/teams/{team}/events", headers=hdr("bob")).status_code == 403
+    with team_session(app.state.sessions) as db:
+        assert db.scalar(select(TeamEvent).where(TeamEvent.team_id == team, TeamEvent.type == "member.removed")).actor_user_id == ids["bob"]
+
+
+def test_departing_lead_transfers_and_last_member_closes_project(world):
+    client, app, ids, _ = world
+    team = room(client)
+    join(client, team, ids)
+    assert client.post(f"/v1/teams/{team}/leave", headers=hdr("alice")).status_code == 200
+    state = client.get(f"/v1/teams/{team}/state", headers=hdr("bob")).json()
+    assert state["team"]["lead_user_id"] == ids["bob"] and state["team"]["viewer_role"] == "lead"
+    assert client.get(f"/v1/teams/{team}/state", headers=hdr("alice")).status_code == 403
+    assert client.post(f"/v1/teams/{team}/leave", headers=hdr("bob")).status_code == 200
+    assert client.get(f"/v1/teams/{team}/state", headers=hdr("bob")).status_code == 404
+    with team_session(app.state.sessions) as db:
+        assert db.get(Team, team).archived_at is not None
+        assert not db.scalars(select(TeamMember).where(TeamMember.team_id == team)).all()
+
+
+def test_shared_project_description_is_reviewed_before_application(world, monkeypatch):
+    from collaboration.teams import imports
+    from collaboration import team_hermes
+    client, app, ids, _ = world
+    team = room(client)
+    join(client, team, ids)
+    assert client.post(f"/v1/teams/{team}/imports", data={"text": "project " * 20}, headers=hdr("alice")).status_code == 503
+    app.state.settings.team_ai_enabled = True
+    calls = []
+    def gateway(settings, request):
+        calls.append(request)
+        assert "1234567890" not in request["body"]["input"]
+        return '{"rows":[{"kind":"brief","data":{"problem":"Build a student project portal"},"source_quote":"contact person@example.com","confidence":"stated"}]}'
+    monkeypatch.setattr(team_hermes, "call_gateway", gateway)
+    assert client.get("/v1/capabilities", headers=hdr("alice")).json()["project_import"] is True
+    response = client.post(f"/v1/teams/{team}/imports", files={"file": ("description.txt", b"Build a student project portal for the course, with task management and shared documents. Student ID 1234567890.")}, headers=hdr("alice"))
+    assert response.status_code == 202, response.text
+    state = client.get(f"/v1/teams/{team}/state", headers=hdr("alice")).json()
+    item = state["imports"][0]
+    assert item["status"] == "review" and "person@example.com" not in str(item)
+    assert state["team"]["project"]["brief"] == {}
+    assert client.post(f"/v1/imports/{item['id']}/propose", json={"items": [{"kind": "brief", "data": {"problem": "Build a student project portal"}}]}, headers=hdr("bob")).status_code == 403
+    proposal = client.post(f"/v1/imports/{item['id']}/propose", json={"items": [{"kind": "brief", "data": {"problem": "Build a student project portal"}}]}, headers=hdr("alice")).json()["proposal"]
+    assert proposal["kind"] == "batch" and proposal["status"] == "pending"
+    assert client.post(f"/v1/proposals/{proposal['id']}/accept", headers=hdr("alice")).json()["status"] == "applied"
+    assert client.get(f"/v1/teams/{team}/state", headers=hdr("bob")).json()["team"]["project"]["brief"]["problem"] == "Build a student project portal"
+    assert len(calls) == 1
+    assert "grant" not in str(calls[0]) and "run_id" not in calls[0]["body"]
+
+
+def test_shared_stream_flushes_initial_frame_and_presence(world, monkeypatch):
+    client, _, _, _ = world
+    team = room(client)
+    monkeypatch.setattr(events, "MAX_POLLS", 1)
+    response = client.get(f"/v1/teams/{team}/events", headers=hdr("alice"))
+    assert response.status_code == 200
+    assert "no-transform" in response.headers["cache-control"]
+    assert response.text.startswith("retry: 2000\n:") and "event: presence" in response.text
+
+
+def test_lead_project_edit_is_scoped_and_streamed(world):
+    client, app, ids, assignment = world
+    first = client.post(f"/v1/assignments/{assignment}/teams", json={"name": "First"}, headers=hdr("alice")).json()["id"]
+    second = client.post(f"/v1/assignments/{assignment}/teams", json={"name": "Second"}, headers=hdr("bob")).json()["id"]
+    original = client.get(f"/v1/teams/{second}", headers=hdr("bob")).json()["assignment"]
+    body = {"project": {"brief": {"problem": "Build a project portal"}, "deliverables": [{"key": "report", "title": "Report"}]},
+            "assignment": {"title": "Our assignment", "problem": "Revised brief", "deliverables": ["Prototype"], "constraints": ["Use Python"]}}
+    for who in ["bob", "instructor", "outsider"]:
+        assert client.patch(f"/v1/teams/{first}/project-details", json=body, headers=hdr(who)).status_code == 403
+    response = client.patch(f"/v1/teams/{first}/project-details", json=body, headers=hdr("alice"))
+    assert response.status_code == 200, response.text
+    state = client.get(f"/v1/teams/{first}/state", headers=hdr("instructor")).json()
+    assert state["team"]["project"]["brief"]["problem"] == "Build a project portal"
+    assert state["team"]["assignment"]["title"] == "Our assignment"
+    assert client.get(f"/v1/teams/{second}", headers=hdr("bob")).json()["assignment"] == original
+    replay = client.get(f"/v1/teams/{first}/events/replay", headers=hdr("alice")).json()["events"]
+    assert replay[-1]["type"] == "team.updated" and replay[-1]["payload"]["assignment"]["title"] == "Our assignment"
+    assert client.patch(f"/v1/teams/{first}/project-details", json={}, headers=hdr("alice")).status_code == 422
+    body["project"]["deliverables"] *= 2
+    assert client.patch(f"/v1/teams/{first}/project-details", json=body, headers=hdr("alice")).status_code == 422

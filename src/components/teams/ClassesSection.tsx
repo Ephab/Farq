@@ -25,7 +25,7 @@ export function ClassesSection({ onOpenClass }: { onOpenClass: (id: string) => v
   const restore = async (id: string) => {
     try { await api.archiveProject(id, "restore"); load() } catch (reason) { setError(errorMessage(reason)) }
   }
-  if (!classes?.length && !archived.length) return error ? <p className="gp-error" role="alert">{error}</p> : null
+  if (classes === null) return error ? <div className="gp-inline-error" role="alert"><p>{error}</p><button className="tm-btn" onClick={load}>{t("teams.gp.retry")}</button></div> : <p className="gp-muted" role="status">{t("teams.common.loading")}</p>
   return <>
     {classes?.length ? <section className="gp-section">
       <h2 className="gp-h2">{t("teams.gp.classes")}</h2>
@@ -42,7 +42,7 @@ export function ClassesSection({ onOpenClass }: { onOpenClass: (id: string) => v
           </li>
         })}
       </ul>
-    </section> : null}
+    </section> : <div className="gp-empty"><strong>{t("teams.ui.noClasses")}</strong><p>{t("teams.ui.noClassesHint")}</p></div>}
     {archived.length ? <details className="gp-details">
       <summary>{t("teams.gp.archivedProjects")} · {archived.length}</summary>
       <ul className="gp-rows">

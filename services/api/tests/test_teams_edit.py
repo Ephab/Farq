@@ -33,3 +33,34 @@ def test_invites_follow_the_team_size(client):
     assert client.post(f"/api/teams/{team}/invites", json={"user_id": world["students"][3]}, headers=hdr(lead)).status_code == 409
     client.patch(f"/api/teams/{team}", json={"size_limit": 3}, headers=hdr(lead))
     assert client.post(f"/api/teams/{team}/invites", json={"user_id": world["students"][3]}, headers=hdr(lead)).status_code == 201
+
+
+def test_member_leaves_and_lead_can_leave_without_stranding_members(client):
+    world = make_world(team_members=3)
+    team, lead, second, third = world["team_id"], *world["students"][:3]
+    assert client.post(f"/api/teams/{team}/leave", headers=hdr(world["instructor"])).status_code == 403
+    assert client.post(f"/api/teams/{team}/leave", headers=hdr(third)).json() == {"left": True}
+    assert client.get(f"/api/teams/{team}/state", headers=hdr(third)).status_code == 403
+    assert client.post(f"/api/teams/{team}/leave", headers=hdr(lead)).status_code == 200
+    response = client.get(f"/api/teams/{team}", headers=hdr(second))
+    assert response.json()["lead_user_id"] == second
+    assert events_for(team)[-1]["type"] == "member.removed"
+
+
+def test_lead_edits_project_and_team_assignment_brief(client):
+    world = make_world(team_members=2)
+    team, lead, member, other = world["team_id"], *world["students"][:3]
+    sibling = client.post(f"/api/assignments/{world['assignment_id']}/teams", json={"name": "Other team"}, headers=hdr(other)).json()
+    original = client.get(f"/api/teams/{sibling['id']}", headers=hdr(other)).json()["assignment"]
+    body = {"project": {"brief": {"problem": "Our chosen problem", "tools": ["Python"]}, "deliverables": [{"key": "report", "title": "Final report", "due": None, "doc_kind": None}]},
+            "assignment": {"title": "Team interpretation", "problem": "Edited assignment", "objective": "Deliver a prototype", "constraints": ["One semester"], "deliverables": ["Prototype"]}}
+    for who in [member, world["instructor"], other]:
+        assert client.patch(f"/api/teams/{team}/project-details", json=body, headers=hdr(who)).status_code == 403
+    saved = client.patch(f"/api/teams/{team}/project-details", json=body, headers=hdr(lead))
+    assert saved.status_code == 200, saved.text
+    state = client.get(f"/api/teams/{team}/state", headers=hdr(member)).json()
+    assert state["team"]["project"]["brief"]["problem"] == "Our chosen problem"
+    assert state["team"]["assignment"]["title"] == "Team interpretation"
+    assert client.get(f"/api/teams/{sibling['id']}", headers=hdr(other)).json()["assignment"] == original
+    event = events_for(team)[-1]
+    assert event["type"] == "team.updated" and event["payload"]["assignment"]["brief"]["problem"] == "Edited assignment"

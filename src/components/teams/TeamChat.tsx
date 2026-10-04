@@ -24,9 +24,11 @@ interface TeamChatProps {
   /** Scroll to and flash this message; a new nonce repeats the jump for the same message. */
   jumpTo?: { id: string; nonce: number } | null
   onOpenDecisions: () => void
+  active?: boolean
+  onClose?: () => void
 }
 
-export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }: TeamChatProps) {
+export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions, active = true, onClose }: TeamChatProps) {
   const { t, fmt } = useI18n()
   const teams = useTeamClient()
   const me = teams.userId
@@ -70,8 +72,8 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
   const lastMessage = messages[messages.length - 1]
   useLayoutEffect(() => {
     const list = listRef.current
-    if (list && !needle && stickToBottom.current) list.scrollTop = list.scrollHeight
-  }, [messages.length, lastMessage?.content, needle, store.hermes?.stage, typingIds.length])
+    if (active && list && !needle && stickToBottom.current) list.scrollTop = list.scrollHeight
+  }, [active, messages.length, lastMessage?.content, needle, store.hermes?.stage, typingIds.length])
 
   // Jump from a pinned decision to its message: stop following the bottom, centre it, flash it.
   useEffect(() => {
@@ -176,9 +178,9 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
           <small className="block text-[11px] text-[var(--fq-muted)]">{t("teams.chat.subtitle")}</small>
         </div>
         <div className="flex items-center gap-1">
-        <button type="button" className="tm-btn tm-btn-sm" title={t("teams.chat.catchUpHint")} onClick={() => { setDraft("/catchup"); inputRef.current?.focus() }}>
+        {teams.teamAI ? <button type="button" className="tm-btn tm-btn-sm" title={t("teams.chat.catchUpHint")} onClick={() => { setDraft("/catchup"); inputRef.current?.focus() }}>
           <Sparkles className="size-3.5" aria-hidden="true" /> {t("teams.chat.catchUp")}
-        </button>
+        </button> : null}
         <button
           type="button"
           className="tm-icon-btn"
@@ -188,6 +190,7 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
         >
           <Search className="size-4" />
         </button>
+        {onClose ? <button type="button" className="tm-icon-btn" aria-label={t("teams.common.close")} onClick={onClose}><X className="size-4" /></button> : null}
         </div>
       </header>
       {searching ? (

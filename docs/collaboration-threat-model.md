@@ -109,3 +109,29 @@ transaction; context excludes personal data and profiles; chat text marked untru
 load only `.hermes/plugins/waypoint-team` and hold no personal tools, files, mail or memory. Residual risks:
 a compromised gateway host holds the tool token and active run grants (blast radius: proposals in teams with
 a running run, never direct changes); the in-process worker assumes one API process.
+
+
+## Shared project-description setup (2026-10-04)
+
+The shared service accepts bounded PDF, DOCX and text uploads or pasted descriptions
+only from a project member when team AI is enabled. Account and IP throttles apply.
+It reads the file in memory, redacts identity numbers, emails and phone numbers,
+and retains only the extracted review rows and a redacted filename. The raw file
+and source text are never stored in the product database or logs.
+Extraction uses a fresh JSON session on the isolated team gateway, with untrusted
+source delimiters and no AgentRun or tool grant. The team plugin rejects all tool
+access without that grant, including attempts induced by document instructions.
+Only the uploader can propose reviewed rows; existing batch validation and member
+acceptance apply them atomically. Background completion rechecks the uploader's
+membership and discards an extraction if access was revoked. Process interruption
+is handled by the existing ten-minute reading timeout; there is no durable raw-file
+queue. Existing gateway transcript retention applies to the redacted extraction
+session; it never enters a personal or team conversation.
+
+Project summary, role, commitment and availability fields no longer appear in the
+project sharing UI. Local-to-shared cutover strips the legacy charter. Old storage
+schemas remain compatible; this change does not erase historical records.
+Members can leave their own project. Leadership passes to the earliest remaining
+member; an empty central project is archived and its invitations/openings close.
+Membership revocation is enforced on API requests and on each stream poll, and the
+membership event is written in the same transaction.

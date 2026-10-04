@@ -1,3 +1,54 @@
+## Group Projects UI redesign (2026-10-04)
+
+The shared and local workspaces now use a compact project header and horizontal
+navigation. Chat starts open (split on desktop, full workspace on phones), can be
+toggled, and keeps its draft when closed. Project/class navigation preserves the app
+sidebar's chosen state. People, invitation codes, leaving, and project settings
+are in a drawer. Hidden chat no longer advances the member's read cursor; incoming
+messages show a small notification until the chat is read.
+
+Home separates Projects and Classes and uses compact project rows. Create/join and
+shared account, coach access, and local migration have focused drawers. Local insights
+are removed. Setup pairs the editable briefs, folds the import workflow, and uses
+compact rubric rows. Timeline uses milestone cards and an add drawer. Documents have
+a slimmer outline and disclose section administration through the tools button.
+The app's theme tokens, Arabic/RTL, mobile scrolling, keyboard focus, and reduced
+motion are preserved; nested invitation drawers restore focus to their trigger.
+Design rationale: `docs/group-projects-ui.md`; stylesheet: `workspace.css`.
+
+Validation: 100 frontend tests pass; production build and lint pass (existing warnings).
+Playwright fixtures cover shared/local navigation, all six views, leader edits, member
+and instructor controls, imports, retained chat drafts, nested dialogs, empty states,
+mobile overflow, dark Arabic, and the full app shell. Browser scripts/screenshots are
+in ignored `.cache/group-projects-ui`. Other computers need the updated frontend;
+this UI change requires no additional service migration.
+
+## Lead editing of project details (2026-10-04)
+
+Our Project and Assignment Brief have lead-only editors in Project setup. Direct
+human edits save the project's brief/deliverables and a team-scoped assignment
+interpretation, with transactional team.updated events. The original course
+assignment stays shared and unchanged for other teams. Central migration
+0011_project_details adds assignment_override_json; local SQLite adds it during
+startup. Cutover carries that override. Hermes proposals still edit only the
+team's own project; completed/in-progress tasks are unaffected.
+Validation: 113 shared-service tests, 13 local edit/cutover tests and 100 frontend
+tests pass; production build passes. The live service is migrated and healthy.
+
+## Group Projects follow-up (2026-10-04)
+
+Shared projects now support description uploads/pasted text through the same reviewed
+batch-proposal flow as local projects, advertised only when team AI is enabled.
+Project setup replaces the charter view; team profile/availability panels and opening
+summary/roles/commitment fields were removed from the UI. Cutover strips the charter.
+Members can leave; leads pass leadership to the earliest remaining member and empty
+shared projects archive. SSE readiness is replayed to late subscribers, valid frames
+refresh live status, and the service/proxy preserve uncompressed no-transform streams.
+Validation: 112 shared-service/PostgreSQL, 36 focused personal-backend and 99 frontend
+tests pass; production build passes. The running pilot API/proxy were updated. Public
+SSE/CORS/presence and isolated live Hermes description extraction passed. Other PCs
+need the updated student frontend and a refresh to pick up the capability.
+
 # Handoff: project state
 
 ## Collaboration service foundation (2026-10-03 worktree)

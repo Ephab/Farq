@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { Sparkles, Trash2 } from "lucide-react"
-import { Sheet } from "@/components/teams/ui"
+import { Banner, Sheet } from "@/components/teams/ui"
+import { errorMessage } from "@/lib/teams-api"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { fromDateInput, toDateInput } from "@/lib/team-format"
 import { TASK_COLUMNS, removeTask, upsertMessage, upsertTask, type TeamStore } from "@/lib/team-store"
@@ -34,10 +35,12 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
   const [deps, setDeps] = useState<string[]>(existing?.depends_on ?? [])
   const [status, setStatus] = useState<TaskStatus>(existing?.status ?? "todo")
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const others = Object.values(store.tasks).filter((task) => task.id !== existing?.id)
   const milestones = Object.values(store.milestones)
 
   const save = async () => {
+    setError(null)
     setSaving(true)
     try {
       const body = {
@@ -50,6 +53,7 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
       update((current) => upsertTask(current, saved))
       onClose()
     } catch (reason) {
+      setError(errorMessage(reason))
       onError(reason)
     } finally {
       setSaving(false)
@@ -59,11 +63,13 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
   const remove = async () => {
     if (!existing) return
     setSaving(true)
+    setError(null)
     try {
       await teams.deleteTask(existing.id)
       update((current) => removeTask(current, existing.id))
       onClose()
     } catch (reason) {
+      setError(errorMessage(reason))
       onError(reason)
     } finally {
       setSaving(false)
@@ -73,11 +79,13 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
   const breakDown = async () => {
     if (!existing) return
     setSaving(true)
+    setError(null)
     try {
       const message = await teams.postMessage(store.team.id, { content: `@Hermes break down "${existing.title}" into smaller tasks for our team` })
       update((current) => upsertMessage(current, message))
       onClose()
     } catch (reason) {
+      setError(errorMessage(reason))
       onError(reason)
     } finally {
       setSaving(false)
@@ -91,7 +99,7 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
           <button type="button" className="tm-btn" disabled={saving} onClick={() => void remove()}>
             <Trash2 className="size-4" aria-hidden="true" /> {t("teams.common.delete")}
           </button>
-          {existing.status === "todo" ? (
+          {teams.teamAI && existing.status === "todo" ? (
             <button type="button" className="tm-btn" disabled={saving} onClick={() => void breakDown()}>
               <Sparkles className="size-4" aria-hidden="true" /> {t("teams.sheet.breakDown")}
             </button>
@@ -106,6 +114,7 @@ export function TaskSheet({ state, store, canEdit, update, onError, onClose }: T
 
   return (
     <Sheet title={existing ? t("teams.sheet.task") : t("teams.sheet.newTask")} onClose={onClose} footer={footer}>
+      {error ? <Banner message={error} onDismiss={() => setError(null)} /> : null}
       <label className="tm-field">{t("teams.sheet.title")}
         <input className="tm-input" dir="auto" value={title} maxLength={200} disabled={!canEdit} onChange={(event) => setTitle(event.target.value)} />
       </label>

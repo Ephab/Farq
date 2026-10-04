@@ -19,10 +19,17 @@ export function StartPanel({ busy, error, onSubmit }: { busy: boolean; error: st
   }
   return <form className="gp-start" onSubmit={event => { event.preventDefault(); void submit() }}>
     <div className="gp-modes" role="tablist" aria-label={t("teams.gp.modeLabel")}>
-      {MODES.map(item => <button key={item} type="button" role="tab" id={`${inputId}-${item}`} aria-selected={mode === item} aria-controls={inputId}
-        className="gp-mode" onClick={() => { setMode(item); setValue("") }}>{t(`teams.gp.modes.${item}`)}</button>)}
+      {MODES.map(item => <button key={item} type="button" role="tab" id={`${inputId}-${item}`} aria-selected={mode === item} aria-controls={`${inputId}-panel`} tabIndex={mode === item ? 0 : -1}
+        className="gp-mode" onClick={() => { setMode(item); setValue("") }} onKeyDown={event => {
+          const rtl = document.documentElement.dir === "rtl"
+          const step = event.key === "ArrowRight" ? (rtl ? -1 : 1) : event.key === "ArrowLeft" ? (rtl ? 1 : -1) : 0
+          if (!step && event.key !== "Home" && event.key !== "End") return
+          event.preventDefault()
+          const next = event.key === "Home" ? MODES[0] : event.key === "End" ? MODES[MODES.length - 1] : MODES[(MODES.indexOf(item) + step + MODES.length) % MODES.length]
+          setMode(next); setValue(""); document.getElementById(`${inputId}-${next}`)?.focus()
+        }}>{t(`teams.gp.modes.${item}`)}</button>)}
     </div>
-    <div className="gp-start-row" role="tabpanel" aria-labelledby={`${inputId}-${mode}`}>
+    <div id={`${inputId}-panel`} className="gp-start-row" role="tabpanel" aria-labelledby={`${inputId}-${mode}`}>
       <input id={inputId} className="gp-start-input" dir="auto" autoComplete="off" spellCheck={false} value={value}
         maxLength={mode === "join" ? 40 : mode === "project" ? 80 : 200} placeholder={t(`teams.gp.${mode}.placeholder`)}
         aria-label={t(`teams.gp.${mode}.placeholder`)} onChange={event => setValue(event.target.value)} />

@@ -250,6 +250,7 @@ function reduce(store: TeamStore, event: TeamEvent): TeamStore {
       if (payload.charter !== undefined) team.charter = payload.charter as TeamInfo["charter"]
       if (typeof payload.name === "string") team.name = payload.name
       if (typeof payload.size_limit === "number") team.size_limit = payload.size_limit
+      if (payload.assignment !== undefined) team.assignment = payload.assignment as TeamInfo["assignment"]
       if (payload.project !== undefined) team.project = payload.project as TeamInfo["project"]
       return { ...store, team }
     }

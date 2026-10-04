@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -15,6 +16,8 @@ from .events import emit
 from .models import Assignment, Course, CourseEnrollment, Task, Team, TeamCutover, TeamEvent, TeamInvite, TeamMember
 from .notices import team_risk_line
 from .policy import authorize, is_member
+
+from .proposals import BriefPayload, Deliverable
 
 router = APIRouter()
 STATUS_RANK = {"doing": 0, "review": 1, "todo": 2}
@@ -70,7 +73,7 @@ def team_dict(db: Session, team: Team, viewer_role: str) -> dict:
     return {
         "id": team.id, "name": team.name, "cover_seed": team.cover_seed, "lead_user_id": team.lead_user_id,
         "charter": loads(team.charter_json, {}), "created_at": iso(team.created_at), "viewer_role": viewer_role,
-        "assignment": assignment_dict(assignment), "project": project_dict(team), "course": course_dict(db.get(Course, assignment.course_id)),
+        "assignment": assignment_dict(assignment) | loads(team.assignment_override_json, {}), "project": project_dict(team), "course": course_dict(db.get(Course, assignment.course_id)),
         "members": member_dicts(db, team), "size_limit": team_capacity(team, assignment),
     }
 
@@ -295,3 +298,72 @@ def update_team(team_id: str, body: TeamUpdate, db: Db, user: CurrentUser) -> di
 def get_team(team_id: str, db: Db, user: CurrentUser) -> dict:
     team = require_team(db, team_id)
     return team_dict(db, team, authorize(db, user, team, "view"))
+
+
+@router.post("/api/teams/{team_id}/leave")
+def leave_team(team_id: str, db: Db, user: CurrentUser):
+    from .common import lock_for_write
+    lock_for_write(db)
+    team = require_team(db, team_id)
+    authorize(db, user, team, "write")
+    member = db.scalar(select(TeamMember).where(TeamMember.team_id == team_id, TeamMember.user_id == user.id))
+    remaining = db.scalars(select(TeamMember).where(TeamMember.team_id == team_id, TeamMember.user_id != user.id)
+                          .order_by(TeamMember.joined_at, TeamMember.id)).all()
+    if team.lead_user_id == user.id and remaining:
+        team.lead_user_id = remaining[0].user_id
+        emit(db, team_id, "team.updated", user.id, {"lead_user_id": team.lead_user_id})
+
+    db.delete(member)
+    emit(db, team_id, "member.removed", user.id, {"user_id": user.id})
+    db.commit()
+    return {"left": True}
+
+
+class ProjectDetails(BaseModel):
+    brief: BriefPayload
+    deliverables: list[Deliverable] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def unique_keys(self):
+        if len({item.key for item in self.deliverables}) != len(self.deliverables):
+            raise ValueError("Deliverable keys must be unique")
+        return self
+
+
+class AssignmentDetails(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    problem: str = Field(default="", max_length=3000)
+    objective: str = Field(default="", max_length=3000)
+    deliverables: list[str] = Field(default_factory=list, max_length=20)
+    constraints: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ProjectDetailsUpdate(BaseModel):
+    project: ProjectDetails | None = None
+    assignment: AssignmentDetails | None = None
+
+
+@router.patch("/api/teams/{team_id}/project-details")
+def edit_project_details(team_id: str, body: ProjectDetailsUpdate, db: Db, user: CurrentUser):
+    from .common import lock_for_write
+    lock_for_write(db)
+    team = require_team(db, team_id)
+    authorize(db, user, team, "lead")
+    if body.project is None and body.assignment is None:
+        raise HTTPException(422, "Nothing to update")
+    if body.assignment is not None and not body.assignment.title.strip():
+        raise HTTPException(422, "Give the assignment a title")
+    changed = {}
+    if body.project is not None:
+        team.brief_json = body.project.brief.model_dump_json()
+        team.deliverables_json = json.dumps([item.model_dump(mode="json") for item in body.project.deliverables])
+        changed["project"] = project_dict(team)
+    if body.assignment is not None:
+        assignment = db.get(Assignment, team.assignment_id) if team.assignment_id else None
+        existing = loads(team.assignment_override_json, {}).get("brief", loads(assignment.brief_json, {}) if assignment else {})
+        brief = existing | body.assignment.model_dump(exclude={"title"})
+        team.assignment_override_json = json.dumps({"title": body.assignment.title.strip(), "brief": brief, "deliverables": body.assignment.deliverables})
+        changed["assignment"] = assignment_dict(assignment) | loads(team.assignment_override_json, {})
+    emit(db, team_id, "team.updated", user.id, changed)
+    db.commit()
+    return team_dict(db, team, "lead")

@@ -5,14 +5,13 @@ import { ArrowLeft } from "lucide-react"
 import { Avatar } from "@/components/teams/ui"
 import { InviteCode } from "@/components/teams/InviteCode"
 import { ClassOpenings } from "@/components/teams/OpeningsPanel"
-import { ProfilePanel } from "@/components/teams/ProfilePanel"
 import { useTeamClient } from "@/components/teams/team-client-context"
 import { errorMessage, type TeamClient } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
 
 type Detail = Awaited<ReturnType<TeamClient["classDetail"]>>
-type Tab = "overview" | "teams" | "find" | "people"
-const TABS: Tab[] = ["overview", "teams", "find", "people"]
+type Tab = "overview" | "teams" | "people"
+const TABS: Tab[] = ["overview", "teams", "people"]
 
 /** One class on its own page: what it is, who is in it, open teams to join, and finding teammates. */
 export function ClassPage({ id, onBack, onOpenTeam, onChanged }: { id: string; onBack: () => void; onOpenTeam: (teamId: string) => void; onChanged: () => void }) {
@@ -46,10 +45,10 @@ export function ClassPage({ id, onBack, onOpenTeam, onChanged }: { id: string; o
       {detail.organizer && live ? <InviteCode kind="classes" id={detail.id} label={t("teams.gp.inviteClass")} /> : null}
     </header>
     {error ? <p className="gp-error" role="alert">{error}</p> : null}
-    <div className="gp-tabs" role="tablist">
-      {visible.map(item => <button key={item} type="button" role="tab" aria-selected={tab === item} className="gp-tab" onClick={() => setTab(item)}>{t(`teams.gp.tabs.${item}`)}</button>)}
-    </div>
-    <div className="gp-tabpanel" role="tabpanel">
+    <nav className="gp-tabs" aria-label={detail.title}>
+      {visible.map(item => <button key={item} type="button" aria-current={tab === item ? "page" : undefined} className="gp-tab" onClick={() => setTab(item)}>{t(`teams.gp.tabs.${item}`)}</button>)}
+    </nav>
+    <div className="gp-tabpanel">
       {tab === "overview" ? <section className="gp-stackv">
         <h2 className="gp-h2">{t("teams.gp.assignments")}</h2>
         {detail.assignments.length ? <ul className="gp-rows">{detail.assignments.map(item => <li key={item.id} className="gp-row gp-row-static"><span className="gp-row-main"><strong dir="auto"><bdi>{item.title}</bdi></strong></span></li>)}</ul>
@@ -76,7 +75,6 @@ export function ClassPage({ id, onBack, onOpenTeam, onChanged }: { id: string; o
         </details> : null}
       </section> : null}
       {tab === "teams" && live ? <ClassOpenings key={detail.id} classId={detail.id} onOpenTeam={onOpenTeam} /> : null}
-      {tab === "find" && live ? <ProfilePanel key={`profile:${detail.id}`} classId={detail.id} assignments={detail.assignments} /> : null}
       {tab === "people" ? <section className="gp-stackv">
         <ul className="gp-rows">
           {detail.members.map(member => <li key={member.id} className="gp-row gp-row-static">

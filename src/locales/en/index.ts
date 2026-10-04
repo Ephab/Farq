@@ -1,3 +1,4 @@
+import { learning } from "./learning"
 // English is the source catalog and fallback. One file per feature namespace; add keys to the
 // English file first, then the Arabic file with the same name must match (CatalogShape fails tsc).
 // `core` is spread to the top level so shared keys read as common.*, nav.*, header.*, settings.*.
@@ -15,4 +16,4 @@ import { agent } from "./agent"
 import { blackboard } from "./blackboard"
 import { cv } from "./cv"
 
-export const en = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides, connections, agent, blackboard, cv } as const
+export const en = { ...core, onboarding, dashboard, roadmap, coach, emails, teams, quiz, slides, connections, agent, blackboard, cv, learning } as const

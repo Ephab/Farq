@@ -59,8 +59,10 @@ export const agent: CatalogShape<typeof en> = {
   connectors: {
     help: "بيانات Waypoint التي يمكن لـ Hermes قراءتها لمساعدتك. إيقاف أيٍّ منها يمنع أدواته عن Hermes، وتبقى البيانات نفسها في Waypoint.",
     allow: "السماح لـ Hermes باستخدام {name}",
-    names: { blackboard: "مواد المقررات", hackathons: "الهاكاثونات", coop: "فرص التدريب التعاوني", outlook: "بريد Outlook" },
+    names: { learning_reddit: "Reddit", learning_x: "X", blackboard: "مواد المقررات", hackathons: "الهاكاثونات", coop: "فرص التدريب التعاوني", outlook: "بريد Outlook" },
     descriptions: {
+      learning_reddit: "مستجدات تعلم من مجتمعات Reddit المحددة. إيقاف المصدر يخفي مستجداته ويوقف طلب جلبها.",
+      learning_x: "إعلانات حسابات المشاريع المعتمدة على X. إيقاف المصدر يخفي مستجداته ويوقف طلب جلبها.",
       blackboard: "مقرراتك ومواعيدك وإعلاناتك وملفاتك في Blackboard.",
       hackathons: "الهاكاثونات والمسابقات السعودية من Hackathonat.",
       coop: "شركات التدريب التعاوني والفرص الحالية.",

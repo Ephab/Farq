@@ -1,5 +1,7 @@
 "use client"
 
+import { LearningUpdatesView } from "@/components/learning/LearningUpdatesView"
+
 import { Bot, BriefcaseBusiness, Command, Database, FileText, FolderKanban, Home, ListChecks, Mail, PanelLeft, Presentation, Route, Square, Users } from "lucide-react"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { AnimatePresence, useReducedMotion } from "motion/react"
@@ -54,6 +56,7 @@ const VIEW_LABELS: Record<string, MessageKey> = {
   "Group Projects": "nav.items.teams",
   "Emails": "nav.items.emails",
   "Co-op": "nav.items.coop",
+  "Learning updates": "nav.items.learning",
   "CV": "nav.items.cv",
   "Slides": "nav.items.slides",
   "My data": "nav.items.myData",
@@ -129,7 +132,7 @@ function AppShell() {
   // A remembered student's profile decides between the app and onboarding: wait for it instead
   // of flashing the app (and firing its requests) for someone who is still onboarding.
   const [profileChecked, setProfileChecked] = useState(!hasChosenStudent())
-  // Live Hermes run for this student's coach thread — polled so any section
+  // Live Hermes run for this student's coach thread â€” polled so any section
   // can show that Hermes is still generating after navigating away.
   const activeRun = useActiveRun(profile?.thread_id ?? null)
   const teamUnread = useTeamUnread(active)
@@ -247,6 +250,7 @@ function AppShell() {
                 <NavItem label="Emails" text={t("nav.items.emails")} icon={<Mail className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
               <NavSection label={t("nav.sections.career")}>
+                <NavItem label="Learning updates" text={t("nav.items.learning")} icon={<ListChecks className="size-4" />} active={active} onSelect={setActive} />
                 <NavItem label="Co-op" text={t("nav.items.coop")} icon={<BriefcaseBusiness className="size-4" />} active={active} onSelect={setActive} />
                 <NavItem label="CV" text={t("nav.items.cv")} icon={<FileText className="size-4" />} active={active} onSelect={setActive} />
               </NavSection>
@@ -292,7 +296,7 @@ function AppShell() {
                     className="inline-flex min-w-0 max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
                   >
                     <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
-                    <span className="truncate">{t("header.hermesWorking")}{activeRun.stage ? <> · <bdi>{activeRun.stage}</bdi></> : null}</span>
+                    <span className="truncate">{t("header.hermesWorking")}{activeRun.stage ? <> Â· <bdi>{activeRun.stage}</bdi></> : null}</span>
                   </button>
                   <button
                     type="button"
@@ -326,6 +330,8 @@ function AppShell() {
                 <SlidesView />
               ) : active === "Group Projects" ? (
                 <TeamsView />
+              ) : active === "Learning updates" ? (
+                <LearningUpdatesView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Co-op" ? (
                 <CoopView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} onNavigate={(tab) => setActive(tab)} />
               ) : active === "CV" ? (

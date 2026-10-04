@@ -654,3 +654,17 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
 
 If the card says IAU asked for an extra step, it now shows what IAU displayed ("IAU showed: …") and a
 "See what IAU showed" screenshot. To watch the sign-in live, set `WAYPOINT_BB_HEADED=1` in `.env` and restart `run.bat`.
+
+## Learning updates (2026-10-04)
+
+Implemented Learning updates navigation, English/Arabic topic confirmation, source filters, cache
+cards, private dismissals and Ask Hermes. Backend learning_updates/ owns SQLite records, curated
+source validation, owner-checked routes, running student READ tools, separate Reddit/X connector
+switches and durable six-hour Apify refresh queue with $1/day shared budget and $0.10 reservations.
+Paid refresh defaults off behind two rollout flags; no live verification is claimed. See
+[learning-updates-threat-model.md](learning-updates-threat-model.md) for rollout and lost-launch recovery.
+
+Verification: full backend suite **553 passed** (41 new learning-update cases); frontend **70 passed**;
+`npm run build` passed. `node scripts/check-learning-updates.mjs` passed English desktop and Arabic
+mobile confirmation/filter/dismissal/Ask Hermes flows with escaped injection text. The browser test
+uses mocked API data, not live scraping. Existing lint/build/deprecation warnings remain.

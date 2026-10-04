@@ -48,6 +48,7 @@ export const core: CatalogShape<typeof en> = {
       quizzes: "الاختبارات",
       teams: "المشاريع الجماعية",
       emails: "البريد",
+      learning: "مستجدات التعلم",
       coop: "التدريب التعاوني",
       cv: "السيرة الذاتية",
       slides: "العروض التقديمية",

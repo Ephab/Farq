@@ -341,7 +341,7 @@ function SkillRow({ source, id, name, description, meta, children }: {
 
 // --- Connectors -----------------------------------------------------------------------------------
 
-type ConnectorId = "blackboard" | "hackathons" | "coop" | "outlook"
+type ConnectorId = "learning_reddit" | "learning_x" | "blackboard" | "hackathons" | "coop" | "outlook"
 interface Connector {
   id: ConnectorId
   tools: string[]

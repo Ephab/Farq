@@ -36,6 +36,8 @@ CONNECTORS: dict[str, tuple[str, tuple[str, ...], bool]] = {
     "hackathons": ("Saudi hackathons (Hackathonat)", ("waypoint_find_hackathons",), True),
     "coop": ("co-op companies and postings", (
         "waypoint_find_coop_companies", "waypoint_find_coop_postings", "waypoint_get_coop_target"), True),
+    "learning_reddit": ("Reddit learning updates", ("waypoint_find_learning_updates", "waypoint_get_learning_update"), True),
+    "learning_x": ("X learning updates", ("waypoint_find_learning_updates", "waypoint_get_learning_update"), True),
     "outlook": ("Outlook mail", ("waypoint_search_mail", "waypoint_read_mail"), False),
 }
 
@@ -93,6 +95,11 @@ def _status(db: Session, student_id: str, connector_id: str) -> dict:
     if connector_id == "coop":
         count, updated = db.execute(select(func.count(CoopPosting.id), func.max(CoopPosting.fetched_at)).where(CoopPosting.active.is_(True))).one()
         return {"available": (count or 0) > 0, "counts": {"postings": count or 0}, "updated_at": _iso(updated)}
+    if connector_id in {"learning_reddit", "learning_x"}:
+        from .learning_updates.service import feed
+        items = feed(db, student_id, connector_id.removeprefix("learning_"), limit=50)
+        return {"available": bool(items), "counts": {"items": len(items)},
+                "updated_at": max((p["fetched_at"] for p in items), default=None)}
     from .outlook.models import MailConnection, MailSession
     connection = db.scalar(select(MailConnection).where(MailConnection.user_id == student_id))
     coach = db.scalar(select(func.count()).select_from(MailSession).where(

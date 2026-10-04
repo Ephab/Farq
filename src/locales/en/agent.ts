@@ -57,8 +57,10 @@ export const agent = {
   connectors: {
     help: "The Waypoint data Hermes may read when it helps you. Turning one off blocks its tools for Hermes; the data itself stays in Waypoint.",
     allow: "Allow Hermes to use {name}",
-    names: { blackboard: "Course materials", hackathons: "Hackathons", coop: "Co-op postings", outlook: "Outlook mail" },
+    names: { learning_reddit: "Reddit", learning_x: "X", blackboard: "Course materials", hackathons: "Hackathons", coop: "Co-op postings", outlook: "Outlook mail" },
     descriptions: {
+      learning_reddit: "Curated public Reddit learning updates. Turning this off also hides its feed and stops fetch demand.",
+      learning_x: "Announcements from approved project accounts on X. Turning this off also hides its feed and stops fetch demand.",
       blackboard: "Your Blackboard courses, deadlines, announcements and files.",
       hackathons: "Saudi hackathons and competitions from Hackathonat.",
       coop: "Co-op companies and current postings.",

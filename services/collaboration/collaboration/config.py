@@ -39,8 +39,10 @@ class Settings(DatabaseSettings):
     hermes_api_key: SecretStr | None = Field(default=None, repr=False)
     # Shared secret the gateway's team plugin presents on /internal/hermes/*; every run also needs its own grant.
     hermes_tool_token: SecretStr | None = Field(default=None, repr=False)
-    hermes_provider: str | None = None
-    hermes_model: str | None = None
+    hermes_provider: str | None = "openrouter"
+    hermes_model: str | None = "stealth/space-bunny-alpha"
+    # Provider of the fallback models below (they are Gemini ids).
+    hermes_fallback_provider: str = "gemini"
     # Tried in order when the chosen model is busy or rate-limited (tool-calling models only).
     hermes_fallback_models: list[str] = Field(default_factory=lambda: ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"])
     run_timeout_seconds: int = Field(default=180, ge=10, le=900)

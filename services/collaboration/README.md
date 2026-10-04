@@ -86,7 +86,7 @@ On macOS and Linux install PostgreSQL yourself and set `COLLAB_DATABASE_URL`. He
 ## Team Hermes (optional, off by default)
 
 On a Windows PC, `server.bat start --team-ai` does all of the below by itself (its own gateway on 127.0.0.1:8643, generated
-tokens, the host's `GEMINI_API_KEY`); see [Running the shared server](../../docs/running-the-shared-server.md#team-hermes-hermes-in-project-chat).
+tokens, the host's `OPENROUTER_API_KEY`); see [Running the shared server](../../docs/running-the-shared-server.md#team-hermes-hermes-in-project-chat).
 By hand:
 
 

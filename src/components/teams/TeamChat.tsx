@@ -47,9 +47,8 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
   const needle = query.trim().toLowerCase()
   const visible = needle ? messages.filter((message) => !message.deleted && matchesSearch(message.content, needle)) : messages
   const pinned = new Set(Object.values(store.decisions).map((decision) => decision.source_message_id))
-  const typers = store.presence
-    .filter((entry) => entry.typing && entry.user_id !== me)
-    .map((entry) => memberName(store, entry.user_id).split(" ")[0])
+  const typingIds = store.presence.filter((entry) => entry.typing && entry.user_id !== me).map((entry) => entry.user_id)
+  const typers = typingIds.map((userId) => memberName(store, userId).split(" ")[0])
   const mention = mentionQuery(draft)
   const slash = slashQuery(draft)
   const mentionOptions = mention === null ? [] : [
@@ -72,7 +71,7 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
   useLayoutEffect(() => {
     const list = listRef.current
     if (list && !needle && stickToBottom.current) list.scrollTop = list.scrollHeight
-  }, [messages.length, lastMessage?.content, needle, store.hermes?.stage])
+  }, [messages.length, lastMessage?.content, needle, store.hermes?.stage, typingIds.length])
 
   // Jump from a pinned decision to its message: stop following the bottom, centre it, flash it.
   useEffect(() => {
@@ -220,12 +219,27 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
             update={update}
           />
         ))}
+        {!needle && typingIds.length ? (
+          <div className="tm-typing-row" aria-hidden="true">
+            <span className="tm-typing-avatars">
+              {typingIds.slice(0, 3).map((userId) => <Avatar key={userId} userId={userId} name={memberName(store, userId)} size={22} />)}
+            </span>
+            <TypingDots />
+          </div>
+        ) : null}
+        {!needle && store.hermes ? (
+          <div className="tm-typing-row" data-hermes="" aria-hidden="true">
+            <HermesAvatar size={22} />
+            <TypingDots />
+            <small dir="auto">{store.hermes.stage}</small>
+          </div>
+        ) : null}
       </div>
-      {store.hermes ? (
-        <div className="tm-hermes-bar" role={t("teams.proposal.fields.status")}><HermesAvatar size={18} /> {store.hermes.stage}…</div>
-      ) : null}
       <div className="tm-typing" aria-live="polite">
-        {typers.length ? t("teams.chat.typing", { count: typers.length, names: fmt.list(typers) }) : ""}
+        {[
+          store.hermes ? t("teams.chat.hermesTyping", { stage: store.hermes.stage }) : "",
+          typers.length ? t("teams.chat.typing", { count: typers.length, names: fmt.list(typers) }) : "",
+        ].filter(Boolean).join(" · ")}
       </div>
       <div className="tm-composer">
         {mentionOptions.length > 0 ? (
@@ -422,6 +436,10 @@ function MessageItem({ message, continued, followed, flash, handles, onOpenDecis
       ) : null}
     </article>
   )
+}
+
+function TypingDots() {
+  return <span className="tm-typing-dots"><i /><i /><i /></span>
 }
 
 function PollView({ message, me, store, onVote }: { message: TeamMessage; me: string; store: TeamStore; onVote: (option: number) => void }) {

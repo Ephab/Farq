@@ -207,6 +207,8 @@ export const teams = {
     connecting: "Connecting…",
     resize: "Resize chat",
     resizeHint: "Drag to resize the chat (double-click to reset)",
+    resizeRail: "Resize sidebar",
+    resizeRailHint: "Drag to resize the sidebar (double-click to reset)",
   },
   members: {
     heading: "Team · {count}/{limit}",
@@ -269,6 +271,7 @@ export const teams = {
     noMatch: "No messages match.",
     empty: "Say hello to your team.",
     typing: { one: "{names} is typing…", other: "{names} are typing…" },
+    hermesTyping: "Hermes is working: {stage}",
     mention: "Mention",
     aiTeammate: "AI teammate",
     commands: "Commands",

@@ -351,7 +351,7 @@ def call_gateway(settings: Settings, request: dict) -> str:
         for index, model in enumerate(ladder):
             body = dict(request["body"])
             if model and index:
-                body.update(provider=settings.hermes_provider or "gemini", model=model, session_id=f"{body.get('session_id', 'team')}-m{index}")
+                body.update(provider=settings.hermes_fallback_provider, model=model, session_id=f"{body.get('session_id', 'team')}-m{index}")
             headers = {"Authorization": f"Bearer {settings.hermes_api_key.get_secret_value()}", "Idempotency-Key": request["key"] + (f"-m{index}" if index else ""),
                        "X-Hermes-Session-Key": f"waypoint:team:{request['team_id']}"}
             try:

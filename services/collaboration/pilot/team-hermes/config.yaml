@@ -1,9 +1,9 @@
 # The shared server's own Hermes gateway. It is separate from the student coach gateway: its own home, its own
 # port (8643), its own lock directory, only the waypoint-team tools, no memory and no skills to learn.
 model:
-  default: gemini-3.8-flash
-  provider: gemini
-  base_url: https://generativelanguage.googleapis.com/v1beta
+  default: stealth/space-bunny-alpha
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
 
 platform_toolsets:
   api_server:

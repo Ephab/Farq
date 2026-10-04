@@ -1,0 +1,18 @@
+# Blackboard export files (contain personal academic data — never commit)
+iau-blackboard-export-*.json
+bb-export-*.json
+blackboard-export-*.json
+*blackboard*export*.json
+output/
+Downloads/
+
+# Playwright / session state (contains live session cookies — never commit)
+.blackboard-state.json
+.playwright/
+.session/
+*.har
+
+# Node / OS noise
+node_modules/
+.DS_Store
+Thumbs.db

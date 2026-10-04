@@ -1,0 +1,30 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Blackboard//Learn//EN
+BEGIN:VEVENT
+UID:cal-001@vle.iau.edu.sa
+DTSTAMP:20260110T120000Z
+DTSTART:20260210T205900Z
+DTEND:20260210T205900Z
+SUMMARY:CS101 - Intro to Computing: Assignment 1 - Essay
+DESCRIPTION:Write a 500-word essay.\nSubmit via Blackboard.
+URL:https://vle.iau.edu.sa/ultra/courses/_101_1/outline
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-001@vle.iau.edu.sa
+DTSTAMP:20260110T120000Z
+DTSTART:20260210T205900Z
+DTEND:20260210T205900Z
+SUMMARY:CS101 - Intro to Computing: Assignment 1 - Essay
+DESCRIPTION:Write a 500-word essay.\nSubmit via Blackboard.
+URL:https://vle.iau.edu.sa/ultra/courses/_101_1/outline
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-002@vle.iau.edu.sa
+DTSTAMP:20260110T120000Z
+DTSTART:20260301T080000Z
+DTEND:20260301T090000Z
+SUMMARY:MATH201: Midterm Exam
+LOCATION:Building A\, Room 101
+END:VEVENT
+END:VCALENDAR

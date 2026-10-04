@@ -61,7 +61,7 @@ export const agent: CatalogShape<typeof en> = {
     allow: "السماح لـ Hermes باستخدام {name}",
     names: { blackboard: "مواد المقررات", hackathons: "الهاكاثونات", coop: "فرص التدريب التعاوني", outlook: "بريد Outlook" },
     descriptions: {
-      blackboard: "مقرراتك وإعلاناتك وملفاتك في Blackboard (نسخة تجريبية).",
+      blackboard: "مقرراتك ومواعيدك وإعلاناتك وملفاتك في Blackboard.",
       hackathons: "الهاكاثونات والمسابقات السعودية من Hackathonat.",
       coop: "شركات التدريب التعاوني والفرص الحالية.",
       outlook: "نسخة بريدك المتزامنة، تُقرأ فقط عند تفعيل وصول المدرّب في هذه الجلسة.",

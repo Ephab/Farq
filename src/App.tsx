@@ -264,9 +264,9 @@ function AppShell() {
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-foreground group-data-[state=collapsed]/sidebar:hidden" aria-hidden="true">
                   {(profile?.display_name ?? "S").slice(0, 1).toUpperCase()}
                 </span>
-                <bdi dir="auto" className="min-w-0 flex-1 truncate text-sm font-medium group-data-[state=collapsed]/sidebar:hidden">
-                  {profile?.display_name ?? t("common.user")}
-                </bdi>
+                <span className="min-w-0 flex-1 truncate text-start text-sm font-medium group-data-[state=collapsed]/sidebar:hidden">
+                  <bdi>{profile?.display_name ?? t("common.user")}</bdi>
+                </span>
                 <FooterSettings />
               </div>
             </AnimatedSidebarFooter>
@@ -317,7 +317,7 @@ function AppShell() {
               ) : active === "Roadmap" ? (
                 <RoadmapView onOpenProject={(projectId) => { setActiveProjectId(projectId); setActive("Projects") }} onAskCoach={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Hermes Coach" ? null : active === "My data" ? (
-                <MyDataView onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
+                <MyDataView onOpenEmails={() => setActive("Emails")} onAskHermes={(draft) => { setCoachDraft(draft); setActive("Hermes Coach") }} />
               ) : active === "Emails" ? (
                 <EmailsView />
               ) : active === "Quizzes" ? (

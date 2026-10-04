@@ -106,6 +106,57 @@ on every restart.
   and made a run take 20+ minutes. A test that needs Laya installs a fake with
   `monkeypatch.setitem(decision_engines.INFO/ASK, "laya", ...)`.
 
+## Blackboard live sync (2026-10-03)
+
+- Session notice / missing lectures follow-up: sync acknowledges only the exact IAU
+  "Additional device logged out" Continue dialog, then checks the authenticated API. AD FS silent
+  redirects are handled while waiting for the login form; they never verify a typed password.
+  The extractor reads Ultra `data-bbfile` metadata for embedded files with opaque WebDAV URLs.
+  A live metadata-only sync succeeded and recovered NLP lectures 1–4 alongside 5–6, plus Ethics
+  lecture 1 and its updated version alongside 3–4. Originals remain remote until opened.
+  Newly catalogued NLP lecture 1 and updated Ethics lecture 1 both downloaded successfully
+  into memory with verified PDF signatures (2,140,195 and 1,043,322 bytes); nothing saved to disk.
+  Slides has subject folders and lecture/assignment/course-information/other-document filters,
+  plus term, format and search. Classification uses filenames and Blackboard paths.
+  Placeholder `ultraDocumentBody` titles display the filename in cards and collected records.
+  "Load previews on screen" snapshots the visible cards and loads PDF/PPTX first-slide covers
+  sequentially into memory; scrolling never triggers downloads. Stop, navigation and filter
+  changes cancel the batch. Desktop English and mobile Arabic browser checks verify viewport
+  scope, rendered covers and placeholder replacement.
+- Collection follow-up: My Data > Blackboard > View collected data exposes every stored course,
+  materials/announcements/assessments, grades, remote files, calendar events, diagnostics and a
+  redacted full export. The card now distinguishes **all courses** from current courses (the
+  student's observed 16 was the current count; their last sync listed 62 total).
+  Slides lists remote PDF/PPT/PPTX files by course and term with covers, in-memory previews on open,
+  optional workbench import and explicit Save to device. The catalog needs a new sync: older runs
+  discarded attachment metadata. Originals are not cached on disk. Owner-only, connector-gated
+  downloads use the saved session and enforce HTTPS redirects to IAU or its exact verified
+  file tenant (`alt-685da65a9aa3e.blackboard.com`), plus the 15 MB limit. The tenant receives a
+  separate request context with no IAU login cookies. A real-account PDF download (830,308 bytes,
+  verified PDF signature) and PPTX download (8,671,187 bytes, verified presentation archive)
+  succeeded through the IAU → storage redirect without storing the files.
+- Term IDs, names, dates and classification reasons are retained. Term dates override availability,
+  enrollment and year hints; statuses are current/past/upcoming/completed/unknown. A gradebook total
+  no longer proves completion. Missing dates are unknown. Attachment discovery no longer stops at
+  80 content items, follows attachment pagination, and catalogs observed same-origin document links.
+  Pagination caps are marked partial; filtered/failed course listings cannot delete past courses.
+  Backend/extension and browser fixture checks cover these flows; live sync and representative
+  ordinary and embedded-file downloads have also been verified.
+
+- Shipped: one extractor (`BB-Extension/src`) shared by the extension and the app; headless-Chromium AD FS
+  sign-in, sealed credentials, 6 h periodic sync with lockout-safe retries, redacted attachment text,
+  `blackboard_live` ingest (demo rows replaced), Hermes course tools with live standing/instructors/due-ordered
+  assignments, and the My data Blackboard card plus Today deadlines panel (en/ar). Threat model:
+  `docs/blackboard-threat-model.md`.
+- Manual live-smoke result: NOT run yet. Only the student may type their IAU credentials, so this is
+  unverified against the real portal. To run it: start with `run.bat`, open My data, use the Blackboard card
+  to sign in, wait for the sync to finish, then compare counts with the 2026-10-03 export: 62 courses
+  (16 current), 341 assessments, 305 announcements, 314 grades, 275 content items; that export had 0 events
+  and 189 failed sources, so events should now be non-zero and failed sources far fewer.
+- Follow-ups: MFA support (`extra_verification` today), a hosted secret store, and the extractor's
+  `captureSamples` debug option for diagnosing new portal shapes.
+
+
 ## What was built
 
 ### Roadmap view, lifecycle and history
@@ -474,6 +525,13 @@ deeper inspection but the onboarding prompt uses only `waypoint_index_folder`.
 - `useActiveRun` polls every 2 s only while a run is live (15 s idle, instant on send/visibility).
 
 ### 6. Smaller fixes
+- Coach runs never reach for the onboarding Generate button. `waypoint_ready_to_generate` is refused
+  outside the onboarding chat (409), but only a run's final text is stored and shown, so the refusal
+  used to *replace* Hermes' answer: a student asked "Where do I start coding?" and got "I couldn't
+  show the Generate button from here (it's onboarding-only)…" instead. `COACH_INSTRUCTIONS` now
+  forbids the call and points the coach at `waypoint_get_active_roadmap`, the 409 detail tells the
+  model to answer the question rather than narrate the error, and the plugin tool description says
+  the same (2026-10-03).
 - `services/api/tests/conftest.py`: documented pytest command works without PYTHONPATH.
 - `scripts/runtime.py`, shared by `scripts/run_mac.py` and `scripts/run_windows.py`,
   re-copies config, SOUL, plugin and all skills into `.hermes-runtime` each start
@@ -593,3 +651,6 @@ A full audit fixed these areas; see the commit messages on `claude/loving-noethe
   `src/components/coop/{CoopView,CoopMatchesPreview,fixtures}.tsx`
 - CV: `services/api/app/{cv,cv_fit}.py`, `src/components/cv/*`, `src/locales/{en,ar}/cv.ts`
 - Tests: `services/api/tests/{test_onboarding,test_scanner,test_roadmaps,test_staged_roadmap,test_coop_phase_b,test_cv,test_hermes_settings}.py`
+
+If the card says IAU asked for an extra step, it now shows what IAU displayed ("IAU showed: …") and a
+"See what IAU showed" screenshot. To watch the sign-in live, set `WAYPOINT_BB_HEADED=1` in `.env` and restart `run.bat`.

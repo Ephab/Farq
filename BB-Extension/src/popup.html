@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body { font-family: system-ui, sans-serif; width: 360px; padding: 12px; }
+button { width: 100%; padding: 10px; font-size: 14px; margin: 6px 0; }
+textarea { width: 100%; height: 60px; font-size: 11px; }
+pre { max-height: 260px; overflow: auto; background: #f4f4f4; padding: 8px; font-size: 11px; white-space: pre-wrap; }
+.small { font-size: 11px; color: #555; }
+.row { display: flex; gap: 12px; font-size: 12px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<h3>IAU Blackboard Extractor</h3>
+<p class="small">Read-only. Uses your current Blackboard login in this browser. No password stored. Stay on a <b>vle.iau.edu.sa</b> tab.</p>
+<div class="row">
+  <label><input type="radio" name="scope" value="current" checked> Current (--current)</label>
+  <label><input type="radio" name="scope" value="all"> All (--all)</label>
+</div>
+<div class="row">
+  <label><input type="checkbox" id="redact"> Redact my IDs (--redact)</label>
+</div>
+<button id="extract">Extract to JSON</button>
+<button id="download" disabled>Download JSON</button>
+<label class="small" for="ics">Optional: paste ICS calendar URL (Calendar &gt; Settings &gt; Share Calendar) to also merge deadlines:</label>
+<textarea id="ics" placeholder="https://vle.iau.edu.sa/learn/api/public/v1/calendars/...ics"></textarea>
+<pre id="status">Idle.</pre>
+<script src="popup.js"></script>
+</body>
+</html>

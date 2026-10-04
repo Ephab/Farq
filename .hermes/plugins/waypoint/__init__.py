@@ -245,8 +245,10 @@ def register(ctx):
         ),
         (
             "waypoint_ready_to_generate",
-            "Onboarding only: call once when you know enough to build the student's first roadmap. Shows them the "
-            "Generate my roadmap button. Then reply with a one or two sentence summary of what you learned.",
+            "Onboarding only: call once, before writing your summary, when you know enough to build the student's "
+            "first roadmap. Shows them the Generate my roadmap button, then reply with one or two sentences about "
+            "what you learned. Never call it from Hermes Coach or after onboarding: it is refused there, and the "
+            "refusal replaces your reply, so the student would only see an error note instead of your answer.",
             {"type": "object", "properties": {"user_id": USER_ID, "grant": GRANT}, "required": ["user_id", "grant"]},
             lambda p, **_: request("POST", "/internal/hermes/onboarding/ready", _body(p), grant=_grant(p)),
         ),

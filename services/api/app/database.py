@@ -37,8 +37,19 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 # Columns added after the first release. create_all() never alters existing
 # tables, so older local SQLite databases get them here (no migration tool yet).
 ADDED_COLUMNS = {
+    "blackboard_courses": {
+        "term_id": "VARCHAR(160) NOT NULL DEFAULT ''",
+        "lifecycle": "VARCHAR(16) NOT NULL DEFAULT 'unknown'",
+        "metadata_json": "TEXT NOT NULL DEFAULT '{}'",
+        "is_current": "BOOLEAN NOT NULL DEFAULT 0",
+        "instructors_json": "TEXT NOT NULL DEFAULT '[]'",
+        "grade_summary_json": "TEXT NOT NULL DEFAULT '{}'",
+        "url": "VARCHAR(500) NOT NULL DEFAULT ''",
+    },
+    "blackboard_content_items": {"url": "VARCHAR(500) NOT NULL DEFAULT ''"},
+    "blackboard_connections": {"collection_json": "TEXT NOT NULL DEFAULT '{}'"},
     "outlook_sessions": {"coach_access": "BOOLEAN NOT NULL DEFAULT 0"},
-    "outlook_connections": {"classifier": "VARCHAR(16) NOT NULL DEFAULT 'laya'", "classify_limit": "INTEGER"},
+    "outlook_connections": {"classifier": "VARCHAR(16) NOT NULL DEFAULT 'auto'", "classify_limit": "INTEGER DEFAULT 50"},
     "outlook_items": {"pending": "BOOLEAN NOT NULL DEFAULT 0"},
     "student_facts": {
         "source_kind": "VARCHAR(24) NOT NULL DEFAULT 'chat'",
@@ -87,6 +98,11 @@ def ensure_added_columns() -> None:
             for name, ddl in columns.items():
                 if existing and name not in existing:
                     connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+        if connection.exec_driver_sql("PRAGMA table_info(outlook_connections)").fetchall():
+            # Legacy manual choices identify connections predating the automatic policy.
+            # Migrate their old unlimited default once; subsequent explicit unlimited choices survive.
+            connection.exec_driver_sql("UPDATE outlook_connections SET classifier = 'auto', "
+                                       "classify_limit = COALESCE(classify_limit, 50) WHERE classifier != 'auto'")
 
 
 # Invariants the ORM cannot express with create_all on an existing database. Each is created

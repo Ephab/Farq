@@ -91,8 +91,15 @@ class BlackboardCourse(Base):
     code: Mapped[str] = mapped_column(String(80), default="")
     title: Mapped[str] = mapped_column(String(240))
     term: Mapped[str] = mapped_column(String(120), default="")
+    term_id: Mapped[str] = mapped_column(String(160), default="")
+    lifecycle: Mapped[str] = mapped_column(String(16), default="unknown")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     description: Mapped[str] = mapped_column(Text, default="")
     source_kind: Mapped[str] = mapped_column(String(32), default="blackboard_demo")
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    instructors_json: Mapped[str] = mapped_column(Text, default="[]")
+    grade_summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    url: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
@@ -110,11 +117,65 @@ class BlackboardContentItem(Base):
     filename: Mapped[str] = mapped_column(String(300), default="")
     mime_type: Mapped[str] = mapped_column(String(120), default="text/plain")
     source_ref: Mapped[str] = mapped_column(String(500), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
     origin: Mapped[str] = mapped_column(String(32), default="local_material")
     checksum: Mapped[str] = mapped_column(String(64), index=True)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     modified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class BlackboardAttachment(Base):
+    """Remote file catalog only. Original bytes are never kept on disk."""
+    __tablename__ = "blackboard_attachments"
+    __table_args__ = (UniqueConstraint("course_id", "content_id", "external_id", name="uq_bb_attachment"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("blackboard_courses.id"), index=True)
+    content_id: Mapped[str] = mapped_column(String(200))
+    external_id: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(300), default="")
+    filename: Mapped[str] = mapped_column(String(300))
+    mime_type: Mapped[str] = mapped_column(String(120), default="")
+    size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    download_url: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text, default="")
+    text_indexed: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BlackboardGrade(Base):
+    __tablename__ = "blackboard_grades"
+    __table_args__ = (UniqueConstraint("course_id", "external_id", name="uq_blackboard_grade_course_external"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("blackboard_courses.id"), index=True)
+    external_id: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(300))
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    possible: Mapped[float | None] = mapped_column(Float, nullable=True)
+    percentage: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="")
+    feedback: Mapped[str] = mapped_column(Text, default="")
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BlackboardConnection(Base):
+    """A student's live Blackboard login. Secrets are Fernet-sealed (docs/blackboard-threat-model.md)
+    and never leave the server: no response, log line or Hermes tool sees them."""
+    __tablename__ = "blackboard_connections"
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), primary_key=True)
+    username: Mapped[str] = mapped_column(String(120), default="")
+    password_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    session_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # idle | queued | logging_in | extracting | reading_files | saving | done | failed
+    status: Mapped[str] = mapped_column(String(16), default="idle")
+    stage_detail: Mapped[str] = mapped_column(String(200), default="")
+    failure_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    collection_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
 class ChatThread(Base):

@@ -337,7 +337,7 @@ function parseShape(
   };
 }
 
-export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
+export async function parsePptxDesign(file: File, maxSlides = MAX_SLIDES): Promise<ParsedPptx> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const readXml = async (path: string): Promise<Document | null> => {
@@ -404,7 +404,7 @@ export async function parsePptxDesign(file: File): Promise<ParsedPptx> {
       .sort((a, b) => Number(a.match(/slide(\d+)\.xml/)?.[1] ?? 0) - Number(b.match(/slide(\d+)\.xml/)?.[1] ?? 0))
       .forEach((p) => slidePaths.push(p));
   }
-  const limited = slidePaths.slice(0, MAX_SLIDES);
+  const limited = slidePaths.slice(0, Math.min(MAX_SLIDES, Math.max(1, maxSlides)));
 
   // Layout/master chain for inherited placeholder positions, cached per file.
   const docCache = new Map<string, Promise<Document | null>>();

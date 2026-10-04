@@ -134,3 +134,33 @@ def test_email_bad_jev_answer_still_tries_span(monkeypatch):
     result = engines.classify_email(EmailInput("Internship", "Apply"), "jev", FakeLaya())
     assert result.category == "opportunity"
     assert "engine_span" in result.review_reasons and "fallback_from_jev" in result.review_reasons
+
+
+@pytest.mark.parametrize("jev_available,jev_fails,span_fails,winner,expected", [
+    (True, False, False, "jev", ["jev"]),
+    (False, False, False, "span", ["span"]),
+    (True, True, False, "span", ["jev", "span"]),
+    (True, True, True, "laya", ["jev", "span"]),
+])
+def test_automatic_email_chain_is_independent_of_roadmap_mode(monkeypatch, jev_available, jev_fails, span_fails, winner, expected):
+    monkeypatch.setattr(engines, "active_chain", lambda: ("laya",))
+    monkeypatch.setitem(engines.INFO, "jev", info("jev", jev_available))
+    calls = []
+    def ask(name, fails):
+        def answer(state, questions, timeout):
+            calls.append(name)
+            if fails:
+                raise httpx.ReadTimeout("provider timed out")
+            return {"model": name, "answers": {
+                "category": {"choice": "coursework", "probabilities": {"coursework": 1.0}},
+                **{key: {"noul": .7} for key in ("important", "action_required", "time_sensitive", "lasting_relevance")},
+            }}
+        return answer
+    monkeypatch.setitem(engines.ASK, "jev", ask("jev", jev_fails))
+    monkeypatch.setitem(engines.ASK, "span", ask("span", span_fails))
+    laya = FakeLaya()
+    result = engines.classify_email(EmailInput("Exam", "Friday"), "auto", laya)
+    assert calls == expected
+    assert laya.calls == (1 if winner == "laya" else 0)
+    if winner != "laya":
+        assert result.model_id == winner

@@ -30,10 +30,16 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 - Central team Hermes (`services/collaboration/collaboration/team_hermes.py`, `hermes_tools.py`) is a proposer
   only, off by default, with its own gateway and plugin (`.hermes/plugins/waypoint-team`). Its tools need the
   service token plus a per-run grant; `run_id` is mandatory; the invoker is re-authorized per call. Never give
-  that gateway the student plugin, personal memory or generic tools.
+  that gateway the student plugin, personal memory or generic tools. `server.bat start --team-ai` runs it on
+  port 8643 with its own home and lock directory (`pilot/team_gateway.py`), never the student gateway's.
 - Moving a local team to the shared service is explicit, one-way and lead-only (`app/teams/cutover.py`,
   `collaboration/legacy_import.py`, `docs/collaboration-cutover.md`): no chat or personal data is sent, teammates
   are never enrolled for, and the local copy is frozen in `policy.authorize`, never only in the UI.
+- Blackboard sync (`services/api/app/blackboard_sync/`) signs in to IAU with the student's own credentials
+  in headless Chromium and runs `BB-Extension/src` (one extractor for the extension and the app). The password
+  and session are Fernet-sealed, never returned, logged or given to Hermes; a saved password that fails once is
+  wiped. Requests are GET-only except the AD FS form submit. Synced data is `blackboard_live`; only course-level
+  records become `suggested` evidence. See `docs/blackboard-threat-model.md`.
 - Uploaded files are never stored; only redacted, extracted evidence is.
 - Keep Gemini and Hermes keys server-side. The provider/model choice is server-side too
   (`app_settings` row `hermes_model`, set in Settings); browsers never send a model or key.
@@ -50,6 +56,8 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   stream, catch-up and replay read only that log. Course instructors see every team except its
   chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and
   `teams/events.py`, never only in the UI or prompt.
+- The local app contacts the shared server only after the student confirms it once per server address (a pane in
+  Group Projects); the check is in `packages/collaboration-auth/router.py`, never only in the UI.
 - Shared-service identity: in device mode the local API's `DeviceBroker` (`packages/collaboration-auth`) holds one Ed25519
   key per local student in the OS vault and the browser only ever receives short-lived access tokens, never the key.
   The central service issues and verifies those tokens itself (`collaboration/device_auth.py`). Do not expose the key,
@@ -81,6 +89,7 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 - Frontend check: `npm run build`
 - Backend tests: `.venv/Scripts/python -m pytest services/api/tests` (also covers the plugin scanner)
 - Regenerate the backend roadmap seed after editing the TypeScript seed: `node scripts/export-roadmap.mjs`
+- Extension tests: `node BB-Extension/test/run-tests.js` (regenerate the console snippet with `node BB-Extension/tools/build-console.js`)
 
 Read `docs/handoff.md` (current state, gaps, next steps), `docs/hermes-architecture.md` and
 `docs/future-work.md` before extending agent access.

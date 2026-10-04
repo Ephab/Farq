@@ -54,11 +54,11 @@ export function TeamChat({ store, update, onMakeTask, jumpTo, onOpenDecisions }:
   const slash = slashQuery(draft)
   const mentionOptions = mention === null ? [] : [
     ...store.team.members.filter((member) => member.user_id !== me).map((member) => ({ id: member.user_id, name: member.display_name, hermes: false })),
-    { id: "hermes", name: "Hermes", hermes: true },
+    ...(teams.teamAI ? [{ id: "hermes", name: "Hermes", hermes: true }] : []),
   ].filter((option) => option.name.toLowerCase().startsWith(mention.toLowerCase()))
   const commandOptions = slash === null ? [] : [
     { cmd: "/poll", hint: t("teams.chat.pollHint"), hermes: false },
-    ...HERMES_COMMANDS.map((command) => ({ cmd: command.cmd as string, hint: t(`teams.chat.commandHints.${command.hint}`), hermes: true })),
+    ...(teams.teamAI ? HERMES_COMMANDS.map((command) => ({ cmd: command.cmd as string, hint: t(`teams.chat.commandHints.${command.hint}`), hermes: true })) : []),
   ].filter((option) => option.cmd.slice(1).startsWith(slash.toLowerCase()))
 
   // Follow new messages only while the reader is at the bottom (true on first load),

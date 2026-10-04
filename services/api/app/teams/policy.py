@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..identity import User
-from .models import Assignment, CourseEnrollment, Team, TeamMember
+from .models import Assignment, CourseEnrollment, Team, TeamCutover, TeamMember
 
 # Who may do what inside a team. Chat ("view_chat") is members only: course
 # instructors see everything else (docs/superpowers/specs/2026-09-25-group-projects-design.md §5).
@@ -15,6 +15,9 @@ ACTIONS: dict[str, set[str]] = {
     "write": {"member"},
     "lead": {"lead"},
 }
+
+
+WRITES = {"write", "lead"}
 
 
 def team_role(db: Session, user: User, team: Team) -> str | None:
@@ -39,6 +42,8 @@ def is_member(role: str | None) -> bool:
 def authorize(db: Session, user: User, team: Team, action: str) -> str:
     """Return the viewer's role in the team, or raise 403."""
     role = team_role(db, user, team)
+    if action in WRITES and role is not None and db.get(TeamCutover, team.id) is not None:
+        raise HTTPException(409, "This team moved to the shared service; it is read-only on this computer")
     held = {role, "member"} if role == "lead" else {role}
     if role is None or not held & ACTIONS[action]:
         raise HTTPException(403, "You don't have access to this part of the team")

@@ -1,5 +1,16 @@
 # Hermes architecture
 
+## Central collaboration boundary (foundation)
+
+`services/collaboration/` is an independent central API foundation with its own
+PostgreSQL database and device accounts. Existing teams still run in the local API;
+they have not been migrated. No central Hermes tools are enabled yet. The planned
+central team runtime must have a separate home and team-only capabilities, with
+no personal facts, mail, files or memory access. See
+[collaboration architecture](collaboration-architecture.md) and
+[threat model](collaboration-threat-model.md). Personal SQLite remains authoritative
+for student facts and roadmaps; shared state will be owned by the central service.
+
 ## Runtime
 
 ```text
@@ -317,6 +328,20 @@ Graph/COM credentials or write operations are exposed to Hermes. Student IDs and
 team runs cannot authorize mailbox access. Revoking consent deletes the grants;
 disconnecting or reconnecting invalidates them. Email content stays untrusted and
 must not become StudentFacts or accepted roadmap changes.
+
+## Coach classmate and team discovery
+
+In the Collaboration screen the student may let the Coach search classes for them. This sets an
+in-memory opt-in bound to the signed-in broker session (two hours; cleared by opt-out, sign-out or
+an API restart). On each Coach message `collab_coach.issue_grant` mints a 15-minute capability for
+that run; only the capability enters the prompt. The `/internal/hermes/collaboration/*` endpoints
+require the internal token plus that capability, a `running` run on a thread owned by the same
+student, an unchanged opt-in session, and a refreshable central token. They call fixed `/v1` central
+paths with pattern-validated ids as the student, so central membership, consent and rate limits
+apply to every call. Responses are size-capped, flagged `untrusted_peer_data`, and drop the
+join-request snapshot. No tool publishes a profile, invites, or requests a place (`waypoint_collab_draft_profile` only stages reviewable fields in memory for the student to load, review and publish themselves), and peer text must
+never become StudentFacts, memory or learned skills. Central team Hermes remains a separate,
+not-yet-built worker with its own toolset.
 
 Classic Outlook and temporary Graph tokens share the local Laya/cache path.
 Native entrypoints are setup.bat/run.bat (Windows), setup.sh/run.sh (macOS).

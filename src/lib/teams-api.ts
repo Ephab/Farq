@@ -48,6 +48,8 @@ export interface TeamCard {
   assignment: { id: string; title: string; deadline: string | null }
   progress: number; next_task: { id: string; title: string; estimate_points: number; status: TaskStatus } | null
   members: string[]; unread: number | null; viewer_role: TeamRole; risk: string | null
+  /** True once the lead moved this computer's copy to the shared service (it is read-only now). */
+  moved?: boolean
 }
 export interface NeedsTeam {
   assignment_id: string; title: string; deadline: string | null; course: CourseRef
@@ -144,12 +146,88 @@ export function demoUsers(): Promise<TeamUser[]> {
 
 /** A client that always acts as `userId`. Bound once per view so a View-as
  * switch (or another tab) can never make an in-flight view act as someone else. */
-export function teamClient(userId: string) {
+export interface TeamEventSource extends EventTarget { close(): void; onopen: (() => void) | null; onerror: (() => void) | null }
+export interface TeamTransport {
+  mode: "central"
+  teamAI: boolean
+  projectImport: boolean
+  request<T>(path: string, init?: RequestInit): Promise<T>
+  raw(path: string, init?: RequestInit): Promise<Response>
+  events(teamId: string, after: number): TeamEventSource
+}
+
+export interface JoinRequestInfo {
+  id: string; team_id: string; team_name: string; account_id: string; display_name: string; note: string
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired"; expires_at: string
+}
+
+export interface SharedProfileBody {
+  skills: string[]; roles: string[]; interests: string[]; goals: string[]; languages: string[]; timezone: string
+  meeting_slots: number[]; hours_per_week: number | null; looking: boolean
+}
+export interface DiscoveryPreferences {
+  desired_skills: string[]; required_skills: string[]; required_languages: string[]; min_hours: number | null
+  required_meeting_slots: number[]; team_size: number
+}
+export interface ProfileMatches {
+  policy: string; bounded: boolean; eligible_candidates: number; explored: number
+  teams: Array<{ score: number; members: Array<{ account_id: string; display_name: string; version: number }>;
+    factors: { desired_skills_covered: string[]; complementary_skills: string[]; shared_interests: string[]; role_variety: string[]; common_meeting_slots: number[] };
+    missing: { schedule_count: number; commitment_count: number } }>
+}
+
+export interface ExistingTeamMatches {
+  policy: string; bounded: boolean
+  teams: Array<Omit<ProfileMatches["teams"][number], "members"> & { team_id: string; team_name: string; summary: string; roles: string[]; commitment: string; places: number; unknown_profiles: number; snapshot: string }>
+}
+
+export function teamClient(userId: string, transport?: TeamTransport) {
   function teamApi<T>(path: string, init?: RequestInit): Promise<T> {
+    if (transport) return transport.request<T>(path, init)
     return api<T>(path, { ...init, headers: { "X-Waypoint-User": userId, ...(init?.headers as Record<string, string> | undefined) } })
   }
   return {
   userId,
+  central: Boolean(transport),
+  teamAI: transport?.teamAI ?? true,
+  projectImport: transport?.projectImport ?? true,
+  createRoom: (name: string) => teamApi<TeamInfo>("/api/teams", send("POST", { name })),
+  classes: () => teamApi<Array<{ id: string; title: string; code: string; organizer: boolean; archived: boolean }>>("/api/classes"),
+  createClass: (title: string) => teamApi<{ id: string }>("/api/classes", send("POST", { title })),
+  classDetail: (id: string) => teamApi<{ id: string; title: string; organizer: boolean; archived: boolean; members: Array<{ id: string; display_name: string }>; assignments: Array<{ id: string; title: string }> }>(`/api/classes/${id}`),
+  transferOrganizer: (id: string, account: string) => teamApi(`/api/classes/${id}/organizer`, send("POST", { account_id: account })),
+  archiveClass: (id: string, action: "archive" | "restore") => teamApi(`/api/classes/${id}/${action}`, send("POST")),
+  archiveProject: (id: string, action: "archive" | "restore") => teamApi(`/api/teams/${id}/${action}`, send("POST")),
+  archivedProjects: () => teamApi<Array<{ id: string; name: string; can_restore: boolean; class_archived: boolean }>>("/api/me/archived-teams"),
+  ownTeamProfile: (id: string) => teamApi<{ version: number; published: boolean; discovery: boolean; profile: SharedProfileBody }>(`/api/teams/${id}/profile`),
+  publishTeamProfile: (id: string, version: number, profile: SharedProfileBody, discovery: boolean) => teamApi(`/api/teams/${id}/profile`, send("PUT", { reviewed: true, expected_version: version, profile, discovery })),
+  withdrawTeamProfile: (id: string, version: number) => teamApi(`/api/teams/${id}/profile/withdraw`, send("POST", { expected_version: version })),
+  teamProfiles: (id: string) => teamApi<Array<{ account_id: string; display_name: string; profile: SharedProfileBody }>>(`/api/teams/${id}/profiles`),
+  existingTeamMatches: (id: string, assignment: string) => teamApi<ExistingTeamMatches>(`/api/classes/${id}/discovery/team-matches`, send("POST", { assignment_id: assignment })),
+  ownProfile: (id: string) => teamApi<{ version: number; published: boolean; profile: SharedProfileBody }>(`/api/classes/${id}/profile`),
+  publishProfile: (id: string, version: number, profile: SharedProfileBody) => teamApi(`/api/classes/${id}/profile`, send("PUT", { reviewed: true, expected_version: version, profile })),
+  withdrawProfile: (id: string, version: number) => teamApi(`/api/classes/${id}/profile/withdraw`, send("POST", { expected_version: version })),
+  preferences: (id: string) => teamApi<DiscoveryPreferences>(`/api/classes/${id}/preferences`),
+  savePreferences: (id: string, body: DiscoveryPreferences) => teamApi(`/api/classes/${id}/preferences`, send("PUT", body)),
+  profileMatches: (id: string, assignment: string) => teamApi<ProfileMatches>(`/api/classes/${id}/discovery/matches`, send("POST", { assignment_id: assignment })),
+  candidateProfile: (id: string, account: string, version: number) => teamApi<{ display_name: string; profile: SharedProfileBody }>(`/api/classes/${id}/profiles/${account}?version=${version}`),
+  createAssignment: (id: string, title: string) => teamApi(`/api/classes/${id}/assignments`, send("POST", { title })),
+  issueCode: (scope: "classes" | "teams", id: string) => teamApi<{ id: string; code: string; expires_at: string }>(`/api/${scope}/${id}/codes`, send("POST", {})),
+  revokeCode: (id: string) => teamApi(`/api/codes/${id}`, send("DELETE")),
+  redeemCode: (code: string) => teamApi<{ team_id?: string; class_id?: string }>("/api/codes/redeem", send("POST", { code })),
+  removeClassMember: (id: string, account: string) => teamApi(`/api/classes/${id}/members/${account}`, send("DELETE")),
+  transferLead: (id: string, account: string) => teamApi(`/api/teams/${id}/lead`, send("POST", { user_id: account })),
+  openings: (id: string) => teamApi<Array<{ team_id: string; team_name: string; assignment_title: string; summary: string; roles: string[]; commitment: string; places: number; expires_at: string; request: JoinRequestInfo | null }>>(`/api/classes/${id}/openings`),
+  opening: (id: string) => teamApi<{ open: boolean; summary: string; roles: string[]; commitment: string }>(`/api/teams/${id}/opening`),
+  publishOpening: (id: string, body: { summary: string; roles: string[]; commitment: string }) => teamApi(`/api/teams/${id}/opening`, send("PUT", body)),
+  closeOpening: (id: string) => teamApi(`/api/teams/${id}/opening`, send("DELETE")),
+  requestJoin: (id: string, note: string, match_snapshot?: string) => teamApi<JoinRequestInfo>(`/api/teams/${id}/join-requests`, send("POST", { note, match_snapshot })),
+  joinRequests: (id: string) => teamApi<JoinRequestInfo[]>(`/api/teams/${id}/join-requests`),
+  myJoinRequests: () => teamApi<JoinRequestInfo[]>("/api/me/join-requests"),
+  decideJoin: (id: string, decision: "accept" | "decline" | "cancel") => teamApi(`/api/join-requests/${id}/${decision}`, send("POST")),
+  openEvents: (teamId: string, after: number): TeamEventSource => transport
+    ? transport.events(teamId, after)
+    : new EventSource(`${API_BASE}/api/teams/${teamId}/events?as=${encodeURIComponent(userId)}&after=${after}`) as TeamEventSource,
   home: () => teamApi<TeamsHomeData>("/api/me/teams-home"),
   classmates: (assignmentId: string) => teamApi<Classmate[]>(`/api/assignments/${assignmentId}/classmates`),
   createTeam: (assignmentId: string, name: string) => teamApi<TeamInfo>(`/api/assignments/${assignmentId}/teams`, send("POST", { name })),
@@ -196,6 +274,7 @@ export function teamClient(userId: string) {
   deleteSection: (sectionId: string) => teamApi<TeamDocumentInfo>(`/api/sections/${sectionId}`, send("DELETE")),
   /** The file itself (not JSON), so this bypasses `api` and returns the response body as a Blob. */
   exportDocument: async (documentId: string, format: ExportFormat, style: ExportStyle): Promise<Blob> => {
+    if (transport) return (await transport.raw(`/api/documents/${documentId}/export?format=${format}&style=${style}`)).blob()
     const response = await fetch(`${API_BASE}/api/documents/${documentId}/export?format=${format}&style=${style}`, { headers: { "X-Waypoint-User": userId } })
     if (!response.ok) throw new Error(translate("teams.errors.exportFailed", { status: String(response.status) }))
     return response.blob()

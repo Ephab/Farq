@@ -105,6 +105,7 @@ export const coach: CatalogShape<typeof en> = {
       hackathons: "يبحث عن الهاكاثونات",
       coop: "يبحث عن فرص التدريب التعاوني",
       mail: "يبحث في بريدك",
+      collab: "يبحث في فصولك",
       project: "يراجع مشروعك",
       folder: "يقرأ مجلد مشروعك",
       courses: "يتحقق من مقرراتك",

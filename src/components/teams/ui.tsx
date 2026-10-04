@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react"
 import { X } from "lucide-react"
-import { avatarColor, initials } from "@/lib/team-cover"
+import { avatarColor, avatarLetter } from "@/lib/team-cover"
 import { DOCK_DEFAULT, DOCK_MIN } from "@/lib/team-layout"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n/context"
@@ -19,7 +19,7 @@ export function Avatar({ userId, name, size = 24, online = false, typing = false
       aria-label={name}
       role="img"
     >
-      {initials(name)}
+      {avatarLetter(name)}
     </span>
   )
 }

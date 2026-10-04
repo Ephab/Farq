@@ -4,6 +4,13 @@ The backbone deliberately ships only chat-driven memory and roadmap revision.
 
 ## Near term
 
+- Central collaboration: follow the approved
+  [service plan](superpowers/plans/2026-10-03-collaboration-service.md). The isolated
+  API, device accounts, teams, classes and discovery exist; remaining are email verification or approval for
+  open sign-up, account recovery and multi-device use, hosted staging and the two-computer pilot.
+  [Threat-model baseline](collaboration-threat-model.md) records which controls
+  are implemented and which remain required before agent access or public rollout.
+
 - **Next: screenshot-based VLM evaluation.** Feed captured desktop/mobile screenshots to a server-selected vision model and combine screenshot-cited visual findings with DOM/log/test evidence. The current evaluator captures PNGs but never sends their pixels to its reviewer. Validate visual defect detection and document image disclosure/prompt-injection boundaries before enabling it.
 
 - Threat model for Group Projects team chat → Hermes: teammate-written prompt injection,

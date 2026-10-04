@@ -38,6 +38,7 @@ import { OnboardingView } from "@/components/onboarding/OnboardingView"
 import { useGenerationStatus } from "@/hooks/use-generation-status"
 import { LoaderCircle } from "lucide-react"
 import { api, getCurrentStudentId, hasChosenStudent, type StudentProfile } from "@/lib/waypoint-api"
+import { useCollaborationMode } from "@/lib/collaboration-mode"
 import { getActingUserId, type TeamsHomeData } from "@/lib/teams-api"
 import { cn } from "@/lib/utils"
 import { ThemeProvider } from "@/lib/theme-context"
@@ -381,7 +382,10 @@ function NavItem({ label, text, icon, active, onSelect, badge }: NavItemProps) {
 /** Unread team chat messages for whoever is acting in Group Projects, refreshed each minute and on navigation. */
 function useTeamUnread(active: string): number {
   const [unread, setUnread] = useState(0)
+  const connected = useCollaborationMode().kind === "connected"
   useEffect(() => {
+    // Central rooms do not read badges from the legacy local team store.
+    if (connected) { setUnread(0); return }
     let stopped = false
     const load = () => {
       api<TeamsHomeData>("/api/me/teams-home", { headers: { "X-Waypoint-User": getActingUserId() } })
@@ -391,6 +395,6 @@ function useTeamUnread(active: string): number {
     load()
     const timer = window.setInterval(load, 60_000)
     return () => { stopped = true; window.clearInterval(timer) }
-  }, [active])
+  }, [active, connected])
   return unread
 }

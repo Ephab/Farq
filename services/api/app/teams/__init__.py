@@ -15,6 +15,7 @@ from .activity import router as activity_router
 from .export import router as export_router
 from .demo import router as demo_router
 from .imports import router as imports_router
+from .cutover import router as cutover_router
 
 router = APIRouter()
 router.include_router(events_router)
@@ -31,3 +32,4 @@ router.include_router(activity_router)
 router.include_router(export_router)
 router.include_router(demo_router)
 router.include_router(imports_router)
+router.include_router(cutover_router)

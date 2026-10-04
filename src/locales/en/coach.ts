@@ -103,6 +103,7 @@ export const coach = {
       hackathons: "Looking up hackathons",
       coop: "Looking up co-op postings",
       mail: "Searching your mail",
+      collab: "Looking through your classes",
       project: "Reviewing your project",
       folder: "Reading your project folder",
       courses: "Checking your courses",

@@ -137,6 +137,16 @@ class Decision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class TeamCutover(Base):
+    """This team now lives on the shared collaboration service; the local copy is read-only history."""
+
+    __tablename__ = "team_cutovers"
+    team_id: Mapped[str] = mapped_column(ForeignKey("teams.id"), primary_key=True)
+    central_team_id: Mapped[str] = mapped_column(String(36))
+    central_origin: Mapped[str] = mapped_column(String(300))
+    moved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class TeamMessage(Base):
     __tablename__ = "team_messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

@@ -14,6 +14,7 @@ import httpx
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
+from waypoint_collaboration_auth import create_router as collaboration_auth_router
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
@@ -26,6 +27,7 @@ from .cv import router as cv_router
 from .database import Base, SessionLocal, engine, ensure_added_columns, ensure_indexes, get_db
 from .decisions import DecisionItem, observe_independently, status as decision_status
 from .disciplines import classify_program, public_registry
+from . import collab_coach
 from .hermes import HERMES_API_KEY, HERMES_URL, LIVE_PROGRESS, HermesJsonError, resolve_hermes_selection, run_agent, saved_choice
 from .models import AgentRun, ChatMessage, ChatThread, DataSource, DecisionRecord, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentHermesSettings, StudentMemory, StudentOpportunity, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
@@ -74,6 +76,18 @@ DEMO_STUDENT_ID = "demo-student"
 ROADMAP_SEED_PATH = Path(__file__).resolve().parents[1] / "seed-roadmap.json"
 Db = Annotated[Session, Depends(get_db)]
 app = FastAPI(title="Waypoint Hermes Backbone", version="0.1.0")
+def _collaboration_identity(request: Request) -> tuple[str, str]:
+    """Who the shared account belongs to on this computer: the same local student every other local route trusts."""
+    from .identity import current_user as _local_user
+    with SessionLocal() as db:
+        user = _local_user(request, db, request.headers.get("x-waypoint-user"))
+        return user.id, user.display_name
+
+
+_collaboration_auth = collaboration_auth_router(identity=_collaboration_identity)
+app.include_router(_collaboration_auth)
+collab_coach.bind(_collaboration_auth)
+app.include_router(collab_coach.router)
 app.include_router(projects_router)
 app.include_router(identity_router)
 app.include_router(outlook_router)
@@ -1328,11 +1342,12 @@ def send_message(
     message.agent_run_id = run.id
     from .outlook.coach import issue_grant
     mailbox_access = issue_grant(request, db, run.id)
+    collaboration_access = collab_coach.issue_grant(thread.student_id, run.id)
     db.commit()
     background.add_task(observe_independently, [DecisionItem(
         entity_type="chat_message", entity_id=message.id, title="Student coach request", text=content, student_id=thread.student_id,
     )], "chat_intent")
-    background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key, **({"mailbox_access": mailbox_access} if mailbox_access else {}))
+    background.add_task(run_agent, run.id, thread.student_id, body.provider, body.model, x_hermes_api_key, **({"mailbox_access": mailbox_access} if mailbox_access else {}), **({"collaboration_access": collaboration_access} if collaboration_access else {}))
     return {"run_id": run.id, "message_id": message.id, "status": run.status}
 
 

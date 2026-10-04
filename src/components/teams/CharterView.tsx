@@ -5,11 +5,13 @@ import { Avatar } from "@/components/teams/ui"
 import type { StoreUpdate } from "@/components/teams/use-team-stream"
 import { memberName, type TeamStore } from "@/lib/team-store"
 import { useI18n } from "@/lib/i18n/context"
+import { useTeamClient } from "./team-client-context"
 
 interface CharterViewProps { store: TeamStore; canEdit: boolean; update: StoreUpdate }
 
 export function CharterView({ store, canEdit, update }: CharterViewProps) {
   const { t, fmt } = useI18n()
+  const teams = useTeamClient()
   const { charter, assignment, project } = store.team
   const brief = assignment.brief as { problem?: string; objective?: string; deliverables?: string[]; constraints?: string[] }
   const own = project?.brief ?? {}
@@ -20,7 +22,7 @@ export function CharterView({ store, canEdit, update }: CharterViewProps) {
     : assignment.rubric.map((item) => ({ key: item.id, title: item.title, description: item.description, weight: item.weight }))
   return (
     <div className="flex flex-col gap-6">
-      {canEdit ? <ProjectSetup store={store} update={update} /> : null}
+      {canEdit && teams.projectImport ? <ProjectSetup store={store} update={update} /> : null}
       <section>
         <h2 className="tm-h2">{t("teams.charter.title")}</h2>
         {charter.goal ? (

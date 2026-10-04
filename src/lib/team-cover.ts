@@ -10,12 +10,15 @@ function hash(seed: string): number {
 
 export interface Cover { image: string; color: string; accents: [string, string, string] }
 
+/** Covers are built from the active theme's accent (CSS variables, resolved where they are drawn), so they follow the
+ * theme and its dark mode. The seed only varies where the soft highlights sit, so each project looks a little different. */
 export function coverFor(seed: string): Cover {
   const h = hash(seed || "waypoint")
-  const base = h % 360
-  const second = (base + 40 + ((h >>> 9) % 70)) % 360
-  const third = (base + 160 + ((h >>> 17) % 80)) % 360
-  const accents: [string, string, string] = [`hsl(${base} 34% 46%)`, `hsl(${second} 38% 62%)`, `hsl(${third} 36% 56%)`]
+  const accents: [string, string, string] = [
+    "var(--fq-accent)",
+    "color-mix(in srgb, var(--fq-accent) 62%, var(--fq-surface-solid))",
+    "color-mix(in srgb, var(--fq-accent) 36%, var(--fq-surface-solid))",
+  ]
   const x1 = 8 + ((h >>> 3) % 30)
   const y1 = 10 + ((h >>> 7) % 40)
   const x2 = 62 + ((h >>> 11) % 30)
@@ -27,8 +30,15 @@ export function coverFor(seed: string): Cover {
   }
 }
 
-export function avatarColor(userId: string): string {
-  return `hsl(${hash(userId || "?") % 360} 32% 47%)`
+/** Same neutral circle as the account avatar in the sidebar, for everyone, in every theme. */
+export function avatarColor(_userId: string): string {
+  return "var(--muted)"
+}
+
+/** The single letter shown in an avatar, as in the sidebar. */
+export function avatarLetter(name: string): string {
+  const first = [...name.trim()][0]
+  return first ? first.toUpperCase() : "?"
 }
 
 export function initials(name: string): string {

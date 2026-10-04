@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TEAM_EVENT_TYPES, applyEvent, fromSnapshot, rebase, type TeamStore } from "@/lib/team-store"
-import { errorMessage, type PresenceEntry, type TeamEvent } from "@/lib/teams-api"
+import { errorMessage, type PresenceEntry, type TeamEvent, type TeamEventSource } from "@/lib/teams-api"
 import { useTeamClient } from "@/components/teams/team-client-context"
 
 export type StoreUpdate = (fn: (store: TeamStore) => TeamStore) => void
@@ -25,12 +25,12 @@ export function useTeamStream(teamId: string) {
   }, [teams, teamId])
 
   useEffect(() => {
-    let source: EventSource | null = null
+    let source: TeamEventSource | null = null
     let cancelled = false
     reload()
       .then((initial) => {
         if (cancelled) return
-        source = new EventSource(teams.eventsUrl(teamId, initial.lastSeq))
+        source = teams.openEvents(teamId, initial.lastSeq)
         // One malformed frame is skipped instead of throwing out of the listener.
         const parse = <T,>(raw: Event): T | null => {
           try { return JSON.parse((raw as MessageEvent<string>).data) as T } catch { return null }
@@ -40,6 +40,9 @@ export function useTeamStream(teamId: string) {
           if (!event) return
           recent.current = [...recent.current.slice(-199), event]
           setStore((current) => (current ? applyEvent(current, event) : current))
+          if (event.type === "team.updated" && "lead_user_id" in event.payload) {
+            void reload().catch(reason => { if (!cancelled) setError(errorMessage(reason)) })
+          }
         }
         for (const type of TEAM_EVENT_TYPES) source.addEventListener(type, onEvent)
         source.addEventListener("presence", (raw) => {
@@ -48,7 +51,12 @@ export function useTeamStream(teamId: string) {
           setStore((current) => (current ? { ...current, presence } : current))
         })
         source.onopen = () => setLive(true)
-        source.onerror = () => setLive(false)
+        source.onerror = () => {
+          setLive(false)
+          if (teams.central) void reload().catch(reason => {
+            if (!cancelled) { setStore(null); setError(errorMessage(reason)) }
+          })
+        }
       })
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)) })
     return () => {

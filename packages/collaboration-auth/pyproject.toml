@@ -1,0 +1,18 @@
+[project]
+name = "waypoint-collaboration-auth"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["fastapi==0.116.1", "uvicorn==0.35.0", "httpx==0.28.1", "PyJWT[crypto]>=2.12,<3", "keyring>=25,<26"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest==8.4.2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/waypoint_collaboration_auth"]

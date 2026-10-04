@@ -39,6 +39,12 @@ function event(type: string, payload: Record<string, unknown>): TeamEvent {
 }
 
 describe("applyEvent", () => {
+  it("removes a departed member and advances over code events", () => {
+    const removed = applyEvent(fromSnapshot(snapshot()), event("member.removed", { user_id: "u1" }))
+    expect(removed.team.members).toEqual([])
+    const code = event("invite.code_revoked", { invite_id: "invitation" })
+    expect(applyEvent(removed, code).lastSeq).toBe(code.seq)
+  })
   it("ignores events at or before the snapshot cursor", () => {
     const store = fromSnapshot(snapshot())
     const stale = { seq: 10, type: "task.created", actor_user_id: "u1", payload: task("a") as unknown as Record<string, unknown>, created_at: T0 }

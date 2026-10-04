@@ -71,7 +71,7 @@ const isolate = (text: string) => `\u2068${text}\u2069`
 
 interface InviteRowProps { invite: TeamInvite; onJoined: (teamId: string) => void; onChanged: () => void }
 
-function InviteRow({ invite, onJoined, onChanged }: InviteRowProps) {
+export function InviteRow({ invite, onJoined, onChanged }: InviteRowProps) {
   const teams = useTeamClient()
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
@@ -106,7 +106,7 @@ function InviteRow({ invite, onJoined, onChanged }: InviteRowProps) {
   )
 }
 
-function NeedsTeamRow({ item, onCreated }: { item: NeedsTeam; onCreated: (teamId: string) => void }) {
+export function NeedsTeamRow({ item, onCreated }: { item: NeedsTeam; onCreated: (teamId: string) => void }) {
   const teams = useTeamClient()
   const { t } = useI18n()
   const [naming, setNaming] = useState(false)

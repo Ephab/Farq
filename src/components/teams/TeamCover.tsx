@@ -1,7 +1,7 @@
 "use client"
 
 import { ArrowUpRight } from "lucide-react"
-import { avatarColor, coverFor } from "@/lib/team-cover"
+import { coverFor } from "@/lib/team-cover"
 import { dueLabel } from "@/lib/team-format"
 import type { TeamCard } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
@@ -28,6 +28,8 @@ export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void
   const cover = coverFor(card.cover_seed)
   const due = dueLabel(card.assignment.deadline, t)
   const clamped = Math.max(0, Math.min(100, card.progress))
+  // A project made on its own has no course or assignment, so say what it is instead of showing blanks.
+  const solo = !card.assignment.id
   return (
     <button
       type="button"
@@ -40,14 +42,14 @@ export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void
         style={{ backgroundImage: cover.image, backgroundColor: cover.color }}
       >
         <span className="tm-folder-toprow">
-          <span className="tm-cover-chip">{card.course.code}{due ? ` · ${due}` : ""}</span>
+          <span className="tm-cover-chip">{solo ? t("teams.gp.projectLabel") : <>{card.course.code}{due ? ` · ${due}` : ""}</>}</span>
           {card.unread ? <span className="tm-cover-unread">{t("teams.cover.unread", { count: card.unread })}</span> : null}
         </span>
         {card.risk ? <span className="tm-folder-risk" title={card.risk}>⚠ {t("teams.cover.atRisk")}</span> : null}
         <span className="tm-folder-info" aria-hidden="true">
-          <span className="tm-folder-info-title" dir="auto">{card.assignment.title}</span>
+          <span className="tm-folder-info-title" dir="auto">{solo ? card.name : card.assignment.title}</span>
           <span className="tm-folder-info-meta">
-            {due ?? t("teams.cover.noDueDate")} · {t("teams.cover.members", { count: card.members.length })} · {fmt.percent(clamped / 100)}
+            {solo ? null : <>{due ?? t("teams.cover.noDueDate")} · </>}{t("teams.cover.members", { count: card.members.length })} · {fmt.percent(clamped / 100)}
           </span>
           <span className="tm-folder-info-bar"><i style={{ width: `${clamped}%` }} /></span>
           {card.next_task ? <span className="tm-folder-info-next" dir="auto">{t("teams.cover.next", { task: card.next_task.title })}</span> : null}
@@ -59,10 +61,10 @@ export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void
         <span className="tm-folder-title-row">
           <span className="tm-folder-name" dir="auto">{card.name}</span>
         </span>
-        <span className="tm-cover-sub tm-folder-sub" dir="auto">{card.assignment.title}</span>
+        <span className="tm-cover-sub tm-folder-sub" dir="auto">{solo ? t("teams.cover.members", { count: card.members.length }) : card.assignment.title}</span>
         <span className="tm-folder-foot">
           <span className="tm-cover-members" aria-label={t("teams.cover.members", { count: card.members.length })}>
-            {card.members.slice(0, 6).map((id) => <span key={id} className="tm-cover-dot" style={{ background: avatarColor(id) }} />)}
+            {card.members.slice(0, 6).map((id) => <span key={id} className="tm-cover-dot" />)}
           </span>
           <ProgressRing value={card.progress} />
         </span>

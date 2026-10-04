@@ -323,6 +323,48 @@ wheels = [
 ]
 
 [[package]]
+name = "jaraco-classes"
+version = "3.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "more-itertools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/c0/ed4a27bc5571b99e3cff68f8a9fa5b56ff7df1c2251cc715a652ddd26402/jaraco.classes-3.4.0.tar.gz", hash = "sha256:47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd", size = 11780, upload-time = "2024-03-31T07:27:36.643Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7f/66/b15ce62552d84bbfcec9a4873ab79d993a1dd4edb922cbfccae192bd5b5f/jaraco.classes-3.4.0-py3-none-any.whl", hash = "sha256:f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790", size = 6777, upload-time = "2024-03-31T07:27:34.792Z" },
+]
+
+[[package]]
+name = "jaraco-context"
+version = "6.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/50/4763cd07e722bb6285316d390a164bc7e479db9d90daa769f22578f698b4/jaraco_context-6.1.2.tar.gz", hash = "sha256:f1a6c9d391e661cc5b8d39861ff077a7dc24dc23833ccee564b234b81c82dfe3", size = 16801, upload-time = "2026-03-20T22:13:33.922Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/58/bc8954bda5fcda97bd7c19be11b85f91973d67a706ed4a3aec33e7de22db/jaraco_context-6.1.2-py3-none-any.whl", hash = "sha256:bf8150b79a2d5d91ae48629d8b427a8f7ba0e1097dd6202a9059f29a36379535", size = 7871, upload-time = "2026-03-20T22:13:32.808Z" },
+]
+
+[[package]]
+name = "jaraco-functools"
+version = "4.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "more-itertools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6c/1f/c23395957d41ccf27c4e535c3d334c4051e5395b3752057ba4cbaec35c56/jaraco_functools-4.6.0.tar.gz", hash = "sha256:880c577ec9720b3a052d5bc611fb9f2269b3d87902ef42440df443b88e443280", size = 20837, upload-time = "2026-07-14T01:28:02.544Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/36/ecc85bc96c273dc8a11273ed4782272975e6338d4a3e9228621175edf0e3/jaraco_functools-4.6.0-py3-none-any.whl", hash = "sha256:99e3dc0060c5cbe8fcd1cdb36258e2a65ca40f1566b2033b12abb1bb44dd3c30", size = 11677, upload-time = "2026-07-14T01:28:01.59Z" },
+]
+
+[[package]]
+name = "jeepney"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/6f/357efd7602486741aa73ffc0617fb310a29b588ed0fd69c2399acbb85b0c/jeepney-0.9.0.tar.gz", hash = "sha256:cf0e9e845622b81e4a28df94c40345400256ec608d0e55bb8a3feaa9163f5732", size = 106758, upload-time = "2025-02-27T18:51:01.684Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/a3/e137168c9c44d18eff0376253da9f1e9234d0239e0ee230d2fee6cea8e55/jeepney-0.9.0-py3-none-any.whl", hash = "sha256:97e5714520c16fc0a45695e5365a2e11b81ea79bba796e26f9f1d178cb182683", size = 49010, upload-time = "2025-02-27T18:51:00.104Z" },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -335,6 +377,23 @@ wheels = [
 ]
 
 [[package]]
+name = "keyring"
+version = "25.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jaraco-classes" },
+    { name = "jaraco-context" },
+    { name = "jaraco-functools" },
+    { name = "jeepney", marker = "sys_platform == 'linux' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "pywin32-ctypes", marker = "sys_platform == 'win32' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "secretstorage", marker = "sys_platform == 'linux' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/4b/674af6ef2f97d56f0ab5153bf0bfa28ccb6c3ed4d1babf4305449668807b/keyring-25.7.0.tar.gz", hash = "sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b", size = 63516, upload-time = "2025-11-16T16:26:09.482Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/db/e655086b7f3a705df045bf0933bdd9c2f79bb3c97bfef1384598bb79a217/keyring-25.7.0-py3-none-any.whl", hash = "sha256:be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f", size = 39160, upload-time = "2025-11-16T16:26:08.402Z" },
+]
+
+[[package]]
 name = "laya"
 version = "0.3.20"
 source = { registry = "https://pypi.org/simple" }
@@ -343,8 +402,7 @@ dependencies = [
     { name = "numpy" },
     { name = "safetensors" },
     { name = "torch", version = "2.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
     { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "transformers" },
@@ -397,6 +455,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2f/e1/78ee7a023dac597a5825441ebd17170785a9dab23de95d2c7508ade94e0e/markupsafe-3.0.3-cp312-cp312-win32.whl", hash = "sha256:d88b440e37a16e651bda4c7c2b930eb586fd15ca7406cb39e211fcff3bf3017d", size = 14540, upload-time = "2025-09-27T18:36:38.761Z" },
     { url = "https://files.pythonhosted.org/packages/aa/5b/bec5aa9bbbb2c946ca2733ef9c4ca91c91b6a24580193e891b5f7dbe8e1e/markupsafe-3.0.3-cp312-cp312-win_amd64.whl", hash = "sha256:26a5784ded40c9e318cfc2bdb30fe164bdb8665ded9cd64d500a34fb42067b1c", size = 15105, upload-time = "2025-09-27T18:36:39.701Z" },
     { url = "https://files.pythonhosted.org/packages/e5/f1/216fc1bbfd74011693a4fd837e7026152e89c4bcf3e77b6692fba9923123/markupsafe-3.0.3-cp312-cp312-win_arm64.whl", hash = "sha256:35add3b638a5d900e807944a078b51922212fb3dedb01633a8defc4b01a3c85f", size = 13906, upload-time = "2025-09-27T18:36:40.689Z" },
+]
+
+[[package]]
+name = "more-itertools"
+version = "11.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/1d/f4da6f02cdffe04d6362210b807146a26044c88d839208aec273bb0d9184/more_itertools-11.1.0.tar.gz", hash = "sha256:48e8f4d9e7e5878571ecf6f2b4e57634f93cd474cc8cfbd2376f2d11b396e30d", size = 145772, upload-time = "2026-05-22T14:14:29.909Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/3d/1087453384dbde46a8c7f9356eead2c58be8a7bf156bca40243377c85715/more_itertools-11.1.0-py3-none-any.whl", hash = "sha256:4b65538ae22f6fed0ce4874efd317463a7489796a0939fa66824dd542125a192", size = 72226, upload-time = "2026-05-22T14:14:28.824Z" },
 ]
 
 [[package]]
@@ -714,6 +781,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pyjwt"
+version = "2.15.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/ea/5194e52748b0da83d71e082d75496eaec6e58f419f5e184786ded517e6a9/pyjwt-2.15.1.tar.gz", hash = "sha256:4f259e80cdfb6b3fc18a7de51fd1ef9ec79652f25019bae68975ca2468a34df8", size = 121252, upload-time = "2026-09-28T18:40:42.598Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/ca/44de4e75f8aadc457f0634be3b542815078ded46dca30efb960edeecad6e/pyjwt-2.15.1-py3-none-any.whl", hash = "sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193", size = 33860, upload-time = "2026-09-28T18:40:41.429Z" },
+]
+
+[package.optional-dependencies]
+crypto = [
+    { name = "cryptography" },
+]
+
+[[package]]
 name = "pypdf"
 version = "6.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -800,6 +881,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pywin32-ctypes"
+version = "0.2.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/9f/01a1a99704853cb63f253eea009390c88e7131c67e66a0a02099a8c917cb/pywin32-ctypes-0.2.3.tar.gz", hash = "sha256:d162dc04946d704503b2edc4d55f3dba5c1d539ead017afa00142c38b9885755", size = 29471, upload-time = "2024-08-14T10:15:34.626Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/3d/8161f7711c017e01ac9f008dfddd9410dff3674334c233bde66e7ba65bbf/pywin32_ctypes-0.2.3-py3-none-any.whl", hash = "sha256:8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8", size = 30756, upload-time = "2024-08-14T10:15:33.187Z" },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -876,6 +966,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/d8/0c8a7dc9b41dcac53c4cbf9df2b9c83e0e0097203de8b37a712b345c0be5/safetensors-0.7.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:b0f6d66c1c538d5a94a73aa9ddca8ccc4227e6c9ff555322ea40bdd142391dd4", size = 677368, upload-time = "2025-11-19T15:18:41.627Z" },
     { url = "https://files.pythonhosted.org/packages/05/e5/cb4b713c8a93469e3c5be7c3f8d77d307e65fe89673e731f5c2bfd0a9237/safetensors-0.7.0-cp38-abi3-win32.whl", hash = "sha256:c74af94bf3ac15ac4d0f2a7c7b4663a15f8c2ab15ed0fc7531ca61d0835eccba", size = 326423, upload-time = "2025-11-19T15:18:45.74Z" },
     { url = "https://files.pythonhosted.org/packages/5d/e6/ec8471c8072382cb91233ba7267fd931219753bb43814cbc71757bfd4dab/safetensors-0.7.0-cp38-abi3-win_amd64.whl", hash = "sha256:d1239932053f56f3456f32eb9625590cc7582e905021f94636202a864d470755", size = 341380, upload-time = "2025-11-19T15:18:44.427Z" },
+]
+
+[[package]]
+name = "secretstorage"
+version = "3.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or sys_platform != 'darwin' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "jeepney", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu') or sys_platform != 'darwin' or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/46/f5af3402b579fd5e11573ce652019a67074317e18c1935cc0b4ba9b35552/secretstorage-3.5.0-py3-none-any.whl", hash = "sha256:0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137", size = 15554, upload-time = "2025-11-23T19:02:51.545Z" },
 ]
 
 [[package]]
@@ -985,35 +1088,16 @@ wheels = [
 [[package]]
 name = "torch"
 version = "2.8.0"
-source = { registry = "https://download.pytorch.org/whl/cpu" }
-resolution-markers = [
-    "platform_machine != 'x86_64' and sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "filelock", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "fsspec", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "jinja2", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "networkx", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "setuptools", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "sympy", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-]
-wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.8.0-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:a47b7986bee3f61ad217d8a8ce24605809ab425baf349f97de758815edd2ef54", upload-time = "2025-10-01T23:35:50Z" },
-]
-
-[[package]]
-name = "torch"
-version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "platform_machine != 'x86_64' or sys_platform != 'darwin'",
+    "platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda'",
+    "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')",
 ]
 dependencies = [
-    { name = "filelock", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "fsspec", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "jinja2", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "networkx", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "filelock", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
+    { name = "fsspec", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
+    { name = "jinja2", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
+    { name = "networkx", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
     { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
@@ -1028,10 +1112,10 @@ dependencies = [
     { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "setuptools", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "sympy", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "setuptools", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
+    { name = "sympy", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
     { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "typing-extensions", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/0c/2fd4df0d83a495bb5e54dca4474c4ec5f9c62db185421563deeb5dabf609/torch-2.8.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:e2fab4153768d433f8ed9279c8133a114a034a61e77a3a104dcdf54388838705", size = 101906089, upload-time = "2025-08-06T14:53:52.631Z" },
@@ -1257,18 +1341,17 @@ dependencies = [
     { name = "safetensors" },
     { name = "sqlalchemy" },
     { name = "torch", version = "2.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-8-waypoint-cpu') or (platform_machine != 'x86_64' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda') or (platform_machine == 'x86_64' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra != 'extra-8-waypoint-cpu' and extra != 'extra-8-waypoint-cuda')" },
     { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-8-waypoint-cuda') or (sys_platform != 'darwin' and extra == 'extra-8-waypoint-cuda') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
     { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "waypoint-collaboration-auth" },
 ]
 
 [package.optional-dependencies]
 cpu = [
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda'" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-waypoint-cpu') or (extra == 'extra-8-waypoint-cpu' and extra == 'extra-8-waypoint-cuda')" },
+    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
 ]
 cuda = [
     { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform != 'darwin'" },
@@ -1304,11 +1387,36 @@ requires-dist = [
     { name = "torch", marker = "sys_platform != 'darwin' and extra == 'cuda'", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "waypoint", extra = "cuda" } },
     { name = "transformers", specifier = "==4.57.6" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.35.0" },
+    { name = "waypoint-collaboration-auth", directory = "packages/collaboration-auth" },
 ]
 provides-extras = ["cuda", "cpu"]
 
 [package.metadata.requires-dev]
 benchmark = [{ name = "psutil", specifier = ">=7,<8" }]
+dev = [{ name = "pytest", specifier = "==8.4.2" }]
+
+[[package]]
+name = "waypoint-collaboration-auth"
+version = "0.1.0"
+source = { directory = "packages/collaboration-auth" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "keyring" },
+    { name = "pyjwt", extra = ["crypto"] },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = "==0.116.1" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "keyring", specifier = ">=25,<26" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.12,<3" },
+    { name = "uvicorn", specifier = "==0.35.0" },
+]
+
+[package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = "==8.4.2" }]
 
 [[package]]

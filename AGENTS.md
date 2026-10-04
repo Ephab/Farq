@@ -23,6 +23,17 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   a per-run capability from `services/api/app/outlook/coach.py` (opt-in mailbox session, running
   AgentRun, unchanged connection generation). Enforce that in the API, never only in the prompt.
   Email text is untrusted and never becomes a `StudentFact`. See `docs/outlook-threat-model.md`.
+- Coach classmate/team discovery (`waypoint_collab_*`) is read-only and goes through `app/collab_coach.py`:
+  an in-memory per-sign-in opt-in, a per-run capability, fixed central paths and untrusted peer data.
+  It never publishes, invites or requests a place; its one write, `waypoint_collab_draft_profile`, only stages
+  reviewable fields in memory for the student to load and publish. Enforce that in the API, never only in the prompt.
+- Central team Hermes (`services/collaboration/collaboration/team_hermes.py`, `hermes_tools.py`) is a proposer
+  only, off by default, with its own gateway and plugin (`.hermes/plugins/waypoint-team`). Its tools need the
+  service token plus a per-run grant; `run_id` is mandatory; the invoker is re-authorized per call. Never give
+  that gateway the student plugin, personal memory or generic tools.
+- Moving a local team to the shared service is explicit, one-way and lead-only (`app/teams/cutover.py`,
+  `collaboration/legacy_import.py`, `docs/collaboration-cutover.md`): no chat or personal data is sent, teammates
+  are never enrolled for, and the local copy is frozen in `policy.authorize`, never only in the UI.
 - Uploaded files are never stored; only redacted, extracted evidence is.
 - Keep Gemini and Hermes keys server-side. The provider/model choice is server-side too
   (`app_settings` row `hermes_model`, set in Settings); browsers never send a model or key.
@@ -39,6 +50,10 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
   stream, catch-up and replay read only that log. Course instructors see every team except its
   chat (messages, reactions, typing, private notices), enforced in `teams/policy.py` and
   `teams/events.py`, never only in the UI or prompt.
+- Shared-service identity: in device mode the local API's `DeviceBroker` (`packages/collaboration-auth`) holds one Ed25519
+  key per local student in the OS vault and the browser only ever receives short-lived access tokens, never the key.
+  The central service issues and verifies those tokens itself (`collaboration/device_auth.py`). Do not expose the key,
+  add a recovery path that weakens it, or let a model/tool see a token (the coach bridge calls with it server-side).
 - Identity comes only from `current_user()` in `services/api/app/identity.py` (demo `X-Waypoint-User`
   header; event streams take `?as=` via `ownership.stream_user`). Replace that function, not its
   callers, for real sign-in. Every `/api/students/{id}/*`, chat thread, run, proposal, project and

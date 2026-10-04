@@ -95,6 +95,22 @@ turn it off or disconnect to revoke future access. Gateway/provider transcripts
 may outlive the local cache. See [Outlook setup](docs/outlook-setup.md),
 [privacy boundaries](docs/outlook-threat-model.md), and [Laya details](docs/local-email-classifier.md).
 
+## Group Projects with friends (shared server)
+
+Group Projects works on your own computer by default. To work with friends on different computers, one person runs the
+**shared server**, a separate program that can be started and stopped on its own, and everyone points their app at it.
+There is no sign-up or login: the app creates each person's shared account and unique ID automatically, and you invite
+friends to a project or class by sending an invitation code.
+
+```powershell
+server.bat start --domain your-name.ngrok-free.dev   # on the computer that runs the server (needs uv and ngrok)
+```
+
+Then, in every app's `.env`: `WAYPOINT_COLLAB_URL=https://your-name.ngrok-free.dev`. Group Projects then asks once to confirm the connection to the external server.
+Full guide, including running it on a separate computer, daily commands and troubleshooting:
+[Running the shared server](docs/running-the-shared-server.md). Service details:
+[services/collaboration/README.md](services/collaboration/README.md).
+
 ## Docker
 
 After native setup has generated `.env`, Docker users can run:
@@ -143,6 +159,11 @@ npm test
 # macOS
 .venv/bin/python -m pytest services/api/tests
 ```
+
+The shared server and its app-side package have their own suites (see
+[services/collaboration/README.md](services/collaboration/README.md)):
+`cd packages/collaboration-auth && ../../.venv/Scripts/python -m pytest` and, from `services/collaboration`,
+`uv run --locked pytest` (set `COLLAB_TEST_DATABASE_URL` to include the PostgreSQL tests).
 
 If an AI provider is unavailable, Waypoint reports the failure; it does not substitute
 canned answers. Read [the handoff](docs/handoff.md), [Hermes architecture](docs/hermes-architecture.md)

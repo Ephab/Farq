@@ -1,0 +1,53 @@
+name: release-gates
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  student-and-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: uv sync --locked
+      - run: npm ci && npm run build && npx vitest run
+      - run: uv run --locked python -m pytest services/api/tests -q
+      # Both artifacts are built from git-known files, then re-inspected; any finding fails the job.
+      - run: uv run --locked python scripts/artifacts.py build student --out dist-artifacts
+      - run: uv run --locked python scripts/artifacts.py build central --out dist-artifacts
+      - uses: actions/upload-artifact@v4
+        with: { name: release-artifacts, path: dist-artifacts/*.zip }
+
+  central-service:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: waypoint, POSTGRES_PASSWORD: replace-me, POSTGRES_DB: waypoint_collaboration }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U waypoint" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      COLLAB_TEST_DATABASE_URL: postgresql+psycopg://waypoint:replace-me@127.0.0.1:5432/waypoint_collaboration
+      COLLAB_PG_BIN: /usr/lib/postgresql/17/bin
+    defaults:
+      run: { working-directory: services/collaboration }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client-17
+      - run: uv sync --locked --group dev
+      - run: uv run --locked pytest -q
+
+  central-image:
+    needs: [student-and-artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: release-artifacts }
+      - run: unzip -q waypoint-central.zip -d central
+      - run: docker build -f services/collaboration/Dockerfile -t waypoint-collaboration:ci central
+        working-directory: central

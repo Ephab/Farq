@@ -11,7 +11,10 @@ export const TEAM_EVENT_TYPES = [
   "decision.pinned", "decision.removed",
   "message.created", "message.edited", "message.deleted", "reaction.toggled",
   "document.created", "document.updated", "section.updated", "section.locked", "section.unlocked",
-  "member.joined", "invite.created", "invite.declined", "invite.cancelled",
+  "member.joined", "member.removed", "invite.created", "invite.declined", "invite.cancelled",
+  "invite.code_created", "invite.code_revoked", "invite.code_redeemed",
+  "opening.updated", "join_request.created", "join_request.updated", "profile.updated",
+  "class.archived", "class.restored", "team.archived", "team.restored",
   "proposal.created", "proposal.voted", "proposal.applied", "proposal.rejected", "proposal.stale", "proposal.awaiting_lead",
   "hermes.run", "team.updated", "import.created", "import.updated", "import.proposed", "import.discarded",
 ] as const
@@ -225,6 +228,8 @@ function reduce(store: TeamStore, event: TeamEvent): TeamStore {
       return patchSection(store, id, { lock_user_id: String(payload.lock_user_id), lock_expires_at: String(payload.lock_expires_at) })
     case "section.unlocked":
       return patchSection(store, id, { lock_user_id: null, lock_expires_at: null })
+    case "member.removed":
+      return { ...store, team: { ...store.team, members: store.team.members.filter(member => member.user_id !== payload.user_id) } }
     case "member.joined":
       return addMember(store, String(payload.user_id), String(payload.display_name))
     case "proposal.created":

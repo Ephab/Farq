@@ -1,5 +1,43 @@
 # Handoff: project state
 
+## Collaboration service foundation (2026-10-03 worktree)
+
+The approved [execution plan](superpowers/plans/2026-10-03-collaboration-service.md)
+keeps personal Waypoint local and introduces an optional centrally deployed service
+in `services/collaboration/`. Architecture and threat-model documents define silent
+device accounts, separate PostgreSQL, reviewed shared profiles, peer classes,
+both matching modes and isolated team Hermes. The service foundation implements
+configuration isolation, explicit account migration, health and bearer-authenticated
+`/v1/me`; a standalone TypeScript client is in `packages/collaboration-client/`.
+The device-key broker (OS-vault key, silent registration, short-lived tokens) is implemented in
+`packages/collaboration-auth`, mounted by the personal API. Run the server on its own with `server.bat`
+([guide](running-the-shared-server.md)). Human team routes are
+ported to the central database behind `COLLAB_TEAMS_ENABLED`; the frontend selects
+them (team Hermes runs on its own gateway, `server.bat start --team-ai`) when `WAYPOINT_COLLAB_URL` is set and the student has confirmed the connection once (a pane in Group Projects; the choice is kept in the OS vault and enforced by the local API). The service flag defaults off. Native PostgreSQL
+checks pass, including two-account room sharing and access revocation. Peer classes, assignments, expiring class/project codes, persistent
+redemption quotas, class member removal and project lead transfer are now available
+under the same pilot flags (schema `0003_classes`). Organizers have no instructor
+privileges. Class-scoped team openings and explicit lead-approved join requests
+are now implemented (schema `0004_openings`), with expiry, quotas, cancellation and
+concurrent seat checks. Real two-account class-to-opening-to-team integration passes.
+Class ownership transfer and reversible class/project archives are implemented
+(schema `0005_lifecycle`). Archives suspend access, preserve history and close
+invitations/openings/requests without reviving them on restore. Original creator
+identity preserves quotas through transfers. See the service README for setup.
+Class-scoped reviewed profile publication/withdrawal and private matching preferences
+are now implemented (schema `0006_profiles`). The deterministic `fit-v1` matcher
+returns bounded whole-team combinations with concrete factors and missing data;
+candidate reads recheck consent/version. Removal/archive clears profiles, and team
+membership never publishes them. Real provider coverage includes matching and stale
+reads after withdrawal. Separately reviewed team summaries and existing-team opening
+matching are now implemented (schema `0007_team_profiles`). Team sharing does not
+imply class discovery; each member opts in separately. Missing summaries remain
+unknown and cannot satisfy hard availability/language constraints. Match-based join
+requests recheck consent, membership, opening and preferences atomically. Removal
+and archives clear shared team bodies without republishing on restore. Latest
+checks: 63 service/PostgreSQL, 7 auth/live-provider and 39 frontend tests; build passes.
+Coach isolation/bridge, legacy-data import and release packaging remain next work; this is not a production-ready collaboration release.
+
 State as of 2026-10-03 (native QA evaluator follow-up on `main`). Read this, then `AGENTS.md`,
 `docs/hermes-architecture.md` and `docs/future-work.md` before changing an area.
 

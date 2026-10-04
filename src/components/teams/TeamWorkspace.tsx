@@ -71,9 +71,9 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   return (
     <div ref={studioRef} className="tm-studio" style={{ "--tm-dock-width": `${dockWidth}px` } as CSSProperties}>
       <aside className="tm-panel tm-rail" aria-label={t("teams.workspace.railLabel")}>
-        <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" /> {t("teams.workspace.allTeams")}</button>
+        <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" /> {t("teams.gp.backShort")}</button>
         <div className="tm-rail-cover" style={{ backgroundImage: cover.image, backgroundColor: cover.color }}>
-          <span><bdi>{store.team.course.code}</bdi> · <bdi>{store.team.assignment.title}</bdi></span>
+          <span>{store.team.assignment.id ? <><bdi>{store.team.course.code}</bdi> · <bdi>{store.team.assignment.title}</bdi></> : t("teams.gp.projectLabel")}</span>
           <strong dir="auto">{store.team.name}</strong>
         </div>
         <TeamSettings store={store} update={update} onError={fail} />

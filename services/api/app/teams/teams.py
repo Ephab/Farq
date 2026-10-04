@@ -12,7 +12,7 @@ from ..identity import CurrentUser, User, user_dict
 from ..models import uid
 from .common import Db, iso, loads, project_dict, require, require_team
 from .events import emit
-from .models import Assignment, Course, CourseEnrollment, Task, Team, TeamEvent, TeamInvite, TeamMember
+from .models import Assignment, Course, CourseEnrollment, Task, Team, TeamCutover, TeamEvent, TeamInvite, TeamMember
 from .notices import team_risk_line
 from .policy import authorize, is_member
 
@@ -110,7 +110,7 @@ def team_card(db: Session, team: Team, user: User, role: str) -> dict:
         "course": course_dict(db.get(Course, assignment.course_id)),
         "assignment": {"id": assignment.id, "title": assignment.title, "deadline": iso(assignment.deadline)},
         "progress": round(100 * done / total) if total else 0, "next_task": next_task,
-        "members": [member.user_id for member in _members(db, team.id)], "unread": unread, "viewer_role": role,
+        "members": [member.user_id for member in _members(db, team.id)], "unread": unread, "viewer_role": role, "moved": db.get(TeamCutover, team.id) is not None,
         "risk": team_risk_line(db, team),
     }
 

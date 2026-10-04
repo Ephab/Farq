@@ -1,0 +1,48 @@
+# The shared server's own Hermes gateway. It is separate from the student coach gateway: its own home, its own
+# port (8643), its own lock directory, only the waypoint-team tools, no memory and no skills to learn.
+model:
+  default: gemini-3.8-flash
+  provider: gemini
+  base_url: https://generativelanguage.googleapis.com/v1beta
+
+platform_toolsets:
+  api_server:
+    - waypoint-team
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  nudge_interval: 0
+
+skills:
+  # The team skill is included in each run's instructions; nothing learned here would be private to one team.
+  creation_nudge_interval: 0
+
+plugins:
+  enabled:
+    - waypoint-team
+  disabled: []
+  entries:
+    waypoint-team:
+      allow_tool_override: false
+
+agent:
+  api_max_retries: 1
+  auto_recovery_cycles: 0
+
+auxiliary:
+  title_generation:
+    enabled: false
+    model_upgrade_enabled: false
+
+tools:
+  tool_search:
+    enabled: "off"
+
+gateway:
+  api_server:
+    enabled: true
+    host: 127.0.0.1
+    port: 8643
+    model_name: waypoint-team-hermes
+    max_concurrent_runs: 4

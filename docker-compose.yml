@@ -88,6 +88,7 @@ services:
       - ./.hermes/skills/waypoint-memory:/opt/data/skills/waypoint-memory:ro
       - ./.hermes/skills/waypoint-roadmap-builder:/opt/data/skills/waypoint-roadmap-builder:ro
       - ./.hermes/skills/waypoint-mail-assistant:/opt/data/skills/waypoint-mail-assistant:ro
+      - ./.hermes/skills/waypoint-collaboration-coach:/opt/data/skills/waypoint-collaboration-coach:ro
       - ./.hermes/skills/waypoint-project-import:/opt/data/skills/waypoint-project-import:ro
       # Seed only Hermes' essential skill, not its ~60 general bundled skills (see scripts/runtime.py).
       - ./services/hermes/no-bundled-skills:/opt/data/.no-bundled-skills:ro

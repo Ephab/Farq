@@ -10,8 +10,21 @@ import { ACTING_USER_EVENT, getActingUserId, teamClient } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
 import "@/components/hermes/coach-concept.css"
 import "./teams.css"
+import "./groups.css"
+import { ConnectedTeamsView } from "./ConnectedTeamsView"
+import { ConnectPane } from "./ConnectPane"
+import { useCollaborationMode } from "@/lib/collaboration-mode"
 
 export function TeamsView() {
+  const mode = useCollaborationMode()
+  const [later, setLater] = useState(false)
+  if (mode.kind === "loading") return null
+  if (mode.kind === "connected") return <ConnectedTeamsView />
+  if (mode.kind === "ask" && !later) return <ConnectPane server={mode.server} onLater={() => setLater(true)} />
+  return <LocalTeamsView />
+}
+
+function LocalTeamsView() {
   const { t } = useI18n()
   const [actingUser, setActingUser] = useState(getActingUserId)
   const [teamId, setTeamId] = useState<string | null>(null)

@@ -68,6 +68,12 @@ describe("applyEvent", () => {
     expect(store.messages).toHaveLength(1)
   })
 
+  it("orders by instant when time zones differ (a new UTC message stays below older +03:00 ones)", () => {
+    let store = upsertMessage(fromSnapshot(snapshot()), message("old", "2026-10-04T13:00:00+03:00"))
+    store = upsertMessage(store, message("new", "2026-10-04T10:33:00+00:00"))
+    expect(store.messages?.map((item) => item.id)).toEqual(["old", "new"])
+  })
+
   it("keeps messages in time order", () => {
     let store = fromSnapshot(snapshot())
     store = applyEvent(store, event("message.created", message("late", "2026-09-20T12:00:00+00:00") as unknown as Record<string, unknown>))

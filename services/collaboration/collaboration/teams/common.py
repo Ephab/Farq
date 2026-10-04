@@ -29,8 +29,9 @@ def utc(value: datetime | None) -> datetime | None:
 
 
 def iso(value: datetime | None) -> str | None:
+    # Always UTC: PostgreSQL returns the session time zone, a fresh row has UTC, and clients compare these strings.
     value = aware(value)
-    return value.isoformat() if value else None
+    return value.astimezone(timezone.utc).isoformat() if value else None
 
 
 def loads(text: str | None, default: Any) -> Any:

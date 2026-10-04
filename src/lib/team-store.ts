@@ -55,8 +55,9 @@ function omit<T>(record: Record<string, T>, id: string): Record<string, T> {
   return next
 }
 
+/** By instant, not string: the same moment can arrive as "+03:00" or "+00:00". */
 function byTime(a: TeamMessage, b: TeamMessage): number {
-  return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0
+  return Date.parse(a.created_at) - Date.parse(b.created_at)
 }
 
 export function fromSnapshot(state: TeamState): TeamStore {

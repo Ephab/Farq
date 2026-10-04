@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Waypoint — رحلتك، بخط واضح</title><link rel="stylesheet" href="styles.css"></head><body>
+<main id="viewport" aria-label="عرض Waypoint التفاعلي"><div id="stage">
+<div id="world"><svg id="thread" width="1600" height="6700" viewBox="0 0 1600 6700" aria-hidden="true"><defs><linearGradient id="routeColor" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#242134"/><stop offset=".25" stop-color="#bda9fd"/><stop offset=".6" stop-color="#6c4edf"/><stop offset="1" stop-color="#13a798"/></linearGradient><filter id="shadow"><feGaussianBlur stdDeviation="9"/></filter></defs><path id="road-shadow"/><path id="road"/><path id="road-trace"/><g id="branches"></g></svg>
+<section class="hero"><div class="hero-wordmark"><img src="assets/image1.png" alt="Waypoint" draggable="false"></div><p>رفيقك من أول يوم في الجامعة… لين التخرّج</p><span class="hero-invitation">كل رحلة تبدأ بسؤال</span><div class="hero-partners"><img src="assets/image2.png" alt="فَرق"><i></i><img src="assets/image3.png" alt="جامعة اليمامة"></div></section>
+<div id="difficulties"></div>
+<section class="arrival"><span class="arrival-dot"></span><h1>من الضياع… إلى مسار يعرفك.</h1><p>مدرّب واحد. خريطة طريق واحدة. رحلتك الجامعية كلها.</p></section>
+<div id="cards"></div>
+<div id="traveler" aria-hidden="true"><span></span></div>
+</div>
+<section id="feature" hidden aria-label="القسم الحالي"><div class="feature-top"><img src="assets/image1.png" alt="Waypoint"><span id="feature-count"></span></div><div class="feature-content" id="feature-content"></div><div class="feature-bottom"><span id="feature-foot"></span><span>رحلتك، بخط واضح.</span></div></section>
+<section id="ending" hidden><svg class="end-ribbon" viewBox="0 0 1600 900" aria-hidden="true"><path d="M800 0C800 80 200 40 240 350S680 790 800 450S1440 260 1330 540S830 810 800 900"/></svg><div class="end-content"><img src="assets/image1.png" alt="Waypoint"><h1>الخطوة الجاية<br>صارت أوضح.</h1><p>الخريطة اللي كلنا نستحقها.</p><div class="names">قاسم آل محفوظ <span>فراس آل صواب</span> راشد الخثلان</div><div class="questions">شكراً · أسئلتكم؟</div></div></section>
+<aside id="notes" hidden dir="rtl"><h2>ملاحظات المتحدث</h2><p id="note-text"></p><span id="note-time"></span></aside>
+</div></main>
+<nav id="controls" aria-label="التحكم بالعرض"><button id="prev" aria-label="القسم السابق" title="السابق · ←">←</button><div class="progress"><span id="status">البداية</span><div class="progress-track"><i id="progress-fill"></i></div></div><button id="next" aria-label="القسم التالي" title="التالي · Space / →">→</button><button id="overview" aria-label="خريطة الأقسام" title="خريطة الأقسام · O">⌘</button><button id="notes-button" aria-label="ملاحظات المتحدث" title="ملاحظات المتحدث · N">N</button><button id="fullscreen" aria-label="ملء الشاشة" title="ملء الشاشة · F">⛶</button></nav><span id="hint">Space للمتابعة · F لملء الشاشة</span><div id="announcer" class="sr-only" aria-live="polite"></div>
+<script src="app.js"></script></body></html>

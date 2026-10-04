@@ -70,16 +70,13 @@ def main() -> None:
     print(f"Installing locked Python dependencies ({extra}; MPS detected at runtime on macOS)...", flush=True)
     subprocess.run([args.uv, "sync", "--locked", "--extra", extra], cwd=ROOT, check=True)
     python = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    # Headless Chromium for the Blackboard sync (services/api/app/blackboard_sync/browser.py).
-    subprocess.run([str(python), "-m", "playwright", "install", "chromium"], cwd=ROOT, check=True)
-    env = dict(os.environ, USE_TF="0", HF_HUB_DISABLE_TELEMETRY="1")
+    env =dict(os.environ, USE_TF="0", HF_HUB_DISABLE_TELEMETRY="1")
     # Setup may download; runtime never does. Respect HF_HOME for cache placement.
     env.pop("HF_HUB_OFFLINE", None)
     env.pop("TRANSFORMERS_OFFLINE", None)
     subprocess.run([str(python), "-m", "services.api.app.email_classifier", "--download", "--smoke-test"],
                    cwd=ROOT, env=env, check=True)
     subprocess.run([npm, "ci"], cwd=ROOT, check=True)
-    subprocess.run([str(python), "scripts/setup_evaluator.py"], cwd=ROOT, check=True)
     values = configure_env(ROOT)
     provision(ROOT)
     print("Hermes and Laya verified. Web and Python dependencies installed; local credentials saved in .env.")

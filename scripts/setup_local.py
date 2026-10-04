@@ -56,9 +56,24 @@ def ensure_hermes() -> str:
     return command
 
 
+def ensure_chromium(python: Path) -> None:
+    """Install only the headless shell Blackboard sync uses, and only if this Playwright lacks it."""
+    dry_run = subprocess.run([str(python), "-m", "playwright", "install", "--dry-run", "--only-shell", "chromium"],
+                             cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    locations = [Path(line.split(":", 1)[1].strip()) for line in dry_run.splitlines()
+                 if line.strip().startswith("Install location:")]
+    if locations and all(location.is_dir() and any(location.iterdir()) for location in locations):
+        print("Headless Chromium already installed; skipping download.")
+        return
+    # Playwright also removes browser revisions no installed Playwright still uses.
+    subprocess.run([str(python), "-m", "playwright", "install", "--only-shell", "chromium"], cwd=ROOT, check=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--uv", default="uv")
+    parser.add_argument("--with-laya", action="store_true",
+                        help="Install torch and download the local Laya email classifier (~1-3 GB).")
     args = parser.parse_args()
     if platform.system() not in {"Windows", "Darwin"}:
         raise RuntimeError("Native setup supports Windows and macOS. Use Docker on other systems.")
@@ -66,23 +81,29 @@ def main() -> None:
     if not npm:
         raise RuntimeError("Install Node.js LTS from https://nodejs.org, then rerun setup. Node.js/npm are required for the web app.")
     ensure_hermes()
-    extra = torch_extra()
-    print(f"Installing locked Python dependencies ({extra}; MPS detected at runtime on macOS)...", flush=True)
-    subprocess.run([args.uv, "sync", "--locked", "--extra", extra], cwd=ROOT, check=True)
+    sync = [args.uv, "sync", "--locked"]
+    if args.with_laya:
+        extra = torch_extra()
+        print(f"Installing locked Python dependencies with Laya ({extra}; MPS detected at runtime on macOS)...", flush=True)
+        sync += ["--extra", extra]
+    else:
+        print("Installing locked Python dependencies (no local Laya; rerun setup with --with-laya to add it)...", flush=True)
+    subprocess.run(sync, cwd=ROOT, check=True)
     python = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     # Headless Chromium for the Blackboard sync (services/api/app/blackboard_sync/browser.py).
-    subprocess.run([str(python), "-m", "playwright", "install", "chromium"], cwd=ROOT, check=True)
-    env = dict(os.environ, USE_TF="0", HF_HUB_DISABLE_TELEMETRY="1")
-    # Setup may download; runtime never does. Respect HF_HOME for cache placement.
-    env.pop("HF_HUB_OFFLINE", None)
-    env.pop("TRANSFORMERS_OFFLINE", None)
-    subprocess.run([str(python), "-m", "services.api.app.email_classifier", "--download", "--smoke-test"],
-                   cwd=ROOT, env=env, check=True)
+    ensure_chromium(python)
+    if args.with_laya:
+        env = dict(os.environ, USE_TF="0", HF_HUB_DISABLE_TELEMETRY="1")
+        # Setup may download; runtime never does. Respect HF_HOME for cache placement.
+        env.pop("HF_HUB_OFFLINE", None)
+        env.pop("TRANSFORMERS_OFFLINE", None)
+        subprocess.run([str(python), "-m", "services.api.app.email_classifier", "--download", "--smoke-test"],
+                       cwd=ROOT, env=env, check=True)
     subprocess.run([npm, "ci"], cwd=ROOT, check=True)
     subprocess.run([str(python), "scripts/setup_evaluator.py"], cwd=ROOT, check=True)
     values = configure_env(ROOT)
     provision(ROOT)
-    print("Hermes and Laya verified. Web and Python dependencies installed; local credentials saved in .env.")
+    print(("Hermes and Laya verified." if args.with_laya else "Hermes verified.") + " Web and Python dependencies installed; local credentials saved in .env.")
     print("Classic Outlook is ready for checkbox consent." if values.get("OUTLOOK_LOCAL_TOKEN") else
           "Classic Outlook is not installed/supported here; use the temporary Graph-token connection.")
     if not any(values.get(key) for key in ("GEMINI_API_KEY", "NVIDIA_API_KEY", "HF_TOKEN")):

@@ -103,8 +103,9 @@ def model_directory(*, download: bool = False) -> Path:
             allow_patterns=list(REQUIRED_FILES), local_files_only=not download,
             token=False,
         ))
-    except Exception:
-        raise ClassifierUnavailable("Laya cache unavailable. Run setup.bat or bash setup.sh.") from None
+    except Exception as exc:
+        detail = f" ({type(exc).__name__}: {exc})" if download else ""
+        raise ClassifierUnavailable(f"Laya cache unavailable{detail}. Run setup.bat or bash setup.sh.") from None
     if any(not (directory / name).is_file() for name in REQUIRED_FILES):
         raise ClassifierUnavailable("Laya cache is incomplete. Run setup.bat or bash setup.sh again.")
     return directory

@@ -1,9 +1,13 @@
+from importlib.util import find_spec
 from types import SimpleNamespace
 
 import pytest
 
 from app import email_classifier as module
 from scripts import setup_local
+
+# The local Laya stack is optional (setup --with-laya).
+needs_laya = pytest.mark.skipif(find_spec("laya") is None, reason="local Laya not installed")
 
 
 @pytest.mark.parametrize("cuda,mps,expected", [(True, True, "cuda"), (False, True, "mps"), (False, False, "cpu")])
@@ -18,6 +22,7 @@ def test_cpu_without_mps_backend():
     assert module.select_device(torch) == "cpu"
 
 
+@needs_laya
 @pytest.mark.parametrize("email,reason", [
     (module.EmailInput("", ""), "empty_input"),
     (module.EmailInput("موعد الاختبار", "غدا", "ar"), "unsupported_language"),
@@ -53,6 +58,7 @@ def fake_agent(predict):
                            cfg={"max_len": 1024, "head_max_len": 256})
 
 
+@needs_laya
 def test_windowed_classification_is_reviewable_and_does_not_retain_body():
     calls = []
     classifier = module.EmailClassifier()
@@ -68,6 +74,7 @@ def test_windowed_classification_is_reviewable_and_does_not_retain_body():
     assert "Your final course exam" not in repr(result)
 
 
+@needs_laya
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -0.1, 1.1, True, "0.9"])
 def test_malformed_model_output_fails_closed(bad):
     response = fixture_response()
@@ -110,6 +117,7 @@ def test_no_nvidia_driver_uses_cpu(monkeypatch):
     assert setup_local.torch_extra() == "cpu"
 
 
+@needs_laya
 def test_windowing_covers_tail_and_aggregates_late_deadline():
     classifier = module.EmailClassifier()
     seen = []
@@ -132,6 +140,7 @@ def test_windowing_covers_tail_and_aggregates_late_deadline():
     assert result.windows > 64
 
 
+@needs_laya
 def test_missing_window_output_fails_closed():
     classifier = module.EmailClassifier()
     classifier._agent = fake_agent(lambda *a, **kw: [])
@@ -139,6 +148,7 @@ def test_missing_window_output_fails_closed():
         classifier.classify(module.EmailInput("Exam", "The exam is tomorrow.", "en"))
 
 
+@needs_laya
 def test_invalid_category_distribution_fails_closed():
     response = fixture_response()
     response["answers"]["category"]["probabilities"]["other"] = 0.9

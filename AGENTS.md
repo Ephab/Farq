@@ -83,7 +83,7 @@ Agent gateway. The browser never calls Hermes or Gemini directly.
 
 ## Commands
 
-- Native setup: `setup.bat` (Windows), `bash setup.sh` (macOS)
+- Native setup: `setup.bat` (Windows), `bash setup.sh` (macOS); add `--with-laya` for the local email classifier (torch + model download)
 - Native run: `run.bat` (Windows), `bash run.sh` (macOS)
 - Reproducible run: `docker compose up --build`
 - Frontend check: `npm run build`

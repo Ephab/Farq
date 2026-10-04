@@ -16,19 +16,22 @@ dependencies = [
   "python-multipart==0.0.20",
   "pywin32>=311,<312; sys_platform == 'win32'",
   "cryptography>=45,<51",
-  "laya==0.3.20",
-  "transformers==4.57.6",
   "huggingface-hub==0.36.2",
-  "safetensors==0.7.0",
-  "numpy==1.26.4",
-  "torch==2.8.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-  "torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
   "playwright>=1.47,<2",
 ]
 
+# The local Laya email classifier is optional (setup --with-laya). Without it, email
+# classification uses a cloud engine from Models & connections.
 [project.optional-dependencies]
-cuda = ["torch==2.8.0; sys_platform != 'darwin'"]
-cpu = ["torch==2.8.0; sys_platform != 'darwin'"]
+cuda = [
+  "laya==0.3.20", "transformers==4.57.6", "safetensors==0.7.0", "numpy==1.26.4",
+  "torch==2.8.0; sys_platform != 'darwin'",
+]
+cpu = [
+  "laya==0.3.20", "transformers==4.57.6", "safetensors==0.7.0", "numpy==1.26.4",
+  "torch==2.8.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+  "torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
 
 [dependency-groups]
 dev = ["pytest==8.4.2"]

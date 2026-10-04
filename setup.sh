@@ -22,4 +22,4 @@ else
     UV="$HOME/.local/bin/uv"
 fi
 "$UV" python install 3.12
-"$UV" run --no-project --python 3.12 scripts/setup_local.py --uv "$UV"
+"$UV" run --no-project --python 3.12 scripts/setup_local.py --uv "$UV" "$@"

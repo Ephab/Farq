@@ -91,23 +91,42 @@ def test_installed_hermes_is_verified_without_reinstallation(monkeypatch):
     assert len(calls) == 1
 
 
-def test_setup_checks_hermes_and_laya_before_reporting_success(monkeypatch, setup_root):
+@pytest.mark.parametrize("with_laya", [False, True])
+def test_setup_checks_hermes_and_laya_before_reporting_success(monkeypatch, setup_root, with_laya):
     module = load_setup(monkeypatch)
     calls = []
     monkeypatch.setattr(module, "ROOT", setup_root)
-    monkeypatch.setattr(module.sys, "argv", ["setup_local.py"])
+    monkeypatch.setattr(module.sys, "argv", ["setup_local.py"] + (["--with-laya"] if with_laya else []))
     monkeypatch.setattr(module.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(module.shutil, "which", lambda _: "npm")
     monkeypatch.setattr(module, "ensure_hermes", lambda: calls.append("hermes"))
+    monkeypatch.setattr(module, "ensure_chromium", lambda _: calls.append("chromium"))
     monkeypatch.setattr(module, "provision", lambda _: calls.append("runtime"))
     monkeypatch.setattr(module.subprocess, "run", lambda command, **kwargs: calls.append(command))
     module.main()
     assert calls[0] == "hermes"
-    assert calls[1] == ["uv", "sync", "--locked", "--extra", "cpu"]
-    assert any(isinstance(command, list) and "--smoke-test" in command and "--download" in command for command in calls)
+    assert calls[1] == ["uv", "sync", "--locked"] + (["--extra", "cpu"] if with_laya else [])
+    assert "chromium" in calls
+    smoke = any(isinstance(command, list) and "--smoke-test" in command and "--download" in command for command in calls)
+    assert smoke is with_laya
     assert ["npm", "ci"] in calls
     assert calls[-1] == "runtime"
     assert read_env(setup_root / ".env")["HERMES_API_KEY"]
+
+
+def test_chromium_skips_download_when_shell_is_installed(monkeypatch, tmp_path):
+    module = load_setup(monkeypatch)
+    shell = tmp_path / "chromium_headless_shell-1"; shell.mkdir(); (shell / "chrome").write_text("")
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        return module.subprocess.CompletedProcess(command, 0, stdout=f"Shell\n  Install location:    {shell}\n")
+    monkeypatch.setattr(module.subprocess, "run", run)
+    module.ensure_chromium(Path("python"))
+    assert len(calls) == 1 and "--dry-run" in calls[0]
+    for item in shell.iterdir(): item.unlink()
+    module.ensure_chromium(Path("python"))
+    assert calls[-1][-3:] == ["install", "--only-shell", "chromium"]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows uv trampoline recovery")

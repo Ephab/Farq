@@ -9,23 +9,52 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass
 from typing import Iterable
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import decision_engines
 from .database import SessionLocal
 from .models import DecisionRecord
 
+logger = logging.getLogger(__name__)
+
 QUESTION_SET_VERSION = "waypoint-v1"
 MAX_ITEMS = 8
 MAX_TEXT_CHARS = 1600
 RERANK_PURPOSES = {"coop_rerank", "hackathon_rerank", "blackboard_rerank"}
+
+# Error observations are never used for caching or reranking (only success rows
+# are read back), so repeating them on every GET just bloats decision_records
+# and collides on SQLite's single writer. Remember recent error fingerprints
+# in-process to skip both the slow engine call and the doomed INSERT batch.
+_ERROR_THROTTLE_TTL_SECONDS = 300
+_error_throttle: dict[str, float] = {}
+_error_throttle_lock = threading.Lock()
+
+
+def _error_throttled(fingerprint: str) -> bool:
+    now = time.monotonic()
+    with _error_throttle_lock:
+        seen_at = _error_throttle.get(fingerprint)
+        if seen_at is not None and now - seen_at < _ERROR_THROTTLE_TTL_SECONDS:
+            return True
+        if seen_at is not None:
+            del _error_throttle[fingerprint]
+        return False
+
+
+def _note_error(fingerprint: str) -> None:
+    with _error_throttle_lock:
+        _error_throttle[fingerprint] = time.monotonic()
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _PHONE = re.compile(r"(?<!\d)(?:\+?966|0)?5\d{8}(?!\d)")
@@ -120,8 +149,23 @@ def _store(db: Session, items: list[DecisionItem], purpose: str, fingerprint: st
             request_fingerprint=fingerprint, answers_json=json.dumps(item_answers, ensure_ascii=False),
             latency_ms=latency, input_tokens=usage.get("input_tokens"), output_tokens=usage.get("output_tokens"), error_category=error,
         )
-        db.add(record); records.append(record)
-    db.flush()
+        records.append(record)
+    # Audit-only writes must never break the caller (read paths 500ed on
+    # "sqlite3.OperationalError: database is locked" when two GETs flushed
+    # concurrent INSERT batches). The SAVEPOINT scopes the rollback to these
+    # rows so sync callers with pending product writes keep their work.
+    try:
+        with db.begin_nested():
+            db.add_all(records)
+            db.flush()
+    except SQLAlchemyError as exc:
+        logger.warning("decision audit skipped for %s (%d items): %s", purpose, len(records), type(exc).__name__)
+        for record in records:
+            try:
+                db.expunge(record)
+            except Exception:
+                pass
+        return []
     return records
 
 
@@ -129,16 +173,22 @@ def observe_items(db: Session, items: Iterable[DecisionItem], purpose: str = "in
     batch = list(items)[:MAX_ITEMS]
     if not batch or not enabled() or mode() == "off": return []
     fingerprint = _fingerprint(purpose, batch)
-    cached = db.scalars(select(DecisionRecord).where(
-        DecisionRecord.request_fingerprint == fingerprint,
-        DecisionRecord.purpose == purpose,
-        DecisionRecord.status != "error",
-    )).all()
+    try:
+        cached = db.scalars(select(DecisionRecord).where(
+            DecisionRecord.request_fingerprint == fingerprint,
+            DecisionRecord.purpose == purpose,
+            DecisionRecord.status != "error",
+        )).all()
+    except SQLAlchemyError as exc:
+        logger.warning("decision cache lookup skipped for %s: %s", purpose, type(exc).__name__)
+        return []
     if cached:
         by_entity = {(record.entity_type, record.entity_id): record for record in cached}
         ordered = [by_entity.get((item.entity_type[:48], item.entity_id[:200])) for item in batch]
         if all(ordered):
             return [record for record in ordered if record is not None]
+    if _error_throttled(fingerprint):
+        return []
     state = {"items": [{"id": index, "title": redact_text(item.title), "content": redact_text(item.text)} for index, item in enumerate(batch)]}
     started = time.perf_counter()
     error = None; payload = None
@@ -148,6 +198,23 @@ def observe_items(db: Session, items: Iterable[DecisionItem], purpose: str = "in
     except decision_engines.EngineUnavailable as exc:
         error = str(exc)[:40]  # e.g. "jev:timeout,span:http_429"
     latency = round((time.perf_counter() - started) * 1000)
+    if error:
+        # Error rows are observability only (never read back for cache or
+        # rerank). One batch per fingerprint is enough; every later GET with
+        # the same failing shortlist would otherwise re-wait on the engine
+        # and re-insert an identical 8-row batch under contention.
+        _note_error(fingerprint)
+        try:
+            seen = db.scalar(select(DecisionRecord.id).where(
+                DecisionRecord.request_fingerprint == fingerprint,
+                DecisionRecord.purpose == purpose,
+                DecisionRecord.status == "error",
+            ))
+        except SQLAlchemyError as exc:
+            logger.warning("decision error dedupe skipped for %s: %s", purpose, type(exc).__name__)
+            return []
+        if seen is not None:
+            return []
     return _store(db, batch, purpose, fingerprint, payload, latency, error)
 
 
@@ -181,7 +248,12 @@ def rerank(db: Session, values: list[dict], purpose: str, *, student_id: str | N
     # Retrieval functions run under GET dependencies, which otherwise close
     # without committing their audit observations.
     if records:
-        db.commit()
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            logger.warning("decision audit commit skipped for %s: %s", purpose, type(exc).__name__)
+            db.rollback()
+            return values
     if mode() != "active" or purpose not in active_purposes() or len(records) != len(items):
         return values
     scored: list[tuple[float, int, dict]] = []

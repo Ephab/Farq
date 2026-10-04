@@ -31,6 +31,18 @@
         "run.sh"
       ],
       "port": 5173
+    },
+    {
+      "name": "pitch",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4777",
+        "--directory",
+        "presentation"
+      ],
+      "port": 4777
     }
   ]
 }

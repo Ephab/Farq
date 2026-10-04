@@ -113,13 +113,11 @@ def test_mention_queues_one_run_with_the_message_and_hermes_off_stays_503(world,
     assert ask(client, team).status_code == 503
 
 
-@pytest.mark.parametrize("world", [{"user_runs_per_hour": 2, "team_backlog": 5}], indirect=True)
-def test_budgets_stop_a_flood(world):
+def test_no_run_limit(world):
     client, app, *_ , team = world
-    assert [ask(client, team).status_code for _ in range(3)] == [201, 201, 429]
+    assert [ask(client, team).status_code for _ in range(12)] == [201] * 12
     with app.state.sessions() as db:
-        assert len(db.scalars(select(TeamAgentRun)).all()) == 2
-        assert len(db.scalars(select(TeamMessage).where(TeamMessage.content.contains("@hermes"))).all()) == 2
+        assert len(db.scalars(select(TeamAgentRun)).all()) == 12
 
 
 def test_run_uses_tools_as_the_invoker_and_posts_exactly_one_reply(world):

@@ -27,7 +27,9 @@ export class CollaborationStream extends EventTarget {
       try {
         const url = new URL(this.url)
         url.searchParams.set("after", String(this.cursor))
-        const response = await this.fetcher(url, {
+        // Called unbound: a browser's fetch throws "Illegal invocation" when its receiver is this stream.
+        const fetcher = this.fetcher
+        const response = await fetcher(url, {
           headers: { ...(await this.headers()), "Last-Event-ID": String(this.cursor) },
           credentials: "omit", cache: "no-store", redirect: "error", signal: this.controller.signal,
         })

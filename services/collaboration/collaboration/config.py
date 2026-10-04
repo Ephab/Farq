@@ -48,9 +48,6 @@ class Settings(DatabaseSettings):
     run_timeout_seconds: int = Field(default=180, ge=10, le=900)
     run_lease_seconds: int = Field(default=300, ge=30, le=1800)
     run_max_attempts: int = Field(default=2, ge=1, le=3)
-    user_runs_per_hour: int = Field(default=10, ge=1, le=100)
-    team_runs_per_day: int = Field(default=60, ge=1, le=1000)
-    team_backlog: int = Field(default=3, ge=1, le=20)
     proposals_per_run: int = Field(default=5, ge=1, le=20)
 
     @model_validator(mode="after")

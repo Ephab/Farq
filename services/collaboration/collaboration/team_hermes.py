@@ -42,7 +42,6 @@ MENTION = re.compile(r"(?:^|\s)@hermes\b", re.IGNORECASE)
 SLASH = re.compile(r"^/([a-z]+)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 CATCHUP_DEFAULT_DAYS = 7
 DIGEST_LIMIT = 200
-ACTIVE = ("queued", "running")
 
 TEAM_INSTRUCTIONS = """
 You are Hermes, an AI teammate inside a Waypoint project team on the shared collaboration service.
@@ -95,20 +94,7 @@ def run_dict(run: TeamAgentRun) -> dict:
 
 def queue_invocation(db: Session, settings: Settings, team: Team, user: User, message: TeamMessage, command: str,
                      argument: str) -> TeamAgentRun:
-    """Budget-check and queue one run in the caller's transaction (the caller commits)."""
-    since = now()
-    hour = db.scalar(select(func.count()).select_from(TeamAgentRun).where(
-        TeamAgentRun.invoked_by_user_id == user.id, TeamAgentRun.created_at > since - timedelta(hours=1)))
-    day = db.scalar(select(func.count()).select_from(TeamAgentRun).where(
-        TeamAgentRun.team_id == team.id, TeamAgentRun.created_at > since - timedelta(days=1)))
-    backlog = db.scalar(select(func.count()).select_from(TeamAgentRun).where(
-        TeamAgentRun.team_id == team.id, TeamAgentRun.status.in_(ACTIVE)))
-    if hour >= settings.user_runs_per_hour:
-        raise HTTPException(429, "You have asked Hermes too often this hour; try again later")
-    if day >= settings.team_runs_per_day:
-        raise HTTPException(429, "This team has used its Hermes runs for today")
-    if backlog >= settings.team_backlog:
-        raise HTTPException(429, "Hermes is already busy with this team; wait for it to finish")
+    """Queue one run in the caller's transaction (the caller commits). There is no per-user or per-team run limit."""
     run = TeamAgentRun(team_id=team.id, invoked_by_user_id=user.id, trigger_message_id=message.id, command=command,
                        argument=argument, provider=settings.hermes_provider, model=settings.hermes_model)
     db.add(run)

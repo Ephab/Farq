@@ -31,6 +31,18 @@ describe("authenticated event stream", () => {
     stream.close()
   })
 
+  it("calls fetch without binding it to the stream (browsers throw Illegal invocation)", async () => {
+    const receivers: unknown[] = []
+    const fetcher = vi.fn(function (this: unknown) {
+      receivers.push(this)
+      return Promise.resolve(new Response(null, { status: 403 }))
+    }) as unknown as typeof fetch
+    const stream = new CollaborationStream("https://collab.example/events", 0, async () => ({}), fetcher)
+    await vi.waitFor(() => expect(receivers).toHaveLength(1))
+    expect(receivers[0]).not.toBe(stream)
+    stream.close()
+  })
+
   it("cancels reconnection when the view closes", async () => {
     vi.useFakeTimers()
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error("Offline"))

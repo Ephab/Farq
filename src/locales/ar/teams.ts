@@ -2,6 +2,12 @@ import type { CatalogShape } from "@/lib/i18n/core"
 import type { teams as en } from "../en/teams"
 
 export const teams: CatalogShape<typeof en> = {
+  demo: {
+    student: "الطالب التجريبي", localEdits: "تبقى التعديلات في هذا المتصفح", reset: "إعادة ضبط التجربة", local: "تجربة محلية",
+    explanation: "يبدأ الجميع بالمشاريع الوهمية نفسها. تُحفظ تعديلاتك في هذا المتصفح فقط، ولا تغيّر العينات الأصلية أو قاعدة بيانات الخادم.",
+    capabilities: "جرّب المهام والدردشة والمستندات وتعديل المشاريع ومقترحات هيرمس التجريبية. يتوفر هيرمس المباشر ورفع وصف المشروع في مشاريعك الخاصة.",
+    codeHint: "استخدم DEMO0004 لتجربة الانضمام إلى Library Queue. تعمل رموز الدعوة التجريبية داخل نسختك المحلية فقط.",
+  },
   ui: {
     createJoin: "إنشاء أو انضمام", settings: "إعدادات المشاريع الجماعية", projects: "المشاريع", classes: "الصفوف",
     peopleSettings: "الأعضاء والإعدادات", noClasses: "لا توجد صفوف بعد", noClassesHint: "أنشئ صفًا أو انضم باستخدام رمز دعوة.",
@@ -232,6 +238,7 @@ export const teams: CatalogShape<typeof en> = {
       zero: "لا أعضاء", one: "عضو واحد", two: "عضوان", few: "{count} أعضاء", many: "{count} عضوًا", other: "{count} عضو",
     },
     next: "التالي: {task}",
+    openHint: "فتح",
   },
   workspace: {
     views: {

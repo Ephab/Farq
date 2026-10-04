@@ -38,8 +38,8 @@
 .fq.gp-page .tm-row { padding: 12px; border-radius: 10px; }
 .fq.gp-page .tm-panel { box-shadow: none; backdrop-filter: none; }
 
-/* Home: a quiet list with visible information, no decorative cover area. */
-.fq.gp-page .tm-cover-grid { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--fq-line); border-radius: 12px; overflow: hidden; }
+/* Projects are folders: a responsive grid of cards that open into the workspace. */
+.fq.gp-page .tm-cover-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
 .fq.gp-page button.gp-project-row {
   display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px;
   background: var(--fq-surface-solid); color: var(--fq-text); text-align: start;
@@ -213,6 +213,8 @@
   .fq.gp-page .gp-project-risk { display: none; }
   .fq.gp-page .gp-project-row .tm-ring { width: 30px; height: 30px; }
   .fq.gp-page .gp-project-arrow { display: none; }
+  .fq.gp-page .tm-cover-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .fq.gp-page .tm-folder { height: 280px; }
   .fq.gp-page .gp-setup { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .fq.gp-page .gp-import-disclosure summary small { display: none; }
   .fq.gp-page .gp-brief > .tm-card { padding: 14px; }
@@ -225,3 +227,7 @@
 @media (prefers-reduced-motion: reduce) {
   .fq.gp-page *, .fq.gp-page *::before, .fq.gp-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.gp-demo-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-block-end: 18px; padding: 8px 12px; border: 1px solid var(--fq-line); border-radius: 10px; background: var(--fq-surface-solid); color: var(--fq-muted); font-size: 12px; }
+.gp-demo-notice > span { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.gp-demo-notice strong { color: var(--fq-text); }
+.gp-demo-notice .tm-btn { flex-shrink: 0; }

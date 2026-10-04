@@ -18,6 +18,7 @@ import { useMarkSeen, usePresence, useTeamStream } from "@/components/teams/use-
 import { coverFor } from "@/lib/team-cover"
 import { errorMessage } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
+import { useTeamClient } from "./team-client-context"
 
 type View = "board" | "timeline" | "docs" | "decisions" | "activity" | "charter"
 
@@ -31,6 +32,7 @@ const VIEWS: { id: View; icon: LucideIcon }[] = [
 ]
 
 export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () => void }) {
+  const teams = useTeamClient()
   const { t } = useI18n()
   const { store, error, live, reload, update, unseenChat } = useTeamStream(teamId)
   const [view, setView] = useState<View>("board")
@@ -83,7 +85,7 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
           <p>{store.team.assignment.id ? <><bdi>{store.team.course.code}</bdi> · <bdi>{store.team.assignment.title}</bdi></> : t("teams.gp.projectLabel")}</p>
         </div>
         <div className="gp-workspace-actions">
-          <p className="tm-live" data-live={live ? "" : undefined} role="status"><i aria-hidden="true" />{live ? t("teams.workspace.live") : t("teams.workspace.connecting")}</p>
+          <p className="tm-live" data-live={live ? "" : undefined} role="status"><i aria-hidden="true" />{teams.demo ? t("teams.demo.local") : live ? t("teams.workspace.live") : t("teams.workspace.connecting")}</p>
           <button type="button" className="tm-btn gp-people-trigger" onClick={() => setPeopleOpen(true)} aria-label={t("teams.ui.peopleSettings")}>
             <span className="gp-avatar-stack" aria-hidden="true">{store.team.members.slice(0, 3).map(person => <Avatar key={person.user_id} userId={person.user_id} name={person.display_name} size={24} />)}</span>
             <Users className="size-4 gp-people-icon" aria-hidden="true" /><span>{t("teams.gp.people")}</span>

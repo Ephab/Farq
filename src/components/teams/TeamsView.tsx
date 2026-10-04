@@ -14,11 +14,13 @@ import "./workspace.css"
 import { ConnectedTeamsView } from "./ConnectedTeamsView"
 import { ConnectPane } from "./ConnectPane"
 import { useCollaborationMode } from "@/lib/collaboration-mode"
+import { DemoTeamsView } from "./DemoTeamsView"
 
 export function TeamsView() {
   const mode = useCollaborationMode()
   const [later, setLater] = useState(false)
   if (mode.kind === "loading") return null
+  if (mode.kind === "demo") return <DemoTeamsView />
   if (mode.kind === "connected") return <ConnectedTeamsView />
   if (mode.kind === "ask" && !later) return <ConnectPane server={mode.server} onLater={() => setLater(true)} />
   return <LocalTeamsView />

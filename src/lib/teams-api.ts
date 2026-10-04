@@ -1,5 +1,7 @@
 import { translate } from "@/lib/i18n/context"
 import { API_BASE, api, getCurrentStudentId } from "@/lib/waypoint-api"
+import { demoTeamSandbox } from "./demo-team-transport"
+import { DEMO_TEAM_USER } from "./demo-teams-seed"
 
 const ACTING_USER_STORAGE_KEY = "waypoint.current-user"
 export const ACTING_USER_EVENT = "waypoint:acting-user-changed"
@@ -148,7 +150,7 @@ export function demoUsers(): Promise<TeamUser[]> {
  * switch (or another tab) can never make an in-flight view act as someone else. */
 export interface TeamEventSource extends EventTarget { close(): void; onopen: (() => void) | null; onerror: (() => void) | null }
 export interface TeamTransport {
-  mode: "central"
+  mode: "central" | "demo"
   teamAI: boolean
   projectImport: boolean
   request<T>(path: string, init?: RequestInit): Promise<T>
@@ -182,6 +184,9 @@ export interface ExistingTeamMatches {
 }
 
 export function teamClient(userId: string, transport?: TeamTransport) {
+  // Demo identity is always sandboxed, including legacy View-as and background badge reads.
+  // A caller-supplied central transport must never turn it into a real service account.
+  if (userId === DEMO_TEAM_USER) transport = demoTeamSandbox().transport
   function teamApi<T>(path: string, init?: RequestInit): Promise<T> {
     if (transport) return transport.request<T>(path, init)
     return api<T>(path, { ...init, headers: { "X-Waypoint-User": userId, ...(init?.headers as Record<string, string> | undefined) } })
@@ -189,6 +194,7 @@ export function teamClient(userId: string, transport?: TeamTransport) {
   return {
   userId,
   central: Boolean(transport),
+  demo: transport?.mode === "demo",
   teamAI: transport?.teamAI ?? true,
   projectImport: transport?.projectImport ?? true,
   createRoom: (name: string) => teamApi<TeamInfo>("/api/teams", send("POST", { name })),
@@ -293,7 +299,7 @@ export function teamClient(userId: string, transport?: TeamTransport) {
   presence: (teamId: string, focus: string | null) => teamApi<{ ok: boolean }>(`/api/teams/${teamId}/presence`, send("POST", { focus })),
   typing: (teamId: string) => teamApi<{ ok: boolean }>(`/api/teams/${teamId}/typing`, send("POST")),
   eventsUrl: (teamId: string, after: number) =>
-    `${API_BASE}/api/teams/${teamId}/events?as=${encodeURIComponent(userId)}&after=${after}`,
+    transport?.mode === "demo" ? "" : `${API_BASE}/api/teams/${teamId}/events?as=${encodeURIComponent(userId)}&after=${after}`,
   }
 }
 

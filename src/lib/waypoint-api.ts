@@ -1,5 +1,6 @@
 import { translate } from "@/lib/i18n/context"
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ""
+export const CURRENT_STUDENT_EVENT = "waypoint:student-changed"
 
 export type HermesProvider = "gemini" | "nim" | "hf" | "openrouter"
 
@@ -148,6 +149,7 @@ export function setCurrentStudentId(id: string | null): void {
   } catch {
     // Storage blocked: the app keeps working for this page load only.
   }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CURRENT_STUDENT_EVENT))
 }
 
 export function notifyRoadmapChanged(): void {

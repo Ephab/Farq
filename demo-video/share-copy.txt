@@ -1,0 +1,14 @@
+Waypoint: your degree, mapped. Your coach, always on.
+
+Meet Layan, a third-year AI student. In 95 seconds she:
+- signs up and imports her CV. Nothing becomes part of her profile until she ticks it.
+- answers a few questions from Hermes, our AI coach, which only asks what her records didn't cover.
+- gets a roadmap built live around her own projects and goals.
+- changes the plan just by asking ("add a project that reuses my date-palm dataset"). Hermes drafts it; she accepts.
+- turns a lecture PDF into a quiz, gets a CV that cites its sources, and sees co-op matches with Saudi organisations.
+- runs a group project where Hermes is a teammate that proposes and the team decides.
+- switches to Arabic, with a full right-to-left layout and 12 themes.
+
+Also inside: Blackboard sync, Outlook triage, learning updates and slide decks.
+
+Every frame is the real app running locally. AI wait times are cut or sped up and marked on screen. Layan and her data are fictional.

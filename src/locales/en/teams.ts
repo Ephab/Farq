@@ -1,5 +1,11 @@
 // Group Projects: team home, workspace, board, chat, proposals, documents and instructor view.
 export const teams = {
+  demo: {
+    student: "Demo student", localEdits: "Changes stay on this browser", reset: "Reset demo", local: "Local demo",
+    explanation: "Everyone starts with the same fictional projects. Your edits are saved only in this browser and never change the original samples or a server database.",
+    capabilities: "Try tasks, chat, documents, project editing, and the sample Hermes proposals. Live Hermes and description uploads are available in your own projects.",
+    codeHint: "Use DEMO0004 to try joining Library Queue. Demo invite codes work only with your local demo copy.",
+  },
   ui: {
     createJoin: "Create or join", settings: "Group Projects settings", projects: "Projects", classes: "Classes",
     peopleSettings: "People & settings", noClasses: "No classes yet", noClassesHint: "Create a class or join one with an invitation code.",
@@ -197,6 +203,7 @@ export const teams = {
     noDueDate: "No due date",
     members: { one: "{count} member", other: "{count} members" },
     next: "Next: {task}",
+    openHint: "Open",
   },
   workspace: {
     views: {

@@ -1,3 +1,21 @@
+## Browser-local Group Projects demo (2026-10-04)
+
+Demo Student now opens an identical bundled demo on every installation, bypassing
+shared-service consent/account/token calls. Four fictional projects, two classes,
+48 tasks, 12 populated documents, chat/polls, milestones, decisions, an invitation,
+and sample Hermes proposals are included. Changes persist only in browser storage;
+Reset demo restores the canonical fixture. No shared token is needed and no demo
+team data enters a server database. Real accounts retain the existing transports.
+Shared and demo navigation reuse `GroupProjectsBrowser`; sidebar state and default
+open chat are preserved. Live team AI/uploads are disabled in the sandbox; sample
+proposal decisions stay local. See `docs/group-projects-demo.md`.
+
+Validation: 108 frontend tests pass, production build passes, and lint passes with
+existing warnings. Browser checks cover local persistence/reset, invitations, zero
+Group Projects network traffic, real shared/local navigation, default chat/sidebar,
+and Arabic/mobile layouts. Other installations need the updated frontend; there
+is no backend migration.
+
 ## Group Projects UI redesign (2026-10-04)
 
 The shared and local workspaces now use a compact project header and horizontal

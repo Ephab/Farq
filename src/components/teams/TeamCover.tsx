@@ -1,6 +1,7 @@
 "use client"
 
-import { ArrowUpRight, LayoutGrid } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { ArrowUpRight, CalendarClock, FolderOpen } from "lucide-react"
 import { coverFor } from "@/lib/team-cover"
 import { dueLabel } from "@/lib/team-format"
 import type { TeamCard } from "@/lib/teams-api"
@@ -23,26 +24,79 @@ function ProgressRing({ value }: { value: number }) {
   )
 }
 
+/** How long the folder takes to "open" before the project replaces it. Matches `.tm-folder.is-opening` in teams.css. */
+const OPEN_MS = 280
+
+/** Folder-style project card: the coloured back holds progress and the next task, the white front slides down on
+ * hover/focus to reveal it, and a click opens the folder before taking the student into the project. */
 export function TeamCover({ card, onOpen }: { card: TeamCard; onOpen: () => void }) {
-  const { t } = useI18n()
+  const { t, fmt } = useI18n()
   const cover = coverFor(card.cover_seed)
   const due = dueLabel(card.assignment.deadline, t)
+  const clamped = Math.max(0, Math.min(100, card.progress))
   // A project made on its own has no course or assignment, so say what it is instead of showing blanks.
   const solo = !card.assignment.id
+  const [opening, setOpening] = useState(false)
+  const timer = useRef<number | null>(null)
+  useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current) }, [])
+
+  const open = () => {
+    if (opening) return
+    const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    if (reduced) { onOpen(); return }
+    setOpening(true)
+    timer.current = window.setTimeout(onOpen, OPEN_MS)
+  }
+
   return (
     <button
       type="button"
-      className="gp-project-row"
-      onClick={onOpen}
+      className={`tm-folder${opening ? " is-opening" : ""}`}
+      onClick={open}
       aria-label={t("teams.cover.open", { name: card.name })}
     >
-      <span className="gp-project-mark" style={{ backgroundColor: cover.color }} aria-hidden="true"><LayoutGrid className="size-5" /></span>
-      <span className="gp-project-info"><strong dir="auto">{card.name}</strong><small dir="auto">{solo ? t("teams.gp.projectLabel") : <>{card.course.code} · {card.assignment.title}</>}</small></span>
-      <span className="gp-project-meta"><span>{t("teams.cover.members", { count: card.members.length })}</span>{due ? <small>{due}</small> : null}</span>
-      {card.unread ? <span className="gp-project-unread">{t("teams.cover.unread", { count: card.unread })}</span> : null}
-      {card.risk ? <span className="gp-project-risk" title={card.risk}>{t("teams.cover.atRisk")}</span> : null}
-      <ProgressRing value={card.progress} />
-      <ArrowUpRight className="size-4 rtl:-scale-x-100 gp-project-arrow" aria-hidden="true" />
+      <span
+        className="tm-folder-cover"
+        style={{ backgroundImage: cover.image, backgroundColor: cover.color }}
+      >
+        <span className="tm-folder-toprow">
+          <span className="tm-cover-chip">{solo ? t("teams.gp.projectLabel") : card.course.code}</span>
+          {card.unread ? <span className="tm-cover-unread">{t("teams.cover.unread", { count: card.unread })}</span> : null}
+        </span>
+        {card.risk ? <span className="tm-folder-risk" title={card.risk}>⚠ {t("teams.cover.atRisk")}</span> : null}
+        <span className="tm-folder-info" aria-hidden="true">
+          <span className="tm-folder-info-title" dir="auto">{solo ? card.name : card.assignment.title}</span>
+          <span className="tm-folder-info-meta">
+            {t("teams.cover.members", { count: card.members.length })} · {fmt.percent(clamped / 100)}
+          </span>
+          <span className="tm-folder-info-bar"><i style={{ width: `${clamped}%` }} /></span>
+          {card.next_task ? <span className="tm-folder-info-next" dir="auto">{t("teams.cover.next", { task: card.next_task.title })}</span> : null}
+        </span>
+        {/* Sheets tucked inside the folder; they lift out as it opens. */}
+        <span className="tm-folder-paper tm-folder-paper-back" aria-hidden="true" />
+        <span className="tm-folder-paper tm-folder-paper-front" aria-hidden="true"><i /><i /><i /></span>
+      </span>
+      <span className="tm-folder-body">
+        <span className="tm-folder-tab" aria-hidden="true" />
+        <ArrowUpRight className="tm-folder-arrow rtl:-scale-x-100" aria-hidden="true" />
+        <span className="tm-folder-title-row">
+          <span className="tm-folder-name" dir="auto">{card.name}</span>
+        </span>
+        <span className="tm-cover-sub tm-folder-sub" dir="auto">{solo ? t("teams.cover.members", { count: card.members.length }) : card.assignment.title}</span>
+        {solo ? null : (
+          <span className={`tm-folder-due${due ? "" : " is-none"}`}>
+            <CalendarClock aria-hidden="true" />{due ?? t("teams.cover.noDueDate")}
+          </span>
+        )}
+        <span className="tm-folder-foot">
+          <span className="tm-cover-members" aria-label={t("teams.cover.members", { count: card.members.length })}>
+            {card.members.slice(0, 5).map((id) => <span key={id} className="tm-cover-dot" />)}
+            {card.members.length > 5 ? <span className="tm-cover-dot tm-cover-more">+{card.members.length - 5}</span> : null}
+          </span>
+          <span className="tm-folder-cta" aria-hidden="true"><FolderOpen />{t("teams.cover.openHint")}</span>
+          <ProgressRing value={card.progress} />
+        </span>
+      </span>
     </button>
   )
 }

@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Waypoint Pitch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alexandria:wght@500;700;800;900&family=Archivo+Black&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one 1600×900 stage. A single road (the logo's wave) runs right-to-left through a wide world;
+   each slide is a pin on it and the camera travels the road. Projected deck, so one deliberate light look. */
+:root {
+  --paper: #F4F5F2;
+  --paper-2: #E9EBE6;
+  --ink: #0C0D0C;
+  --muted: #646962;
+  --rule: #D3D7D0;
+  --mint: #A9ECC5;      /* the app's roadmap-stage green */
+  --mint-ink: #0E6A3D;
+  --warn: #C2412A;
+  --display: "Alexandria", "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  --body: "IBM Plex Sans Arabic", "Noto Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  --latin: "Archivo Black", "Arial Black", Impact, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button { font: inherit; }
+[hidden] { display: none !important; }
+
+#stage { position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px; transform: translate(-50%, -50%) scale(var(--fit, 1)); transform-origin: center; overflow: hidden; background: var(--paper); cursor: default; }
+
+/* ---------- world (road) ---------- */
+#world { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: visible; }
+#world svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.road-track { fill: none; stroke: var(--ink); stroke-opacity: .28; stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 1 14; }
+.road-case { fill: none; stroke: var(--paper); stroke-linecap: round; stroke-linejoin: round; }
+.road-ink { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; }
+.wordmark { font-family: var(--latin); fill: var(--ink); }
+.pin circle.dot { fill: var(--paper); stroke: var(--ink); stroke-width: 4; transition: fill .4s; }
+.pin.past circle.dot { fill: var(--ink); }
+.pin.here circle.dot { fill: var(--mint); }
+.pin .halo { fill: none; stroke: var(--mint-ink); stroke-width: 2; opacity: 0; }
+.pin.here .halo { animation: halo 2.2s ease-out infinite; }
+@keyframes halo { from { r: 18; opacity: .7; } to { r: 46; opacity: 0; } }
+.pin text { font-family: var(--body); font-size: 19px; font-weight: 500; fill: var(--muted); text-anchor: middle; }
+.pin.here text { fill: var(--ink); font-weight: 700; }
+.pin .num { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; }
+#traveller .core { fill: var(--ink); stroke: var(--paper); stroke-width: 5; }
+#traveller .glow { fill: var(--mint); opacity: .55; animation: breathe 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes breathe { 50% { transform: scale(1.35); opacity: .25; } }
+.zoomed .pin text { opacity: 0; }
+
+/* ---------- slides ---------- */
+.slide { position: absolute; inset: 0; z-index: 2; opacity: 0; visibility: hidden; transform: translateX(-70px); transition: opacity .55s ease, transform .8s cubic-bezier(.2,.7,.2,1), visibility 0s .8s; }
+.slide.active { opacity: 1; visibility: visible; transform: none; transition: opacity .6s ease .25s, transform .9s cubic-bezier(.2,.7,.2,1) .15s, visibility 0s; }
+.slide.gone { transform: translateX(70px); }
+[data-s] { opacity: 0; transform: translateY(16px); transition: opacity .5s ease, transform .6s cubic-bezier(.2,.7,.2,1); }
+[data-s].on { opacity: 1; transform: none; }
+
+.eyebrow { font-family: var(--body); font-size: 20px; font-weight: 600; color: var(--muted); letter-spacing: .01em; display: flex; gap: 12px; align-items: center; }
+.eyebrow .n { font-family: var(--mono); font-size: 15px; letter-spacing: .1em; color: var(--ink); background: var(--mint); padding: 3px 9px; border-radius: 4px; direction: ltr; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h2 { font-size: 56px; font-weight: 800; line-height: 1.12; }
+.lede { font-size: 27px; line-height: 1.6; color: var(--muted); margin: 0; max-width: 30ch; }
+.lat { font-family: var(--body); unicode-bidi: isolate; }
+.mono { font-family: var(--mono); direction: ltr; unicode-bidi: isolate; }
+
+/* demo slide layout */
+.demo { position: absolute; left: 70px; right: 80px; top: 70px; height: 630px; display: flex; gap: 60px; align-items: center; }
+.demo .copy { flex: 0 0 520px; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.demo .visual { flex: 1; position: relative; height: 100%; display: flex; align-items: center; min-width: 0; }
+.points { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 14px; }
+.points li { display: flex; gap: 14px; align-items: flex-start; font-size: 23px; line-height: 1.5; font-weight: 500; }
+.points li::before { content: ""; flex: 0 0 12px; height: 12px; margin-top: 12px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); }
+.points li.ok::before { background: var(--mint); }
+
+/* device frame around live captures */
+.device { position: absolute; width: 900px; background: #fff; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; box-shadow: 0 40px 80px -30px rgba(12,13,12,.35), 0 2px 6px rgba(12,13,12,.06); direction: ltr; }
+.device .bar { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: var(--paper-2); border-bottom: 1px solid var(--rule); }
+.device .bar i { width: 11px; height: 11px; border-radius: 50%; background: #C9CDC6; }
+.device .url { margin-left: 14px; font-family: var(--mono); font-size: 13px; color: var(--muted); background: #fff; border: 1px solid var(--rule); padding: 3px 12px; border-radius: 6px; }
+.device .tag { margin-left: auto; font-family: var(--body); font-size: 13px; font-weight: 600; color: var(--muted); direction: rtl; display: flex; align-items: center; gap: 7px; }
+.device .tag.rec::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); animation: blink 1.4s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+.device video, .device img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; background: #fff; }
+
+/* floating cards over devices */
+.float { position: absolute; background: #fff; border: 1.5px solid var(--ink); border-radius: 14px; padding: 18px 20px; box-shadow: 0 24px 50px -24px rgba(12,13,12,.45); z-index: 3; }
+.float .k { font-size: 15px; font-weight: 600; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--ink); background: #fff; font-size: 18px; font-weight: 600; white-space: nowrap; }
+.chip.mint { background: var(--mint); }
+
+/* ---------- intro ---------- */
+.intro-tag { position: absolute; top: 640px; left: 0; right: 0; text-align: center; font-family: var(--display); font-size: 40px; font-weight: 700; }
+.hint { position: absolute; bottom: 28px; left: 0; right: 0; text-align: center; font-size: 16px; color: var(--muted); }
+.hint kbd { font-family: var(--mono); font-size: 13px; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 5px; padding: 1px 7px; background: #fff; color: var(--ink); }
+
+/* ---------- story ---------- */
+.story { position: absolute; right: 110px; top: 150px; width: 760px; display: flex; flex-direction: column; gap: 26px; }
+.story h1 { font-size: 112px; font-weight: 900; line-height: 1.05; }
+.story h1 span { display: block; color: var(--muted); font-weight: 700; font-size: 84px; }
+.who { font-size: 20px; color: var(--muted); font-weight: 500; }
+#scribble { position: absolute; left: 90px; top: 90px; width: 620px; height: 560px; }
+#scribble path { fill: none; stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.story .quote { font-family: var(--display); font-size: 34px; font-weight: 700; line-height: 1.5; border-right: 6px solid var(--mint); padding-right: 22px; }
+
+/* ---------- problems ---------- */
+.ptitle { position: absolute; right: 80px; top: 60px; display: flex; flex-direction: column; gap: 10px; }
+.problems { position: absolute; left: 70px; right: 80px; top: 210px; height: 470px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+.prob { position: relative; border: 1.5px solid var(--ink); border-radius: 16px; background: #fff; padding: 24px 24px 22px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+.prob .idx { font-family: var(--mono); font-size: 15px; color: var(--muted); letter-spacing: .1em; }
+.prob h3 { font-size: 31px; font-weight: 800; line-height: 1.25; }
+.prob p { margin: 0; font-size: 19px; line-height: 1.55; color: var(--muted); }
+.prob .viz { margin-top: auto; }
+.ratio { display: flex; align-items: center; gap: 14px; }
+.ratio .one { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); flex: none; }
+.ratio .many { display: grid; grid-template-columns: repeat(12, 10px); gap: 5px; }
+.ratio .many i { width: 10px; height: 10px; border-radius: 50%; background: var(--rule); }
+.years { display: flex; align-items: flex-end; justify-content: space-between; direction: ltr; font-family: var(--display); }
+.years b { font-size: 46px; font-weight: 900; line-height: 1; }
+.years small { display: block; font-family: var(--body); font-size: 15px; color: var(--muted); font-weight: 600; text-align: center; }
+.years .gap { flex: 1; margin: 0 12px 22px; border-top: 3px dashed var(--warn); position: relative; }
+.years .gap span { position: absolute; top: -32px; left: 50%; transform: translateX(-50%); font-family: var(--body); font-size: 15px; font-weight: 700; color: var(--warn); white-space: nowrap; }
+.bubbles { display: flex; flex-direction: column; gap: 8px; font-size: 17px; }
+.bubbles div { padding: 8px 13px; border-radius: 14px; max-width: 88%; }
+.bubbles .me { align-self: flex-start; background: var(--ink); color: var(--paper); border-bottom-right-radius: 4px; }
+.bubbles .bot { align-self: flex-end; background: var(--paper-2); border-bottom-left-radius: 4px; }
+.bubbles .q { align-self: flex-start; background: none; border: 1.5px dashed var(--ink); font-weight: 700; }
+.apps { position: relative; height: 150px; }
+.apps .chip { position: absolute; font-size: 15px; padding: 5px 11px; }
+
+/* ---------- turn ---------- */
+.turn { position: absolute; inset: 0; }
+.turn .orbit { position: absolute; left: 800px; top: 330px; }
+.turn .orbit .chip { position: absolute; transform: translate(-50%, -50%) translate(var(--x), var(--y)) rotate(var(--r)); transition: transform 1.1s cubic-bezier(.6,0,.2,1), opacity .8s ease .5s; font-size: 22px; }
+.turn.pulled .orbit .chip { transform: translate(-50%, -50%) scale(.2); opacity: 0; }
+.turn .core { position: absolute; left: 800px; top: 330px; width: 150px; height: 150px; transform: translate(-50%, -50%) scale(.4); opacity: 0; transition: transform .8s cubic-bezier(.2,1.4,.3,1) .8s, opacity .4s ease .8s; }
+.turn.pulled .core { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+.turn .t1, .turn .t2 { position: absolute; left: 0; right: 0; text-align: center; font-family: var(--display); }
+.turn .t1 { top: 520px; font-size: 54px; font-weight: 800; transition: opacity .4s; }
+.turn .t2 { top: 600px; font-size: 26px; font-weight: 500; color: var(--muted); }
+.turn.pulled .t1.before { opacity: 0; }
+.turn .t1.after { opacity: 0; transition: opacity .6s ease 1.1s; }
+.turn.pulled .t1.after { opacity: 1; }
+
+/* ---------- quiz / eval mocks ---------- */
+.quiz { width: 400px; direction: rtl; }
+.quiz .q { font-size: 20px; font-weight: 600; line-height: 1.45; margin: 8px 0 14px; }
+.quiz .q code { font-family: var(--mono); font-size: 17px; background: var(--paper-2); padding: 1px 6px; border-radius: 4px; direction: ltr; unicode-bidi: isolate; }
+.quiz .opt { display: flex; align-items: center; justify-content: space-between; border: 1.5px solid var(--rule); border-radius: 10px; padding: 9px 14px; margin-top: 8px; font-size: 18px; font-weight: 500; transition: background .4s, border-color .4s; }
+.quiz.answered .opt.right { background: var(--mint); border-color: var(--ink); font-weight: 700; }
+.quiz .opt .tick { opacity: 0; font-weight: 800; color: var(--mint-ink); }
+.quiz.answered .opt.right .tick { opacity: 1; }
+.quiz .why { font-size: 16px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+.eval { width: 430px; direction: rtl; }
+.eval .top { display: flex; align-items: center; gap: 18px; }
+.gauge { width: 112px; height: 112px; flex: none; position: relative; }
+.gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.gauge .bg { fill: none; stroke: var(--paper-2); stroke-width: 10; }
+.gauge .fg { fill: none; stroke: var(--ink); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 289; stroke-dashoffset: 289; transition: stroke-dashoffset 1.6s cubic-bezier(.3,.7,.2,1); }
+.eval.run .gauge .fg { stroke-dashoffset: 52; }
+.gauge b { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 38px; font-weight: 900; }
+.gauge b small { font-size: 14px; color: var(--muted); font-weight: 600; display: block; margin-top: -8px; }
+.eval h4 { margin: 0; font-family: var(--body); font-size: 22px; direction: ltr; text-align: right; }
+.checks { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 7px; direction: ltr; }
+.checks li { display: flex; gap: 10px; font-size: 15.5px; font-family: var(--body); align-items: center; opacity: 0; transform: translateX(-8px); transition: opacity .4s, transform .4s; }
+.eval.run .checks li { opacity: 1; transform: none; }
+.checks .y { color: var(--mint-ink); font-weight: 800; width: 16px; }
+.checks .x { color: var(--warn); font-weight: 800; width: 16px; }
+.scores { display: flex; gap: 8px; margin-top: 14px; direction: ltr; }
+.scores span { flex: 1; text-align: center; font-size: 14px; font-weight: 600; padding: 6px 0; border-radius: 8px; background: var(--paper-2); }
+.scores b { display: block; font-family: var(--display); font-size: 22px; }
+
+/* ---------- team ---------- */
+.steps3 { display: flex; flex-direction: column; gap: 16px; margin-top: 4px; }
+.st { display: grid; grid-template-columns: 110px 1fr; gap: 14px; align-items: start; }
+.st .cmd { font-family: var(--mono); font-size: 17px; background: var(--ink); color: var(--paper); padding: 6px 10px; border-radius: 8px; text-align: center; direction: ltr; }
+.st .cmd.alt { background: var(--mint); color: var(--ink); font-family: var(--body); font-weight: 700; }
+.st b { display: block; font-size: 23px; font-weight: 700; }
+.st > div > span { font-size: 18px; color: var(--muted); line-height: 1.5; }
+.members { display: flex; flex-direction: column; gap: 8px; width: 330px; direction: rtl; }
+.member { display: flex; gap: 12px; align-items: center; }
+.member .av { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--paper); font-weight: 700; flex: none; font-size: 17px; }
+.member .t { font-size: 15.5px; line-height: 1.35; }
+.member .t b { font-size: 17px; }
+.member .why { color: var(--mint-ink); font-weight: 600; }
+.votes { display: flex; gap: 6px; margin-top: 6px; align-items: center; font-size: 16px; font-weight: 700; }
+.votes i { width: 24px; height: 24px; border-radius: 50%; background: var(--mint); border: 1.5px solid var(--ink); display: grid; place-items: center; font-style: normal; font-size: 13px; }
+.cmds { display: flex; gap: 10px; flex-wrap: wrap; }
+.cmds .chip { font-family: var(--mono); font-size: 17px; direction: ltr; }
+
+/* ---------- architecture ---------- */
+.arch { position: absolute; inset: 0; }
+.arch .head { position: absolute; right: 80px; top: 48px; display: flex; flex-direction: column; gap: 8px; }
+.arch .head h2 { font-size: 52px; }
+.arch .box { position: absolute; border: 1.5px solid var(--ink); border-radius: 16px; background: #fff; padding: 16px; display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; text-align: center; }
+.arch .box b { font-family: var(--latin); font-size: 34px; direction: ltr; font-weight: 400; }
+.arch .box span { font-size: 18px; font-weight: 600; }
+.arch .box small { font-size: 15px; color: var(--muted); line-height: 1.45; }
+.arch .src { position: absolute; left: 1250px; top: 160px; width: 300px; display: flex; flex-direction: column; gap: 16px; }
+.arch .src .grp { display: flex; flex-direction: column; gap: 8px; }
+.arch .src .grp > span { font-size: 15px; font-weight: 700; color: var(--muted); }
+.arch .src .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.arch .src .chip { font-size: 15px; padding: 4px 11px; }
+.arch .hermes { position: absolute; left: 320px; top: 300px; width: 260px; height: 260px; border-radius: 50%; background: var(--ink); color: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; z-index: 1; }
+.arch .hermes b { font-family: var(--latin); font-size: 44px; direction: ltr; }
+.arch .hermes span { font-size: 17px; opacity: .8; }
+.arch .sat { position: absolute; transform: translate(-50%, -50%); z-index: 2; }
+.arch .sat .chip { font-size: 16px; direction: ltr; }
+.arch .sat small { display: block; text-align: center; font-size: 13px; color: var(--muted); margin-top: 3px; }
+.arch .outs { position: absolute; left: 40px; top: 260px; width: 190px; display: flex; flex-direction: column; gap: 10px; }
+.arch .outs .chip { justify-content: center; font-size: 17px; }
+.arch .loop { position: absolute; left: 270px; top: 250px; width: 360px; height: 360px; pointer-events: none; }
+.arch .loop circle { fill: none; stroke: var(--mint-ink); stroke-width: 3; stroke-dasharray: 10 12; transform-origin: center; animation: spin 18s linear infinite; }
+.arch .loop text { font-family: var(--mono); font-size: 15px; fill: var(--mint-ink); }
+@keyframes spin { to { transform: rotate(-360deg); } }
+.arch .wires { position: absolute; inset: 0; pointer-events: none; }
+.arch .wires path { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: 2 9; stroke-linecap: round; animation: flow 1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: 11; } }
+.arch .tagline { position: absolute; left: 80px; right: 80px; top: 700px; display: flex; justify-content: center; gap: 22px; align-items: baseline; }
+.arch .tagline b { font-family: var(--display); font-size: 40px; font-weight: 800; }
+.arch .tagline > span { font-size: 19px; color: var(--muted); }
+
+/* ---------- endings ---------- */
+.big { position: absolute; left: 0; right: 0; top: 230px; text-align: center; display: flex; flex-direction: column; gap: 30px; align-items: center; }
+.big h1 { font-size: 88px; font-weight: 900; line-height: 1.2; }
+.big h1.soft { color: var(--muted); font-weight: 700; font-size: 70px; }
+.close { position: absolute; left: 0; right: 0; top: 120px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.close .wm { font-family: var(--latin); font-size: 54px; direction: ltr; }
+.close h1 { font-size: 92px; font-weight: 900; }
+.close .names { display: flex; gap: 40px; font-size: 26px; font-weight: 600; margin-top: 14px; }
+.close .names span { display: flex; flex-direction: column; gap: 2px; }
+.close .names small { font-size: 16px; color: var(--muted); font-weight: 500; }
+.close .motto { font-family: var(--display); font-size: 30px; font-weight: 700; color: var(--mint-ink); }
+.close .thanks { font-size: 22px; color: var(--muted); }
+
+/* ---------- presenter overlays (outside the stage) ---------- */
+#notes { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--ink); color: var(--paper); padding: 16px 28px calc(18px + env(safe-area-inset-bottom, 0px)); font-size: 20px; line-height: 1.7; max-height: 34vh; overflow: auto; }
+#notes .meta { font-size: 14px; opacity: .65; display: flex; gap: 18px; margin-bottom: 4px; }
+#notes p { margin: 0; white-space: pre-line; max-width: 95ch; }
+#timer { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 14px; z-index: 50; font-family: var(--mono); font-size: 15px; padding: 6px 12px; border-radius: 8px; background: var(--ink); color: var(--paper); direction: ltr; display: flex; gap: 10px; align-items: center; }
+#timer .d { color: var(--mint); }
+#timer .d.late { color: #FF9C86; }
+#overview { position: fixed; inset: 0; z-index: 60; background: rgba(244,245,242,.97); padding: 40px 32px; overflow: auto; }
+#overview h3 { font-family: var(--display); font-size: 22px; margin-bottom: 18px; }
+#overview .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+#overview button { text-align: right; border: 1.5px solid var(--rule); background: #fff; border-radius: 12px; padding: 14px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+#overview button.cur { border-color: var(--ink); background: var(--mint); }
+#overview button b { font-size: 18px; }
+#overview button span { font-size: 14px; color: var(--muted); }
+#overview button:focus-visible, .ctl:focus-visible { outline: 3px solid var(--mint-ink); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; transition-delay: 0s !important; }
+}
+</style>
+</head>
+<body>
+<div id="stage" aria-live="polite">
+
+  <!-- 0 · intro -->
+  <section class="slide" data-label="أول يوم" data-sec="8" data-who="قاسم">
+    <div class="intro-tag" data-s="0">رفيقك من أول يوم في الجامعة… لين التخرّج</div>
+    <div class="hint">للتقدّم: <kbd>←</kbd> أو <kbd>Space</kbd> · ملاحظات المتحدث <kbd>N</kbd> · المؤقت <kbd>T</kbd> · كل المحطات <kbd>O</kbd> · ملء الشاشة <kbd>F</kbd></div>
+    <div class="notes" hidden>لا تتكلم لين الطريق يرسم نفسه داخل الشعار. بعدها اضغط.</div>
+  </section>
+
+  <!-- 1 · story -->
+  <section class="slide" data-label="السنة الثالثة" data-sec="20" data-who="قاسم">
+    <svg id="scribble" viewBox="0 0 620 560" aria-hidden="true"><path/></svg>
+    <div class="story">
+      <div class="who">قاسم · طالب ذكاء اصطناعي، السنة الثالثة</div>
+      <h1>السنة الثالثة… <span>وما زلت ضايع.</span></h1>
+      <div class="quote" data-s="1">هذي مو قصتي بس.<br>هذي قصة كل طالب كلمناه.</div>
+    </div>
+    <div class="notes" hidden>أنا قاسم. ما عندي إخوان كبار يقولون لي وش أسوي… فدخلت الجامعة لحالي.
+جداول، deadlines، مواد… وأنا أطالع حولي وما أدري وين رايح.
+فسويت اللي يسويه الكل: اعتمدت على الـ AI. يحل الـ labs، يحل الـ assignments…
+ووصلت السنة الثالثة… وأنا ضايع أكثر من أول يوم.
+(اضغط) بس هذي مو قصتي أنا بس. هذي قصة كل طالب كلمناه.</div>
+  </section>
+
+  <!-- 2 · problems -->
+  <section class="slide" data-label="أربع مشاكل" data-sec="36" data-who="قاسم">
+    <div class="ptitle">
+      <div class="eyebrow">المشكلة</div>
+      <h2>أربع مشاكل… يعيشها كل طالب</h2>
+    </div>
+    <div class="problems">
+      <article class="prob" data-s="1">
+        <span class="idx">01</span>
+        <h3>الطالب ضايع</h3>
+        <p>وش أتعلم بعدها؟ وش علاقة المواد ببعض؟ ووين رايح بعد التخرج؟</p>
+        <div class="viz">
+          <div class="ratio"><span class="one"></span><span class="many" id="many"></span></div>
+          <p style="margin-top:10px">مرشد واحد… لمئات الطلاب</p>
+        </div>
+      </article>
+      <article class="prob" data-s="2">
+        <span class="idx">02</span>
+        <h3>الجامعة متأخرة عن السوق</h3>
+        <p>كلمة <span class="lat">agent</span> ما انذكرت في المنهج ولا مرة. والـ <span class="lat">co-op</span>؟ تدوّر عليه آخر لحظة.</p>
+        <div class="viz years">
+          <div><b>2019</b><small>المنهج</small></div>
+          <div class="gap"><span>7 سنين</span></div>
+          <div><b>2026</b><small>السوق</small></div>
+        </div>
+      </article>
+      <article class="prob" data-s="3">
+        <span class="idx">03</span>
+        <h3>نسلّم تفكيرنا للـ <span class="lat">AI</span></h3>
+        <p>الشغل ينسلّم… والتعلّم لا. وبالمشروع الجماعي: واحد يشتغل والباقي يتفرجون.</p>
+        <div class="viz bubbles">
+          <div class="me">حل لي الـ lab بسرعة</div>
+          <div class="bot">تفضل، الحل كامل.</div>
+          <div class="q">وبعدين؟</div>
+        </div>
+      </article>
+      <article class="prob" data-s="4">
+        <span class="idx">04</span>
+        <h3>كل شيء مبعثر</h3>
+        <p>سبع تطبيقات… ولا واحد يعرفك. وكل مرة تشرح نفسك من الصفر.</p>
+        <div class="viz apps">
+          <span class="chip" style="right:0;top:6px;transform:rotate(-5deg)">Blackboard</span>
+          <span class="chip" style="right:128px;top:0;transform:rotate(4deg)">ChatGPT</span>
+          <span class="chip" style="right:20px;top:54px;transform:rotate(3deg)">Notion</span>
+          <span class="chip" style="right:112px;top:62px;transform:rotate(-6deg)">Telegram</span>
+          <span class="chip" style="right:0;top:108px;transform:rotate(-2deg)">LinkedIn</span>
+          <span class="chip" style="right:104px;top:112px;transform:rotate(6deg)">Calendar</span>
+          <span class="chip" style="right:216px;top:96px;transform:rotate(-8deg)">X</span>
+        </div>
+      </article>
+    </div>
+    <div class="notes" hidden>وش المشكلة بالضبط؟ أربع مشاكل… كل طالب عاشها.
+(1) الجامعة تعطيك مواد وdeadlines… بس ما تعطيك اتجاه. ومرشد واحد لمئات الطلاب.
+(2) منهجي مكتوب 2019. إحنا في 2026… وكلمة agent ما انذكرت فيه ولا مرة.
+(3) «حل لي الـ lab». الشغل ينسلّم… بس ما تعلمت شيء.
+(4) Notion، ChatGPT، Blackboard، Telegram، LinkedIn… سبع تطبيقات، ولا واحد يعرفك.</div>
+  </section>
+
+  <!-- 3 · turn -->
+  <section class="slide" data-label="Waypoint" data-sec="14" data-who="قاسم">
+    <div class="turn" id="turn">
+      <div class="orbit">
+        <span class="chip" style="--x:-430px;--y:-150px;--r:-6deg">Notion</span>
+        <span class="chip" style="--x:-250px;--y:40px;--r:4deg">ChatGPT</span>
+        <span class="chip" style="--x:-470px;--y:110px;--r:7deg">Calendar</span>
+        <span class="chip" style="--x:420px;--y:-140px;--r:5deg">Blackboard</span>
+        <span class="chip" style="--x:260px;--y:50px;--r:-5deg">Telegram</span>
+        <span class="chip" style="--x:470px;--y:120px;--r:-8deg">LinkedIn</span>
+        <span class="chip" style="--x:0px;--y:-200px;--r:3deg">X</span>
+      </div>
+      <svg class="core" viewBox="0 0 150 150" aria-hidden="true">
+        <circle cx="75" cy="75" r="62" fill="#0C0D0C"/>
+        <path d="M75 75 L137 52 A66 66 0 0 1 137 98 Z" fill="#F4F5F2"/>
+        <circle cx="75" cy="75" r="16" fill="#A9ECC5"/>
+      </svg>
+      <div class="t1 before">سبع تطبيقات… ولا واحد يعرفك.</div>
+      <div class="t1 after">فبنينا واحد يعرفك.</div>
+      <div class="t2">مدرّب واحد. خريطة طريق واحدة. رحلتك الجامعية كلها.</div>
+    </div>
+    <div class="notes" hidden>سبع تطبيقات… ولا واحد يعرفك.
+(اضغط) فبنينا واحد يعرفك. مدرّب واحد، خريطة طريق واحدة، رحلتك الجامعية كلها.
+ويشتغل مع الـ AI… مو ضده. خلوني أوريكم.</div>
+  </section>
+
+  <!-- 4 · day one -->
+  <section class="slide" data-label="اليوم الأول" data-sec="18" data-who="قاسم">
+    <div class="demo">
+      <div class="copy">
+        <div class="eyebrow"><span class="n">01 / 06</span> اليوم الأول</div>
+        <h2>عرّف <span class="lat">Waypoint</span> بنفسك… مرة وحدة.</h2>
+        <p class="lede">يقرأ الـ <span class="lat">CV</span> والـ <span class="lat">GitHub</span> والسجل الأكاديمي و<span class="lat">Blackboard</span>، ويسألك عن أهدافك.</p>
+        <ul class="points">
+          <li data-s="1">كل اللي يستورده يبقى «مقترح»</li>
+          <li class="ok" data-s="2">ولا معلومة تصير حقيقة إلا إذا أنت أكّدتها</li>
+        </ul>
+      </div>
+      <div class="visual">
+        <div class="device" style="left:0;top:16px">
+          <div class="bar"><i></i><i></i><i></i><span class="url">localhost:5173 · Hermes</span><span class="tag rec">من التطبيق الحي</span></div>
+          <video data-rate="0.6" src="media/coach.mp4" poster="media/coach-top.jpg" muted loop playsinline preload="auto"></video>
+        </div>
+        <div class="float" data-s="2" style="left:-30px;top:470px;display:flex;gap:10px;align-items:center">
+          <span class="chip">السجل الأكاديمي</span><span class="chip">CV</span><span class="chip">GitHub</span><span class="chip mint">✓ أنت تأكّد</span>
+        </div>
+      </div>
+    </div>
+    <div class="notes" hidden>يوم واحد: تقول لـ Waypoint مين أنت. يقرأ الـ CV والـ GitHub والسجل الأكاديمي، ويسألك وش تبي توصل له.
+(اضغط) كل شيء يستورده يبقى اقتراح…
+(اضغط) وما فيه معلومة تصير حقيقة إلا إذا أنت أكّدتها.</div>
+  </section>
+
+  <!-- 5 · roadmap -->
+  <section class="slide" data-label="خريطتك" data-sec="18" data-who="قاسم">
+    <div class="demo">
+      <div class="copy">
+        <div class="eyebrow"><span class="n">02 / 06</span> خريطة الطريق</div>
+        <h2>خريطة طريق مبنية عليك.</h2>
+        <p class="lede">من مقرراتك واهتماماتك ووقتك، ووين تبي توصل.</p>
+        <ul class="points">
+          <li data-s="1">مراحل ومحطات، وكل محطة لها سبب</li>
+          <li class="ok" data-s="2">وفيها اللي يطلبه السوق اليوم، مو منهج 2019</li>
+        </ul>
+        <div class="cmds" data-s="2" style="direction:ltr;justify-content:flex-end"><span class="chip mint">Transformers</span><span class="chip mint">Fine-tuning</span><span class="chip mint">KV cache</span><span class="chip mint">Quantization</span></div>
+      </div>
+      <div class="visual">
+        <div class="device" style="left:0;top:16px">
+          <div class="bar"><i></i><i></i><i></i><span class="url">localhost:5173 · Roadmap</span><span class="tag rec">من التطبيق الحي</span></div>
+          <video src="media/roadmap.mp4" poster="media/roadmap.jpg" muted loop playsinline preload="auto"></video>
+        </div>
+      </div>
+    </div>
+    <div class="notes" hidden>ويبني لك خريطة طريق: مقرراتك، اهتماماتك، وقتك، ووين تبي توصل.
+(اضغط) مراحل واضحة… (اضغط) ومو بس مقررات: يضيف اللي يطلبه السوق اليوم. أشياء ما انذكرت بمنهجي.</div>
+  </section>
+
+  <!-- 6 · coach -->
+  <section class="slide" data-label="المدرّب" data-sec="18" data-who="قاسم">
+    <div class="demo">
+      <div class="copy">
+        <div class="eyebrow"><span class="n">03 / 06</span> مدرّب <span class="lat">Hermes</span></div>
+        <h2>مدرّب يعرفك… وما يحل عنك.</h2>
+        <p class="lede">يشرح من خلال اللي تعرفه أصلاً، وبعدها يتأكد إنك فهمت.</p>
+        <ul class="points">
+          <li data-s="1">سؤال، تمرين، بطاقات مراجعة… داخل المحادثة</li>
+          <li class="ok" data-s="2">التعلّم يصير عندك، مو عند الـ <span class="lat">chatbot</span></li>
+        </ul>
+      </div>
+      <div class="visual">
+        <div class="device" style="left:0;top:16px">
+          <div class="bar"><i></i><i></i><i></i><span class="url">localhost:5173 · Tensor fundamentals</span><span class="tag">لقطة من التطبيق</span></div>
+          <img src="media/roadmap-node.jpg" alt="شرح موضوع Tensor fundamentals مبني على خلفية الطالب">
+        </div>
+        <div class="float quiz" id="quiz" data-s="1" style="left:-40px;top:250px">
+          <div class="k">سؤال سريع · <span class="lat">Tensor fundamentals</span></div>
+          <div class="q">عندك <code>x.shape == (32, 3, 224, 224)</code>. وش يمثّل البُعد الأول؟</div>
+          <div class="opt right">الـ batch: عدد الصور <span class="tick">✓</span></div>
+          <div class="opt">القنوات (RGB)</div>
+          <div class="opt">ارتفاع الصورة</div>
+          <div class="why" data-s="2">صح. وهذا اللي يخلي PyTorch يعالج 32 صورة مرة وحدة.</div>
+        </div>
+      </div>
+    </div>
+    <div class="notes" hidden>تتعثر؟ المدرّب يعرفك: يعرف خريطتك ومشاريعك. هنا يقول له: أنت تكتب Python بسهولة، فخلنا نبني الـ tensors على اللي تعرفه.
+(اضغط) وهنا الفرق: ما يحل عنك. يعطيك سؤال…
+(اضغط) ويتأكد إنك فعلاً فهمت.</div>
+  </section>
+
+  <!-- 7 · projects + evaluation -->
+  <section class="slide" data-label="مشروع حقيقي" data-sec="18" data-who="قاسم">
+    <div class="demo">
+      <div class="copy">
+        <div class="eyebrow"><span class="n">04 / 06</span> المشاريع</div>
+        <h2>كل مرحلة تنتهي بمشروع حقيقي.</h2>
+        <p class="lede">مو بس تتعلم… تبني شيء تقدر توريه.</p>
+        <ul class="points">
+          <li data-s="1">وكيل يشغّل مشروعك فعلياً ويختبره</li>
+          <li class="ok" data-s="1">ويقيّمه بالأدلة، ويقول لك وين الخلل بالضبط</li>
+        </ul>
+      </div>
+      <div class="visual">
+        <div class="device" style="left:0;top:16px">
+          <div class="bar"><i></i><i></i><i></i><span class="url">localhost:5173 · Projects</span><span class="tag">لقطة من التطبيق</span></div>
+          <img src="media/projects.jpg" alt="صفحة المشاريع: مشروع لكل مرحلة">
+        </div>
+        <div class="float eval" id="eval" data-s="1" style="left:-40px;top:200px">
+          <div class="top">
+            <div class="gauge"><svg viewBox="0 0 112 112"><circle class="bg" cx="56" cy="56" r="46"/><circle class="fg" cx="56" cy="56" r="46"/></svg><b><span id="score">0</span></b></div>
+            <div><div class="k">تقييم المشروع · من 100</div><h4>Agentic Tool Playground</h4></div>
+          </div>
+          <ul class="checks">
+            <li><span class="y">✓</span>Project test suite (npm test)</li>
+            <li><span class="y">✓</span>Demo returns the right answer</li>
+            <li><span class="y">✓</span>Six JSON tool schemas validate</li>
+            <li><span class="x">✕</span>Scoring accepts 4000 for 400</li>
+            <li><span class="x">✕</span>Accepts a negated answer</li>
+          </ul>
+          <div class="scores"><span><b>90</b>Requirements</span><span><b>65</b>Correctness</span><span><b>85</b>Quality</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="notes" hidden>والتعلم ما يكفي: كل مرحلة تنتهي بمشروع حقيقي تبنيه.
+(اضغط) وبعدها وكيل يشغّل مشروعك فعلياً ويقيّمه بالأدلة: 82 من 100. الاختبارات تمر… بس فيه خطأين في التصحيح، ويوريك وينهم.</div>
+  </section>
+
+  <!-- 8 · co-op + CV -->
+  <section class="slide" data-label="الفرص" data-sec="18" data-who="قاسم">
+    <div class="demo">
+      <div class="copy">
+        <div class="eyebrow"><span class="n">05 / 06</span> التدريب التعاوني والسيرة</div>
+        <h2>فرص تناسبك… وناقصك يدخل خريطتك.</h2>
+        <p class="lede">شركات سعودية، مع سبب التوافق والمهارة الناقصة، قبل الـ <span class="lat">deadline</span> بشهور.</p>
+        <ul class="points">
+          <li data-s="1">المهارة الناقصة تنضاف لخريطتك على طول</li>
+          <li class="ok" data-s="2">وسيرتك تنكتب من شغلك الفعلي: بياناتك المؤكدة ومشاريعك المقيّمة</li>
+        </ul>
+      </div>
+      <div class="visual">
+        <div class="device" style="left:0;top:16px">
+          <div class="bar"><i></i><i></i><i></i><span class="url">localhost:5173 · Co-op</span><span class="tag rec">من التطبيق الحي</span></div>
+          <video data-rate="0.75" src="media/coop.mp4" poster="media/coop.jpg" muted loop playsinline preload="auto"></video>
+        </div>
+        <div class="float" data-s="1" style="left:360px;top:470px;display:flex;flex-direction:column;gap:8px">
+          <span class="k">خريطتك · أُضيف</span>
+          <span class="chip mint" style="direction:ltr">+ MLOps / model deployment</span>
+        </div>
+        <div class="device" data-s="2" style="width:380px;left:-50px;top:200px;z-index:4;transform:rotate(-2deg)">
+          <div class="bar"><i></i><i></i><i></i><span class="url">CV · PDF</span></div>
+          <img src="media/cv-doc.jpg" alt="السيرة الذاتية مكتوبة من بيانات الطالب المؤكدة" style="aspect-ratio:auto">
+        </div>
+      </div>
+    </div>
+    <div class="notes" hidden>وموسم الـ co-op: يطابقك مع شركات سعودية تناسبك، ويقول لك ليش.
+(اضغط) والمهارة الناقصة؟ تدخل خريطتك على طول… قبل الـ deadline بشهور.
+(اضغط) وسيرتك تنكتب من اللي سويته فعلاً، وتنزّلها PDF. ومو بس للحاسب: طب، هندسة، أي تخصص.</div>
+  </section>
+
+  <!-- 9 · group projects -->
+  <section class="slide" data-label="المشاريع الجماعية" data-sec="28" data-who="راشد">
+    <div class="demo">
+      <div class="copy" style="flex-basis:540px">
+        <div class="eyebrow"><span class="n">06 / 06</span> المشاريع الجماعية</div>
+        <h2 style="font-size:50px">واحد يشتغل… والباقي يتفرجون؟</h2>
+        <div class="steps3">
+          <div class="st" data-s="1"><span class="cmd alt">ارفع الملف</span><div><b>يرتّب المشروع كامل</b><span>الـ deliverables والـ rubric والمواعيد، وأنت تراجع قبل ما يدخل</span></div></div>
+          <div class="st" data-s="2"><span class="cmd">/split</span><div><b>توزيع عادل يطوّر كل واحد</b><span>حسب مهارات كل عضو وضغطه وهدفه، ومع كل مهمة سببها</span></div></div>
+          <div class="st" data-s="3"><span class="cmd alt">تصويت</span><div><b><span class="lat">Hermes</span> يقترح… الفريق يقرر</b><span>بالأغلبية يتطبّق، والقائد يقدر يحسم</span></div></div>
+        </div>
+        <div class="cmds" data-s="4"><span class="chip">/standup</span><span class="chip">/risks</span><span class="chip">/catchup</span></div>
+      </div>
+      <div class="visual">
+        <div class="device" style="left:0;top:16px;width:860px">
+          <div class="bar"><i></i><i></i><i></i><span class="url">localhost:5173 · Group 1</span><span class="tag rec">من التطبيق الحي</span></div>
+          <video src="media/team.mp4" poster="media/teams.jpg" muted loop playsinline preload="auto"></video>
+        </div>
+        <div class="float members" data-s="2" style="left:-40px;top:300px">
+          <div class="member"><span class="av">س</span><div class="t"><b>سارة</b> · Data model (ERD)<br><span class="why">↗ تطوير: نمذجة البيانات لهدف ML</span></div></div>
+          <div class="member"><span class="av">ع</span><div class="t"><b>علي</b> · API requirements<br><span class="why">قوته: REST APIs</span></div></div>
+          <div class="member"><span class="av">ن</span><div class="t"><b>نورة</b> · Wireframes<br><span class="why">قوتها: Figma</span></div></div>
+          <div class="votes" data-s="3"><i>✓</i><i>✓</i><i>✓</i><span style="margin-right:6px">تم التطبيق · بأغلبية الفريق</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="notes" hidden>[راشد] كلنا عشناها: group project فيه أربعة… واحد يسوي كل شيء بـ ChatGPT، والباقي spectators.
+(اضغط) ترفع ملف المشروع، وHermes يطلّع الـ deliverables والـ rubric والمواعيد… وأنت تراجع قبل ما يدخل.
+(اضغط) تكتب /split: يوزّع بالعدل حسب مهارات كل واحد وضغطه، وكل واحد ياخذ مهمة تطوّره، مو بس اللي يعرفه.
+(اضغط) بس Hermes ما يقرر. يقترح. الفريق يصوّت، والـ lead يقدر يحسم.
+(اضغط) ويتابعكم: standup، تحذير لو الـ deadline في خطر، ولو غبت يومين /catchup يلخّص لك. بالـ AI… مو ضده.</div>
+  </section>
+
+  <!-- 10 · architecture -->
+  <section class="slide" data-label="تحت الغطاء" data-sec="24" data-who="فراس">
+    <div class="arch" id="arch">
+      <div class="head"><div class="eyebrow">تحت الغطاء</div><h2>كيف يشتغل <span class="lat">Waypoint</span></h2></div>
+      <svg class="wires" viewBox="0 0 1600 900" aria-hidden="true">
+        <g data-s="1"><path d="M1250 290 C1215 290 1215 430 1188 430"/><path d="M1250 420 L1188 430"/><path d="M1250 545 C1215 545 1215 430 1188 430"/><path d="M1250 650 C1205 650 1215 430 1188 430"/></g>
+        <g data-s="2"><path d="M955 430 L898 430"/></g>
+        <g data-s="3"><path d="M665 430 L582 430"/></g>
+        <g data-s="4"><path d="M320 430 C280 430 270 282 232 282"/><path d="M320 430 C280 430 270 358 232 358"/><path d="M320 430 L232 434"/><path d="M320 430 C280 430 270 510 232 510"/><path d="M320 430 C280 430 270 586 232 586"/></g>
+      </svg>
+      <div class="src">
+        <div class="grp"><span>الجامعة والفرص</span><div class="row"><span class="chip">Blackboard</span><span class="chip">Outlook</span><span class="chip">Hackathonat</span></div></div>
+        <div class="grp"><span>الوظائف</span><div class="row"><span class="chip">LinkedIn · Apify</span><span class="chip">Telegram</span></div></div>
+        <div class="grp"><span>الويب</span><div class="row"><span class="chip">Reddit</span><span class="chip">X</span></div></div>
+        <div class="grp"><span>بياناتك</span><div class="row"><span class="chip">CV</span><span class="chip">GitHub</span><span class="chip">السجل الأكاديمي</span></div></div>
+      </div>
+      <div class="box" data-s="1" style="left:955px;top:315px;width:232px;height:232px"><b>Jev</b><span>طبقة القرار</span><small>يفلتر · يقيّم · يحمي البيانات<br><span class="mono" style="font-size:13px">Jev → Span → Laya (local)</span></small></div>
+      <div class="box" data-s="2" style="left:665px;top:315px;width:232px;height:232px"><b>SQLite</b><span>مصدر الحقيقة</span><small>حقائق أكّدها الطالب فقط</small></div>
+      <div class="hermes" data-s="3"><b>Hermes</b><span>الوكيل اللي يربط كل هذا بك</span></div>
+      <div class="sat" data-s="4" style="left:290px;top:262px"><span class="chip">Tools</span><small>صلاحية لكل تشغيل</small></div>
+      <div class="sat" data-s="4" style="left:610px;top:262px"><span class="chip">Skills</span></div>
+      <div class="sat" data-s="4" style="left:290px;top:600px"><span class="chip">Memory</span><small>خاصة لكل طالب</small></div>
+      <div class="sat" data-s="4" style="left:610px;top:600px"><span class="chip">Learned skills</span></div>
+      <div class="outs" data-s="4">
+        <span class="chip">خريطة الطريق</span><span class="chip">المشاريع الجماعية</span><span class="chip">التقييم</span><span class="chip">التدريب التعاوني</span><span class="chip">السيرة الذاتية</span>
+      </div>
+      <svg class="loop" data-s="5" viewBox="0 0 360 360" aria-hidden="true"><circle cx="180" cy="180" r="172"/><text x="180" y="20" text-anchor="middle" style="direction:ltr;paint-order:stroke;stroke:#F4F5F2;stroke-width:8px">↻ self-improving</text></svg>
+      <div class="tagline" data-s="5"><b><span class="lat">Hermes</span> يقترح… الطالب يقرر.</b><span>والقرار يتحقق في الـ API، مو بس في الـ prompt.</span></div>
+    </div>
+    <div class="notes" hidden>[فراس] البيانات تجي من كل مكان: Blackboard، Outlook، LinkedIn عن طريق Apify، Telegram، Hackathonat، والـ CV والـ GitHub حقك.
+(1) كلها تمر على Jev أول: الـ decision layer. يفلتر، يقيّم الـ relevance، ويحمي البيانات. ولو الـ cloud طاح، يكمل local.
+(2) تتخزّن في SQLite، مصدر الحقيقة… وما فيه معلومة تصير fact إلا إذا الطالب أكّدها.
+(3) وفي النص Hermes، الـ agent اللي يربط كل هذا بالطالب.
+(4) عنده tools بصلاحية لكل run، skills، memory خاصة لكل طالب، ويبني الـ roadmap، ويدير الـ group projects، ويقيّم المشاريع.
+(5) والأهم: self-improving. يتعلّم skills جديدة ويتذكّرك… فكل ما استخدمته، صار أذكى معك. Hermes يقترح… الطالب يقرر.</div>
+  </section>
+
+  <!-- 11 · if -->
+  <section class="slide" data-label="لو…" data-sec="8" data-who="قاسم">
+    <div class="big">
+      <h1>لو كان عندي <span class="lat" style="font-family:var(--latin);font-weight:400">Waypoint</span> من أول يوم…</h1>
+      <h1 class="soft" data-s="1">…ما كنت بوصل السنة الثالثة ضايع.</h1>
+    </div>
+    <div class="notes" hidden>فلو رجعنا لقصتي… لو كان عندي Waypoint من أول يوم…
+(اضغط) …ما كنت بوصل السنة الثالثة ضايع.</div>
+  </section>
+
+  <!-- 12 · close -->
+  <section class="slide" data-label="التخرّج" data-sec="10" data-who="الكل">
+    <div class="close">
+      <div class="wm">Waypoint</div>
+      <h1>الخريطة اللي كلنا نستحقها.</h1>
+      <div class="motto">بالـ <span class="lat">AI</span>… مو ضده.</div>
+      <div class="names">
+        <span>قاسم آل محفوظ<small>السوق والرؤية</small></span>
+        <span>فراس آل صواب<small>التقنية والأمان</small></span>
+        <span>راشد الخثلان<small>المشاريع الجماعية</small></span>
+      </div>
+      <div class="thanks">شكراً · أسئلتكم؟</div>
+    </div>
+    <div class="notes" hidden>مع الـ AI… مو ضده.
+إحنا قاسم، فراس، وراشد… وهذا Waypoint. شكراً، ونسمع أسئلتكم.
+[الأسئلة] قاسم: السوق والرؤية · فراس: كيف يشتغل والأمان والخصوصية · راشد: الغش وعدالة الفريق</div>
+  </section>
+
+  <div id="world"><svg id="road" aria-hidden="true"></svg></div>
+</div>
+
+<div id="notes" hidden><div class="meta"></div><p></p></div>
+<div id="timer" hidden><span class="e">0:00</span><span>/ 4:00</span><span class="d"></span></div>
+<div id="overview" hidden><h3>المحطات</h3><div class="grid"></div></div>
+
+<script>
+(() => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const W = 1600;
+  const stage = document.getElementById('stage');
+  const slides = [...document.querySelectorAll('.slide')];
+  const N = slides.length;
+  const steps = slides.map(s => Math.max(0, ...[...s.querySelectorAll('[data-s]')].map(e => +e.dataset.s)));
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- fit stage ---------- */
+  const fit = () => stage.style.setProperty('--fit', Math.min(innerWidth / 1600, innerHeight / 900));
+  addEventListener('resize', fit); fit();
+
+  /* ---------- build the road (right-to-left, like reading Arabic) ---------- */
+  const X = i => (N - 1 - i) * W + W / 2;
+  const c0 = X(0);
+  const band = i => (i >= N - 2 ? 800 : (i % 2 ? 790 : 815));
+  const pts = [
+    [c0 + 588, 318], [c0 + 660, 292], [c0 + 712, 352], [c0 + 676, 446], [c0 + 560, 476],
+    [c0 + 360, 450], [c0 + 160, 500], [c0 - 60, 464], [c0 - 280, 506], [c0 - 480, 466],
+    [c0 - 650, 500], [c0 - 820, 640],
+  ];
+  for (let i = 1; i < N; i++) {
+    const flat = i >= N - 2;
+    pts.push([X(i) + (i === 1 ? 420 : 800), flat ? 800 : (i % 2 ? 860 : 748)]);
+    pts.push([X(i), band(i)]);
+  }
+  pts.push([X(N - 1) - 500, 800]);
+  const d = (() => {
+    let s = `M${pts[0][0]} ${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      s += ` C${p1[0] + (p2[0] - p0[0]) / 6} ${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6} ${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]} ${p2[1]}`;
+    }
+    return s;
+  })();
+
+  const svg = document.getElementById('road');
+  const worldW = N * W;
+  svg.setAttribute('width', worldW); svg.setAttribute('height', 900);
+  svg.setAttribute('viewBox', `0 0 ${worldW} 900`);
+  const el = (tag, attrs, parent = svg) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+
+  const wm = el('text', { x: c0, y: 566, 'text-anchor': 'middle', class: 'wordmark', 'font-size': 232, textLength: 1220, lengthAdjust: 'spacingAndGlyphs', direction: 'ltr' });
+  wm.textContent = 'Waypoint';
+  const track = el('path', { d, class: 'road-track' });
+  const casing = el('path', { d, class: 'road-case' });
+  const ink = el('path', { d, class: 'road-ink' });
+  // the logo's dot at the start of the road
+  el('circle', { cx: pts[0][0] + 6, cy: pts[0][1] + 44, r: 27, fill: 'var(--ink)' });
+  el('path', { d: `M${pts[0][0] + 6} ${pts[0][1] + 44} l-30 -14 a33 33 0 0 1 14 -20 z`, fill: 'var(--paper)' });
+  const startLbl = el('text', { x: pts[0][0] + 6, y: pts[0][1] - 0, 'text-anchor': 'middle', 'font-size': 20, 'font-weight': 600, fill: 'var(--muted)', 'font-family': 'IBM Plex Sans Arabic, sans-serif' });
+  startLbl.textContent = '';
+
+  const total = ink.getTotalLength();
+  // length table to find where the road crosses each stop
+  const table = [];
+  for (let l = 0; l <= total; l += 3) table.push([l, ink.getPointAtLength(l).x]);
+  const lengthAtX = (x, from = 0) => { for (const [l, px] of table) if (l >= from && px <= x) return l; return total; };
+  const exitL = lengthAtX(c0 + 500);
+  const Ls = slides.map((_, i) => i === 0 ? lengthAtX(c0 - 700, exitL) : lengthAtX(X(i), exitL));
+  Ls[N - 1] = lengthAtX(X(N - 1), exitL);
+
+  const pins = [null];
+  for (let i = 1; i < N; i++) {
+    const p = ink.getPointAtLength(Ls[i]);
+    const g = el('g', { class: 'pin', 'data-i': i });
+    g.setAttribute('data-x', p.x); g.setAttribute('data-y', p.y);
+    el('circle', { class: 'halo', cx: 0, cy: 0, r: 18 }, g);
+    el('circle', { class: 'dot', cx: 0, cy: 0, r: i === N - 1 ? 22 : 15 }, g);
+    const t = el('text', { x: 0, y: 52 }, g); t.textContent = slides[i].dataset.label;
+    pins.push(g);
+  }
+  const trav = el('g', { id: 'traveller' });
+  el('circle', { class: 'glow', cx: 0, cy: 0, r: 24 }, trav);
+  el('circle', { class: 'core', cx: 0, cy: 0, r: 11 }, trav);
+
+  ink.style.strokeDasharray = casing.style.strokeDasharray = `${total} ${total}`;
+
+  /* ---------- camera ---------- */
+  let pos = 0;            // float slide index (camera/traveller)
+  let drawn = 0;          // length of road drawn
+  let zoom = 0;           // 0 normal → 1 whole journey
+  const zs = 1480 / worldW;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const camX = p => { const i = Math.floor(p), f = p - i; return i >= N - 1 ? X(N - 1) : lerp(X(i), X(i + 1), f); };
+  const lenAt = p => { const i = Math.floor(p), f = p - i; return i >= N - 1 ? Ls[N - 1] : lerp(Ls[i], Ls[i + 1], f); };
+
+  function render() {
+    const s = Math.exp(lerp(0, Math.log(zs), zoom));
+    const fx = lerp(camX(pos), worldW / 2, zoom), fy = lerp(450, 800, zoom);
+    const sx = 800, sy = lerp(450, 755, zoom);
+    svg.style.transform = `translate(${sx - fx * s}px, ${sy - fy * s}px) scale(${s})`;
+    svg.style.transformOrigin = '0 0';
+    const k = 1 / s;
+    ink.style.strokeWidth = lerp(11, 4 * k, zoom);
+    casing.style.strokeWidth = lerp(28, 0.01, zoom);
+    track.style.opacity = 1 - zoom;
+    ink.style.strokeDashoffset = total - drawn;
+    casing.style.strokeDashoffset = total - drawn;
+    const tp = ink.getPointAtLength(drawn);
+    const ps = lerp(1, 0.6 * k, zoom);
+    trav.setAttribute('transform', `translate(${tp.x} ${tp.y}) scale(${ps})`);
+    for (let i = 1; i < N; i++) {
+      const g = pins[i];
+      g.setAttribute('transform', `translate(${g.dataset.x} ${g.dataset.y}) scale(${lerp(1, 0.45 * k, zoom)})`);
+    }
+    stage.classList.toggle('zoomed', zoom > 0.05);
+  }
+
+  let anim = null;
+  function tween(fromState, toState, ms, done) {
+    cancelAnimationFrame(anim);
+    const t0 = performance.now();
+    const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const tick = now => {
+      const t = ms <= 0 ? 1 : Math.min(1, (now - t0) / ms), e = ease(t);
+      for (const k in toState) state[k] = lerp(fromState[k], toState[k], e);
+      pos = state.pos; drawn = state.drawn; zoom = state.zoom; render();
+      if (t < 1) anim = requestAnimationFrame(tick); else done && done();
+    };
+    anim = requestAnimationFrame(tick);
+  }
+  const state = { pos: 0, drawn: 0, zoom: 0 };
+
+  /* ---------- slides & steps ---------- */
+  let cur = 0, step = 0;
+  function applySteps() {
+    const s = slides[cur];
+    s.querySelectorAll('[data-s]').forEach(e => e.classList.toggle('on', +e.dataset.s <= step));
+    const turn = s.querySelector('#turn'); if (turn) turn.classList.toggle('pulled', step >= 1);
+    const quiz = s.querySelector('#quiz'); if (quiz) quiz.classList.toggle('answered', step >= 2);
+    const ev = s.querySelector('#eval'); if (ev) { const run = step >= 1; if (run && !ev.classList.contains('run')) countUp(); ev.classList.toggle('run', run); }
+    if (cur === 1) drawScribble();
+    updateNotes();
+  }
+  function countUp() {
+    const out = document.getElementById('score'); const t0 = performance.now();
+    const f = now => { const t = Math.min(1, (now - t0) / 1500); out.textContent = Math.round(82 * (1 - Math.pow(1 - t, 3))); if (t < 1) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  }
+
+  function go(i, st = 0, instant = false) {
+    i = Math.max(0, Math.min(N - 1, i));
+    const prev = cur;
+    slides.forEach((s, k) => { s.classList.toggle('active', k === i); s.classList.toggle('gone', k < i); });
+    slides.forEach((s, k) => s.querySelectorAll('video').forEach(v => { if (k === i) { v.currentTime = 0; v.playbackRate = +(v.dataset.rate || 1); v.play().catch(() => {}); } else v.pause(); }));
+    cur = i; step = st;
+    if (i !== 1) scribbleDrawn = false;
+    if (i !== 7) { const ev = document.getElementById('eval'); ev.classList.remove('run'); document.getElementById('score').textContent = '0'; }
+    applySteps();
+    pins.forEach((g, k) => { if (!g) return; g.classList.toggle('past', k < i); g.classList.toggle('here', k === i); });
+    const target = { pos: i, drawn: Ls[i], zoom: i === N - 1 ? 1 : 0 };
+    const dist = Math.abs(i - prev);
+    const ms = reduce || instant ? 0 : Math.min(2400, 1150 + (dist - 1) * 250) + (target.zoom !== state.zoom ? 900 : 0);
+    tween({ ...state }, target, ms);
+    try { history.replaceState(null, '', '#' + i); } catch (e) {}
+    if (i > 0 && timerStart === null) timerStart = Date.now();
+  }
+  const next = () => { if (step < steps[cur]) { step++; applySteps(); } else if (cur < N - 1) go(cur + 1); };
+  const prev = () => { if (step > 0) { step--; applySteps(); } else if (cur > 0) go(cur - 1, steps[cur - 1]); };
+
+  /* ---------- the story scribble ---------- */
+  let scribbleDrawn = false;
+  function drawScribble() {
+    if (scribbleDrawn) return; scribbleDrawn = true;
+    const path = document.querySelector('#scribble path');
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const P = []; let x = 580, y = 470;
+    for (let k = 0; k < 34; k++) {
+      const a = k * 1.9 + rnd() * 2.2, r = 70 + rnd() * 120;
+      x = Math.max(30, Math.min(590, 330 + Math.cos(a) * r * (1 + k / 40) + (rnd() - .5) * 80));
+      y = Math.max(30, Math.min(530, 270 + Math.sin(a) * r * .9 + (rnd() - .5) * 70));
+      P.push([x, y]);
+    }
+    let s = `M${P[0][0]} ${P[0][1]}`;
+    for (let k = 0; k < P.length - 1; k++) {
+      const p0 = P[k - 1] || P[k], p1 = P[k], p2 = P[k + 1], p3 = P[k + 2] || p2;
+      s += ` C${p1[0] + (p2[0] - p0[0]) / 5} ${p1[1] + (p2[1] - p0[1]) / 5} ${p2[0] - (p3[0] - p1[0]) / 5} ${p2[1] - (p3[1] - p1[1]) / 5} ${p2[0]} ${p2[1]}`;
+    }
+    path.setAttribute('d', s);
+    const L = path.getTotalLength();
+    path.style.transition = 'none'; path.style.strokeDasharray = L; path.style.strokeDashoffset = L;
+    path.getBoundingClientRect();
+    path.style.transition = reduce ? 'none' : 'stroke-dashoffset 5s cubic-bezier(.3,.1,.3,1) .5s';
+    path.style.strokeDashoffset = 0;
+  }
+
+  /* ---------- problem 01 dots ---------- */
+  const many = document.getElementById('many');
+  for (let k = 0; k < 48; k++) many.appendChild(document.createElement('i'));
+
+  /* ---------- presenter tools ---------- */
+  const notes = document.getElementById('notes');
+  function updateNotes() {
+    const s = slides[cur];
+    notes.querySelector('.meta').textContent = `${cur + 1} / ${N} · ${s.dataset.label} · ${s.dataset.who} · ~${s.dataset.sec} ث · خطوة ${step}/${steps[cur]}`;
+    notes.querySelector('p').textContent = (s.querySelector('.notes') || {}).textContent || '';
+  }
+  let timerStart = null;
+  const timer = document.getElementById('timer');
+  const fmt = sec => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+  setInterval(() => {
+    if (timer.hidden) return;
+    const el = timerStart ? (Date.now() - timerStart) / 1000 : 0;
+    const plan = slides.slice(1, cur + 1).reduce((a, s) => a + +s.dataset.sec, 0);
+    timer.querySelector('.e').textContent = fmt(el);
+    const delta = el - plan, dEl = timer.querySelector('.d');
+    dEl.textContent = timerStart ? (delta > 0 ? `+${fmt(delta)}` : `−${fmt(-delta)}`) : '';
+    dEl.classList.toggle('late', delta > 0);
+  }, 250);
+
+  const ov = document.getElementById('overview');
+  const ovGrid = ov.querySelector('.grid');
+  slides.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<span>${i + 1} · ${s.dataset.who}</span><b></b><span>~${s.dataset.sec} ث</span>`;
+    b.querySelector('b').textContent = s.dataset.label;
+    b.addEventListener('click', e => { e.stopPropagation(); ov.hidden = true; go(i); });
+    ovGrid.appendChild(b);
+  });
+  function toggleOverview() {
+    ov.hidden = !ov.hidden;
+    if (!ov.hidden) { [...ovGrid.children].forEach((b, i) => b.classList.toggle('cur', i === cur)); ovGrid.children[cur].focus(); }
+  }
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (!ov.hidden && k !== 'o' && k !== 'O' && k !== 'Escape') return;
+    if (['ArrowLeft', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(k)) { e.preventDefault(); next(); }
+    else if (['ArrowRight', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { e.preventDefault(); prev(); }
+    else if (k === 'Home') go(0);
+    else if (k === 'End') go(N - 1);
+    else if (k === 'n' || k === 'N') { notes.hidden = !notes.hidden; updateNotes(); }
+    else if (k === 't' || k === 'T') timer.hidden = !timer.hidden;
+    else if (k === 'r' || k === 'R') timerStart = cur > 0 ? Date.now() : null;
+    else if (k === 'o' || k === 'O' || (k === 'Escape' && !ov.hidden)) toggleOverview();
+    else if (k === 'f' || k === 'F') { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); else document.documentElement.requestFullscreen().catch(() => {}); }
+  });
+  stage.addEventListener('click', e => { if (e.shiftKey) prev(); else next(); });
+  stage.addEventListener('contextmenu', e => { e.preventDefault(); prev(); });
+  let tx0 = null;
+  stage.addEventListener('touchstart', e => { tx0 = e.touches[0].clientX; }, { passive: true });
+  stage.addEventListener('touchend', e => { if (tx0 === null) return; const dx = e.changedTouches[0].clientX - tx0; if (Math.abs(dx) > 40) { dx > 0 ? next() : prev(); } tx0 = null; });
+
+  /* ---------- start: the road draws itself through the wordmark ---------- */
+  const start = parseInt((location.hash || '').slice(1), 10);
+  if (start > 0 && start < N) { state.drawn = 0; go(start, 0, true); }
+  else {
+    slides[0].classList.add('active'); applySteps(); render();
+    const doIntro = () => tween({ pos: 0, drawn: 0, zoom: 0 }, { pos: 0, drawn: Ls[0], zoom: 0 }, reduce ? 0 : 2600, () => { slides[0].querySelector('[data-s]').classList.add('on'); });
+    slides[0].querySelector('[data-s]').classList.remove('on');
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(doIntro, 350));
+  }
+})();
+</script>
+</body>
+</html>

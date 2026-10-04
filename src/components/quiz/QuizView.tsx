@@ -17,6 +17,7 @@ import {
 } from "@/lib/quiz-ai";
 import { currentModel, modelLabel, useModelCatalog } from "@/lib/models";
 import { extractSource, QuizExtractError } from "@/lib/quiz-extract";
+import { fetchBlackboardFile, type BlackboardFile } from "@/lib/blackboard-catalog";
 import { useI18n, type MessageKey } from "@/lib/i18n/context";
 import {
   combineDeckTexts,
@@ -69,6 +70,7 @@ export function QuizView() {
   const tabModel = useModelCatalog().catalog?.selected.model ?? "";
   const [jobs, setJobs] = useState<GenJob[]>([]);
   const [newQuizIds, setNewQuizIds] = useState<string[]>([]);
+  const [busyLectureIds, setBusyLectureIds] = useState<string[]>([]);
   const abortControllers = useRef(new Map<string, AbortController>());
   // Every write starts from what is in storage now (see updateLibrary): Slides shares this
   // library, and a quiz job may finish after this tab was left and reopened.
@@ -102,6 +104,34 @@ export function QuizView() {
   const clearSelection = useCallback(() => {
     setSelectedDeckIds([]);
   }, []);
+
+  /** Sidebar lecture tick: an already-read lecture toggles like any deck;
+   *  a new one is downloaded from Blackboard, read in the browser, then
+   *  added to the shared slides library and put in the quiz area. */
+  const toggleLecture = useCallback(
+    async (file: BlackboardFile) => {
+      const existing = loadLibrary().decks.find((d) => d.fileName === file.filename);
+      if (existing) {
+        setSelectedDeckIds((sel) =>
+          sel.includes(existing.id) ? sel.filter((x) => x !== existing.id) : [...sel, existing.id],
+        );
+        return;
+      }
+      setBusyLectureIds((prev) => (prev.includes(file.id) ? prev : [...prev, file.id]));
+      setError(null);
+      try {
+        const blob = await fetchBlackboardFile(file);
+        const deck = deckFromSource(await extractSource(blob));
+        persist((lib) => ({ ...lib, decks: [deck, ...lib.decks] }));
+        setSelectedDeckIds((sel) => (sel.includes(deck.id) ? sel : [...sel, deck.id]));
+      } catch (e) {
+        setError(errorText(e, t, "quiz.errors.readFailed"));
+      } finally {
+        setBusyLectureIds((prev) => prev.filter((x) => x !== file.id));
+      }
+    },
+    [persist, t],
+  );
 
   const deleteDeck = useCallback(
     (id: string) => {
@@ -346,6 +376,8 @@ export function QuizView() {
       decks={library.decks}
       selectedDeckIds={selectedDeckIds}
       onToggleDeck={toggleDeck}
+      onToggleLecture={(file) => void toggleLecture(file)}
+      busyLectureIds={busyLectureIds}
       onClearSelection={clearSelection}
       onDeleteDeck={deleteDeck}
       uploading={uploading}

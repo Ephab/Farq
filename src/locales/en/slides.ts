@@ -1,8 +1,8 @@
 // Slides tab: upload, topic suggestions, extension generation, deck preview and export.
 export const slides = {
   badge: "AI slide extensions",
-  title: "Extend your slides",
-  subtitle: "Upload a deck, pick a topic, and Hermes writes new slides in your style.",
+  title: "Your slide library",
+  subtitle: "Browse your course files, open a deck, or ask Hermes to extend your slides.",
   modelAria: "Hermes slides model",
   modelTitle: "Extensions use the server Hermes model",
   modelDefault: "Waypoint default",
@@ -10,8 +10,8 @@ export const slides = {
   uploading: "Reading slides…",
   decks: {
     aria: "Your slide decks",
-    heading: "Your slides",
-    emptyTitle: "No slides yet. Upload your first deck.",
+    heading: "Slide workbench",
+    emptyTitle: "Open a Blackboard file and choose Use in slide workbench, or upload a deck.",
     emptyHint: "PDF or PPTX, up to 25MB, parsed in your browser",
     extendAria: "Extend {name}",
     pages: { one: "{count} page", other: "{count} pages" },

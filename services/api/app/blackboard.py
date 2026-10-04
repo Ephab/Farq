@@ -80,13 +80,23 @@ def _course_dict(item: BlackboardCourse, count: int | None = None) -> dict:
         "code": item.code,
         "title": item.title,
         "term": item.term,
+        "term_id": item.term_id,
+        "course_status": item.lifecycle,
         "description": item.description,
         "source_kind": item.source_kind,
+        "is_current": bool(item.is_current),
+        "instructors": json.loads(item.instructors_json or "[]"),
+        "grade_summary": json.loads(item.grade_summary_json or "{}"),
+        "url": item.url,
         "updated_at": _iso(item.updated_at),
     }
     if count is not None:
         result["content_count"] = count
     return result
+
+
+def _mode(courses: list[BlackboardCourse]) -> str:
+    return "live" if any(course.source_kind == "blackboard_live" for course in courses) else "preindexed_demo"
 
 
 def _item_meta(item: BlackboardContentItem, course: BlackboardCourse | None = None, snippet: str | None = None) -> dict:
@@ -221,10 +231,12 @@ def seed_demo_snapshot(db: Session, fixture_path: Path = DEMO_FIXTURE_PATH) -> b
 def snapshot_status(student_id: str, _owner: OwnedStudent, db: Db) -> dict:
     _student(db, student_id)
     courses = db.scalars(select(BlackboardCourse).where(BlackboardCourse.student_id == student_id)).all()
-    source = db.scalar(select(DataSource).where(DataSource.student_id == student_id, DataSource.kind == "blackboard_demo"))
+    mode = _mode(list(courses))
+    kind = "blackboard" if mode == "live" else "blackboard_demo"
+    source = db.scalar(select(DataSource).where(DataSource.student_id == student_id, DataSource.kind == kind))
     return {
         "connected": bool(courses),
-        "mode": "preindexed_demo",
+        "mode": mode,
         "read_only": True,
         "courses": len(courses),
         "last_synced_at": _iso(source.last_synced_at) if source else None,
@@ -240,7 +252,7 @@ def list_courses(student_id: str, db: Db, grant: BlackboardGrant) -> dict:
     for course in courses:
         count = len(db.scalars(select(BlackboardContentItem.id).where(BlackboardContentItem.course_id == course.id)).all())
         result.append(_course_dict(course, count))
-    return {"mode": "preindexed_demo", "read_only": True, "courses": result}
+    return {"mode": _mode(list(courses)), "read_only": True, "courses": result}
 
 
 @router.get("/internal/hermes/students/{student_id}/blackboard/courses/{course_id}/content")
@@ -258,7 +270,9 @@ def list_content(
         if content_type not in CONTENT_TYPES:
             raise HTTPException(422, "Unknown Blackboard content type")
         query = query.where(BlackboardContentItem.content_type == content_type)
-    items = db.scalars(query.order_by(BlackboardContentItem.modified_at.desc(), BlackboardContentItem.title).limit(limit)).all()
+    order = ((BlackboardContentItem.due_at.is_(None), BlackboardContentItem.due_at) if content_type == "assignment"
+             else (BlackboardContentItem.modified_at.desc(), BlackboardContentItem.title))
+    items = db.scalars(query.order_by(*order).limit(limit)).all()
     return {"course": _course_dict(course), "items": [_item_meta(item) for item in items]}
 
 

@@ -1,15 +1,12 @@
 import { useState, type ReactNode } from "react"
-import { Pause, Play, RefreshCw } from "lucide-react"
 
 import { InfoTip } from "./InfoTip"
 
 import type { OutlookStatus } from "@/lib/outlook-api"
 import { useI18n } from "@/lib/i18n/context"
 
-import { ClassifierPicker } from "./ClassifierPicker"
 import { TokenConnection } from "./TokenConnection"
 
-const CUTOFFS = [25, 50, 100, 250, 500, 1000]  // must match CLASSIFY_LIMITS in outlook/router.py
 
 const control = "inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -55,14 +52,6 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
           {syncLine(status, i18n)}
           <InfoTip label={t("emails.rail.aboutSync")}>{status.auto_sync ? t("emails.rail.autoOn") : t("emails.rail.autoOff")}</InfoTip>
         </p>
-        <div className="mt-3 flex gap-2">
-          <button className={control} disabled={busy || status.status === "running"} onClick={() => void onAction("/sync", "POST")}>
-            <RefreshCw className={`size-3.5 ${syncing ? "animate-spin motion-reduce:animate-none" : ""}`} />{t("emails.rail.syncNow")}
-          </button>
-          <button className={control} disabled={busy} onClick={() => void onAction("/preferences", "PATCH", { auto_sync: !status.auto_sync })}>
-            {status.auto_sync ? <><Pause className="size-3.5" />{t("emails.rail.pause")}</> : <><Play className="size-3.5" />{t("emails.rail.resume")}</>}
-          </button>
-        </div>
         {status.worker_enabled === false && (
           <p role="status" className="mt-3 rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
             {t("emails.rail.workerOff", { setting: "⁦OUTLOOK_SYNC_ENABLED=true⁩" })}
@@ -73,30 +62,6 @@ export function MailboxRail({ status, busy, onAction, onReconnected }: MailboxRa
           <div className="mt-3"><TokenConnection available={!!status.token_available} onConnected={onReconnected} /></div>
         )}
       </Section>
-
-      {status.classifiers ? (
-        <Section title={t("emails.rail.classifier")}>
-          <ClassifierPicker
-            engines={status.classifiers}
-            selected={status.classifier ?? "laya"}
-            busy={busy}
-            onSelect={(engine) => void onAction("/classifier", "PATCH", { engine })}
-          />
-          <label className="mt-3 flex items-center gap-2 text-xs">
-            <span className="shrink-0 font-medium">{t("emails.rail.classify")}</span>
-            <InfoTip label={t("emails.rail.aboutLimit")}>{t("emails.rail.limitInfo")}{status.pending ? ` ${t("emails.rail.pending", { count: status.pending })}` : ""}</InfoTip>
-            <select
-              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={status.classify_limit ?? "none"}
-              disabled={busy}
-              onChange={(event) => void onAction("/classify-limit", "PATCH", { limit: event.target.value === "none" ? null : Number(event.target.value) })}
-            >
-              {CUTOFFS.map((value) => <option key={value} value={value}>{t("emails.rail.latest", { count: value })}</option>)}
-              <option value="none">{t("emails.rail.allEmails")}</option>
-            </select>
-          </label>
-        </Section>
-      ) : null}
 
       <Section title={t("emails.rail.coachAccess")}>
         <label className="mt-2 flex items-start gap-2.5 text-xs leading-5">

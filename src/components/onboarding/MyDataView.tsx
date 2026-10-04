@@ -10,10 +10,11 @@ import { useI18n } from "@/lib/i18n/context"
 interface MyDataViewProps {
   /** Hand a prefilled request to Hermes Coach; the student still presses send. */
   onAskHermes: (draft: string) => void
+  onOpenEmails: () => void
 }
 
 /** Add sources after onboarding. New evidence is reviewed, then Hermes proposes roadmap changes. */
-export function MyDataView({ onAskHermes }: MyDataViewProps) {
+export function MyDataView({ onAskHermes, onOpenEmails }: MyDataViewProps) {
   const { t, fmt } = useI18n()
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [step, setStep] = useState<"sources" | "review" | "done">("sources")
@@ -26,7 +27,7 @@ export function MyDataView({ onAskHermes }: MyDataViewProps) {
 
   if (!profile) return <div className="grid flex-1 place-items-center p-8">{error ? <p className="text-sm text-destructive">{error}</p> : <LoaderCircle className="size-5 animate-spin text-muted-foreground" />}</div>
 
-  if (step === "sources") return <SourcesStep profile={profile} title={t("onboarding.myData.sourcesTitle")} backLabel={t("onboarding.myData.reviewNew")} onBack={() => setStep("review")} onNext={() => setStep("review")} />
+  if (step === "sources") return <SourcesStep organizeRecords onOpenEmails={onOpenEmails} profile={profile} title={t("onboarding.myData.sourcesTitle")} backLabel={t("onboarding.myData.reviewNew")} onBack={() => setStep("review")} onNext={() => setStep("review")} />
   if (step === "review") return <EvidenceReview profile={profile} onlyNew onBack={() => setStep("sources")} onNext={(titles) => { setKept(titles); setStep("done") }} />
 
   const draft = kept.length

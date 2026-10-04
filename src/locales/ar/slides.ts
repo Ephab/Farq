@@ -3,8 +3,8 @@ import type { slides as en } from "../en/slides"
 
 export const slides: CatalogShape<typeof en> = {
   badge: "توسيع الشرائح بالذكاء الاصطناعي",
-  title: "وسّع شرائحك",
-  subtitle: "ارفع عرضًا تقديميًا، واختر موضوعًا، وسيكتب Hermes شرائح جديدة بأسلوبك.",
+  title: "مكتبة شرائحك",
+  subtitle: "تصفّح ملفات مقرراتك، وافتح عرضًا، أو اطلب من Hermes توسيع شرائحك.",
   modelAria: "نموذج Hermes للشرائح",
   modelTitle: "تستخدم التوسعات نموذج Hermes على الخادم",
   modelDefault: "افتراضي Waypoint",
@@ -12,8 +12,8 @@ export const slides: CatalogShape<typeof en> = {
   uploading: "جارٍ قراءة الشرائح…",
   decks: {
     aria: "عروضك التقديمية",
-    heading: "شرائحك",
-    emptyTitle: "لا توجد شرائح بعد. ارفع أول عرض لك.",
+    heading: "مساحة العمل على الشرائح",
+    emptyTitle: "افتح ملف Blackboard واختر استخدام في مساحة الشرائح، أو ارفع عرضًا.",
     emptyHint: "PDF أو PPTX، حتى 25 ميغابايت، تُحلَّل داخل متصفحك",
     extendAria: "توسيع {name}",
     pages: {

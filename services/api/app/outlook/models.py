@@ -16,13 +16,12 @@ class MailConnection(Base):
     token_cache: Mapped[str] = mapped_column(Text, default="")
     connected: Mapped[bool] = mapped_column(Boolean, default=True)
     # Sync never starts on its own: every sign-in leaves the connection paused
-    # until the student presses Resume (PATCH /preferences auto_sync=true).
+    # until the student enables sync in Settings (PATCH /preferences auto_sync=true).
     auto_sync: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Email classifier chosen by the student: laya (local, default), span or jev. A cloud choice is
-    # consent to send redacted mail text to that provider and to later ones in the fallback chain.
-    classifier: Mapped[str] = mapped_column(String, default="laya")
+    # Automatic Jev -> Span -> Laya policy. Legacy choices are migrated at startup.
+    classifier: Mapped[str] = mapped_column(String, default="auto")
     # Classify only the N most recent emails; None = no cutoff. Older mail is stored unclassified.
-    classify_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    classify_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=50)
     generation: Mapped[int] = mapped_column(Integer, default=1)
     next_sync: Mapped[float] = mapped_column(Float, default=0)
     lease_until: Mapped[float] = mapped_column(Float, default=0)

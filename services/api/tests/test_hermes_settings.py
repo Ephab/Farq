@@ -475,13 +475,38 @@ def test_ready_to_generate_is_onboarding_only(client: TestClient):
     with SessionLocal() as db:
         db.get(StudentProfile, student_id).onboarding_status = "done"
         db.commit()
-    assert client.post("/internal/hermes/onboarding/ready", json={}, headers=headers).status_code == 409
+    refused = client.post("/internal/hermes/onboarding/ready", json={}, headers=headers)
+    assert refused.status_code == 409
+    # The refusal is the last thing the model reads before replying, so it must steer the model back
+    # to the student's question instead of letting it narrate a missing button.
+    assert "answer their question" in refused.json()["detail"]
     with SessionLocal() as db:
         db.get(StudentProfile, student_id).onboarding_status = "chat"
         db.commit()
     assert client.post("/internal/hermes/onboarding/ready", json={}, headers=headers).status_code == 200
     with SessionLocal() as db:
         assert __import__("json").loads(merge_staged_ui(db.get(AgentRun, run_id), None))["ready_to_generate"] is True
+
+
+def test_coach_instructions_forbid_the_onboarding_generate_tool(client: TestClient):
+    """The coach must never re-open the onboarding-only Generate path (it burned a whole reply)."""
+    from app.hermes import instructions_for
+    from app.models import StudentProfile
+
+    student_id, _ = _student(client, "Coach Ready")
+    with SessionLocal() as db:
+        profile = db.get(StudentProfile, student_id)
+        profile.onboarding_status = "chat"
+        db.commit()
+        onboarding = instructions_for(student_id, db)
+        profile.onboarding_status = "done"
+        db.commit()
+        coach = instructions_for(student_id, db)
+    # Onboarding still tells Hermes when to show the button; the coach is told never to touch it.
+    assert "call waypoint_ready_to_generate" in onboarding
+    assert "never call it from this chat" in coach
+    assert "waypoint_get_active_roadmap first" in coach
+    assert "never call it from this chat" not in onboarding
 
 
 # --- waypoint_show_element (chat elements: quiz, timer, progress, ...) ----------------------------

@@ -127,16 +127,15 @@ def classify_pending(db, connection: MailConnection, generation: int, lease: str
     if not batch:
         return False
     for item in batch:
-        # Re-read per message: switching engine or cutoff takes effect immediately.
-        preferred, limit = db.execute(select(MailConnection.classifier, MailConnection.classify_limit)
-                                      .where(MailConnection.id == connection.id)).one()
+        # Re-read per message so the Settings cutoff takes effect immediately.
+        limit = db.scalar(select(MailConnection.classify_limit).where(MailConnection.id == connection.id))
         newer = db.scalar(select(func.count()).select_from(MailItem).where(*live, MailItem.received > item.received))
         if limit is not None and newer >= limit:
             result = BEYOND_CUTOFF
         else:
             if _classifier is None:
                 _classifier = shared_laya()
-            result = asdict(classify_email(EmailInput(item.subject, item.excerpt), preferred or "laya", _classifier))
+            result = asdict(classify_email(EmailInput(item.subject, item.excerpt), "auto", _classifier))
         if not lease_valid(db, connection.id, generation, lease):
             return True
         item.classification = json.dumps(result)

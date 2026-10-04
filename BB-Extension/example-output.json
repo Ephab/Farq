@@ -1,0 +1,92 @@
+{
+  "exported_at": "2026-09-28T00:00:00.000Z",
+  "source": "IAU Blackboard",
+  "origin": "https://vle.iau.edu.sa",
+  "user": { "id": "_1_1", "userName": "student" },
+  "courses": [
+    {
+      "id": "_101_1",
+      "course_id": "_101_1",
+      "courseId": "CS101-2026",
+      "code": "CS101-2026",
+      "name": "Intro to Computing",
+      "availability": "Yes",
+      "enrollment_date": "2026-09-01T00:00:00.000Z",
+      "role": "Student",
+      "term_id": "_t1",
+      "is_current": true,
+      "instructors": [{ "name": "A Prof", "email": "a@iau.edu.sa" }],
+      "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline"
+    }
+  ],
+  "assessments": [
+    {
+      "course": "Intro to Computing",
+      "course_id": "_101_1",
+      "title": "Assignment 1",
+      "description": "Do it...",
+      "due_date": "2026-02-10T20:59:00.000Z",
+      "available_from": null,
+      "available_until": null,
+      "submission_status": "Graded",
+      "submitted_at": "2026-02-10T20:00:00.000Z",
+      "grade": "9/10",
+      "possible": 10,
+      "percentage": 90,
+      "feedback": "Good work",
+      "type": "Assignment",
+      "content_id": "_c1",
+      "column_id": "_col1",
+      "calendar_id": "_cal1",
+      "attempt_id": "_att1",
+      "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline?contentId=_c1",
+      "source_id": "_col1"
+    }
+  ],
+  "assignments": "(alias of assessments, same records)",
+  "announcements": [
+    {
+      "course": "Intro to Computing",
+      "course_id": "_101_1",
+      "title": "Welcome",
+      "body_text": "Welcome plain",
+      "body_html": "<p>Welcome <b>all</b></p>",
+      "created_at": "2026-09-01T00:00:00.000Z",
+      "updated_at": "2026-09-02T00:00:00.000Z",
+      "author": "prof.a",
+      "announcement_id": "_a1",
+      "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline"
+    }
+  ],
+  "grades": [
+    {
+      "course": "Intro to Computing",
+      "course_id": "_101_1",
+      "item": "Assignment 1",
+      "column_id": "_col1",
+      "score": 9,
+      "possible": 10,
+      "percentage": 90,
+      "grade": "9/10",
+      "status": "Graded",
+      "feedback": "Good work",
+      "posted": "2026-02-12T00:00:00.000Z",
+      "url": "https://vle.iau.edu.sa/ultra/courses/_101_1/outline?contentId=_c1",
+      "source_id": "grade:_101_1:_col1"
+    }
+  ],
+  "events": [],
+  "content": [],
+  "diagnostics": { "note": "Shape example only — not real IAU data. Run the extractor while logged in to produce real output." },
+  "summary": {
+    "courses_total": 1,
+    "courses_current": 1,
+    "scope": "current",
+    "assessments": 1,
+    "announcements": 1,
+    "grades": 1,
+    "events": 0,
+    "content": 0,
+    "failed_sources": 0
+  }
+}

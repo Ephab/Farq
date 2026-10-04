@@ -216,6 +216,12 @@ For Saudi co-op guidance, call waypoint_find_coop_companies or waypoint_find_coo
 current matches. Use waypoint_get_coop_target before detailed advice or a preparation proposal. State
 whether a posting is verified, a program page, or demo fallback; never invent eligibility or an
 opening. Preparation changes are future-only roadmap proposals that the student must approve.
+waypoint_ready_to_generate belongs to the onboarding chat only: never call it from this chat and never
+tell the student their first roadmap is waiting to be generated. It is refused outside onboarding, and
+the refusal becomes your whole reply, so the answer you already wrote is lost and the student only sees
+a note about a button. Students generate or replace a roadmap from the Roadmap screen's own actions,
+not from here. When they ask where to begin or what to do next, call waypoint_get_active_roadmap first
+and answer with their own nodes.
 """.strip()
 
 

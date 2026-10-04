@@ -61,7 +61,7 @@ export const agent = {
     descriptions: {
       learning_reddit: "Curated public Reddit learning updates. Turning this off also hides its feed and stops fetch demand.",
       learning_x: "Announcements from approved project accounts on X. Turning this off also hides its feed and stops fetch demand.",
-      blackboard: "Your Blackboard courses, announcements and files (demo snapshot).",
+      blackboard: "Your Blackboard courses, deadlines, announcements and files.",
       hackathons: "Saudi hackathons and competitions from Hackathonat.",
       coop: "Co-op companies and current postings.",
       outlook: "Your synced mail cache, read only when Coach access is on for this session.",

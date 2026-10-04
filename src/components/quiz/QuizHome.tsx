@@ -25,6 +25,8 @@ import {
   type SlideDeck,
 } from "@/lib/quiz-store";
 import { ActiveJobList, type GenJob } from "./QuizJobList";
+import { QuizSidebar } from "./QuizSidebar";
+import type { BlackboardFile } from "@/lib/blackboard-catalog";
 import { cn } from "@/lib/utils";
 
 interface QuizHomeProps {
@@ -33,6 +35,8 @@ interface QuizHomeProps {
   decks: SlideDeck[];
   selectedDeckIds: string[];
   onToggleDeck: (id: string) => void;
+  onToggleLecture: (file: BlackboardFile) => void;
+  busyLectureIds: string[];
   onClearSelection: () => void;
   onDeleteDeck: (id: string) => void;
   uploading: boolean;
@@ -81,6 +85,8 @@ export function QuizHome({
   decks,
   selectedDeckIds,
   onToggleDeck,
+  onToggleLecture,
+  busyLectureIds,
   onClearSelection,
   onDeleteDeck,
   uploading,
@@ -148,52 +154,38 @@ export function QuizHome({
             {t("quiz.home.title")}
           </h1>
         </div>
-        <div
-          className="flex items-center gap-2 rounded-2xl border border-border bg-background px-3 py-2"
-          aria-label={t("quiz.home.modelAria")}
-          title={t("quiz.home.modelTitle")}
-        >
-          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-            Hermes
-          </span>
-          <span className="max-w-40 truncate text-[13px] font-medium sm:max-w-56" dir="auto">{modelLabel}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onDemo}
+            className="flex h-10 items-center justify-center rounded-xl border border-border px-5 text-sm font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t("quiz.home.demo")}
+          </button>
+          <div
+            className="flex items-center gap-2 rounded-2xl border border-border bg-background px-3 py-2"
+            aria-label={t("quiz.home.modelAria")}
+            title={t("quiz.home.modelTitle")}
+          >
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              Hermes
+            </span>
+            <span className="max-w-40 truncate text-[13px] font-medium sm:max-w-56" dir="auto">{modelLabel}</span>
+          </div>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[15px] font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-        >
-          {uploading ? (
-            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-          ) : (
-            <Upload className="size-5" aria-hidden="true" />
-          )}
-          {uploading ? t("quiz.home.reading") : t("quiz.home.upload")}
-        </button>
-        <button
-          type="button"
-          onClick={onDemo}
-          className="flex h-12 items-center justify-center rounded-xl border border-border px-6 text-[15px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {t("quiz.home.demo")}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf,.pptx"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) onUpload(f);
-            e.target.value = "";
-          }}
-        />
-      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.pptx"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onUpload(f);
+          e.target.value = "";
+        }}
+      />
 
       {error ? (
         <div
@@ -204,8 +196,17 @@ export function QuizHome({
         </div>
       ) : null}
 
+      {/* Subjects sidebar + quiz areas */}
+      <div className="mx-auto mt-10 flex w-full max-w-7xl flex-col gap-6 lg:flex-row lg:items-start">
+        <QuizSidebar
+          decks={decks}
+          selectedDeckIds={selectedDeckIds}
+          onToggleLecture={onToggleLecture}
+          busyLectureIds={busyLectureIds}
+        />
+        <div className="min-w-0 flex-1">
       {/* Decks */}
-      <section aria-label={t("quiz.home.yourSlides")} className="mx-auto mt-10 w-full max-w-7xl">
+      <section aria-label={t("quiz.home.yourSlides")} className="w-full">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-semibold tracking-tight">
             {t("quiz.home.yourSlides")}{" "}
@@ -240,17 +241,25 @@ export function QuizHome({
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="mt-4 flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border px-6 py-14 text-center outline-none transition-colors hover:border-muted-foreground/50 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+            disabled={uploading}
+            className="mt-4 flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border px-6 py-14 text-center outline-none transition-colors hover:border-muted-foreground/50 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
           >
             <span className="grid size-12 place-items-center rounded-2xl bg-muted">
-              <Upload className="size-6 text-muted-foreground" aria-hidden="true" />
+              {uploading ? (
+                <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
+              ) : (
+                <Upload className="size-6 text-muted-foreground" aria-hidden="true" />
+              )}
             </span>
-            <span className="mt-3 text-[15px] font-medium">{t("quiz.home.emptyTitle")}</span>
+            <span className="mt-3 text-[15px] font-medium">
+              {uploading ? t("quiz.home.reading") : t("quiz.home.emptyTitle")}
+            </span>
             <span className="mt-1 text-[13px] text-muted-foreground">
               {t("quiz.home.emptyHint", { mb: MAX_FILE_MB })}
             </span>
           </button>
         ) : (
+          <>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {visibleDecks.map((deck) => {
               const order = selectedDeckIds.indexOf(deck.id);
@@ -340,6 +349,20 @@ export function QuizHome({
               );
             })}
           </div>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 text-sm font-medium text-muted-foreground outline-none hover:border-muted-foreground/50 hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              {uploading ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Upload className="size-4" aria-hidden="true" />
+              )}
+              {uploading ? t("quiz.home.reading") : t("quiz.home.upload")}
+            </button>
+          </>
         )}
 
         {/* Selection bar — only appears once decks are picked */}
@@ -380,7 +403,7 @@ export function QuizHome({
       />
 
       {/* Saved quizzes */}
-      <section aria-label={t("quiz.home.generated")} className="mx-auto mt-10 w-full max-w-7xl">
+      <section aria-label={t("quiz.home.generated")} className="mt-10 w-full">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-semibold tracking-tight">
             {t("quiz.home.generated")}{" "}
@@ -516,6 +539,8 @@ export function QuizHome({
           </div>
         ) : null}
       </section>
+        </div>
+      </div>
     </div>
   );
 }

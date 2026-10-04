@@ -19,6 +19,9 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from .blackboard import router as blackboard_router, seed_demo_snapshot
+from .blackboard_sync.routes import router as blackboard_sync_router
+from .blackboard_sync import catalog as blackboard_catalog  # registers owner-facing inventory routes
+from .blackboard_sync.worker import reset_interrupted as reset_blackboard_syncs, sync_loop as blackboard_sync_loop
 from .connections import router as connections_router
 from .coop import router as coop_router, seed_coop_catalog
 from .coop_refresh import router as coop_refresh_router, start_scheduler as start_coop_scheduler, stop_scheduler as stop_coop_scheduler
@@ -70,6 +73,7 @@ OPPORTUNITY_SYNC_ENABLED = os.getenv("OPPORTUNITY_SYNC_ENABLED", "false").lower(
 OPPORTUNITY_SYNC_SECONDS = 30 * 60
 _opportunity_sync_task: asyncio.Task | None = None
 _outlook_sync_task: asyncio.Task | None = None
+_blackboard_sync_task: asyncio.Task | None = None
 
 
 DEMO_STUDENT_ID = "demo-student"
@@ -81,6 +85,7 @@ app.include_router(identity_router)
 app.include_router(outlook_router)
 app.include_router(teams_router)
 app.include_router(blackboard_router)
+app.include_router(blackboard_sync_router)
 app.include_router(coop_router)
 app.include_router(coop_refresh_router)
 app.include_router(cv_router)
@@ -245,6 +250,7 @@ async def startup() -> None:
         seed_teams(db)
         seed_teammate_roadmaps(db)
         seed_coop_catalog(db)
+        reset_blackboard_syncs(db)
     finally:
         db.close()
     try:
@@ -260,6 +266,9 @@ async def startup() -> None:
         _outlook_sync_task = asyncio.create_task(outlook_sync_loop())
     if OPPORTUNITY_SYNC_ENABLED and (_opportunity_sync_task is None or _opportunity_sync_task.done()):
         _opportunity_sync_task = asyncio.create_task(_opportunity_sync_loop())
+    global _blackboard_sync_task
+    if os.getenv("BLACKBOARD_SYNC_ENABLED", "true").lower() == "true" and (_blackboard_sync_task is None or _blackboard_sync_task.done()):
+        _blackboard_sync_task = asyncio.create_task(blackboard_sync_loop())
 
 
 def _sync_job(name: str, job, *args) -> None:
@@ -293,6 +302,14 @@ async def shutdown() -> None:
         except asyncio.CancelledError:
             pass
         _outlook_sync_task = None
+    global _blackboard_sync_task
+    if _blackboard_sync_task is not None:
+        _blackboard_sync_task.cancel()
+        try:
+            await _blackboard_sync_task
+        except asyncio.CancelledError:
+            pass
+        _blackboard_sync_task = None
     global _opportunity_sync_task
     if _opportunity_sync_task is not None:
         _opportunity_sync_task.cancel()

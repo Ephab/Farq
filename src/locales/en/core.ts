@@ -13,6 +13,7 @@ export const core = {
     user: "User",
     networkError: "Can't reach Waypoint. Check your connection and try again.",
     sourceKinds: {
+      blackboard: "Blackboard",
       transcript_pdf: "Transcript",
       cv_pdf: "CV",
       linkedin_pdf: "LinkedIn profile",
@@ -63,7 +64,7 @@ export const core = {
   },
   settings: {
     close: "Close settings",
-    sections: { general: "General", connections: "Models & API keys", memory: "Memory", skills: "Skills", connectors: "Connectors", data: "Your data" },
+    sections: { general: "General", connections: "Models & API keys", emails: "Emails", memory: "Memory", skills: "Skills", connectors: "Connectors", data: "Your data" },
     generalHelp: "Language and colours for this browser.",
     dataHelp: "Switch students, or start this demo over.",
     switchStudentHelp: "Pick another student record, or create a new one through onboarding.",

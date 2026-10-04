@@ -434,7 +434,7 @@ function AiContent({ slide, theme, deckWidthPx }: { slide: ExtendedSlide; theme:
   );
 }
 
-function SlideFrame({
+export function SlideFrame({
   slide,
   deckWidthPx,
   titleFont,

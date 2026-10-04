@@ -1,6 +1,20 @@
 // Emails / Outlook: inbox, reader, mailbox rail, classifier picker, email Q&A.
 export const emails = {
   title: "Emails",
+  subtitle: "University messages, coursework updates and follow-ups.",
+  settings: {
+    intro: "Manage email classification and synchronization here.",
+    notConnected: "Connect your university email from My Data to manage these settings.",
+    classification: "Automatic classification",
+    fallback: "Tries JEV first, then SPAN, then the local Laya engine. Unavailable or failing engines are skipped.",
+    cloudHint: "Configured cloud engines receive redacted email text. Laya runs on this computer. The default cutoff is the latest 50 emails.",
+    sync: "Mailbox synchronization",
+  },
+  connectionSummary: {
+    connected: "Emails connected",
+    hint: "Open Emails to read your messages and manage your mailbox.",
+    open: "Open Emails",
+  },
   regionLabel: "University Outlook",
   loadingConnection: "Loading Outlook connection…",
   errors: {

@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("WAYPOINT_INTERNAL_TOKEN", "waypoint-internal-dev")
 # Tests stub the Hermes gateway; never let extraction reach a real model API with a developer's keys.
 os.environ["WAYPOINT_DIRECT_EXTRACT"] = "off"
+# The Blackboard periodic sync would start real Chromium sessions; tests drive the worker directly.
+os.environ["BLACKBOARD_SYNC_ENABLED"] = "false"
 # Settings > Skills writes the learning switch into HERMES_HOME/config.yaml; never touch the real runtime.
 import tempfile  # noqa: E402
 

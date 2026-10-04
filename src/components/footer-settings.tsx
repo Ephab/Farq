@@ -1,9 +1,10 @@
 "use client"
 
-import { Brain, Cable, Database, KeyRound, LoaderCircle, RotateCcw, Settings, SlidersHorizontal, Sparkles, UserPlus, Users, X } from "lucide-react"
+import { Brain, Cable, Database, KeyRound, LoaderCircle, Mail, RotateCcw, Settings, SlidersHorizontal, Sparkles, UserPlus, Users, X } from "lucide-react"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { ConnectionsPanel } from "@/components/connections-panel"
+import { OutlookSettings } from "@/components/outlook/OutlookSettings"
 import { ConnectorsSection, MemorySection, SkillsSection } from "@/components/hermes-settings"
 import { api, clearLocalWaypointState, setCurrentStudentId } from "@/lib/waypoint-api"
 import { getActingUserId, setActingUserId } from "@/lib/teams-api"
@@ -17,10 +18,11 @@ import { LOCALES, type Locale } from "@/lib/i18n/core"
 // Each language is named in itself, so a reader can find theirs whatever the UI language is.
 const LOCALE_NAMES: Record<Locale, string> = { en: "English", ar: "العربية" }
 
-type Section = "general" | "connections" | "memory" | "skills" | "connectors" | "data"
+type Section = "general" | "connections" | "emails" | "memory" | "skills" | "connectors" | "data"
 const SECTIONS: { id: Section; icon: typeof Settings; render: () => ReactNode }[] = [
   { id: "general", icon: SlidersHorizontal, render: () => <GeneralSection /> },
   { id: "connections", icon: KeyRound, render: () => <ConnectionsPanel /> },
+  { id: "emails", icon: Mail, render: () => <OutlookSettings /> },
   { id: "memory", icon: Brain, render: () => <MemorySection /> },
   { id: "skills", icon: Sparkles, render: () => <SkillsSection /> },
   { id: "connectors", icon: Cable, render: () => <ConnectorsSection /> },

@@ -30,7 +30,7 @@ Db = Annotated[Session, Depends(get_db)]
 
 # id -> (plain name used in tool refusals, Hermes tools it backs, student can switch it here)
 CONNECTORS: dict[str, tuple[str, tuple[str, ...], bool]] = {
-    "blackboard": ("course materials (Blackboard snapshot)", (
+    "blackboard": ("course materials (Blackboard)", (
         "waypoint_blackboard_list_courses", "waypoint_blackboard_list_content", "waypoint_blackboard_search",
         "waypoint_blackboard_read_item", "waypoint_blackboard_list_updates"), True),
     "hackathons": ("Saudi hackathons (Hackathonat)", ("waypoint_find_hackathons",), True),

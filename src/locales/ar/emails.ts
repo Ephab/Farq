@@ -3,6 +3,20 @@ import type { emails as en } from "../en/emails"
 
 export const emails: CatalogShape<typeof en> = {
   title: "البريد",
+  subtitle: "الرسائل الجامعية وتحديثات المقررات والمتابعات.",
+  settings: {
+    intro: "إدارة تصنيف البريد ومزامنته من هنا.",
+    notConnected: "اربط بريدك الجامعي من بياناتي لإدارة هذه الإعدادات.",
+    classification: "التصنيف التلقائي",
+    fallback: "يبدأ بـ JEV، ثم SPAN، ثم محرك Laya المحلي. يتجاوز المحركات غير المتاحة أو التي تفشل.",
+    cloudHint: "تستقبل المحركات السحابية المُعدّة نص البريد بعد حجب البيانات الحساسة. يعمل Laya على هذا الجهاز. الحد الافتراضي هو أحدث 50 رسالة.",
+    sync: "مزامنة صندوق البريد",
+  },
+  connectionSummary: {
+    connected: "تم ربط البريد",
+    hint: "افتح قسم البريد لقراءة الرسائل وإدارة صندوق بريدك.",
+    open: "فتح البريد",
+  },
   regionLabel: "بريد Outlook الجامعي",
   loadingConnection: "جارٍ تحميل اتصال Outlook…",
   errors: {

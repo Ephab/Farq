@@ -74,8 +74,6 @@ def main() -> None:
     parser.add_argument("--uv", default="uv")
     parser.add_argument("--with-laya", action="store_true",
                         help="Install torch and download the local Laya email classifier (~1-3 GB).")
-    parser.add_argument("--with-chromium", action="store_true",
-                        help="Download headless Chromium for the Blackboard sync (skipped by default).")
     args = parser.parse_args()
     if platform.system() not in {"Windows", "Darwin"}:
         raise RuntimeError("Native setup supports Windows and macOS. Use Docker on other systems.")
@@ -93,10 +91,7 @@ def main() -> None:
     subprocess.run(sync, cwd=ROOT, check=True)
     python = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     # Headless Chromium for the Blackboard sync (services/api/app/blackboard_sync/browser.py).
-    if args.with_chromium:
-        ensure_chromium(python)
-    else:
-        print("Skipping headless Chromium (Blackboard sync); rerun setup with --with-chromium to add it.")
+    ensure_chromium(python)
     if args.with_laya:
         env = dict(os.environ, USE_TF="0", HF_HUB_DISABLE_TELEMETRY="1")
         # Setup may download; runtime never does. Respect HF_HOME for cache placement.

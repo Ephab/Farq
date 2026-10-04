@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { DOCK_DEFAULT, DOCK_MIN, clampDockWidth } from "@/lib/team-layout"
+import { DOCK_DEFAULT, DOCK_MIN, RAIL_MAX, RAIL_MIN, clampDockWidth, clampRailWidth } from "@/lib/team-layout"
 
 describe("clampDockWidth", () => {
   it("keeps a requested width that fits", () => {
@@ -17,5 +17,24 @@ describe("clampDockWidth", () => {
 
   it("has a sensible default", () => {
     expect(clampDockWidth(DOCK_DEFAULT, 1400)).toBe(360)
+  })
+
+  it("accounts for a widened rail", () => {
+    expect(clampDockWidth(2000, 1400, 300)).toBe(1400 - 300 - 28 - 360)
+  })
+})
+
+describe("clampRailWidth", () => {
+  it("keeps a requested width that fits", () => {
+    expect(clampRailWidth(280, 1600, 360)).toBe(280)
+  })
+
+  it("stays between the rail limits", () => {
+    expect(clampRailWidth(50, 1600, 360)).toBe(RAIL_MIN)
+    expect(clampRailWidth(900, 2400, 360)).toBe(RAIL_MAX)
+  })
+
+  it("never squeezes the board below its minimum", () => {
+    expect(clampRailWidth(400, 1100, 360)).toBe(1100 - 360 - 28 - 360)
   })
 })

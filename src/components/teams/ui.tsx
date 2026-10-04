@@ -67,24 +67,34 @@ export function Sheet({ title, onClose, children, footer }: SheetProps) {
 }
 
 
-interface DockResizerProps { width: number; onResize: (width: number) => void }
+interface DockResizerProps {
+  width: number
+  onResize: (width: number) => void
+  /** "start": the handle is on the panel's inline-start edge (the chat); "end": its inline-end edge (the rail). */
+  edge?: "start" | "end"
+  min?: number
+  initial?: number
+  label?: string
+  hint?: string
+}
 
-/** Drag handle on the chat's inline-start edge: drag away from the chat to widen, arrow keys step,
- * double-click resets. In RTL the chat sits on the left, so pointer and arrow deltas flip. */
-export function DockResizer({ width, onResize }: DockResizerProps) {
+/** Drag handle on a panel's edge: drag away from the panel to widen, arrow keys step, double-click
+ * resets. In RTL the layout mirrors, so pointer and arrow deltas flip. */
+export function DockResizer({ width, onResize, edge = "start", min = DOCK_MIN, initial = DOCK_DEFAULT, label, hint }: DockResizerProps) {
   const { t, dir } = useI18n()
-  const sign = dir === "rtl" ? -1 : 1
+  const sign = (dir === "rtl" ? -1 : 1) * (edge === "end" ? -1 : 1)
   const drag = useRef<{ startX: number; startWidth: number } | null>(null)
   return (
     <div
       className="tm-dock-resizer"
+      data-edge={edge}
       role="separator"
       aria-orientation="vertical"
-      aria-label={t("teams.workspace.resize")}
+      aria-label={label ?? t("teams.workspace.resize")}
       aria-valuenow={width}
-      aria-valuemin={DOCK_MIN}
+      aria-valuemin={min}
       tabIndex={0}
-      title={t("teams.workspace.resizeHint")}
+      title={hint ?? t("teams.workspace.resizeHint")}
       onPointerDown={(event) => {
         drag.current = { startX: event.clientX, startWidth: width }
         try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* pointer already gone */ }
@@ -100,7 +110,7 @@ export function DockResizer({ width, onResize }: DockResizerProps) {
         if (event.key === "ArrowLeft") { event.preventDefault(); onResize(width + sign * 24) }
         if (event.key === "ArrowRight") { event.preventDefault(); onResize(width - sign * 24) }
       }}
-      onDoubleClick={() => onResize(DOCK_DEFAULT)}
+      onDoubleClick={() => onResize(initial)}
     />
   )
 }

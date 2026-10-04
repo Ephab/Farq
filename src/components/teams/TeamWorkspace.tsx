@@ -16,7 +16,7 @@ import { TeamSettings } from "@/components/teams/TeamSettings"
 import { Banner, DockResizer } from "@/components/teams/ui"
 import { useMarkSeen, usePresence, useTeamStream } from "@/components/teams/use-team-stream"
 import { coverFor } from "@/lib/team-cover"
-import { clampDockWidth, readDockWidth, saveDockWidth } from "@/lib/team-layout"
+import { RAIL_MIN, RAIL_WIDTH, clampDockWidth, clampRailWidth, readDockWidth, readRailWidth, saveDockWidth, saveRailWidth } from "@/lib/team-layout"
 import { errorMessage } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
 
@@ -41,10 +41,17 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   const [sheet, setSheet] = useState<TaskSheetState | null>(null)
   const studioRef = useRef<HTMLDivElement>(null)
   const [dockWidth, setDockWidth] = useState(readDockWidth)
+  const [railWidth, setRailWidth] = useState(readRailWidth)
+  const available = () => studioRef.current?.clientWidth ?? window.innerWidth
   const resizeDock = (requested: number) => {
-    const next = clampDockWidth(requested, studioRef.current?.clientWidth ?? window.innerWidth)
+    const next = clampDockWidth(requested, available(), railWidth)
     setDockWidth(next)
     saveDockWidth(next)
+  }
+  const resizeRail = (requested: number) => {
+    const next = clampRailWidth(requested, available(), dockWidth)
+    setRailWidth(next)
+    saveRailWidth(next)
   }
   const role = store?.team.viewer_role
   const member = role === "lead" || role === "member"
@@ -69,7 +76,17 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   const cover = coverFor(store.team.cover_seed)
 
   return (
-    <div ref={studioRef} className="tm-studio" style={{ "--tm-dock-width": `${dockWidth}px` } as CSSProperties}>
+    <div ref={studioRef} className="tm-studio" style={{ "--tm-dock-width": `${dockWidth}px`, "--tm-rail-width": `${railWidth}px` } as CSSProperties}>
+      <div className="tm-rail-slot">
+      <DockResizer
+        edge="end"
+        width={railWidth}
+        onResize={resizeRail}
+        min={RAIL_MIN}
+        initial={RAIL_WIDTH}
+        label={t("teams.workspace.resizeRail")}
+        hint={t("teams.workspace.resizeRailHint")}
+      />
       <aside className="tm-panel tm-rail" aria-label={t("teams.workspace.railLabel")}>
         <button type="button" className="tm-back" onClick={onBack}><ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" /> {t("teams.gp.backShort")}</button>
         <div className="tm-rail-cover" style={{ backgroundImage: cover.image, backgroundColor: cover.color }}>
@@ -90,6 +107,7 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
         <MemberList store={store} canInvite={member} onError={fail} />
         <p className="tm-live" data-live={live ? "" : undefined}><i aria-hidden="true" />{live ? t("teams.workspace.live") : t("teams.workspace.connecting")}</p>
       </aside>
+      </div>
       <main className="tm-panel tm-center">
         {notice ? <Banner message={notice} onDismiss={() => setNotice(null)} /> : null}
         {view === "board" ? (

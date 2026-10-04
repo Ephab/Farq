@@ -242,6 +242,8 @@ export const teams: CatalogShape<typeof en> = {
     connecting: "جارٍ الاتصال…",
     resize: "تغيير حجم المحادثة",
     resizeHint: "اسحب لتغيير حجم المحادثة (انقر مرتين للاستعادة)",
+    resizeRail: "تغيير حجم الشريط الجانبي",
+    resizeRailHint: "اسحب لتغيير حجم الشريط الجانبي (انقر مرتين للاستعادة)",
   },
   members: {
     heading: "الفريق · {count}/{limit}",
@@ -308,6 +310,7 @@ export const teams: CatalogShape<typeof en> = {
     typing: {
       one: "{names} يكتب…", two: "{names} يكتبان…", few: "{names} يكتبون…", many: "{names} يكتبون…", other: "{names} يكتبون…",
     },
+    hermesTyping: "Hermes يعمل: {stage}",
     mention: "إشارة",
     aiTeammate: "زميل ذكاء اصطناعي",
     commands: "الأوامر",

@@ -2,8 +2,9 @@
 
 It never shares anything with a personal or student Hermes: its own HERMES_HOME under .cache, its own gateway lock
 directory, its own port (8643), only the waypoint-team plugin, no memory and no skills. It reuses the already
-installed `hermes` program read-only. Its provider key is the host's GEMINI_API_KEY from the repository's `.env`;
-the service never sees that key.
+installed `hermes` program read-only. Its default model is OpenRouter's Space Bunny Alpha (the host's
+OPENROUTER_API_KEY from the repository's `.env`); the host's GEMINI_API_KEY, if set, serves the fallback ladder.
+The service never sees either key.
 """
 from __future__ import annotations
 
@@ -39,8 +40,8 @@ def tokens() -> dict[str, str]:
     return values
 
 
-def provider_key() -> str | None:
-    return (dotenv_values(REPO / ".env").get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip() or None
+def provider_key(name: str = "GEMINI_API_KEY") -> str | None:
+    return (dotenv_values(REPO / ".env").get(name) or os.getenv(name) or "").strip() or None
 
 
 def service_settings() -> dict[str, str]:
@@ -91,14 +92,15 @@ def environment(central_port: int) -> dict[str, str]:
     env.update(HERMES_HOME=str(HOME), HERMES_GATEWAY_LOCK_DIR=str(HOME / "gateway-locks"), HERMES_ENABLE_PROJECT_PLUGINS="1",
                API_SERVER_ENABLED="true", API_SERVER_HOST="127.0.0.1", API_SERVER_PORT=str(PORT), API_SERVER_KEY=values["API_KEY"],
                WAYPOINT_COLLAB_TOOL_TOKEN=values["TOOL_TOKEN"], WAYPOINT_COLLAB_INTERNAL_URL=f"http://127.0.0.1:{central_port}",
-               GEMINI_API_KEY=provider_key() or "", PYTHONIOENCODING="utf-8")
+               GEMINI_API_KEY=provider_key() or "", OPENROUTER_API_KEY=provider_key("OPENROUTER_API_KEY") or "",
+               PYTHONIOENCODING="utf-8")
     return env
 
 
 def ready() -> tuple[bool, str]:
     """Can team Hermes be started on this PC? (message when it cannot)"""
-    if not provider_key():
-        return False, "Team Hermes needs GEMINI_API_KEY in the repository's .env (the host's own key)"
+    if not provider_key("OPENROUTER_API_KEY"):
+        return False, "Team Hermes needs OPENROUTER_API_KEY in the repository's .env (the host's own key)"
     if find_hermes() is None:
         return False, "Team Hermes needs the `hermes` program installed on this PC"
     return True, ""

@@ -90,7 +90,7 @@ Hermes you use yourself: its own home folder under `.cache\collaboration-native\
 team tools (read one project's shared state, create proposals), no memory, no files, no web. It only uses the installed `hermes`
 program, read-only, and never touches your own Hermes data. Teammates still accept every change it proposes.
 
-- **It needs** `GEMINI_API_KEY` in the repository's `.env` (this PC's own key; the shared service never sees it) and the
+- **It needs** `OPENROUTER_API_KEY` in the repository's `.env` (default model: Space Bunny Alpha; an optional `GEMINI_API_KEY` serves the fallback models) (this PC's own key; the shared service never sees it) and the
   `hermes` program installed. If either is missing, `server.bat start` says so and starts without it.
 - **The first start takes several minutes** while Hermes prepares the gateway's own runtime. Later starts take seconds.
 - **If the model is busy** (Gemini "high demand"), a run moves on to the next model automatically.

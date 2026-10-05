@@ -297,7 +297,7 @@ function AppShell() {
                     className="inline-flex min-w-0 max-w-64 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700 outline-none hover:bg-amber-500/20 focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400"
                   >
                     <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
-                    <span className="truncate">{t("header.hermesWorking")}{activeRun.stage ? <> Â· <bdi>{activeRun.stage}</bdi></> : null}</span>
+                    <span className="truncate">{t("header.hermesWorking")}{activeRun.stage ? <> · <bdi>{activeRun.stage}</bdi></> : null}</span>
                   </button>
                   <button
                     type="button"

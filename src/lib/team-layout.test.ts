@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { DOCK_DEFAULT, DOCK_MIN, RAIL_MAX, RAIL_MIN, clampDockWidth, clampRailWidth } from "@/lib/team-layout"
+import { DOCK_DEFAULT, DOCK_MIN, RAIL_MAX, RAIL_MIN, clampDockWidth, clampRailWidth, clampWorkspaceChatWidth } from "@/lib/team-layout"
 
 describe("clampDockWidth", () => {
   it("keeps a requested width that fits", () => {
@@ -36,5 +36,17 @@ describe("clampRailWidth", () => {
 
   it("never squeezes the board below its minimum", () => {
     expect(clampRailWidth(400, 1100, 360)).toBe(1100 - 360 - 28 - 360)
+  })
+})
+
+describe("workspace chat sizing", () => {
+  it("uses the full width available after removing the old navigation rail", () => {
+    expect(clampWorkspaceChatWidth(2000, 1200)).toBe(820)
+    expect(clampWorkspaceChatWidth(500, 1200)).toBe(500)
+  })
+  it("protects the chat minimum and tolerates narrow containers or invalid saved widths", () => {
+    expect(clampWorkspaceChatWidth(50, 1200)).toBe(DOCK_MIN)
+    expect(clampWorkspaceChatWidth(500, 500)).toBe(DOCK_MIN)
+    expect(clampWorkspaceChatWidth(Number.NaN, 1200)).toBe(DOCK_DEFAULT)
   })
 })

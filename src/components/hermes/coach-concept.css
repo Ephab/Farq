@@ -236,19 +236,6 @@ html[data-theme="deep-ocean"] .fq {
   padding: 26px clamp(18px, 4vw, 48px);
 }
 
-.fq .chat-messages::-webkit-scrollbar,
-.fq .context-panel::-webkit-scrollbar {
-  width: 10px;
-}
-
-.fq .chat-messages::-webkit-scrollbar-thumb,
-.fq .context-panel::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: var(--fq-r-pill);
-  background: var(--fq-line-strong);
-  background-clip: content-box;
-}
-
 .fq .message {
   width: min(100%, 680px);
   border-radius: var(--fq-r-lg);

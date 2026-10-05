@@ -1,3 +1,39 @@
+## Stable app sidebar navigation (2026-10-04)
+
+Reproduced the delayed Slides → My data navigation glitch with normal motion:
+sidebar menu `layout="position"` projection animated document/rail scroll offsets
+as row movement (about 190px in the fixture). The active pill measured transformed
+screen bounds, retaining a stale offset and adding about 244px of phantom sidebar
+scroll overflow after the rows settled. Menu rows now stay in layout; the highlight
+still glides, using offset-parent layout coordinates. The desktop rail reserves
+one viewport of height and its visible panel is fixed to the viewport, avoiding
+sticky movement when page entrance transforms extend document overflow.
+
+`node scripts/check-sidebar-navigation.mjs` (with Vite running) mocks API responses
+and checks repeated scrolled-page navigation during and after animation, highlight
+alignment, wheel scrolling, collapsed mode, My data's document tail, and English/
+Arabic at 600/720/900px heights. Production build and 110 frontend tests pass.
+
+## Resizable chat and app-wide scrollbars (2026-10-04)
+
+Team chat now has a visible desktop divider with pointer capture, keyboard sizing,
+RTL direction, double-click/Enter reset, and a saved browser-local width. Container
+resize clamps the visible width without overwriting the preferred width; mobile
+retains its full workspace chat. Closing chat preserves its width and draft, and
+navigation still preserves the app sidebar. `use-chat-width.ts` owns the behavior;
+`team-layout.ts` supplies the bounds for the workspace without the former rail.
+
+`src/index.css` now styles every scrollbar with rounded inset thumbs, transparent
+tracks, theme-aware colours, hover/active feedback, and a forced-colours fallback.
+This covers document, nested panes, portals, textareas, tables, code and horizontal
+navigation. Coach overrides and the hidden Outlook scrollbar were removed. Firefox
+uses the standard thin properties; WebKit-capable browsers use the rounded styling.
+
+Validation: 110 frontend tests and production build pass; lint has existing warnings.
+Browser checks cover drag/key sizing, saved width/reset, viewport bounds, RTL/mobile,
+and scrollbar styles on page/chat/content/sidebar/tabs/dialog/textarea in light/dark
+and forced-colours modes. No backend change is required.
+
 ## Browser-local Group Projects demo (2026-10-04)
 
 Demo Student now opens an identical bundled demo on every installation, bypassing

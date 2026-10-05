@@ -8,6 +8,17 @@ export const DOCK_MIN = 300
 export const DOCK_DEFAULT = 360
 const DOCK_WIDTH_STORAGE_KEY = "waypoint.team-chat-width"
 const RAIL_WIDTH_STORAGE_KEY = "waypoint.team-rail-width"
+export const WORKSPACE_CHAT_GAP = 20
+
+/** Horizontal workspace has no navigation rail. Keep enough room for its content;
+ * at narrow desktop widths the board can scroll inside its own pane. */
+export function workspaceChatMax(available: number): number {
+  return Math.max(DOCK_MIN, Math.round(available - CENTER_MIN - WORKSPACE_CHAT_GAP))
+}
+export function clampWorkspaceChatWidth(requested: number, available: number): number {
+  const safe = Number.isFinite(requested) ? requested : DOCK_DEFAULT
+  return Math.round(Math.max(DOCK_MIN, Math.min(safe, workspaceChatMax(available))))
+}
 
 /** A chat width that fits: at least DOCK_MIN, and never squeezing the board below CENTER_MIN. */
 export function clampDockWidth(requested: number, available: number, rail: number = RAIL_WIDTH): number {

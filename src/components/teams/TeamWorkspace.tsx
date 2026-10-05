@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, type CSSProperties } from "react"
 import { ArrowLeft, CalendarRange, FileText, Gavel, History, LayoutGrid, MessageSquare, ScrollText, Users, type LucideIcon } from "lucide-react"
 import { ActivityLog } from "@/components/teams/ActivityLog"
 import { CharterView } from "@/components/teams/CharterView"
@@ -19,6 +19,7 @@ import { coverFor } from "@/lib/team-cover"
 import { errorMessage } from "@/lib/teams-api"
 import { useI18n } from "@/lib/i18n/context"
 import { useTeamClient } from "./team-client-context"
+import { useChatWidth } from "./use-chat-width"
 
 type View = "board" | "timeline" | "docs" | "decisions" | "activity" | "charter"
 
@@ -33,7 +34,7 @@ const VIEWS: { id: View; icon: LucideIcon }[] = [
 
 export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () => void }) {
   const teams = useTeamClient()
-  const { t } = useI18n()
+  const { t, dir } = useI18n()
   const { store, error, live, reload, update, unseenChat } = useTeamStream(teamId)
   const [view, setView] = useState<View>("board")
   const [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
@@ -54,6 +55,8 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
   }
   const role = store?.team.viewer_role
   const member = role === "lead" || role === "member"
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const chatSize = useChatWidth(bodyRef, Boolean(store) && member && chatOpen, dir)
   usePresence(teamId, member, focus)
   // Chat is optional now: visiting the board must not mark hidden messages as read.
   useMarkSeen(teamId, member && chatOpen ? store : null, update)
@@ -104,7 +107,7 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
             )
           })}
       </nav>
-      <div className="gp-workspace-body" data-chat={chatOpen && member ? "" : undefined}>
+      <div ref={bodyRef} className="gp-workspace-body" data-chat={chatOpen && member ? "" : undefined} style={{ "--gp-chat-width": `${chatSize.width}px` } as CSSProperties}>
       <main className="gp-workspace-content" aria-label={t(`teams.workspace.views.${view}`)}>
         {notice ? <Banner message={notice} onDismiss={() => setNotice(null)} /> : null}
         {view === "board" ? (
@@ -129,6 +132,8 @@ export function TeamWorkspace({ teamId, onBack }: { teamId: string; onBack: () =
         )}
       </main>
       {member ? <div id="gp-project-chat" className="gp-chat-panel" hidden={!chatOpen}>
+          <div {...chatSize.separator} className="gp-chat-resizer" data-dragging={chatSize.dragging ? "" : undefined}
+            aria-label={t("teams.workspace.resize")} aria-controls="gp-project-chat" title={t("teams.workspace.resizeHint")} />
           <TeamChat
             store={store}
             update={update}

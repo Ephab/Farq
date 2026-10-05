@@ -212,7 +212,7 @@ export function OutlookView({ compact = false, connectionOnly = false, onOpen }:
           <select aria-label={t("emails.toolbar.sort")} value={filters.sort} onChange={event => { setFilters(next => ({ ...next, sort: event.target.value })); setOffset(0) }} className={selectCls}><option value="newest">{t("emails.toolbar.newest")}</option><option value="oldest">{t("emails.toolbar.oldest")}</option><option value="due">{t("emails.toolbar.due")}</option></select>
         </div>
         )} tabs={(
-        <nav ref={navRef} aria-label={t("emails.views.ariaLabel")} className="relative flex h-9 w-fit min-w-0 max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-muted/60 p-0.5 [scrollbar-width:none]">
+        <nav ref={navRef} aria-label={t("emails.views.ariaLabel")} className="relative flex min-h-9 w-fit min-w-0 max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-muted/60 p-0.5">
           <span aria-hidden="true" style={{ left: pill.left, width: pill.width, opacity: pill.ready ? 1 : 0 }} className="absolute inset-y-0.5 rounded-md bg-background shadow-sm transition-[left,width,opacity] duration-200 ease-out motion-reduce:transition-none" />
           {views.map(tab => <button key={tab} ref={node => { if (node) tabRefs.current.set(tab, node); else tabRefs.current.delete(tab) }} className={`relative z-10 h-7 shrink-0 whitespace-nowrap rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`} aria-pressed={view === tab} onClick={() => { setView(tab); setOffset(0); setError("") }}>{t(`emails.views.${tab}`)}</button>)}
         </nav>

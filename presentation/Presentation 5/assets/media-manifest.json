@@ -1,0 +1,88 @@
+{
+  "captured_at": "2026-10-04T21:15:12.436Z",
+  "source": "http://127.0.0.1:5173",
+  "design": "current React source",
+  "data_mode": "fictional demo student; local team, coach, evidence and study fixtures; cached opportunity listings",
+  "records": [
+    {
+      "name": "roadmap",
+      "view": "Roadmap",
+      "seconds": 10.591,
+      "fps": 60,
+      "account": "demo-student",
+      "coach_fixture": false,
+      "errors": []
+    },
+    {
+      "name": "projects",
+      "view": "Projects",
+      "seconds": 7.36,
+      "fps": 60,
+      "account": "demo-student",
+      "coach_fixture": false,
+      "errors": []
+    },
+    {
+      "name": "coop",
+      "view": "Co-op",
+      "seconds": 8.848,
+      "fps": 60,
+      "account": "demo-student",
+      "coach_fixture": false,
+      "errors": []
+    },
+    {
+      "name": "onboarding",
+      "view": "My data",
+      "seconds": 7.61,
+      "fps": 60,
+      "account": "demo-student",
+      "browser_fixture": true,
+      "errors": []
+    },
+    {
+      "name": "coach",
+      "view": "Hermes Coach",
+      "seconds": 8.161,
+      "fps": 60,
+      "account": "demo-student",
+      "browser_fixture": true,
+      "errors": []
+    },
+    {
+      "name": "team",
+      "view": "Group Projects",
+      "seconds": 10.822,
+      "fps": 60,
+      "account": "demo-student",
+      "browser_fixture": false,
+      "errors": []
+    },
+    {
+      "name": "quiz-create",
+      "view": "Quizzes",
+      "seconds": 12.064,
+      "fps": 60,
+      "account": "demo-student",
+      "browser_fixture": true,
+      "fixture_detail": "Actual QuizConfigure, generation job, animated liquid tube and quiz runner; delayed local reply. Browser clock accelerates the illustrative waiting stage; no live model call or generation-speed claim.",
+      "errors": [],
+      "captured_at": "2026-10-04T21:15:12.436Z"
+    },
+    {
+      "name": "study",
+      "view": "Quizzes and Slides",
+      "captured_at": "2026-10-04T21:17:24.328Z",
+      "seconds": 16.433333,
+      "fps": 60,
+      "account": "demo-student",
+      "browser_fixture": true,
+      "parts": [
+        "quiz-create.mp4",
+        "study-slides.mp4 (last 4.8 seconds)"
+      ],
+      "fixture_detail": "Current React quiz configuration, animated creation tube, question feedback and Blackboard slide workbench. Fictional lecture PDF and local generation replies; accelerated illustrative waiting stage, no live model call or generation-speed claim.",
+      "errors": []
+    }
+  ]
+}

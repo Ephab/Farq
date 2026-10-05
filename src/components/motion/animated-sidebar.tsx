@@ -514,7 +514,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
         }
         style={style}
         className={cn(
-          "group/sidebar relative hidden h-auto shrink-0 md:block will-change-[width]",
+          "group/sidebar sticky top-0 hidden h-svh shrink-0 self-start md:block will-change-[width]",
           "peer",
           side === "right" && "order-last",
           className,
@@ -530,7 +530,10 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
             context.reduce ? REDUCED_TRANSITION : PANEL_TRANSITION
           }
           className={cn(
-            "sticky top-0 flex h-svh w-full flex-col overflow-hidden bg-background",
+            // Page entrance transforms can extend document overflow beyond its
+            // layout height. Pin the panel to the viewport so that overflow
+            // cannot push a sticky panel past its containing block's bottom.
+            "fixed top-0 flex h-svh w-[inherit] flex-col overflow-hidden bg-background",
             collapsible === "offcanvas" && "w-[var(--sidebar-width)]",
             variant === "sidebar" &&
               (side === "left" ? "border-border border-e" : "border-border border-s"),
@@ -779,16 +782,25 @@ function SidebarActivePill() {
     const measure = () => {
       // Content coordinates: the pill is absolutely positioned inside the
       // scrolling container, so it rides along with the scroll itself.
-      const containerBox = container.getBoundingClientRect();
-      const nodeBox = node.getBoundingClientRect();
+      // Read layout offsets, not transformed screen coordinates. A layout
+      // animation or a document scroll must never become a permanent pill
+      // offset (which also enlarges the scroller's overflow area).
+      let top = 0;
+      let left = 0;
+      let current: HTMLElement | null = node;
+      while (current && current !== container) {
+        top += current.offsetTop;
+        left += current.offsetLeft;
+        current = current.offsetParent as HTMLElement | null;
+      }
       // Hidden (e.g. the desktop tree below the mobile breakpoint): keep the
       // last geometry instead of collapsing to zero.
-      if (nodeBox.width === 0 && nodeBox.height === 0) return;
+      if (node.offsetWidth === 0 && node.offsetHeight === 0) return;
       const next: PillGeometry = {
-        top: nodeBox.top - containerBox.top + container.scrollTop,
-        left: nodeBox.left - containerBox.left,
-        width: nodeBox.width,
-        height: nodeBox.height,
+        top,
+        left,
+        width: node.offsetWidth,
+        height: node.offsetHeight,
       };
       setGeometry((previous) =>
         previous &&
@@ -902,12 +914,12 @@ export const AnimatedSidebarMenuItem = forwardRef<
   HTMLLIElement,
   HTMLMotionProps<"li">
 >(function AnimatedSidebarMenuItem({ className, ...props }, forwardedRef) {
+  // These rows never reorder. Layout projection mistakes page/rail
+  // scrolling for row movement and makes the entire navigation jump.
   return (
     <motion.li
       {...props}
       ref={forwardedRef}
-      layout="position"
-      transition={SPRING_LAYOUT}
       data-slot="sidebar-menu-item"
       className={cn("relative", className)}
     />

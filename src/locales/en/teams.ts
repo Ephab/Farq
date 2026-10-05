@@ -222,7 +222,7 @@ export const teams = {
     live: "Live",
     connecting: "Connecting…",
     resize: "Resize chat",
-    resizeHint: "Drag to resize the chat (double-click to reset)",
+    resizeHint: "Drag or use the arrow keys to resize chat. Double-click to reset.",
     resizeRail: "Resize sidebar",
     resizeRailHint: "Drag to resize the sidebar (double-click to reset)",
   },

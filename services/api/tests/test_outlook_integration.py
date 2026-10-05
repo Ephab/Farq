@@ -116,6 +116,7 @@ def test_mail_session_does_not_replace_team_demo_identity(world):
             return Request({"type": "http", "path": path, "headers": [(b"cookie", b"waypoint_outlook_session=alice-cookie")]})
         assert current_user(request("/api/me"), db, "demo-member").id == "demo-member"
         assert current_user(request("/api/outlook/messages"), db, "demo-member").id == "alice"
+        assert current_user(request("/api/chat/threads/t1/messages"), db, "demo-member").id == "demo-member"
         with pytest.raises(HTTPException):
             current_user(request("/api/me"), db, "alice")
 
@@ -147,9 +148,16 @@ def coach_request(cookie="alice-cookie"):
 
 
 def coach_grant(factory, status="running"):
-    from app.models import AgentRun
+    from app.models import AgentRun, ChatThread, Student
+    from app.identity import User
     from app.outlook import coach
     with factory() as db:
+        if db.get(Student, "alice") is None:
+            db.add(Student(id="alice", display_name="alice"))
+            db.flush()
+            db.get(User, "alice").student_id = "alice"
+            db.add(ChatThread(id="t1", student_id="alice"))
+            db.flush()
         run = AgentRun(thread_id="t1", user_message_id="m1", status=status)
         db.add(run); db.flush()
         token = coach.issue_grant(coach_request(), db, run.id)
@@ -181,6 +189,21 @@ def test_coach_mail_needs_session_consent_and_sees_only_owned_mail(world):
         assert len(rest["body"]) == 1000 and rest["next_cursor"] is None
         with pytest.raises(HTTPException):
             coach.search_mail(coach.MailSearch(mailbox_access="forged-" * 6), db)
+
+
+def test_coach_mail_grant_rejects_another_students_run(world):
+    from app.models import AgentRun, ChatThread, Student
+    from app.outlook import coach
+
+    client, factory, _ = world
+    client.patch("/api/outlook/coach-access", json={"accepted": True})
+    with factory() as db:
+        db.add(Student(id="other-student", display_name="Other"))
+        db.add(ChatThread(id="other-thread", student_id="other-student"))
+        run = AgentRun(thread_id="other-thread", user_message_id="m1", status="running")
+        db.add(run)
+        db.flush()
+        assert coach.issue_grant(coach_request(), db, run.id) is None
 
 
 def test_coach_mail_revoked_by_consent_run_state_and_disconnect(world):

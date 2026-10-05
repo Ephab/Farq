@@ -6,22 +6,21 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, or_, select
 
-from ..identity import current_user
-from ..models import AgentRun
+from ..models import AgentRun, ChatThread
 from . import auth, desktop
 from .models import MailCoachGrant, MailConnection, MailItem, MailSession
 
 
 def issue_grant(request: Request, db, run_id: str) -> str | None:
-    # Mail identity comes from current_user, never a student ID supplied by the model.
+    # A mailbox session may coexist with a different selected Waypoint student.
+    # It can authorize mail tools only for a run owned by the session's student.
     if not request.cookies.get(auth.COOKIE):
         return None
-    try:
-        user = current_user(request, db, None)
-    except HTTPException as error:
-        if error.status_code == 401:
-            return None
-        raise
+    user = auth.session_user(request, db)
+    run = db.get(AgentRun, run_id)
+    thread = db.get(ChatThread, run.thread_id) if run else None
+    if user is None or thread is None or user.student_id != thread.student_id:
+        return None
     session = db.get(MailSession, auth.digest(request.cookies[auth.COOKIE]))
     if not session or not session.coach_access or session.user_id != user.id:
         return None

@@ -523,6 +523,31 @@ def test_students_can_only_open_their_own_records(client: TestClient, monkeypatc
     assert client.get(f"/api/students/{mine['student_id']}/roadmap", headers=as_mine).status_code == 200
 
 
+def test_coach_send_keeps_selected_student_with_other_mail_session(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from app.identity import resolve_user
+    from app.outlook import auth
+
+    monkeypatch.setattr("app.main.run_agent", complete_run)
+    mine = client.post("/api/students", json={"display_name": "Coach owner"}).json()
+    other = client.post("/api/students", json={"display_name": "Mail owner"}).json()
+    with SessionLocal() as db:
+        mail_user = resolve_user(db, other["student_id"])
+    monkeypatch.setattr(auth, "session_user", lambda request, db: mail_user)
+
+    response = client.post(
+        f"/api/chat/threads/{mine['thread_id']}/messages",
+        headers={"X-Waypoint-User": mine["student_id"], "Cookie": f"{auth.COOKIE}=other-session"},
+        json={"content": "Hello Hermes"},
+    )
+    assert response.status_code == 202
+    assert client.get(f"/api/chat/threads/{mine['thread_id']}/messages", headers={"X-Waypoint-User": mine["student_id"]}).status_code == 200
+    assert client.post(
+        f"/api/chat/threads/{other['thread_id']}/messages",
+        headers={"X-Waypoint-User": mine["student_id"], "Cookie": f"{auth.COOKIE}=other-session"},
+        json={"content": "Not my thread"},
+    ).status_code == 403
+
+
 def test_rewind_drops_message_and_later(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     from app.database import SessionLocal
     from app.models import AgentRun, ChatMessage

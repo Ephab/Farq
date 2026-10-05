@@ -1,31 +1,25 @@
-Waypoint · العرض الخامس · 3:30
+Waypoint · العرض الخامس · 2:00
 
+Canvas: 2090 × 1080 (3096 × 1600 ratio, 1.935:1). Fills a 3096 × 1600 screen with no bars.
 Open index.html in Chrome or Edge. Fonts, animations, screenshots and MP4s are local.
 No app server or Internet connection is needed to present. Keep the assets folder beside index.html.
 
 Next: Space / Enter / Right / Down / PageDown / left click
 Back: Left / Up / PageUp / Backspace / right click
 Home / End: first / last slide
-F: fullscreen   N: speaker notes   A: automatic 3:30 rehearsal
+F: fullscreen   N: speaker notes   A: automatic 2:00 rehearsal
 The small controls appear when you move the mouse or focus them with Tab.
 A starts a complete rehearsal from the cover; any manual navigation stops rehearsal.
 
-15 slides; one click per slide. Times include transitions:
-00:00–00:08  Cover
-00:08–00:28  Problems 1/2: lost direction, limited guidance, stamped university card and market gap
-00:28–00:44  Published statistics: 48%, 39%, 95%, with their survey scope
-00:44–00:54  Proposed value for students, universities and employers
-00:54–01:16  Problems 2/2: AI solves without learning, scattered apps and uneven group work
-01:16–01:23  Twelve apps gather into the point; the point reveals Waypoint
-01:23–01:39  Overview, profile, imported records and student approval
-01:39–01:53  Personal roadmap
-01:53–02:08  Hermes coaching and practice
-02:08–02:30  Quiz creation animation, question feedback and Blackboard slide workbench
-02:30–02:44  Projects and evaluation
-02:44–02:58  Group Projects
-02:58–03:12  Co-op and CV
-03:12–03:22  Eighth feature card: mail, learning updates, daily overview and settings
-03:22–03:30  Closing
+10 slides; one click per slide. Problem statement and overall solution only (no feature demos).
+00:00–00:04  Cover
+00:04–00:19  Problems 1 & 2: lost direction, curriculum behind the market
+00:19–00:34  Problems 3 & 4: knowing vs building, AI does the work without learning
+00:34–00:49  Problems 5 & 6: tools that do not know you, co-op search starts too late
+00:49–01:00  Proof: 48% / 39% / 95% (same road spot as the apps; crossfade, no travel)
+01:00–01:08  App icons gather into the point; Waypoint revealed as the overall solution
+01:08–01:56  Three solution slides, two answers each (16 s): 1&2, 3&4, 5&6
+01:56–02:00  Closing
 
 Cinematic motion:
 The opening dot is already in place over the i. The road already extends from the logo's left tail.

@@ -5,19 +5,17 @@
   const $=s=>document.querySelector(s),stage=$('#stage'),world=$('#world'),camera=$('#camera');
   const dot=$('#traveler'),line=$('#thread-live'),guide=$('#thread-guide');
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const order=['title','direction','evidence','value','apps','solution','profile','roadmap','coach','study','projects','team','career','more','closing'];
-  const slides=order.map(id=>$(`#${id}`)),stations={title:0,direction:1400,evidence:2800,value:4200,apps:5600,solution:5600};
+  const order=['title','direction','practice','apps','evidence','solution','sol-a','sol-b','sol-c','closing'];
+  const slides=order.map(id=>$(`#${id}`)),stations={title:0,direction:1400,practice:2800,apps:5600,evidence:5600,solution:5600};
   for(const [id,y] of Object.entries(stations)){const el=$(`#${id}`);el.style.top=`${y}px`;world.append(el);}
   const features=slides.filter(s=>s.classList.contains('feature'));
   const panel=document.createElement('div');panel.id='panel';stage.append(panel);features.forEach(s=>panel.append(s));
   const ghost=document.createElement('div');ghost.id='ghost';stage.append(ghost);
-  const titles=['بياناتك وموافقتك','خريطة التعلّم','مدرّب Hermes','الاختبارات والعروض','المشاريع والتقييم','المشاريع الجماعية','الفرص والسيرة','بقية أدوات يومك'];
-  const subtitles=['ابدأ من سياقك','اعرف خطوتك الجاية','جرّب، وافهم السبب','من محاضرات Blackboard','ابنِ شيئًا تقدر تعرضه','من الفكرة إلى إنجاز الفريق','استعد من أعمالك نفسها','البريد، المستجدات والتخصيص'];
   const cards=features.map((slide,i)=>{
     const x=i%2===0?1120:200,y=7500+i*700,el=document.createElement('article');el.className='road-card';el.dataset.feature=slide.id;
     el.style.cssText=`${slide.style.cssText};left:${x}px;top:${y}px`;
-    el.innerHTML=`<b class="card-number">0${i+1}</b><b class="card-mark">${['+','↗','?','▤','⌘','◎','↗','✦'][i]}</b><h3>${titles[i]}</h3><p>${subtitles[i]}</p>`;
-    const thumb=document.createElement('img');thumb.src=slide.querySelector('video')?.poster||slide.querySelector('[data-card-poster]').src;thumb.alt='';el.append(thumb);
+    el.innerHTML=`<b class="card-number">0${i+1}</b><b class="card-mark">${slide.dataset.mark}</b><h3>${slide.dataset.cardTitle}</h3><p>${slide.dataset.cardSub}</p>`;
+    const poster=slide.querySelector('video')?.poster||slide.querySelector('[data-card-poster]')?.src;if(poster){const thumb=document.createElement('img');thumb.src=poster;thumb.alt='';el.append(thumb);}
     $('#feature-cards').append(el);return {el,id:slide.id,x:x+300,y:y+190};
   });
   // Trace the logo's curl, upper sweep, right turn and lower sweep, all the
@@ -67,38 +65,39 @@
   });
   const roadLength=line.getTotalLength(),logoLength=logoPath.getTotalLength(),samples=[];
   for(let l=0;l<roadLength;l+=4){const p=line.getPointAtLength(l);samples.push({x:p.x,y:p.y,l});}
+  const pointAt=l=>{const f=Math.max(0,Math.min(samples.length-1.001,l/4)),i=Math.floor(f),a=samples[i],b=samples[i+1]||a,t=f-i;return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t};};
   const nearest=([x,y])=>samples.reduce((a,b)=>Math.hypot(b.x-x,b.y-y)<Math.hypot(a.x-x,a.y-y)?b:a).l;
-  const lengths={title:0,direction:nearest([1830,2400]),evidence:nearest([1840,3800]),value:nearest([90,5020]),apps:nearest([960,6140]),solution:nearest([960,6140]),closing:roadLength};
+  const lengths={title:0,direction:nearest([1830,2400]),practice:nearest([1840,3800]),apps:nearest([960,6140]),evidence:nearest([960,6140]),solution:nearest([960,6140]),closing:roadLength};
   cards.forEach(card=>lengths[card.id]=nearest([960,card.y]));
   // The line exists from the first frame; it never pops in behind the point.
   line.style.strokeDasharray='none';line.style.strokeDashoffset='0';
   for(let i=0;i<9;i++)for(const side of [0,1]){const mark=document.createElement('i');mark.className=`depth-mark ${i%3===0?'square':''}`;
     mark.style.cssText=`left:${side?1820:15}px;top:${1100+i*1100}px;width:${80+i%3*25}px;height:${80+i%3*25}px;--accent:${['#FF5E57','#12B07A','#7457FF'][i%3]}`;$('#depth').append(mark);}
   const cam={x:960,y:540,s:1,rx:0,rz:0,sy:540};let currentLength=0,dotPosition={x:logoMark[0],y:logoMark[1]},phase='idle',settled=0;
-  function renderCamera(){camera.style.transform=`translate(960px,${cam.sy}px) scale(${cam.s}) rotateX(${cam.rx}deg) rotateZ(${cam.rz}deg) translate(${-cam.x}px,${-cam.y}px)`;
-    cards.forEach(card=>card.el.style.transform=`translateZ(18px) rotateZ(${-cam.rz}deg)`);}
-  function setDot(x,y,scale=1){dotPosition={x,y};gsap.set(dot,{x:x-23,y:y-23,scale,opacity:1});}
-  function renderRoad(l){currentLength=l;const p=line.getPointAtLength(l);setDot(p.x,p.y);}
+  let lastRz=null;function renderCamera(){camera.style.transform=`translate(1045px,${cam.sy}px) scale(${cam.s}) rotateX(${cam.rx}deg) rotateZ(${cam.rz}deg) translate(${-cam.x}px,${-cam.y}px)`;
+    if(cam.rz!==lastRz){lastRz=cam.rz;cards.forEach(card=>card.el.style.transform=`translateZ(18px) rotateZ(${-cam.rz}deg)`);}}
+  function setDot(x,y,scale=1){dotPosition={x,y};dot.style.transform=`translate(${x-23}px,${y-23}px) scale(${scale})`;dot.style.opacity=1;}
+  function renderRoad(l){currentLength=l;const p=pointAt(l);setDot(p.x,p.y);}
   function pose(id){if(id==='closing')return {x:960,y:6890,s:.122,rx:0,rz:90,sy:640};const card=cards.find(c=>c.id===id);
     return card?{x:960,y:card.y,s:1.1,rx:-9,rz:0,sy:540}:{x:960,y:stations[id]+540,s:1,rx:0,rz:0,sy:540};}
-  function classes(id){stage.classList.toggle('cover-state',id==='title');stage.classList.toggle('overview-state',id==='closing');
-    stage.classList.toggle('problem-state',['title','direction','evidence','value','apps'].includes(id));stage.classList.toggle('feature-road-state',['solution','closing',...features.map(s=>s.id)].includes(id));
+  function classes(id){stage.classList.toggle('cover-state',id==='title');stage.classList.toggle('evidence-state',id==='evidence');stage.classList.toggle('overview-state',id==='closing');
+    stage.classList.toggle('problem-state',['title','direction','practice','apps','evidence'].includes(id));stage.classList.toggle('feature-road-state',['solution','closing',...features.map(s=>s.id)].includes(id));
     const n=cards.findIndex(c=>c.id===id);cards.forEach((card,i)=>{card.el.classList.toggle('current',i===n);card.el.classList.toggle('done',id==='closing'||(n>=0&&i<n));});
     dot.style.background=['title','solution'].includes(id)?'#17142B':getComputedStyle($(`#${id}`)).getPropertyValue('--accent').trim()||'#7457FF';}
   const content=slide=>slide.querySelectorAll('.feature-copy,.demo,.usage');
   function clearArtifacts(){ghost.replaceChildren();gsap.set(ghost,{opacity:0});$('#merge-actors').replaceChildren();cards.forEach(card=>card.el.style.visibility='');
     gsap.set('.solution-result>img,.solution-result h2,.solution-result p,.solution-result small,#apps .apps-copy,#apps .app-token',{clearProps:'opacity,transform,clipPath'});}
   function markActive(i){slides.forEach((s,j)=>s.classList.toggle('active',j===i));}
-  function set(i){clearArtifacts();markActive(i);const id=slides[i].id;classes(id);
+  function set(i){clearArtifacts();markActive(i);gsap.set('#viewport',{opacity:1});const id=slides[i].id;classes(id);
     stage.classList.remove('feature-overview-state');
     stage.classList.toggle('feature-panel-state',features.includes(slides[i]));
     slides.forEach((s,j)=>gsap.set(s,{opacity:j===i?1:0,visibility:j===i?'visible':'hidden',clearProps:'transform,clipPath'}));features.forEach(s=>gsap.set(content(s),{opacity:1}));
     gsap.set(panel,{visibility:features.includes(slides[i])?'visible':'hidden',clipPath:'inset(0px 0px 0px 0px round 0px)'});
     Object.assign(cam,pose(id));renderCamera();renderRoad(lengths[id]);if(id==='title')setDot(...logoMark);
     if(id==='solution')setDot(100+1536*680/2029,5600+300+96*680/2029,.56);settled=i;phase='idle';}
-  function rect(card){const r=card.el.getBoundingClientRect(),s=stage.getBoundingClientRect(),fit=s.width/1920;return {x:(r.left-s.left)/fit,y:(r.top-s.top)/fit,w:r.width/fit,h:r.height/fit};}
+  function rect(card){const r=card.el.getBoundingClientRect(),s=stage.getBoundingClientRect(),fit=s.width/2090;return {x:(r.left-s.left)/fit,y:(r.top-s.top)/fit,w:r.width/fit,h:r.height/fit};}
   const clip={top:0,right:0,bottom:0,left:0,radius:0},drawClip=()=>panel.style.clipPath=`inset(${clip.top}px ${clip.right}px ${clip.bottom}px ${clip.left}px round ${clip.radius}px)`;
-  function clipRect(r){return {top:Math.max(0,r.y),right:Math.max(0,1920-r.x-r.w),bottom:Math.max(0,1080-r.y-r.h),left:Math.max(0,r.x),radius:28};}
+  function clipRect(r){return {top:Math.max(0,r.y),right:Math.max(0,2090-r.x-r.w),bottom:Math.max(0,1080-r.y-r.h),left:Math.max(0,r.x),radius:28};}
   function cloneCard(card){const el=card.el.cloneNode(true);el.classList.remove('current');el.style.left=el.style.top='0';el.style.transform='none';el.style.visibility='visible';ghost.replaceChildren(el);}
   function collapse(tl,slide,at){const card=cards.find(c=>c.id===slide.id);let r,sc;
     tl.add(()=>{phase='collapse';r=rect(card);sc=r.w/600;cloneCard(card);Object.assign(clip,{top:0,right:0,bottom:0,left:0,radius:0});drawClip();
@@ -120,27 +119,27 @@
     if(!started)return;
     const t=state.t;for(const key of ['x','y','s','rx','rz','sy'])cam[key]=origin[key]+(dest[key]-origin[key])*t;renderCamera();}},at);}
   function travel(tl,id,at,duration){const origin={...cam},dest=pose(id),state={t:0};let start=currentLength,offY=0,started=false;tl.add(()=>phase='travel',at);
-    tl.to(state,{t:1,duration,ease:'sine.inOut',onStart:()=>{Object.assign(origin,cam);start=currentLength;offY=cam.y-line.getPointAtLength(start).y;started=true;},onUpdate:()=>{
+    tl.to(state,{t:1,duration,ease:'sine.inOut',onStart:()=>{Object.assign(origin,cam);start=currentLength;offY=cam.y-pointAt(start).y;started=true;},onUpdate:()=>{
       if(!started)return;
-      const t=state.t,b=Math.sin(Math.PI*t),l=start+(lengths[id]-start)*t,p=line.getPointAtLength(l);cam.x=960;
+      const t=state.t,b=Math.sin(Math.PI*t),l=start+(lengths[id]-start)*t,p=pointAt(l),endY=pointAt(lengths[id]).y;cam.x=960;
       const chaotic=start<=lengths.solution||lengths[id]<=lengths.solution;
-      cam.y=chaotic?origin.y+(dest.y-origin.y)*t:p.y+offY*(1-t)+(dest.y-line.getPointAtLength(lengths[id]).y)*t;cam.s=origin.s+(dest.s-origin.s)*t-.19*b;cam.rx=origin.rx+(dest.rx-origin.rx)*t-17*b;
+      cam.y=chaotic?origin.y+(dest.y-origin.y)*t:p.y+offY*(1-t)+(dest.y-endY)*t;cam.s=origin.s+(dest.s-origin.s)*t-.19*b;cam.rx=origin.rx+(dest.rx-origin.rx)*t-17*b;
       cam.rz=origin.rz+(dest.rz-origin.rz)*t;cam.sy=origin.sy+(dest.sy-origin.sy)*t;renderCamera();renderRoad(l);}},at);}
   function logoTravel(tl,reverse,at,duration){const state={t:reverse?1:0};let started=false;tl.add(()=>phase='logo',at);
     tl.to(state,{t:reverse?0:1,duration,ease:'sine.inOut',onStart:()=>started=true,onUpdate:()=>{if(!started)return;const p=logoPath.getPointAtLength(state.t*logoLength);setDot(p.x,p.y,1-.5*Math.sin(Math.PI*state.t));}},at);}
-  function returnToRoad(tl,at){const start={...dotPosition},p=line.getPointAtLength(currentLength),state={t:0};
+  function returnToRoad(tl,at){const start={...dotPosition},p=pointAt(currentLength),state={t:0};
     tl.to(state,{t:1,duration:.3,ease:'sine.inOut',onUpdate:()=>setDot(start.x+(p.x-start.x)*state.t,start.y+(p.y-start.y)*state.t,.56+.44*state.t)},at);return .3;}
   function toSolutionMark(tl,at){const state={t:0},start={};let started=false;
     const end={x:100+1536*680/2029,y:5600+300+96*680/2029};
     tl.to(state,{t:1,duration:.4,ease:'sine.inOut',onStart:()=>{Object.assign(start,dotPosition);started=true;},onUpdate:()=>{
       if(started)setDot(start.x+(end.x-start.x)*state.t,start.y+(end.y-start.y)*state.t,1-.44*state.t);
     }},at);}
-  function merge(tl){const solution=$('#solution'),result=$('.solution-result'),logo=result.querySelector('img'),host=$('#merge-actors'),originals=[...document.querySelectorAll('#apps .app-token')];
+  function merge(tl,fromStats){const solution=$('#solution'),result=$('.solution-result'),logo=result.querySelector('img'),host=$('#merge-actors'),originals=[...document.querySelectorAll('#apps .app-token')];
     gsap.set(solution,{visibility:'visible',opacity:1});gsap.set(logo,{clipPath:'circle(0px at 75.7% 19.1%)'});gsap.set(result.querySelectorAll('h2,p,small'),{opacity:0});phase='merge';
-    originals.forEach((el,i)=>{const icon=el.querySelector('.app-icon'),r=icon.getBoundingClientRect(),s=stage.getBoundingClientRect(),fit=s.width/1920,actor=document.createElement('div');
+    originals.forEach((el,i)=>{const icon=el.querySelector('.app-icon'),r=icon.getBoundingClientRect(),s=stage.getBoundingClientRect(),fit=s.width/2090,actor=document.createElement('div');
       actor.className='app-token merge-token';actor.style.cssText=`left:0;top:0;width:86px;height:86px;padding:10px;--brand:${el.style.getPropertyValue('--brand')}`;if(el.hasAttribute('data-light'))actor.setAttribute('data-light','');if(el.hasAttribute('data-color'))actor.setAttribute('data-color','');actor.append(icon.cloneNode(true));host.append(actor);
-      gsap.set(actor,{x:(r.left-s.left)/fit-10,y:(r.top-s.top)/fit-10,opacity:1});tl.to(actor,{x:917,y:497,scale:.15,opacity:0,duration:.85,ease:'power2.inOut'},.12+i*.012);});
-    tl.to(originals,{opacity:0,duration:.15},0);tl.to('#apps .apps-copy',{opacity:0,duration:.25},0);tl.to(dot,{scale:1.7,duration:.3,ease:'sine.out'},.6);
+      gsap.set(actor,{x:(r.left-s.left)/fit-10,y:(r.top-s.top)/fit-10,opacity:fromStats?0:1});if(fromStats)tl.to(actor,{opacity:1,duration:.2},.02);tl.to(actor,{x:1002,y:497,scale:.15,opacity:0,duration:.85,ease:'power2.inOut'},.12+i*.012);});
+    tl.to(originals,{opacity:0,duration:.15},0);tl.to('#apps .apps-copy',{opacity:0,duration:.25},0);{const sc={v:1};tl.to(sc,{v:1.7,duration:.3,ease:'sine.out',onUpdate:()=>setDot(dotPosition.x,dotPosition.y,sc.v)},.6);}
     const mark={x:100+1536*680/2029,y:5600+300+96*680/2029},start={...dotPosition},state={t:0};
     tl.to(state,{t:1,duration:.55,ease:'power2.inOut',onUpdate:()=>setDot(start.x+(mark.x-start.x)*state.t,start.y+(mark.y-start.y)*state.t,1.7-1.14*state.t)},1.03);
     for(const [i,color] of ['#FF5E57','#12B07A','#7457FF'].entries()){const halo=document.createElement('i');halo.className='merge-halo';
@@ -150,18 +149,25 @@
     tl.set('#apps',{visibility:'hidden',opacity:0},1.12);tl.add(()=>host.replaceChildren(),2.3);}
   function go(from,to,instant,onArrive){if(instant||reduced){set(to);onArrive();return gsap.timeline();}
     clearArtifacts();phase='transition';const old=slides[from],next=slides[to],id=next.id;markActive(to);classes(id);slides.forEach((s,i)=>{if(i!==from&&i!==to)gsap.set(s,{visibility:'hidden',opacity:0});});
-    const tl=gsap.timeline({onComplete:()=>{set(to);onArrive();}});let at=0;if(old.id==='apps'&&id==='solution'){merge(tl);return tl;}
+    const tl=gsap.timeline({onComplete:()=>{set(to);onArrive();}});let at=0;if((old.id==='apps'||old.id==='evidence')&&id==='solution'){if(old.id==='evidence')tl.to(old,{opacity:0,duration:.25},0);merge(tl,old.id==='evidence');return tl;}
     if(old.classList.contains('feature'))at=collapse(tl,old,0);
     else if(old.id==='title'){logoTravel(tl,false,0,2.05);tl.to(old,{opacity:0,duration:.3},1.86);at=2.05;}
     else tl.to(old,{opacity:0,duration:.25},0);
     if(old.id==='solution')at+=returnToRoad(tl,at);
-    if(id==='closing'){moveCamera(tl,pose(id),at,1.1);const state={l:currentLength};let started=false;
-      tl.to(state,{l:roadLength,duration:1.1,ease:'sine.inOut',onStart:()=>started=true,onUpdate:()=>{if(started)renderRoad(state.l);}},at);
-      tl.to(next,{visibility:'visible',opacity:1,duration:.5},at+.8);return tl;}
-    if(old.id==='solution'&&id==='profile'){tl.add(()=>stage.classList.add('feature-overview-state'),at);moveCamera(tl,{x:960,y:10040,s:.178,rx:0,rz:0,sy:540},at,1.3);
-      tl.add(()=>phase='overview',at+1.3);at+=3.3;tl.add(()=>{stage.classList.remove('feature-overview-state');phase='approach';},at);moveCamera(tl,pose(id),at,1.0);
+    if(id==='closing'){
+      // Zooming the whole world out from 1.1× re-rasterises a huge layer every frame.
+      // Fade out, jump to a mid zoom (already rotated), re-raster once there, then
+      // zoom out to the same final pose: the layer is smaller and only ever shrinks.
+      const vp=$('#viewport'),mid={...pose(id),s:.3};
+      tl.to(vp,{opacity:0,duration:.22,ease:'power1.in'},at);
+      tl.add(()=>{Object.assign(cam,mid);renderCamera();renderRoad(roadLength);camera.style.willChange='auto';requestAnimationFrame(()=>camera.style.willChange='transform');},at+.22);
+      moveCamera(tl,pose(id),at+.28,.95);
+      tl.to(vp,{opacity:1,duration:.35,ease:'power1.out'},at+.28);
+      tl.to(next,{visibility:'visible',opacity:1,duration:.5},at+.75);return tl;}
+    if(old.id==='solution'&&id===features[0].id){tl.add(()=>stage.classList.add('feature-overview-state'),at);moveCamera(tl,{x:960,y:(cards[0].y+cards.at(-1).y)/2,s:.2,rx:0,rz:0,sy:540},at,1.2);
+      tl.add(()=>phase='overview',at+1.2);at+=2.4;tl.add(()=>{stage.classList.remove('feature-overview-state');phase='approach';},at);moveCamera(tl,pose(id),at,1.0);
       const state={l:currentLength};let started=false;tl.to(state,{l:lengths[id],duration:1.0,ease:'sine.inOut',onStart:()=>started=true,onUpdate:()=>{if(started)renderRoad(state.l);}},at);at+=1.0;
-    }else{travel(tl,id,at,1.1);at+=1.1;}
+    }else if(['apps','evidence'].includes(old.id)&&['apps','evidence'].includes(id)){at+=.3;}else{travel(tl,id,at,1.1);at+=1.1;}
     if(next.classList.contains('feature'))expand(tl,next,at+.16);else{tl.to(next,{visibility:'visible',opacity:1,duration:.4},at-.15);if(id==='title')logoTravel(tl,true,at,.95);if(id==='solution')toSolutionMark(tl,at);}
     return tl;}
   window.WaypointScene={slides,set,go,get camera(){return {...cam}},get roadLength(){return currentLength},get phase(){return phase},get settled(){return settled},get dot(){return {...dotPosition}},logoMark,tail};

@@ -99,8 +99,6 @@ export function activityFromStage(stage: string): CoachActivity {
 /** Message list + composer in the coach concept language (chat-shell interior). */
 export function ChatThreadView({ messages, busy, stage, progress = null, error, onSend, onInteraction, onRetry, onEditResend, onStop, placeholder, disabled, empty, afterMessages, draft, fallbackPrompts = [], dynamicPrompts = [], promptsLoading = false }: ChatThreadViewProps) {
   const { t, fmt } = useI18n()
-  // Re-pin to the bottom as the live card grows (new step, streamed text), not on every tick.
-  const progressSize = progress ? `${progress.value.steps.length}:${progress.value.preview.length >> 6}:${progress.value.notice ? 1 : 0}` : ""
   const display = (value: string) => (isCoachKey(value) ? t(value) : value)
   const formatTime = (iso: string) => {
     const time = parseServerTime(iso)
@@ -112,6 +110,8 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
   const [editDraft, setEditDraft] = useState("")
   const [selections, setSelections] = useState<Record<string, string[]>>({})
   const messagesRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const lastScrollTopRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const reduce = useReducedMotion()
   // Voice dictation: record with the mic, transcribe server-side, fill the
@@ -126,15 +126,6 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
   // Stick to the bottom while new content arrives, but let go the moment the
   // student scrolls up to read history.
   const stickRef = useRef(true)
-  // Height already pinned to. Stage ticks and message polls re-render without
-  // adding content — pinning on every one of those yanked the viewport down
-  // repeatedly, which read as a super-fast scroll.
-  const pinnedHeightRef = useRef(0)
-  // Trailing pin timer. On a tab switch the history, proposals, and run
-  // status resolve in a staggered burst — without this each one yanked the
-  // viewport down in turn, reading as one super-fast scroll. The burst now
-  // settles into a single jump.
-  const pinTimerRef = useRef<number | null>(null)
   // Word-by-word reveal: only a single freshly-arrived assistant message gets it — never a
   // bulk history load (initial fetch, thread switch) and never an already-seen message. A
   // bare busy->idle transition races the async refresh that actually appends the reply
@@ -156,35 +147,29 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
     setRevealId((current) => (current === id ? null : current))
   }, [])
 
+  // Follow actual layout growth, including streamed replies and composer resizing.
   useEffect(() => {
     const container = messagesRef.current
-    if (!container || !stickRef.current) return
-    const target = container.scrollHeight
-    if (target <= pinnedHeightRef.current) {
-      // No growth (or the thread shrank after an edit/resend rewind) —
-      // re-baseline so future growth still follows.
-      pinnedHeightRef.current = target
-      return
+    const content = contentRef.current
+    if (!container || !content) return
+    let frame = 0
+    const pin = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (!stickRef.current) return
+        container.scrollTop = container.scrollHeight
+        lastScrollTopRef.current = container.scrollTop
+      })
     }
-    pinnedHeightRef.current = target
-    if (pinTimerRef.current !== null) window.clearTimeout(pinTimerRef.current)
-    pinTimerRef.current = window.setTimeout(() => {
-      pinTimerRef.current = null
-      const el = messagesRef.current
-      // The student may have scrolled up while the burst settled — never
-      // drag them back down. Direct assignment: always instant, never an
-      // animated scroll.
-      if (!el || !stickRef.current) return
-      el.scrollTop = el.scrollHeight
-      pinnedHeightRef.current = el.scrollHeight
-    }, 200)
-    return () => {
-      if (pinTimerRef.current !== null) {
-        window.clearTimeout(pinTimerRef.current)
-        pinTimerRef.current = null
-      }
-    }
-  }, [messages, stage, busy, afterMessages, progressSize])
+    const observer = new ResizeObserver(pin)
+    observer.observe(content)
+    observer.observe(container)
+    pin()
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [])
+  useEffect(() => {
+    if (messages.at(-1)?.role === "user") stickRef.current = true
+  }, [messages])
   useEffect(() => { if (draft) setInput(draft) }, [draft])
 
   // Auto-grow the composer like the concept's fluid textarea.
@@ -200,6 +185,7 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
 
   const submit = (text: string) => {
     if (!text.trim() || busy || disabled) return
+    stickRef.current = true
     onSend(text)
     setInput("")
   }
@@ -285,9 +271,13 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
         aria-label={t("coach.thread.logLabel")}
         onScroll={(event) => {
           const el = event.currentTarget
-          stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96
+          if (el.scrollTop < lastScrollTopRef.current || !stickRef.current) {
+            stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96
+          }
+          lastScrollTopRef.current = el.scrollTop
         }}
       >
+        <div ref={contentRef} className="chat-messages-content">
         {messages.length === 0 ? (
           <div
             className="fq-empty"
@@ -484,6 +474,7 @@ export function ChatThreadView({ messages, busy, stage, progress = null, error, 
             <button type="button" aria-label={t("coach.thread.retry")} onClick={onRetry}><RefreshCw size={14} /></button>
           </div>
         ) : null}
+        </div>
       </div>
       <div className="composer-wrap">
         {suggestedPrompts.length && !busy && !disabled ? (

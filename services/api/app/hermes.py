@@ -788,7 +788,19 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
     base_url = gateway_url or HERMES_URL
     errors: list[str] = []
     budget_end = time.monotonic() + timeout_seconds * 2
-    for attempt, (run_model, run_provider) in enumerate(candidate_chain(provider, model, hermes_api_key)):
+    candidates = candidate_chain(provider, model, hermes_api_key)
+
+    def prefer_lite_after_overload(attempt: int, run_provider: str, error: str) -> None:
+        # Full-size Flash rungs often share a demand spike. Extraction profiling
+        # found Flash-Lite still answering in 2-4 s during those spikes. Keep the
+        # selected model first, then try the remaining Lite rungs before spending
+        # the whole run budget on its overloaded siblings. No new provider or key.
+        if run_provider == "gemini" and OVERLOADED.search(error or ""):
+            remaining = candidates[attempt + 1:]
+            candidates[attempt + 1:] = sorted(
+                remaining, key=lambda item: 0 if item[1] == "gemini" and "flash-lite" in item[0] else 1)
+
+    for attempt, (run_model, run_provider) in enumerate(candidates):
         if time.monotonic() >= budget_end:
             break
         body = {**payload, "model": run_model, "provider": run_provider}
@@ -824,6 +836,7 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
         if response.status_code >= 400:
             errors.append(f"{run_model}: gateway HTTP {response.status_code}")
             cool_down(run_model, response.text)
+            prefer_lite_after_overload(attempt, run_provider, f"{response.status_code} {response.text}")
             continue
         run_id = response.json()["run_id"]
         deadline = min(time.monotonic() + min(timeout_seconds, ATTEMPT_TIMEOUT_SECONDS), budget_end)
@@ -888,6 +901,7 @@ def execute_with_fallback(client, headers: dict, payload: dict, provider: str | 
             _cancel_gateway_run(client, base_url, run_id, run_headers)
         errors.append(f"{run_model}: {error[:200]}")
         cool_down(run_model, error)
+        prefer_lite_after_overload(attempt, run_provider, error)
     if not errors:
         raise TimeoutError("No model could be tried within the time budget")
     tried = "; ".join(errors[-4:])

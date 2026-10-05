@@ -1,3 +1,20 @@
+## Coach scrolling and overload recovery (2026-10-05)
+
+Both coaches now follow actual message-content and viewport size changes with a
+ResizeObserver, covering streamed reply reveals, tool cards and composer resizing.
+Scrolling up preserves the reading position; returning to the bottom resumes following.
+Onboarding chat is bounded to the dynamic viewport so wheel scrolling over messages
+works within the chat instead of requiring the pointer outside it.
+
+After a Gemini 503/high-demand failure, the gateway fallback tries remaining
+Flash-Lite models before the full-size Flash siblings, retaining the selected first
+model, cooldowns, fresh fallback sessions, server-side keys and student cancellation.
+This improves recovery but cannot guarantee availability during a provider outage.
+
+Validation: production build, 110 frontend tests, 48 roadmap/Hermes backend tests,
+and `scripts/check-coach-scroll.mjs` browser fixtures pass (desktop onboarding and
+regular coach, mobile onboarding; initial pin, wheel, history and content growth).
+
 ## Stable app sidebar navigation (2026-10-04)
 
 Reproduced the delayed Slides → My data navigation glitch with normal motion:

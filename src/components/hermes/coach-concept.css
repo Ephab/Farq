@@ -218,7 +218,7 @@ html[data-theme="deep-ocean"] .fq {
 }
 
 /* Thread: owns the scroll list + composer inside .chat-main. */
-.fq .fq-thread {
+.fq.fq-thread {
   display: flex;
   flex: 1;
   min-height: 0;
@@ -234,6 +234,14 @@ html[data-theme="deep-ocean"] .fq {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 26px clamp(18px, 4vw, 48px);
+}
+
+.fq .chat-messages-content {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .fq .message {
@@ -2113,14 +2121,6 @@ html[data-theme="deep-ocean"] .fq {
 }
 
 /* Onboarding chat: the first-run empty state is an open hero, not a dashed card. */
-/* .fq-thread is itself the .fq root here, so the Coach's ".fq .fq-thread" rule never matches it. */
-.onboarding-chat > .fq-thread {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
 .onboarding-chat .fq-empty {
   width: min(100%, 600px);
   border: 0;

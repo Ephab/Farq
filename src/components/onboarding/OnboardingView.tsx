@@ -112,7 +112,7 @@ export function OnboardingView({ onDone, onExplore }: OnboardingViewProps) {
 
   const stepIndex = STEPS.findIndex((step) => step.status.includes(profile.onboarding_status))
   return (
-    <div className="flex min-h-svh flex-col bg-background text-foreground">
+    <div className={cn("flex flex-col bg-background text-foreground", profile.onboarding_status === "chat" ? "h-dvh overflow-hidden" : "min-h-svh")}>
       <header className="sticky top-0 z-30 flex flex-wrap items-center gap-4 border-b border-border bg-background px-4 py-3 sm:px-8">
         <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Command className="size-4" aria-hidden="true" /></span><span className="text-sm font-semibold">{t("common.appName")}</span></div>
         {generating ? null : (

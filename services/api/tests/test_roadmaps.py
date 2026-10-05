@@ -128,12 +128,13 @@ def test_any_model_error_falls_back_but_bad_gateway_key_does_not(monkeypatch):
             model = url.rsplit("/", 1)[1]
             if model == "gemini-3.8-flash":
                 return _Resp({"status": "failed", "error": "Gemini HTTP 503 (UNAVAILABLE): high demand"})
-            if model == "gemini-3.7-flash":
+            if model == "gemini-3.5-flash-lite":
                 return _Resp({"status": "completed", "output": ""})
             return _Resp({"status": "completed", "output": "ok"})
 
-    assert hermes.execute_with_fallback(Client(), {"Idempotency-Key": "k"}, {}, "gemini", None, 5)[1] == "gemini-3.6-flash"
-    assert tried == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+    assert hermes.execute_with_fallback(Client(), {"Idempotency-Key": "k"}, {}, "gemini", None, 5)[1] == "gemini-3.1-flash-lite"
+    assert tried == ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+    assert hermes._cooldown["gemini-3.8-flash"] > hermes.time.monotonic()
 
     class Unauthorized:
         def post(self, url, headers=None, json=None):

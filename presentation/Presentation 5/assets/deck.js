@@ -1,4 +1,4 @@
-/* A 210-second pitch: one click per slide, a cinematic road, and one logo dot.
+/* A 120-second pitch: one click per slide, a cinematic road, and one logo dot.
    Transitions belong to the allotted speaking time; they never add extra beats. */
 (() => {
   'use strict';
@@ -15,24 +15,19 @@
   let movingTimer = null, statTween = null, storyTween = null;
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   const notes = {
-    title: 'هذا Waypoint، رفيق الطالب من أول يوم في الجامعة لين التخرّج. يجمع السياق ويربط التعلّم بالمشاريع والفرص.',
-    direction: 'المواد والمواعيد ما تعطينا صورة كاملة. وقت الإرشاد محدود، وبعض المناهج متأخر عن أدوات السوق. نحتاج طريقًا يربط الأساس النظري بالتطبيق، ونبدأ الاستعداد للتدريب التعاوني مبكرًا.',
-    apps: 'تطبيقات كثيرة، ونفس الملفات ونفس الشرح من الصفر. الـ AI يعطي حلًا جاهزًا، لكن الاختبار يحتاج فهمًا. وفي المشروع الجماعي تتفاوت المشاركة: واحد يشيل الشغل والبقية ما عندهم دور واضح. هذه بقية مشكلات العرض الأصلي، مجتمعة هنا.',
-    evidence: '48% من الخريجين المشاركين في مسح Cengage الأمريكي لعام 2025 غير مستعدين حتى للتقديم على وظائف مبتدئة في مجالهم. يتوقع أصحاب العمل عالميًا تغيّر 39% من المهارات الأساسية بحلول 2030. و95% من 1,054 طالب بكالوريوس بدوام كامل في بريطانيا يستخدمون AI بطريقة واحدة على الأقل. النسب عن المسوح المذكورة، وليست عن طلاب السعودية.',
-    value: 'القيمة المقترحة: للطالب خطة أوضح وتعلّم يثبت ومشاريع يقدر يعرضها. للجامعة إرشاد شخصي يساند المرشد. ولسوق العمل مهارات أقرب لاحتياج اليوم وأعمال تشهد عليها. هذه قيمة نهدف إليها، وليست نتائج مقاسة.',
-    solution: 'نرجع للأدوات المتفرقة، ونجمع سياقها في Waypoint. هذا ليس اندماجًا بين الشركات، بل مكان واحد يربط بيانات الطالب وخريطته والمدرّب والمشاريع. Hermes يقترح، والطالب يقرر. الآن نشوف الاستخدام.',
-    profile: 'يضيف الطالب السجل والـ CV والمشاريع أو يربط Blackboard. المعلومات المستوردة تبقى مقترحة، وتدخل الملف بعد مراجعتها والموافقة عليها. الملفات المرفوعة نفسها ما تنحفظ. هذه واجهة بياناتي الحالية.',
-    roadmap: 'من الهدف والوقت والخبرة، تأتي خريطة بموضوعات ومصادر ومشاريع. حتى الخريطة الأولى تحتاج موافقتك. وإذا تغير هدفك، يجيك اقتراح جديد ويحافظ على المنجز والجاري. هنا خريطة الطالب التجريبي الحالية وتفاصيل موضوع منها.',
-    coach: 'Hermes يعرف سياق الخريطة، ويشرح ويسأل. في السيناريو التدريبي المعروض يجاوب الطالب على سؤال داخل نفس المحادثة ويناقش السبب. الأسئلة والمراجعة والمؤقت كلها في نفس المكان. المحادثة هنا بيانات عرض محلية في الواجهة الحقيقية، وليست نتيجة تشغيل مباشر للنموذج.',
-    study: 'ملفات Blackboard تظهر في قسم الاختبارات وقسم العروض. يختار الطالب المحاضرات ويكوّن اختبارًا: نشوف حركة أنبوب التقدّم، ثم الاختبار والإجابة والشرح. نفس المكتبة تستخدم لبناء شرائح تشرح الموضوع. المحاضرات وردود التوليد هنا بيانات عرض محلية في الواجهة الحالية، ومرحلة الانتظار مسرّعة للعرض؛ لم نشغّل نموذجًا مباشرًا أثناء التسجيل.',
-    projects: 'التعلّم يتحول إلى مشروع له فكرة ومتطلبات ومخرجات. مساحة العمل والتقييم تساعدك تعرف اللي اكتمل واللي يحتاج تطوير، وترتبط الملاحظات بالأدلة. لا نزعم أن كل مشروع اختُبر بمتصفح أو طرفية.',
-    team: 'في المشاريع الجماعية جمعنا المهام والمستندات والمواعيد والمحادثة في مساحة واحدة، مع واجهة محدثة. المعروض Campus Compass من مجموعة مشاريع خيالية جاهزة للتجربة المحلية. Hermes يقترح، والموافقة على اقتراحات الفريق تبقى للطلاب حسب صلاحياتهم.',
-    career: 'ثم الفرص والسيرة: تراجع مصدر الفرصة والتوافق والفجوات، وتضيف المهارة الناقصة لخريطتك بعد الموافقة. تبني السيرة من معلوماتك المعتمدة وتصدر PDF أو DOCX. البريد الجامعي والمتابعات ومستجدات التعلم تكمل السياق. توفر أي فرصة يحتاج مراجعة مصدرها الرسمي وقت التقديم.',
-    more: 'ومعها البريد الجامعي والمتابعات، ومستجدات التعلم المرتبطة بخريطتك، والرئيسية لتقدمك ومواعيدك، والتخصيص والروابط المتصلة. كلها من نفس المكان وبنفس السياق.',
-    closing: 'Waypoint يجعل الخطوة الجاية أوضح، من أول يوم لين التخرّج. شكرًا لكم.',
+    title: 'هذا Waypoint: رفيق الطالب من أول يوم في الجامعة لين التخرّج والتدريب.',
+    direction: 'أول مشكلة: نضيع. مواد ومواعيد، وما نعرف وش نتعلم بعدها ولا كيف ترتبط المواد بهدفنا. والثانية: المنهج يعلّم الأساس، بس السوق يتغيّر أسرع منه.',
+    practice: 'الثالثة: نعرف المادة، بس البناء والتعاون والتسليم في بيئة حقيقية شيء ثاني. والرابعة: الـ AI يخلّص الشغل… وإحنا ما نتعلم.',
+    apps: 'الخامسة: تطبيقات كثيرة ولا واحد يعرفنا؛ كل مرة نفس الملفات ونفس الشرح. والسادسة: التدريب التعاوني نبدأ ندوّر عليه متأخر، وما نعرف وش ينقصنا.',
+    evidence: 'والأرقام تأكد: 48% من الخريجين مو جاهزين حتى يقدّمون. 39% من المهارات بتتغيّر بحلول 2030. و95% من الطلاب يستخدمون الذكاء الاصطناعي في دراستهم.',
+    solution: 'الحل: Waypoint، رفيق واحد لكل رحلتك. داخله Hermes: يتعلّم من اللي تؤكّده، يوجّهك، ويقترح… وأنت اللي تقرر.',
+    'sol-a': 'للضياع: خريطة تتكيّف معك من مقرراتك واهتماماتك ووقتك وهدفك؛ خطوة واضحة اليوم، وأي تعديل ينتظر موافقتك. وللمنهج: ما نستبدله، نكمّله بمهارات اليوم مثل Git وDocker وأدوات الـ AI.',
+    'sol-b': 'للفجوة: كل مسار ينتهي بمشروع تطوّره مع Hermes ويُقيَّم في بيئة معزولة، فيصير تقدّمك دليل. وللـ AI: Hermes مدرّب مو بديل؛ يشرح ويسأل ويخليك تجرّب، وفي الفريق يوزّع الشغل والفريق يقرر.',
+    'sol-c': 'للسياق: ملف واحد يعرفك، ويشرح لك الجديد بلغة اللي تعرفه، وما يعتمد شيء بدون موافقتك. وللتدريب: نطابقك مع فرص سعودية، ونحوّل اللي ينقصك لخطوات في خريطتك قبل ما تقدّم.',
+    closing: 'Waypoint يخلّي خطوتك الجاية أوضح. شكرًا.',
   };
 
-  const fit = () => stage.style.setProperty('--fit', Math.min(innerWidth / 1920, innerHeight / 1080));
+  const fit = () => stage.style.setProperty('--fit', Math.min(innerWidth / 2090, innerHeight / 1080));
   addEventListener('resize', fit); fit();
   function videos(i, play = true) {
     slides.forEach((slide, j) => slide.querySelectorAll('video').forEach(video => {
@@ -54,7 +49,7 @@
   }
   function moment(i, instant) {
     const id=slides[i].id;if(id==='evidence')stats(instant);
-    const targets=id==='direction'?['.question-bubble','.campus-island','.late-stamp']:id==='apps'?['.problem-chat .chat-msg']:id==='value'?['.value-cards article']:id==='more'?['.extras-board article']:[];
+    const targets=id==='direction'?['.question-bubble','.campus-island','.late-stamp']:id==='practice'?['.gap-list li','.problem-chat .chat-msg']:id==='apps'?['.coop-late']:id==='value'?['.value-cards article']:id==='more'?['.extras-board article']:[];
     const nodes=targets.flatMap(s=>[...slides[i].querySelectorAll(s)]);if(!nodes.length)return;
     gsap.set(nodes,{clearProps:'opacity,transform'});if(instant||reduce)return;
     storyTween=gsap.timeline();
@@ -62,7 +57,7 @@
       storyTween.from('.question-bubble',{y:14,opacity:0,duration:.4,stagger:.1,ease:'power2.out'},0);
       storyTween.from('.campus-island',{y:18,opacity:0,duration:.45,stagger:.1,ease:'power2.out'},.2);
       storyTween.from('.late-stamp',{scale:1.7,opacity:0,duration:.4,ease:'back.out(1.4)'},.75);
-    }else if(id==='apps')storyTween.from(nodes,{y:12,opacity:0,duration:.4,stagger:.3,ease:'power2.out'},0);
+    }else if(id==='practice')storyTween.from(nodes,{y:12,opacity:0,duration:.4,stagger:.22,ease:'power2.out'},0);
     else storyTween.from(nodes,{y:15,opacity:0,duration:.35,stagger:.08,ease:'power2.out'},0);
   }
   function metadata() {
@@ -101,7 +96,7 @@
   }
   function toggleAuto() {
     if (auto) { stopAuto(); return; }
-    // Rehearsal always starts a complete, timed 3:30 run.
+    // Rehearsal always starts a complete, timed 2:00 run.
     if (cur !== 0) go(0, { instant: true });
     firstStarted = performance.now(); auto = true;
     $('#auto-toggle').setAttribute('aria-pressed', 'true'); $('#auto-toggle').textContent = 'Ⅱ'; schedule(); metadata();

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waypoint · المعمارية</title>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<style>
+:root{--ink:#17142B;--ink2:#3A3654;--muted:#6E6A86;--paper:#FFFBF4;
+  --data:#FF5E57;--jev:#D18400;--her:#7457FF;--app:#12B07A;--you:#17142B;
+  --display:"Noto Kufi Arabic","Readex Pro",Tahoma,sans-serif;--body:"Readex Pro","Noto Kufi Arabic",Tahoma,sans-serif}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:#0E0C1A;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:2090px;height:1080px;transform:translate(-50%,-50%) scale(var(--fit,1));
+  background:radial-gradient(1100px 700px at 85% 0%,#fff,transparent 70%),radial-gradient(1000px 800px at 0 100%,#ECE9F6,transparent 65%),var(--paper);
+  color:var(--ink);font-family:var(--body);overflow:hidden}
+header{position:absolute;left:0;right:0;top:36px;text-align:center}
+header p{font:600 24px/1 var(--body);color:var(--muted)}
+header h1{font:800 48px/1.4 var(--display);margin-top:8px}
+header h1 em{font-style:normal;color:var(--her)}
+svg#wires{position:absolute;inset:0;width:2090px;height:1080px;overflow:visible}
+#wires path{fill:none;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)}
+#wires path.shown{stroke-dashoffset:0}
+#wires .w-data{stroke:var(--data);stroke-width:3;opacity:.55}
+#wires .w-app{stroke:var(--app);stroke-width:3;opacity:.6}
+#wires .w-out{stroke:var(--you);stroke-width:3;opacity:.35}
+#wires .trunk{stroke-width:10}
+#wires .flow{stroke:#fff;stroke-width:4;stroke-dasharray:3 26;stroke-dashoffset:0;opacity:0;transition:opacity .4s ease .8s;animation:flow 1s linear infinite}
+#wires .flow.shown{opacity:.9}
+@keyframes flow{to{stroke-dashoffset:-29}}
+.node{position:absolute;opacity:0;transform:scale(.94);transition:opacity .45s ease,transform .5s cubic-bezier(.2,.8,.2,1)}
+.node.shown{opacity:1;transform:none}
+.src{left:1800px;width:250px;height:48px;display:flex;align-items:center;gap:12px;padding:0 12px 0 8px;border-radius:14px;background:#fff;
+  box-shadow:0 6px 16px #17142b0d,0 0 0 1px #17142b0a;font:600 20px/1 var(--body);white-space:nowrap}
+.src i,.app i{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--c);color:#fff;font:700 17px/1 var(--body);font-style:normal}
+.src i img{width:19px;height:19px;filter:brightness(0) invert(1)}.src i.dk img{filter:brightness(0)}
+.src i.bb{font:700 17px/1 Georgia,serif}
+.hub{width:var(--w);height:var(--h);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border-radius:34px;background:#fff;
+  box-shadow:0 0 0 5px var(--c),0 30px 70px #17142b22}
+.hub b{font:800 52px/1.2 var(--display);color:var(--ink)}
+.hub span{font:600 20px/1.45 var(--body);color:var(--c);margin-top:6px;padding:0 14px}
+.hub.you{background:var(--you)}.hub.you b{color:#fff}.hub.you span{color:#C9C3E8}
+.app{left:560px;width:250px;height:60px;display:flex;align-items:center;gap:12px;padding:0 14px 0 10px;border-radius:16px;background:#fff;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--app) 40%,transparent),0 10px 22px #17142b0f;font:600 22px/1 var(--body);white-space:nowrap;--c:var(--app)}
+.label{position:absolute;font:600 19px/1.3 var(--body);color:var(--muted);text-align:center;opacity:0;transition:opacity .4s ease .5s}
+.label.shown{opacity:1}
+.hint{position:absolute;left:40px;bottom:20px;font:500 16px/1 var(--body);color:#A9A5BC}
+</style>
+</head>
+<body>
+<main id="stage">
+  <header><p>المعمارية</p><h1>من كل بياناتك… <em>إلى تجربة وحدة</em></h1></header>
+  <svg id="wires" viewBox="0 0 2090 1080" aria-hidden="true"></svg>
+  <p class="hint">Space / نقرة: الخطوة التالية · ← السابقة · F ملء الشاشة</p>
+</main>
+<script>
+(() => {
+  const stage = document.getElementById('stage'), svg = document.getElementById('wires');
+  const fit = () => stage.style.setProperty('--fit', Math.min(innerWidth / 2090, innerHeight / 1080));
+  addEventListener('resize', fit); fit();
+  const NS = 'http://www.w3.org/2000/svg', CY = 590;
+  const img = n => `<img src="assets/img/apps/${n}.svg" alt="">`;
+  // Every data source Waypoint reads (services/api/app: sources, coop, learning_updates, opportunities, blackboard_sync, outlook).
+  const sources = [
+    ['Blackboard', '#111', 'Bb', false, 'bb'],
+    ['السجل الأكاديمي', '#E0483F', '▤'], ['السيرة الذاتية CV', '#3A3654', '✎'],
+    ['GitHub', '#181717', img('github')], ['LinkedIn', '#0A66C2', img('linkedin')], ['ORCID', '#A6CE39', img('orcid')],
+    ['مجلدات مشاريعك', '#6E6A86', '▣'], ['معرض أعمالك', '#7457FF', '◆'], ['Outlook', '#0078D4', img('microsoftoutlook')],
+    ['X', '#000', img('x')], ['Reddit', '#FF4500', img('reddit')], ['Hugging Face', '#FFD21E', img('huggingface'), true],
+    ['Telegram', '#26A5E4', img('telegram')], ['Hackathonat', '#12B07A', 'H'], ['مواقع الشركات', '#2C7BFF', '⌂'],
+  ];
+  const apps = ['خريطة الطريق', 'مدرّب Hermes', 'الاختبارات', 'الشرائح والعروض', 'المشاريع', 'المشاريع الجماعية', 'التدريب التعاوني', 'السيرة الذاتية', 'البريد والمتابعات', 'مستجدات التعلّم'];
+  const appIcons = ['↗', '✦', '?', '▤', '⌘', '◎', '⌂', '✎', '✉', '★'];
+  const steps = [[], [], [], [], []];
+  const node = (html, cls, css, step) => { const el = document.createElement('div'); el.className = `node ${cls}`; el.style.cssText = css; el.innerHTML = html; stage.append(el); steps[step].push(el); return el; };
+  const wire = (d, cls, step, delay = 0, stroke) => { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); p.setAttribute('pathLength', '1'); p.setAttribute('class', cls); p.style.transitionDelay = `${delay}s`; if (stroke) p.style.stroke = stroke; svg.append(p); steps[step].push(p); return p; };
+  const label = (text, css, step) => { const el = document.createElement('p'); el.className = 'label'; el.style.cssText = css; el.textContent = text; stage.append(el); steps[step].push(el); };
+
+  const M1 = 1680, JEV = { l: 1400, w: 220, h: 160 }, HER = { l: 950, w: 250, h: 180 }, M2 = 440, YOU = { l: 100, w: 240, h: 180 };
+
+  // 1 · every source → one merged line into Jev
+  sources.forEach(([name, c, icon, dark, cls], i) => {
+    const y = 150 + i * 59, cy = y + 24;
+    node(`<i class="${cls || (dark ? 'dk' : '')}" style="--c:${c}">${icon}</i><bdi>${name}</bdi>`, 'src', `top:${y}px;transition-delay:${i * .025}s`, 0);
+    wire(`M1800 ${cy} C1740 ${cy} 1730 ${CY} ${M1} ${CY}`, 'w-data', 1, i * .02);
+  });
+  wire(`M${M1} ${CY} H${JEV.l + JEV.w}`, 'w-data trunk', 1, .45); wire(`M${M1} ${CY} H${JEV.l + JEV.w}`, 'flow', 1);
+  node('<b dir="ltr">Jev</b><span>System 1 · مصنّف سريع ورخيص<br>يفلتر قبل Hermes</span>', 'hub', `--c:var(--jev);--w:${JEV.w}px;--h:${JEV.h}px;left:${JEV.l}px;top:${CY - JEV.h / 2}px;transition-delay:.55s`, 1);
+  label("كل المصادر… في خط واحد", `left:${JEV.l - 20}px;width:${JEV.w + 40}px;top:${CY + JEV.h / 2 + 18}px`, 1);
+
+  // 2 · Jev → Hermes: one filtered line
+  wire(`M${JEV.l} ${CY} H${HER.l + HER.w}`, 'trunk', 2, 0, 'var(--jev)'); wire(`M${JEV.l} ${CY} H${HER.l + HER.w}`, 'flow', 2);
+  node('<b dir="ltr">Hermes</b><span>الوكيل · يوصل لكل<br>أجزاء التطبيق</span>', 'hub', `--c:var(--her);--w:${HER.w}px;--h:${HER.h}px;left:${HER.l}px;top:${CY - HER.h / 2}px;transition-delay:.4s`, 2);
+  label('بس المهم يوصل', `left:${HER.l + HER.w + 10}px;width:${JEV.l - HER.l - HER.w - 20}px;top:${CY + 24}px`, 2);
+
+  // 3 · Hermes → every part of the app
+  apps.forEach((name, j) => {
+    const y = 150 + j * 86, cy = y + 30;
+    wire(`M${HER.l} ${CY} C890 ${CY} 880 ${cy} 810 ${cy}`, 'w-app', 3, j * .03);
+    node(`<i>${appIcons[j]}</i><bdi>${name}</bdi>`, 'app', `top:${y}px;transition-delay:${.3 + j * .04}s`, 3);
+  });
+
+  // 4 · the app → one line to you
+  apps.forEach((_, j) => { const cy = 150 + j * 86 + 30; wire(`M560 ${cy} C500 ${cy} 490 ${CY} ${M2} ${CY}`, 'w-out', 4, j * .02); });
+  wire(`M${M2} ${CY} H${YOU.l + YOU.w}`, 'trunk', 4, .4, 'var(--you)'); wire(`M${M2} ${CY} H${YOU.l + YOU.w}`, 'flow', 4);
+  node('<b>أنت</b><span>تجربة وحدة بسيطة…<br>وأنت تقرر</span>', 'hub you', `--c:var(--you);--w:${YOU.w}px;--h:${YOU.h}px;left:${YOU.l}px;top:${CY - YOU.h / 2}px;transition-delay:.5s`, 4);
+
+  let cur = -1;
+  const show = n => { cur = Math.max(0, Math.min(steps.length - 1, n)); steps.forEach((els, i) => els.forEach(el => el.classList.toggle('shown', i <= cur))); };
+  addEventListener('keydown', e => {
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); show(cur + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); show(cur - 1); }
+    else if (e.key === 'Home') show(0); else if (e.key === 'End') show(steps.length - 1);
+    else if (e.key.toLowerCase() === 'f') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {});
+  });
+  addEventListener('click', () => show(cur + 1));
+  addEventListener('contextmenu', e => { e.preventDefault(); show(cur - 1); });
+  requestAnimationFrame(() => show(location.hash === '#all' ? steps.length - 1 : 0));
+})();
+</script>
+</body>
+</html>

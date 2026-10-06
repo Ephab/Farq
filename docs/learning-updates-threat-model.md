@@ -70,6 +70,14 @@ demand. First fetch covers seven days; later windows overlap the last successful
 Post/platform IDs deduplicate overlapping runs. Failure preserves cached results and last-success time.
 No credentials or HTTP exception bodies are persisted or returned in status errors.
 
+Reddit date filters use the actor's required `YYYY-MM-DD` format; local validation still enforces
+the exact timestamp window. An explicit HTTP 400 `invalid-input` launch rejection is terminal at
+zero charge, since the provider rejected the input before launching. Other errors and timeouts
+remain unresolved. X `noResults` control records are not posts or validation failures. When a
+dataset contains only these markers, the API reads at most 2 MiB of the same known run's log to
+recognize the actor's monthly run limit. It persists only `provider_limited`, never log text, and
+holds new attempts for that source for 24 hours. No log content reaches Hermes or student facts.
+
 A launch POST is performed once: queued -> starting is committed first. Successful run IDs are persisted
 before reading datasets. HTTP timeout/crash after launch must **never** create a replacement run.
 Known IDs are polled on subsequent ticks/restarts, even if new launches are disabled. A starting row
@@ -116,3 +124,11 @@ Before setting BOTH LEARNING_UPDATES_ENABLED=true and LEARNING_UPDATES_ROLLOUT_R
 Rollout log: **pending**. No paid live smoke test has been performed by this implementation. Do not
 claim live refresh is verified. Schema fixtures and mocked HTTP tests cannot replace this check.
 Provider summaries cost separately. No push notifications or automatic roadmap edits are introduced.
+
+2026-10-05 repair verification: existing X runs returned repeated `noResults` markers and their
+logs reported "Monthly run limit exceeded per user." Existing Reddit inputs failed the provider's
+non-launching validate-input endpoint on timestamp-formatted dateFrom; the corrected date-only
+inputs passed for all four topics. The local unresolved Reddit rows were released only after that
+explicit rejection was confirmed for each original input; X outcomes were corrected to
+`provider_limited`, retaining their charges. Original public refresh rows were backed up locally.
+These read/validation checks launched no new scrapers and do not complete the live rollout gate.

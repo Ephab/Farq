@@ -15,7 +15,7 @@ from ..database import SessionLocal
 from ..models import now
 from .catalog import ACTORS, TOPICS, PLATFORMS, payload
 from .models import RefreshRun, Subscription
-from .service import enabled_platforms, prune, store_posts, subscriptions, utc
+from .service import enabled_platforms, no_results, prune, store_posts, subscriptions, utc
 
 log = logging.getLogger(__name__)
 ALLOWANCE = 100000
@@ -24,6 +24,10 @@ SUCCESS = ("empty", "partial", "completed")
 TERMINAL = {"SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"}
 _task = None
 _lock = threading.Lock()
+
+
+class InputRejected(ValueError):
+    """Provider explicitly rejected input before creating a paid run."""
 
 
 def flag(name: str) -> bool:
@@ -78,6 +82,8 @@ def enqueue(topic: str, platform: str, *, manual: bool = False) -> str:
                            .order_by(RefreshRun.created_at.desc()).limit(1))
         if latest and latest.state in ACTIVE:
             return "running" if latest.state != "unresolved" else "failed"
+        if latest and latest.outcome == "provider_limited" and now() - utc(latest.created_at) < timedelta(days=1):
+            return "provider_limited"
         interval = timedelta(hours=1 if manual else 6)
         if latest and now() - utc(latest.created_at) < interval:
             return "cooldown"
@@ -126,16 +132,36 @@ class Apify:
         self.client = client or httpx.Client(timeout=20, follow_redirects=False,
             headers={"Authorization": "Bearer " + os.getenv("APIFY_API_KEY", "").strip()})
 
-    def json(self, method, path, **kwargs):
+    def read(self, method, path, **kwargs):
         with self.client.stream(method, "https://api.apify.com/v2/" + path, **kwargs) as response:
-            response.raise_for_status()
             chunks, size = [], 0
             for chunk in response.iter_bytes():
                 size += len(chunk)
                 if size > 2 * 1024 * 1024:
                     raise ValueError("Oversized Apify response")
                 chunks.append(chunk)
-            return json.loads(b"".join(chunks))
+            body = b"".join(chunks)
+            if method == "POST" and response.status_code == 400:
+                try:
+                    if json.loads(body).get("error", {}).get("type") == "invalid-input":
+                        raise InputRejected("Provider rejected the configured search input")
+                except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
+                    pass
+            response.raise_for_status()
+            return body
+
+    def json(self, method, path, **kwargs):
+        return json.loads(self.read(method, path, **kwargs))
+
+    def empty_outcome(self, run_id):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", run_id):
+            raise ValueError("Invalid run ID")
+        # Some successful X runs emit noResults even when the provider refuses
+        # collection. Inspect only bounded logs; never expose or persist raw text.
+        log_text = self.read("GET", f"actor-runs/{run_id}/log").decode("utf-8", errors="replace").lower()
+        if "monthly run limit exceeded" in log_text:
+            return "provider_limited"
+        return "empty"
 
     def start(self, run):
         return self.json("POST", f"acts/{run.actor}/runs", params={"timeout": 180,
@@ -203,6 +229,7 @@ def process(run_id: str, api) -> None:
             if data.get("status") not in TERMINAL:
                 return
             rows = api.items(run.dataset_id) if data.get("status") == "SUCCEEDED" else []
+            empty_outcome = api.empty_outcome(remote_id) if run.platform == "x" and rows and all(no_results(row) for row in rows) else "empty"
             db.execute(text("BEGIN IMMEDIATE"))
             db.refresh(run)
             if run.state == "finished":
@@ -210,18 +237,24 @@ def process(run_id: str, api) -> None:
             count, rejected = store_posts(db, rows, run.topic_id, run.platform, utc(run.since_at), utc(run.created_at))
             run.count = count
             run.charged = charge(data)
-            run.outcome = ("partial" if rejected and count else "failed" if rejected else "completed" if count else "empty") if data.get("status") == "SUCCEEDED" else "failed"
+            run.outcome = ("partial" if rejected and count else "failed" if rejected else "completed" if count else empty_outcome) if data.get("status") == "SUCCEEDED" else "failed"
             run.state, run.finished_at = "finished", now()
             run.error = "Some source records failed validation" if rejected else ("Actor did not succeed" if run.outcome == "failed" else None)
             prune(db)
             db.commit()
-        except Exception:
+        except Exception as exc:
             db.rollback()
             db.refresh(run)
             # Never persist exception strings: HTTP errors can include credentials/response bodies.
             if run.state == "starting":
-                run.state = "unresolved"
-                run.error = "Launch outcome unknown; reservation held for local operator review"
+                # An explicit input-validation rejection confirms no run launched.
+                # Timeouts, 5xx, and unknown responses must retain the reservation.
+                if isinstance(exc, InputRejected):
+                    run.state, run.outcome, run.charged, run.finished_at = "finished", "failed", 0, now()
+                    run.error = "Provider rejected the configured search input"
+                else:
+                    run.state = "unresolved"
+                    run.error = "Launch outcome unknown; reservation held for local operator review"
             elif run.state != "finished":
                 run.error = "Refresh unavailable; cached updates preserved"
             db.commit()

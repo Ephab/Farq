@@ -37,6 +37,7 @@ export const learning = {
     "partial": "Some records unavailable",
     "failed": "Refresh unavailable; cache preserved",
     "budget_exhausted": "Daily refresh budget exhausted",
+    "provider_limited": "Apify actor monthly limit reached; check the server's Apify plan",
     "completed": "Up to date"
   }
 } as const

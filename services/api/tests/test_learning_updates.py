@@ -84,6 +84,8 @@ def test_payloads_are_fixed_recent_and_nonpersonal():
     assert r["subredditName"] == "MachineLearning" and r["maxPosts"] == 50
     assert r["scrapeComments"] is False and r["includeNsfw"] is False
     assert r["maximize_coverage"] is False and r["mcpConnectors"] == []
+    assert r["dateFrom"] == since.date().isoformat()
+    assert r["dateTo"] == until.date().isoformat()
     assert not any(key in r for key in ("urls", "cookies", "profiles"))
     x = payload("ai", "x", since, until)
     assert x["maxItems"] == 50 and x["sort"] == "Latest"
@@ -248,6 +250,8 @@ class FakeApify:
         return self.data
     def items(self, dataset):
         return self.rows
+    def empty_outcome(self, run_id):
+        return "empty"
 
 
 def queued(factory):
@@ -299,6 +303,65 @@ def test_dataset_timeout_only_repolls_same_paid_run(env):
     api.items = lambda _: [reddit()]
     refresh_service.process(ident, api)
     assert api.starts == 1 and api.polls == 1
+
+
+@pytest.mark.parametrize("limited", [False, True])
+@pytest.mark.parametrize("markers", [1, 10])
+def test_x_no_results_marker_and_provider_limit(env, limited, markers):
+    factory, client = env
+    assert refresh_service.enqueue("ai", "x") == "running"
+    with factory() as db:
+        ident = db.scalar(select(RefreshRun.id))
+    api = FakeApify(rows=[{"noResults": True}] * markers)
+    api.empty_outcome = lambda _: "provider_limited" if limited else "empty"
+    refresh_service.process(ident, api)
+    with factory() as db:
+        run = db.get(RefreshRun, ident)
+        assert run.state == "finished" and run.count == 0 and run.error is None
+        assert run.outcome == ("provider_limited" if limited else "empty")
+        run.created_at = now() - timedelta(hours=7)
+        db.commit()
+    if limited:
+        assert refresh_service.enqueue("ai", "x", manual=True) == "provider_limited"
+        assert refresh_service.enqueue("ai", "x") == "provider_limited"
+    source = next(s for s in client.get("/api/students/learn-a/learning-updates/status", headers=headers()).json()["sources"] if s["platform"] == "x")
+    assert source["state"] == ("provider_limited" if limited else "empty")
+
+
+def test_no_results_marker_does_not_hide_malformed_posts(env):
+    factory, _ = env
+    with factory() as db:
+        assert store_posts(db, [{"noResults": True}, {"noResults": True, "text": "bad"}], "ai", "x", now()-timedelta(days=7), now()) == (0, 1)
+        assert store_posts(db, [{"noResults": True}], "ai", "reddit", now()-timedelta(days=7), now()) == (0, 1)
+
+
+@pytest.mark.parametrize("status,error_type,resolved", [(400, "invalid-input", True), (400, "unknown", False), (500, "invalid-input", False)])
+def test_launch_validation_rejection_is_not_an_unknown_paid_run(env, status, error_type, resolved):
+    factory, _ = env
+    ident = queued(factory)
+    def handler(req):
+        return httpx.Response(status, json={"error": {"type": error_type, "message": "secret response"}})
+    api = refresh_service.Apify(httpx.Client(transport=httpx.MockTransport(handler)))
+    refresh_service.process(ident, api)
+    with factory() as db:
+        run = db.get(RefreshRun, ident)
+        assert run.state == ("finished" if resolved else "unresolved")
+        assert run.charged == (0 if resolved else None)
+        assert "secret" not in run.error
+    api.close()
+
+
+def test_apify_reads_bounded_log_for_provider_limit():
+    requests = []
+    def handler(req):
+        requests.append(req)
+        return httpx.Response(200, text="Monthly run limit exceeded per user.\nsecret private detail")
+    api = refresh_service.Apify(httpx.Client(transport=httpx.MockTransport(handler)))
+    assert api.empty_outcome("remote1") == "provider_limited"
+    assert requests[0].method == "GET" and requests[0].url.path == "/v2/actor-runs/remote1/log"
+    with pytest.raises(ValueError):
+        api.empty_outcome("../escape")
+    api.close()
 
 
 def test_partial_failure_and_last_success_stale_cache(env):

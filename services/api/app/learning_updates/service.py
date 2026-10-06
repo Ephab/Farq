@@ -133,10 +133,17 @@ def normalize(record, topic_id: str, platform: str, since: datetime, until: date
                 source=source, published_at=published, fetched_at=now(), engagement=engagement)
 
 
+def no_results(record) -> bool:
+    return isinstance(record, dict) and len(record) == 1 and record.get("noResults") is True
+
+
 def store_posts(db: Session, rows: list, topic_id: str, platform: str, since, until) -> tuple[int, int]:
     accepted, rejected = 0, 0
     seen = set()
     for raw in rows[:50]:
+        # X emits this control record instead of a post for an empty search.
+        if platform == "x" and no_results(raw):
+            continue
         record = normalize(raw, topic_id, platform, since, until)
         if record is None:
             rejected += 1

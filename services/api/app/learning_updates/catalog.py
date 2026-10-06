@@ -38,6 +38,6 @@ def payload(topic_id: str, platform: str, since, until) -> dict:
         return {"searchTerms": [f"({accounts}) ({words}) since:{since.date()} until:{(until + timedelta(days=1)).date()} -filter:replies -filter:retweets"],
                 "sort": "Latest", "maxItems": 50}
     return {"subredditName": topic.subreddit, "subredditKeywords": [" OR ".join(topic.keywords)],
-            "subredditSort": "new", "subredditTimeframe": "week", "dateFrom": since.isoformat(),
-            "dateTo": until.isoformat(), "maxPosts": 50, "scrapeComments": False,
+            "subredditSort": "new", "subredditTimeframe": "week", "dateFrom": since.date().isoformat(),
+            "dateTo": until.date().isoformat(), "maxPosts": 50, "scrapeComments": False,
             "includeNsfw": False, "maximize_coverage": False, "mcpConnectors": []}

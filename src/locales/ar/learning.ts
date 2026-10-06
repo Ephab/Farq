@@ -37,6 +37,7 @@ export const learning = {
     "partial": "بعض السجلات غير متاحة",
     "failed": "التحديث غير متاح؛ النسخة المحفوظة متاحة",
     "budget_exhausted": "استُنفدت ميزانية التحديث اليومية",
+    "provider_limited": "بلغ مصدر Apify الحد الشهري؛ تحقق من خطة Apify للخادم",
     "completed": "محدّث"
   }
 } as const

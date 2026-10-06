@@ -289,6 +289,22 @@ async function main() {
     assert(capped.truncated === true, "pagination cap is reported rather than silently complete");
   }
 
+  // ---- request gate: parallel work never exceeds the in-flight cap ----
+  {
+    let active = 0, peak = 0;
+    global.fetch = async () => {
+      active++; peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return { ok: true, headers: { get: () => "application/json" }, json: async () => ({ ok: 1 }) };
+    };
+    const gate = U.makeGate(3);
+    const all = await Promise.all(Array.from({ length: 12 }, (_, i) => U.getJson("https://x.test", `/p${i}`, { gate })));
+    assert(all.length === 12 && all.every((x) => x.ok === 1), "gate: every request completes");
+    assert(peak === 3, "gate: at most 3 requests in flight", peak);
+    delete global.fetch;
+  }
+
   if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
   console.log("\nAll unit tests passed.");
 }

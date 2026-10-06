@@ -322,6 +322,73 @@ def test_select_attachments_prefers_current_syllabus_and_caps():
     assert not any(a.key.endswith(":_big") or a.key.endswith(":_zip") for a in chosen)
 
 
+def past_course_export(detail: str = "full") -> dict:
+    """The sample with past course _090_1 read in full (content, instructors) or summary-only (grades)."""
+    export = sample()
+    past = next(c for c in export["courses"] if c["id"] == "_090_1")
+    past["detail"] = detail
+    if detail == "full":
+        past["instructors"] = [{"name": "Old Prof", "email": "o@iau.edu.sa"}]
+        past["grade_summary"] = dict(past["grade_summary"], missing=2)
+        export["content"].append({"course_id": "_090_1", "content_id": "_old1", "title": "Old notes", "type": "Document",
+                                  "body_text": "Past course notes.", "attachments": []})
+        export["diagnostics"]["sources"] += [{"source": "contents:_090_1", "status": "ok"},
+                                             {"source": "attachments:_090_1", "status": "ok"}]
+    else:
+        past.pop("instructors", None)
+        export["diagnostics"]["sources"].append({"source": "summary-columns:_090_1", "status": "ok"})
+    return export
+
+
+def hints(sid: str):
+    db = SessionLocal()
+    try:
+        return ingest.sync_hints(db, sid)
+    finally:
+        db.close()
+
+
+def test_recently_read_past_course_is_refreshed_summary_only(student):
+    assert hints(student) == ([], {})
+    ingest_sample(student, past_course_export("full"))
+    summary_only, _ = hints(student)
+    assert summary_only == ["_090_1"]  # current courses are always read in full
+    ingest_sample(student, past_course_export("summary"))
+    past = next(c for c in rows(BlackboardCourse, student_id=student) if c.external_id == "_090_1")
+    assert "content:_old1" in course_items(student, "_090_1")  # contents were not re-read: kept
+    assert json.loads(past.instructors_json)[0]["name"] == "Old Prof"
+    assert json.loads(past.grade_summary_json)["missing"] == 2
+    assert hints(student)[0] == ["_090_1"]  # a summary read does not reset the full-read clock
+
+
+def test_past_course_read_in_full_again_after_refresh_window(student):
+    ingest_sample(student, past_course_export("full"))
+    db = SessionLocal()
+    try:
+        past = db.scalars(select(BlackboardCourse).where(BlackboardCourse.student_id == student,
+                                                         BlackboardCourse.external_id == "_090_1")).one()
+        meta = json.loads(past.metadata_json)
+        meta["detail_synced_at"] = (ingest.now() - ingest.DETAIL_REFRESH - ingest.timedelta(hours=1)).isoformat()
+        past.metadata_json = json.dumps(meta)
+        db.commit()
+    finally:
+        db.close()
+    assert hints(student)[0] == []
+
+
+def test_already_read_files_are_not_downloaded_again(student):
+    assert files.select_attachments(sample(), hints(student)[1])  # nothing read yet: picked
+    ingest_sample(student, texts={SYLLABUS_KEY: "Midterm covers chapters 1-4."})
+    _, already_read = hints(student)
+    assert SYLLABUS_KEY in already_read
+    assert files.select_attachments(sample(), already_read) == []
+    resized = sample()
+    next(c for c in resized["content"] if c["content_id"] == "_file1")["attachments"][0]["size"] = 4242
+    assert [a.key for a in files.select_attachments(resized, already_read)] == [SYLLABUS_KEY]  # replaced file
+    ingest_sample(student, texts={})  # skipped download: the stored text is carried
+    assert "Midterm covers chapters 1-4." in course_items(student)["content:_file1"].body_text
+
+
 def test_extract_text_from_office_files_redacts_ids():
     from docx import Document
     from pptx import Presentation
@@ -375,8 +442,9 @@ class FakeBrowser:
     outcome: object = None
     verifies: bool = True  # False: signed in via the saved session/AD FS cookie, form never submitted
 
-    def run(self, *, username, password, session_state, pick_attachments, progress):
-        FakeBrowser.calls.append({"username": username, "password": password, "session": session_state})
+    def run(self, *, username, password, session_state, pick_attachments, progress, summary_only=()):
+        FakeBrowser.calls.append({"username": username, "password": password, "session": session_state,
+                                  "summary_only": list(summary_only)})
         progress("extracting", "Courses: 3")
         if isinstance(FakeBrowser.outcome, Exception):
             raise FakeBrowser.outcome
@@ -533,6 +601,31 @@ def test_due_students_skips_disabled_connector(client, student, fake_browser):
     db.close()
 
 
+def test_stopping_automatic_sync_keeps_manual_sync(client, student, fake_browser):
+    from datetime import timedelta
+    from app.models import now
+    path = f"/api/students/{student}/blackboard/preferences"
+    assert client.patch(path, json={"auto_sync": False}).status_code == 404  # nothing connected yet
+    sync(client, student, username="2240000000", password=SECRET)
+    off = client.patch(path, json={"auto_sync": False}).json()
+    assert off["auto_sync"] is False and off["next_sync_at"] is None
+    db = SessionLocal()
+    db.get(BlackboardConnection, student).next_sync_at = now() - timedelta(minutes=1)
+    db.commit()
+    assert student not in worker.due_students(db)
+    db.close()
+    calls = len(fake_browser.calls)
+    sync(client, student)  # "Sync now" still works
+    assert len(fake_browser.calls) == calls + 1
+    on = client.patch(path, json={"auto_sync": True}).json()
+    assert on["auto_sync"] is True and on["next_sync_at"] is not None
+    db = SessionLocal()
+    db.get(BlackboardConnection, student).next_sync_at = now() - timedelta(minutes=1)
+    db.commit()
+    assert student in worker.due_students(db)
+    db.close()
+
+
 def test_second_post_while_running_is_single_flight(client, student, fake_browser, monkeypatch):
     sync(client, student, username="2240000000", password=SECRET)
     monkeypatch.setattr(worker, "_running", {student})
@@ -652,6 +745,19 @@ def test_extra_step_detail_and_screenshot_reach_the_owner(client, student, fake_
     assert SECRET not in shot.text and SECRET not in json.dumps(status)
     client.delete(f"/api/students/{student}/blackboard/connection")
     assert client.get(f"/api/students/{student}/blackboard/sync/screenshot").status_code == 404
+
+
+def test_rejected_sso_hand_off_drops_the_saved_session(client, student, fake_browser, monkeypatch, tmp_path):
+    monkeypatch.setenv("WAYPOINT_BB_DEBUG_DIR", str(tmp_path))
+    sync(client, student, username="2240000000", password=SECRET, remember=True)
+    fake_browser.outcome = LoginFailure("extra_verification", "Blackboard — vle.iau.edu.sa/auth-saml/saml/SSO/alias/_179_1",
+                                        stale_session=True)
+    sync(client, student)
+    assert client.get(f"/api/students/{student}/blackboard/sync").json()["failure_reason"] == "extra_verification"
+    fake_browser.outcome = None
+    sync(client, student)
+    assert fake_browser.calls[-1]["session"] is None  # started without the old cookies
+    assert fake_browser.calls[-1]["password"] == SECRET  # the saved password is kept
 
 
 def test_next_sync_clears_old_screenshot(client, student, fake_browser, monkeypatch, tmp_path):

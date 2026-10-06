@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { AlertCircle, GraduationCap, LoaderCircle, RotateCcw } from "lucide-react"
+import { AlertCircle, GraduationCap, LoaderCircle, Pause, Play, RotateCcw } from "lucide-react"
 import { API_BASE, api, getCurrentStudentId, identityHeaders, type BlackboardSyncStatus } from "@/lib/waypoint-api"
 import { useI18n } from "@/lib/i18n/context"
 import { parseServerTime } from "@/lib/server-time"
@@ -60,6 +60,18 @@ export function BlackboardSyncCard({ onReview, embedded = false }: { onReview?: 
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
       if (withLogin) setPassword("")
+      setBusy(false)
+    }
+  }
+
+  async function setAutoSync(autoSync: boolean) {
+    setBusy(true)
+    setError(null)
+    try {
+      setStatus(await api<BlackboardSyncStatus>(`${path}/preferences`, { method: "PATCH", body: JSON.stringify({ auto_sync: autoSync }) }))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
       setBusy(false)
     }
   }
@@ -141,11 +153,15 @@ export function BlackboardSyncCard({ onReview, embedded = false }: { onReview?: 
           </dl>
           <p className="mt-3 text-[12px] text-muted-foreground">
             {status.last_synced_at ? t("blackboard.synced", { when: fmt.relative(parseServerTime(status.last_synced_at) ?? Date.now()) }) : null}
-            {status.next_sync_at ? ` · ${t("blackboard.nextSync", { when: fmt.relative(parseServerTime(status.next_sync_at) ?? Date.now()) })}` : null}
+            {status.auto_sync === false ? ` · ${t("blackboard.autoOff")}`
+              : status.next_sync_at ? ` · ${t("blackboard.nextSync", { when: fmt.relative(parseServerTime(status.next_sync_at) ?? Date.now()) })}` : null}
           </p>
           {summary.partial ? <p className="mt-1 text-[12px] text-muted-foreground">{t("blackboard.partial")}</p> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={() => void start(false)} disabled={busy} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"><RotateCcw className="size-4" aria-hidden="true" />{t("blackboard.syncNow")}</button>
+            <button type="button" onClick={() => void setAutoSync(status.auto_sync === false)} disabled={busy} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50">
+              {status.auto_sync === false ? <><Play className="size-4" aria-hidden="true" />{t("blackboard.resumeAuto")}</> : <><Pause className="size-4" aria-hidden="true" />{t("blackboard.stopAuto")}</>}
+            </button>
             {onReview && (summary.new_evidence ?? 0) > 0 ? <button type="button" onClick={onReview} className="inline-flex min-h-10 items-center rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted">{t("blackboard.reviewNew")}</button> : null}
             <button type="button" onClick={() => void forget()} disabled={busy} className="inline-flex min-h-10 items-center rounded-full px-4 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50">{t("blackboard.forget")}</button>
           </div>

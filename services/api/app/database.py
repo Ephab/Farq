@@ -47,7 +47,7 @@ ADDED_COLUMNS = {
         "url": "VARCHAR(500) NOT NULL DEFAULT ''",
     },
     "blackboard_content_items": {"url": "VARCHAR(500) NOT NULL DEFAULT ''"},
-    "blackboard_connections": {"collection_json": "TEXT NOT NULL DEFAULT '{}'"},
+    "blackboard_connections": {"collection_json": "TEXT NOT NULL DEFAULT '{}'", "auto_sync": "BOOLEAN NOT NULL DEFAULT 1"},
     "outlook_sessions": {"coach_access": "BOOLEAN NOT NULL DEFAULT 0"},
     "outlook_connections": {"classifier": "VARCHAR(16) NOT NULL DEFAULT 'auto'", "classify_limit": "INTEGER DEFAULT 50"},
     "outlook_items": {"pending": "BOOLEAN NOT NULL DEFAULT 0"},

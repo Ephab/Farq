@@ -125,15 +125,19 @@ def run_sync(student_id: str, password: str | None, remember: bool) -> None:
         db.commit()
         clear_screenshot(student_id)
         saved = None if password else credentials.saved_password(conn)
+        summary_only, already_read = ingest.sync_hints(db, student_id)
         try:
             result = browser_factory().run(
                 username=conn.username, password=password or saved, session_state=credentials.saved_session(conn),
-                pick_attachments=files.select_attachments,
+                pick_attachments=lambda export: files.select_attachments(export, already_read),
                 progress=lambda stage, detail: _update(student_id, status=stage, stage_detail=detail[:200]),
+                summary_only=summary_only,
             )
         except LoginFailure as failure:
             db.refresh(conn)
             _login_failed(conn, failure.code, used_saved_password=saved is not None)
+            if failure.stale_session:
+                credentials.clear_session(conn)  # the next attempt starts without the old cookies
             if failure.code == "extra_verification":
                 conn.stage_detail = (failure.detail or "")[:200]
                 if failure.screenshot:
@@ -179,7 +183,7 @@ def due_students(db: Session) -> list[str]:
     current = now()
     rows = db.scalars(select(BlackboardConnection).where(BlackboardConnection.next_sync_at.is_not(None))).all()
     return [row.student_id for row in rows
-            if _aware(row.next_sync_at) <= current and row.status not in RUNNING_STATES
+            if row.auto_sync and _aware(row.next_sync_at) <= current and row.status not in RUNNING_STATES
             and "blackboard" not in disabled_connectors(db, row.student_id)]
 
 

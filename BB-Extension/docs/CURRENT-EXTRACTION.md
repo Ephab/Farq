@@ -58,7 +58,7 @@ defaulting to Other instead of guessing.
 
 ## Grades (student's own only)
 Primary (documented): `GET /learn/api/public/v1/courses/{id}/gradebook/users/{userId}`.
-Fallback (documented, bounded to 10 columns, concurrency 2):
+Fallback (documented, bounded to 10 columns, concurrency 3):
 `GET /learn/api/public/v1/courses/{id}/gradebook/columns/{columnId}/users/{userId}`.
 403 (hidden from students) and 404 (no grade yet) are quiet skips.
 The path `/learn/api/public/v2/courses/{id}/users/{userId}/grades` (no
@@ -74,9 +74,10 @@ grade/percentage/feedback.
 submitted timestamp, per-attempt feedback. Non-attempt columns skip quietly.
 
 ## Calendar (structured) + ICS (fallback)
-Structured: `GET /learn/api/public/v1/calendars/items?courseId={id}&since=&until=` per in-scope
-course plus one global sweep, issued per window of at most 16 weeks (`U.calendarWindows`; a longer
-range returns HTTP 400). `GradebookColumn` items with `dynamicCalendarItemProps.id` enrich the
+Structured: one global sweep, `GET /learn/api/public/v1/calendars/items?since=&until=`, which returns
+every course's items and runs alongside the course reads. Only if a window of it fails does the
+extractor sweep `?courseId={id}` per in-scope course instead. Both are issued per window of at most
+16 weeks (`U.calendarWindows`; a longer range returns HTTP 400). `GradebookColumn` items with `dynamicCalendarItemProps.id` enrich the
 matching assessment's due date and `calendar_id`, and calendar items are a due-date fallback.
 ICS (kept): user-pasted Share-Calendar URL, parsed by `src/ics.js`, merged as `source: "ics"`.
 Timestamps normalized to ISO 8601 UTC via `BBUtils.normalizeTimestamp`.

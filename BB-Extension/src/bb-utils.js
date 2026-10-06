@@ -125,22 +125,57 @@
     return status === 429 || (status >= 500 && status <= 599);
   }
 
+  // Caps how many requests are in flight at once across a whole extraction, so running
+  // more work in parallel never means more simultaneous load on Blackboard.
+  function makeGate(limit) {
+    let active = 0;
+    const waiting = [];
+    return {
+      async run(fn) {
+        while (active >= limit) await new Promise((r) => waiting.push(r));
+        active++;
+        try {
+          return await fn();
+        } finally {
+          active--;
+          const next = waiting.shift();
+          if (next) next();
+        }
+      }
+    };
+  }
+
+  // One GET attempt: the timeout covers the request and reading the body.
+  async function fetchOnce(url, timeoutMs) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+        signal: ctrl.signal
+      });
+      if (!res.ok) return { ok: false, status: res.status };
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("json")) return { ok: true, data: await res.json() };
+      return { ok: true, text: await res.text() };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
   // GET with timeout + retries for transient failures (429/5xx, timeouts).
+  // opts.gate (makeGate) holds a slot only while a request is in flight, not during backoff.
   // Never logs or returns request headers/cookies.
   async function getJson(origin, path, opts = {}) {
     const timeoutMs = opts.timeoutMs || 20000;
     const retries = opts.retries != null ? opts.retries : 2;
+    const send = () => fetchOnce(origin + path, timeoutMs);
     let lastError = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
-        const res = await fetch(origin + path, {
-          method: "GET",
-          credentials: "include",
-          headers: { Accept: "application/json" },
-          signal: ctrl.signal
-        });
+        const res = opts.gate ? await opts.gate.run(send) : await send();
         if (!res.ok) {
           const err = new Error(`GET ${path} -> HTTP ${res.status}`);
           err.status = res.status;
@@ -151,11 +186,9 @@
           }
           throw err;
         }
-        const ct = res.headers.get("content-type") || "";
-        if (ct.includes("json")) return await res.json();
-        const text = await res.text();
+        if ("data" in res) return res.data;
         try {
-          return JSON.parse(text);
+          return JSON.parse(res.text);
         } catch {
           throw new Error(`GET ${path} returned non-JSON`);
         }
@@ -169,8 +202,6 @@
         if (attempt >= retries) throw e;
         lastError = e;
         await sleep(Math.min(1000 * 2 ** attempt, 5000));
-      } finally {
-        clearTimeout(t);
       }
     }
     throw lastError || new Error(`GET ${path} failed`);
@@ -264,7 +295,7 @@
 
   const api = {
     extractRichText, htmlToText, normalizeTimestamp, getJson, pagedGet,
-    limitedMap, sanitizeError, isTransientStatus, sleep, calendarWindows, findKey
+    limitedMap, makeGate, sanitizeError, isTransientStatus, sleep, calendarWindows, findKey
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.BBUtils = api;

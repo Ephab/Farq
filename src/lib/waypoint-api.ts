@@ -242,6 +242,7 @@ export interface BlackboardSyncStatus {
   has_saved_login: boolean
   has_screenshot: boolean
   can_remember: boolean
+  auto_sync: boolean
   last_synced_at: string | null
   next_sync_at: string | null
   summary: Partial<Record<"courses" | "current_courses" | "upcoming_deadlines" | "overdue" | "announcements" | "materials" | "files" | "files_read" | "grades" | "new_evidence", number>> & { partial?: boolean }

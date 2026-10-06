@@ -103,7 +103,7 @@ Representative read endpoints probed (all GET):
 | Grade columns (assignments) | `GET /learn/api/public/v2/courses/{id}/gradebook/columns` |
 | My grades (documented student paths) | `GET /learn/api/public/v1/courses/{id}/gradebook/users/{uid}` primary; fallback per-column `GET .../columns/{col}/users/{uid}` |
 | Attempts (submission status) | `GET /learn/api/public/v2/courses/{id}/gradebook/columns/{col}/users/{uid}/attempts` |
-| Calendar/deadlines | `GET /learn/api/public/v1/calendars/items?courseId={id}&since=&until=` + global sweep |
+| Calendar/deadlines | `GET /learn/api/public/v1/calendars/items?since=&until=` global sweep; per-course `?courseId={id}` only if it fails |
 
 **Auth:** No admin approval. Requires the student to be logged in (SAML/Microsoft SSO
 + any MFA) in the same browser profile. Session expiry (~hours) just means re-login;
@@ -247,7 +247,9 @@ Blackboard UTC (`Z`); convert to Asia/Riyadh for display, never treat as local.
   usernames, emails, and membership IDs while preserving course/content/assessment IDs.
   Export JSON patterns are in `.gitignore`.
 - Reliability: timeouts + retries with exponential backoff (transient 429/5xx only),
-  3-course concurrency cap, per-course isolation, partial exports, safe HTML parsing,
+  at most 6 requests in flight across the whole run (`U.makeGate`; courses, folders and
+  independent per-course reads run in parallel under it), shorter timeouts for best-effort probes,
+  per-course isolation, partial exports, safe HTML parsing,
   ISO-8601 timestamp normalization. Full suite: `node test/run-tests.js`.
 
 ## 2c. v3 improvements

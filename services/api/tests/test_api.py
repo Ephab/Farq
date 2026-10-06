@@ -779,6 +779,19 @@ def test_failed_opportunity_sync_keeps_last_good_cache(client: TestClient):
     db.close()
 
 
+def test_unreachable_opportunity_source_logs_one_line(caplog):
+    from app.main import _sync_job
+    from app.opportunities.hackathonat import OpportunitySourceError
+
+    def offline(db):
+        raise OpportunitySourceError("Could not retrieve Hackathonat: [Errno 11001] getaddrinfo failed")
+
+    with caplog.at_level("WARNING", logger="app.main"):
+        _sync_job("hackathonat", offline)
+    records = [r for r in caplog.records if "hackathonat" in r.getMessage()]
+    assert len(records) == 1 and records[0].levelname == "WARNING" and records[0].exc_info is None
+
+
 def test_opportunity_proposal_metadata_is_authoritative(client: TestClient):
     internal = {"X-Waypoint-Internal-Token": "waypoint-internal-dev"}
     student = client.post("/api/students", json={"display_name": "Proposal Student"}).json()

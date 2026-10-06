@@ -11,7 +11,7 @@ import html
 import json
 import re
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -28,6 +28,8 @@ LECTURE = re.compile(r"lecture|week\s*\d+|chapter|slides?|محاضرة|الأس�
 SECTION_SUFFIX = re.compile(r"-[0-9A-Z]{2,5}$")
 # Item id prefix -> the extractor source whose success allows deleting stale rows.
 PREFIX_SOURCE = {"ann:": "announcements", "asmt:": "columns", "content:": "contents"}
+# Past courses rarely change: between full reads a sync refreshes only their grades.
+DETAIL_REFRESH = timedelta(days=7)
 
 
 @dataclass
@@ -99,9 +101,50 @@ def _file_blocks(previous: str) -> list[str]:
 
 
 def _carried_block(previous: str, name: str) -> str:
-    """The stored `[File: name]` block (header and text) from an earlier sync, or ''."""
-    header = f"[File: {name}]\n"
-    return next((block for block in _file_blocks(previous) if block.startswith(header)), "")
+    """The stored `[File: name]` block (header and text) from an earlier sync, or ''.
+    Stored bodies are redacted, so a name that redaction changes is looked up redacted too."""
+    for candidate in dict.fromkeys((name, redact(name))):
+        header = f"[File: {candidate}]\n"
+        block = next((block for block in _file_blocks(previous) if block.startswith(header)), "")
+        if block:
+            return block
+    return ""
+
+
+def _json_dict(value: str | None) -> dict:
+    try:
+        parsed = json.loads(value or "{}")
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def sync_hints(db: Session, student_id: str) -> tuple[list[str], dict[str, int | None]]:
+    """What the next sync may skip.
+
+    - Past courses read in full within DETAIL_REFRESH: the extractor refreshes only their grades.
+    - Files whose text an earlier sync already stored: key -> listed size. They are not downloaded
+      again while the listing shows the same attachment and size; ingest carries the stored text.
+    """
+    cutoff = now() - DETAIL_REFRESH
+    courses = db.scalars(select(BlackboardCourse).where(
+        BlackboardCourse.student_id == student_id, BlackboardCourse.source_kind == LIVE)).all()
+    summary_only = []
+    for course in courses:
+        stamp = _dt(_json_dict(course.metadata_json).get("detail_synced_at"))
+        if not course.is_current and stamp is not None and stamp >= cutoff:
+            summary_only.append(course.external_id)
+    ext_of = {course.id: course.external_id for course in courses}
+    if not ext_of:
+        return summary_only, {}
+    bodies = {(i.course_id, i.external_id): i.body_text or "" for i in db.scalars(select(BlackboardContentItem).where(
+        BlackboardContentItem.course_id.in_(list(ext_of)), BlackboardContentItem.external_id.like("content:%"))).all()}
+    already_read: dict[str, int | None] = {}
+    for att in db.scalars(select(BlackboardAttachment).where(
+            BlackboardAttachment.course_id.in_(list(ext_of)), BlackboardAttachment.text_indexed.is_(True))).all():
+        if f"[File: {att.filename}]\n" in bodies.get((att.course_id, f"content:{att.content_id}"), ""):
+            already_read[f"{ext_of[att.course_id]}:{att.content_id}:{att.external_id}"] = att.size
+    return summary_only, already_read
 
 
 def _items(export: dict, file_texts: dict[str, str], summary: IngestSummary,
@@ -236,13 +279,26 @@ def ingest_export(db: Session, student_id: str, export: dict, file_texts: dict[s
         row.term_id = (c.get("term_id") or "")[:160]
         row.lifecycle = c.get("course_status") if c.get("course_status") in {
             "current", "past", "upcoming", "completed", "unknown"} else "unknown"
-        row.metadata_json = json.dumps({k: c.get(k) for k in (
+        # A summary-only read (a past course read in full recently) refreshed grades alone:
+        # keep what only a full read produces.
+        summary_only = c.get("detail") == "summary"
+        earlier_meta = _json_dict(row.metadata_json)
+        metadata = {k: c.get(k) for k in (
             "term_start", "term_end", "availability", "availability_duration", "enrollment_date",
-            "current_reasons", "current_score")})
+            "current_reasons", "current_score")}
+        if not summary_only and f"contents:{c['id']}" in ok_sources:
+            metadata["detail_synced_at"] = now().isoformat()
+        elif earlier_meta.get("detail_synced_at"):
+            metadata["detail_synced_at"] = earlier_meta["detail_synced_at"]
+        row.metadata_json = json.dumps(metadata)
         row.source_kind = LIVE
         row.is_current = bool(c.get("is_current"))
-        row.instructors_json = json.dumps([{"name": i.get("name"), "email": i.get("email")} for i in c.get("instructors") or []])
-        row.grade_summary_json = json.dumps({**(c.get("grade_summary") or {}), **({"final_grade": final} if final else {})})
+        if not summary_only:
+            row.instructors_json = json.dumps([{"name": i.get("name"), "email": i.get("email")} for i in c.get("instructors") or []])
+        grade_summary = {**(c.get("grade_summary") or {}), **({"final_grade": final} if final else {})}
+        if summary_only and "missing" in (earlier_grades := _json_dict(row.grade_summary_json)):
+            grade_summary["missing"] = earlier_grades["missing"]  # overdue items come from assessments, not re-read
+        row.grade_summary_json = json.dumps(grade_summary)
         row.url = (c.get("url") or "")[:500]
         row.updated_at = now()
         by_ext[c["id"]] = row

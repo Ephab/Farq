@@ -32,13 +32,26 @@ remembered logins.
   API. Other Continue buttons, MFA and consent screens remain manual extra-verification steps.
 - Embedded Ultra files are catalogued from `data-bbfile` metadata, including their filenames and
   observed same-origin resource URLs. That metadata is untrusted; external URLs are excluded.
-- An attachment download is started only for a URL on the Blackboard origin. Redirects are followed
-  (Playwright's request context, up to 20 hops, cookies sent only under normal cookie rules), and the
-  body is kept only if the final URL is on the Blackboard origin or is `https://`. Intermediate hops
+- An attachment download is started only for a URL on the Blackboard origin. Downloads run first
+  as GET `fetch` calls inside the signed-in page, three at a time; a cross-origin redirect fails CORS
+  there and that file is retried alone through Playwright's request context, which follows redirects
+  (up to 20 hops, cookies sent only under normal cookie rules). Either way the body is kept only if
+  the final URL is on the Blackboard origin or is `https://`, and is at most 15 MB. Intermediate hops
   are not checked, and a final `https://` URL on another host is accepted (Blackboard may hand files
   off to a storage host).
+- A file whose text an earlier sync already stored (same attachment id and listed size) is not
+  downloaded again; its stored, redacted text is carried forward.
 - The download phase has a 180 s budget (`DOWNLOAD_BUDGET_SECONDS`); after it no new download
   starts and what was already read is kept. With the 8-minute extract timeout this bounds a sync.
+- The extractor caps requests in flight at 6 for the whole sync, however much of the work runs in
+  parallel. Past courses read in full within 7 days get only their grades refreshed
+  (`ingest.sync_hints`, `DETAIL_REFRESH`). Once signed in, images, fonts and media on the Blackboard
+  origin are not loaded; nothing is intercepted before that, so sign-in and its screenshots are untouched.
+- If Blackboard's own SAML endpoint (`/auth-saml/saml/SSO`) rejects the hand-off ("Sign On Error",
+  e.g. "the authentication request has expired"), stale cookies from an old session are the cause.
+  The sync clears every cookie in its own browser context and signs in once more, so the password can
+  reach AD FS a second time in that run, never more. If Blackboard rejects it again, the saved session
+  is dropped (the saved password is kept) and the failure is reported as an extra step.
 - A typed password is remembered only after this run submitted it to AD FS and the sign-in
   succeeded; a sync that signed in with the saved session never stores the typed password.
 - It reads only the signed-in student's own data, with their own entitlements.

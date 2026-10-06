@@ -36,6 +36,7 @@ from . import collab_coach
 from .hermes import HERMES_API_KEY, HERMES_URL, LIVE_PROGRESS, HermesJsonError, resolve_hermes_selection, run_agent, saved_choice
 from .models import AgentRun, ChatMessage, ChatThread, DataSource, DecisionRecord, EvidenceItem, RoadmapProposal, RoadmapVersion, Student, StudentFact, StudentHermesSettings, StudentMemory, StudentOpportunity, StudentProfile, now, uid
 from .onboarding import UPLOAD_KINDS, build_profile_brief, generate_initial_roadmap, mark_synced, sync_remote, sync_upload
+from .opportunities.hackathonat import OpportunitySourceError
 from .opportunities import find_hackathons, mark_seen, normalize_opportunity_operations, opportunity_summary, recompute_student, sync_hackathonat
 from .pipeline.brief_step import readiness as readiness_for
 from .pipeline.review_step import decide_evidence as decide_evidence_step
@@ -291,6 +292,10 @@ def _sync_job(name: str, job, *args) -> None:
     db = SessionLocal()
     try:
         job(db, *args)
+    except OpportunitySourceError as exc:
+        # The source was unreachable or answered badly (offline, DNS, timeout): expected, retried next cycle.
+        db.rollback()
+        logger.warning("Opportunity sync skipped: %s (%s)", name, exc)
     except Exception:
         db.rollback()
         logger.exception("Opportunity sync failed: %s", name)

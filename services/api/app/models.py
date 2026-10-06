@@ -173,6 +173,8 @@ class BlackboardConnection(Base):
     failed_logins: Mapped[int] = mapped_column(Integer, default=0)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    # False: only syncs the student starts run; the periodic tick skips this connection.
+    auto_sync: Mapped[bool] = mapped_column(Boolean, default=True)
     summary_json: Mapped[str] = mapped_column(Text, default="{}")
     collection_json: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

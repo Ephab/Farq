@@ -6,6 +6,7 @@ import logging
 import re
 import zipfile
 from dataclasses import dataclass
+from typing import Mapping
 
 from ..sources.pdf_text import redact
 
@@ -36,8 +37,10 @@ def _ext(name: str) -> str:
     return "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
 
 
-def select_attachments(export: dict) -> list[Attachment]:
-    """Readable files, current courses first, syllabi first, newest first; capped."""
+def select_attachments(export: dict, already_read: Mapping[str, int | None] | None = None) -> list[Attachment]:
+    """Readable files, current courses first, syllabi first, newest first; capped.
+    Files an earlier sync already read (same key and listed size) are skipped, so the cap goes to new ones."""
+    already_read = already_read or {}
     current = {c.get("id") for c in export.get("courses", []) if c.get("is_current")}
     ranked: list[tuple[bool, bool, str, Attachment]] = []
     for item in export.get("content", []):
@@ -47,12 +50,15 @@ def select_attachments(export: dict) -> list[Attachment]:
                 continue
             if isinstance(size, (int, float)) and size > MAX_FILE_BYTES:
                 continue
+            key = f"{item.get('course_id')}:{item.get('content_id')}:{att['id']}"
+            listed_size = int(size) if isinstance(size, (int, float)) else None
+            if key in already_read and already_read[key] == listed_size:
+                continue
             ranked.append((
                 item.get("course_id") in current,
                 bool(SYLLABUS.search(f"{item.get('title') or ''} {name}")),
                 item.get("modified") or item.get("created") or "",
-                Attachment(f"{item.get('course_id')}:{item.get('content_id')}:{att['id']}", item.get("course_id") or "",
-                           item.get("content_id") or "", name, url, int(size) if isinstance(size, (int, float)) else None),
+                Attachment(key, item.get("course_id") or "", item.get("content_id") or "", name, url, listed_size),
             ))
     ranked.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
     return [row[3] for row in ranked[:MAX_FILES]]

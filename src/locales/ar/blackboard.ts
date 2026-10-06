@@ -63,6 +63,9 @@ export const blackboard: CatalogShape<typeof en> = {
   synced: "تمت المزامنة {when}",
   partial: "بعض الأقسام لم تكن متاحة هذه المرة.",
   nextSync: "المزامنة التلقائية التالية {when}",
+  autoOff: "المزامنة التلقائية متوقفة",
+  stopAuto: "أوقف المزامنة التلقائية",
+  resumeAuto: "شغّل المزامنة التلقائية",
   extraStep: {
     showed: "عرضت الجامعة:",
     view: "اعرض ما ظهر في صفحة الجامعة",

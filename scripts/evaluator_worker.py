@@ -250,14 +250,20 @@ def main() -> None:
                 pass
             time.sleep(2)
     threading.Thread(target=heartbeat, daemon=True).start()
+    waiting = False  # report losing and regaining the API once each, not on every retry
     while True:
         try:
             request("POST", "/internal/evaluator/heartbeat", {})
+            if waiting:
+                print("Evaluator reconnected to the API.", flush=True)
+                waiting = False
             payload = request("POST", "/internal/evaluator/jobs/claim", {})
             if payload.get("job"): run_job(payload["job"])
             else: time.sleep(2)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            print(f"Evaluator waiting for API: {exc}", flush=True)
+            if not waiting:
+                print(f"Evaluator waiting for API: {exc} (retrying quietly)", flush=True)
+                waiting = True
             time.sleep(3)
 
 

@@ -29,6 +29,10 @@ MAX_PASSWORD = 256
 DONE_STATUSES = {"graded", "needsgrading", "needs_grading", "submitted", "completed"}
 
 
+class Preferences(BaseModel):
+    auto_sync: bool
+
+
 class SyncRequest(BaseModel):
     username: str | None = None
     password: str | None = None
@@ -44,12 +48,13 @@ def _iso(value) -> str | None:
 def status_dict(conn: BlackboardConnection | None) -> dict:
     if conn is None:
         return {"connected": False, "status": "idle", "stage_detail": "", "failure_reason": None, "username": None,
-                "has_saved_login": False, "can_remember": credentials.can_remember(),
+                "has_saved_login": False, "can_remember": credentials.can_remember(), "auto_sync": True,
                 "last_synced_at": None, "next_sync_at": None, "summary": {}, "has_screenshot": False}
     return {
         "connected": True, "status": conn.status, "stage_detail": conn.stage_detail, "failure_reason": conn.failure_reason,
         "username": conn.username, "has_saved_login": credentials.saved_password(conn) is not None, "can_remember": credentials.can_remember(),
-        "last_synced_at": _iso(conn.last_synced_at), "next_sync_at": _iso(conn.next_sync_at),
+        "auto_sync": conn.auto_sync,
+        "last_synced_at": _iso(conn.last_synced_at), "next_sync_at": _iso(conn.next_sync_at) if conn.auto_sync else None,
         "summary": json.loads(conn.summary_json or "{}"),
         "has_screenshot": conn.failure_reason == "extra_verification" and worker.screenshot_path(conn.student_id).is_file(),
     }
@@ -99,6 +104,19 @@ def start_sync(student_id: str, _owner: OwnedStudent, db: Db, body: SyncRequest 
     db.commit()
     worker.start(student_id, password, body.remember)
     db.refresh(conn)
+    return status_dict(conn)
+
+
+@router.patch("/api/students/{student_id}/blackboard/preferences")
+def set_preferences(student_id: str, body: Preferences, _owner: OwnedStudent, db: Db) -> dict:
+    """Turn the periodic sync off or on. "Sync now" keeps working either way; a running sync finishes."""
+    conn = db.get(BlackboardConnection, student_id)
+    if conn is None:
+        raise HTTPException(404, "Blackboard is not connected.")
+    conn.auto_sync = body.auto_sync
+    if body.auto_sync and conn.next_sync_at is None and conn.status == "done":
+        conn.next_sync_at = now() + worker.SYNC_INTERVAL
+    db.commit()
     return status_dict(conn)
 
 

@@ -45,7 +45,13 @@ class Portal(BaseHTTPRequestHandler):
         return "bb=1" in (self.headers.get("Cookie") or "")
 
     def do_GET(self):
+        self.server.hits.append(self.path)
+        if self.path.startswith("/auth-saml/saml/SSO"):
+            return self._send(200, b'<html><head><title>Blackboard</title></head><body><img src="/img/err.png">'
+                                   b'Sign On Error! The authentication request has expired.</body></html>')
         if self.path.startswith("/auth-saml/saml/login"):
+            if "bb=stale" in (self.headers.get("Cookie") or ""):  # an old session's SAML state
+                return self._send(302, headers={"Location": "/auth-saml/saml/SSO/alias/_179_1"})
             if "bb=silent" in (self.headers.get("Cookie") or ""):
                 return self._send(200, b"<html><body><script>setTimeout(() => location.href='/ultra/course', 250)</script></body></html>")
             return self._send(302, headers={"Location": "/adfs/ls/"})
@@ -67,7 +73,7 @@ class Portal(BaseHTTPRequestHandler):
                 return self._send(200, b'''<html><body><div role="dialog"><h2>Accept new terms</h2>
                   <button onclick="document.cookie='bb=1; Path=/'; this.parentElement.remove()">Continue</button>
                 </div></body></html>''')
-            return self._send(200, b"<html><body>Ultra</body></html>") if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})
+            return self._send(200, b'<html><body>Ultra<img src="/img/logo.png"></body></html>') if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})
         if self.path == "/learn/api/v1/users/me":
             return self._send(200, b'{"id":"_1_1"}', "application/json") if self._authed() else self._send(302, headers={"Location": "/auth-saml/saml/login"})
         if self.path == "/files/hop":  # same-origin redirect: allowed
@@ -97,6 +103,7 @@ class Portal(BaseHTTPRequestHandler):
 def portal(tmp_path):
     pytest.importorskip("playwright.sync_api")
     server = ThreadingHTTPServer(("127.0.0.1", 0), Portal)
+    server.hits = []
     threading.Thread(target=server.serve_forever, daemon=True).start()
     origin = f"http://127.0.0.1:{server.server_port}"
     bundle = tmp_path / "bundle"
@@ -105,8 +112,8 @@ def portal(tmp_path):
     (bundle / "bb-model.js").write_text("window.BBModel = {};", encoding="utf-8")
     (bundle / "extractor.js").write_text(
         "window.BBExtractor = { extractAll: async (o) => { o.onProgress('Courses: 1'); "
-        "return { courses: [{ id: '_1' }], content: [], origin: o.origin }; } };", encoding="utf-8")
-    yield origin, bundle
+        "return { courses: [{ id: '_1' }], content: [], origin: o.origin, summaryOnly: o.summaryOnly }; } };", encoding="utf-8")
+    yield origin, bundle, server
     server.shutdown()
 
 
@@ -116,11 +123,12 @@ def _make(origin, bundle):
                                      bundle_dir=bundle, login_wait_ms=3_000)
 
 
-def _run(b, password, state=None, picks=None):
+def _run(b, password, state=None, picks=None, summary_only=()):
     stages = []
     try:
         result = b.run(username="2240000000", password=password, session_state=state,
-                       pick_attachments=lambda export: picks or [], progress=lambda s, d: stages.append((s, d)))
+                       pick_attachments=lambda export: picks or [], progress=lambda s, d: stages.append((s, d)),
+                       summary_only=summary_only)
     except browser.LoginFailure as failure:
         if failure.code == "browser_missing":
             pytest.skip("Chromium is not installed (python -m playwright install chromium)")
@@ -129,7 +137,7 @@ def _run(b, password, state=None, picks=None):
 
 
 def test_fake_portal_login_extract_and_download(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     pick = [Attachment("_1:_c:_a", "_1", "_c", "syllabus.txt", f"{origin}/files/syllabus.txt", 100)]
     result, stages = _run(_make(origin, bundle), PASSWORD, picks=pick)
     assert result.export["courses"][0]["id"] == "_1"
@@ -141,7 +149,7 @@ def test_fake_portal_login_extract_and_download(portal):
 
 
 def test_fake_portal_extra_step_reports_page_and_screenshot(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     with pytest.raises(browser.LoginFailure) as caught:
         _run(_make(origin, bundle), "needs-mfa")
     failure = caught.value
@@ -152,21 +160,21 @@ def test_fake_portal_extra_step_reports_page_and_screenshot(portal):
 
 
 def test_single_session_notice_is_acknowledged_before_api_check(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     result, _ = _run(_make(origin, bundle), "needs-notice")
     assert result.export["courses"] and result.password_verified
     assert any(c["name"] == "bb" and c["value"] == "1" for c in result.session_state["cookies"])
 
 
 def test_other_continue_dialog_is_not_acknowledged(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     with pytest.raises(browser.LoginFailure) as caught:
         _run(_make(origin, bundle), "needs-consent")
     assert caught.value.code == "extra_verification"
 
 
 def test_delayed_silent_signin_reaches_notice_without_waiting_for_form(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     state = {"cookies": [{"name": "bb", "value": "silent", "domain": "127.0.0.1", "path": "/"}], "origins": []}
     result, _ = _run(_make(origin, bundle), "not-verified", state=state)
     assert result.export["courses"] and result.password_verified is False
@@ -185,14 +193,14 @@ def test_headed_mode_from_env(monkeypatch):
 
 
 def test_fake_portal_bad_password(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     with pytest.raises(browser.LoginFailure) as caught:
         _run(_make(origin, bundle), "wrong")
     assert caught.value.code == "bad_password"
 
 
 def test_saved_session_skips_login_and_missing_password_needs_login(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     first, _ = _run(_make(origin, bundle), PASSWORD)
     again, _ = _run(_make(origin, bundle), None, state=first.session_state)
     assert again.export["courses"] and again.password_verified is False
@@ -205,14 +213,14 @@ def test_saved_session_skips_login_and_missing_password_needs_login(portal):
 
 
 def test_extractor_load_error_is_extract_failure(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     (bundle / "extractor.js").write_text('throw new Error("boom");', encoding="utf-8")
     with pytest.raises(browser.ExtractFailure):
         _run(_make(origin, bundle), PASSWORD)
 
 
 def test_extractor_rejection_is_extract_failure(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     (bundle / "extractor.js").write_text(
         "window.BBExtractor = { extractAll: async () => { throw new Error('nope'); } };", encoding="utf-8")
     with pytest.raises(browser.ExtractFailure):
@@ -220,14 +228,14 @@ def test_extractor_rejection_is_extract_failure(portal):
 
 
 def test_missing_bundle_file_is_extract_failure(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     (bundle / "extractor.js").unlink()
     with pytest.raises(browser.ExtractFailure):
         _run(_make(origin, bundle), PASSWORD)
 
 
 def test_other_origin_attachment_is_not_fetched(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     picks = [Attachment("k1", "_1", "_c", "x.txt", "http://127.0.0.1:1/x", 10),
              Attachment("k2", "_1", "_c", "syllabus.txt", f"{origin}/files/syllabus.txt", 100)]
     result, _ = _run(_make(origin, bundle), PASSWORD, picks=picks)
@@ -235,7 +243,7 @@ def test_other_origin_attachment_is_not_fetched(portal):
 
 
 def test_redirect_off_origin_body_is_dropped(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     picks = [Attachment("hop", "_1", "_c", "syllabus.txt", f"{origin}/files/hop", 100),
              Attachment("away", "_1", "_c", "notes.txt", f"{origin}/files/away", 100)]
     result, _ = _run(_make(origin, bundle), PASSWORD, picks=picks)
@@ -244,12 +252,51 @@ def test_redirect_off_origin_body_is_dropped(portal):
 
 
 def test_download_budget_stops_new_downloads(portal):
-    origin, bundle = portal
+    origin, bundle, _ = portal
     b = _make(origin, bundle)
     b.download_budget_s = 0
     pick = [Attachment("_1:_c:_a", "_1", "_c", "syllabus.txt", f"{origin}/files/syllabus.txt", 100)]
     result, _ = _run(b, PASSWORD, picks=pick)
     assert result.export["courses"] and result.files == {}
+
+
+def test_summary_only_courses_reach_the_extractor_and_images_are_not_loaded(portal):
+    origin, bundle, server = portal
+    first, _ = _run(_make(origin, bundle), PASSWORD, summary_only=["_090_1"])
+    assert first.export["summaryOnly"] == ["_090_1"]
+    server.hits.clear()
+    _run(_make(origin, bundle), None, state=first.session_state)  # signed in before Ultra loads
+    assert any(path.startswith("/ultra") for path in server.hits)
+    assert "/img/logo.png" not in server.hits
+
+
+def stale_state(origin):
+    host = origin.split("//", 1)[1].split(":")[0]
+    return {"cookies": [{"name": "bb", "value": "stale", "domain": host, "path": "/", "expires": -1,
+                         "httpOnly": False, "secure": False, "sameSite": "Lax"}], "origins": []}
+
+
+def test_expired_sso_request_starts_over_without_cookies(portal):
+    origin, bundle, server = portal
+    result, _ = _run(_make(origin, bundle), PASSWORD, state=stale_state(origin))
+    assert result.password_verified is True and result.export["courses"]
+    assert any(path.startswith("/auth-saml/saml/SSO") for path in server.hits)
+    assert "/img/err.png" in server.hits  # sign-in pages are never intercepted
+
+
+def test_expired_sso_request_without_password_needs_login(portal):
+    origin, bundle, _ = portal
+    with pytest.raises(browser.LoginFailure) as failure:
+        _run(_make(origin, bundle), None, state=stale_state(origin))
+    assert failure.value.code == "needs_login"
+
+
+def test_several_files_download_together(portal):
+    origin, bundle, _ = portal
+    picks = [Attachment(f"k{i}", "_1", "_c", "syllabus.txt", f"{origin}/files/syllabus.txt", 100) for i in range(5)]
+    result, _ = _run(_make(origin, bundle), PASSWORD, picks=picks)
+    assert sorted(result.files) == [f"k{i}" for i in range(5)]
+    assert all(b"gradient descent" in body for _, body in result.files.values())
 
 
 def test_allowed_final_url():

@@ -16,8 +16,9 @@
  *   const data = await BBExtractor.extractAll({ origin: location.origin, scope: "current" });
  *
  * Options: { origin, scope: "current"|"all" (default "current"),
- *   redact: false, concurrency: 3, timeoutMs: 20000, retries: 2,
- *   since, until, icsEvents: [], onProgress(msg) }
+ *   redact: false, concurrency: 4 (courses at once), maxInFlight: 6 (requests at once, whole run),
+ *   timeoutMs: 20000, retries: 2, since, until, icsEvents: [], onProgress(msg),
+ *   summaryOnly: [courseId] (past courses: refresh grades only; each course gets detail "full"|"summary") }
  */
 (function (global) {
   "use strict";
@@ -94,9 +95,16 @@
     const origin = (options.origin || (typeof location !== "undefined" ? location.origin : DEFAULT_ORIGIN)).replace(/\/$/, "");
     const scope = options.scope === "all" ? "all" : "current";
     const wantRedact = !!options.redact;
-    const concurrency = Math.max(1, Math.min(options.concurrency || 3, 5));
+    const concurrency = Math.max(1, Math.min(options.concurrency || 4, 6));
     const timeoutMs = options.timeoutMs || 20000;
+    // Best-effort probes (instructors, categories, attempts) give up sooner than core listings.
+    const probeTimeoutMs = Math.min(timeoutMs, 8000);
     const retries = options.retries != null ? options.retries : 2;
+    // Past courses read in full recently: refresh only their grades (the caller decides which).
+    const summaryOnly = new Set(Array.isArray(options.summaryOnly) ? options.summaryOnly : []);
+    const gate = U.makeGate(Math.max(1, Math.min(options.maxInFlight || 6, 8)));
+    const getJson = (path, o) => U.getJson(origin, path, { ...o, gate });
+    const pagedGet = (path, o) => U.pagedGet(origin, path, { ...o, gate });
     const since = options.since || new Date(Date.now() - 120 * 864e5).toISOString();
     const until = options.until || new Date(Date.now() + 180 * 864e5).toISOString();
     const windows = U.calendarWindows(since, until);
@@ -113,12 +121,14 @@
     const startedAt = Date.now();
     const sources = [];
     function recordSource(source, endpoint, status, count, ms, error) {
-      sources.push({
+      const entry = {
         source, endpoint, status,
         count: count == null ? 0 : count,
         elapsed_ms: Math.round(ms),
         ...(error ? { error: U.sanitizeError(error) } : {})
-      });
+      };
+      sources.push(entry);
+      return entry;
     }
     async function track(source, endpoint, fn) {
       const t0 = Date.now();
@@ -146,7 +156,7 @@
     let me = null;
     try {
       me = await track("identity", "GET /learn/api/v1/users/me",
-        () => U.getJson(origin, "/learn/api/v1/users/me", { timeoutMs, retries }));
+        () => getJson("/learn/api/v1/users/me", { timeoutMs, retries }));
       diagnostics.endpointStatus["/learn/api/v1/users/me"] = "ok";
     } catch (e) {
       diagnostics.endpointStatus["/learn/api/v1/users/me"] = `failed: ${U.sanitizeError(e)}`;
@@ -158,7 +168,7 @@
     let memberships = [];
     try {
       memberships = await track("memberships", "GET /learn/api/v1/users/me/memberships",
-        () => U.pagedGet(origin, "/learn/api/v1/users/me/memberships?expand=course", { limit: 100, maxPages: 10, timeoutMs, retries }));
+        () => pagedGet("/learn/api/v1/users/me/memberships?expand=course", { limit: 100, maxPages: 10, timeoutMs, retries }));
       diagnostics.endpointStatus["/learn/api/v1/users/me/memberships"] = "ok";
     } catch (e) {
       diagnostics.endpointStatus["/learn/api/v1/users/me/memberships"] = `failed: ${U.sanitizeError(e)}`;
@@ -174,7 +184,7 @@
     let termsById = new Map();
     try {
       const terms = await track("terms", "GET /learn/api/v1/terms",
-        () => U.pagedGet(origin, "/learn/api/v1/terms", { limit: 100, maxPages: 5, timeoutMs, retries }));
+        () => pagedGet("/learn/api/v1/terms", { limit: 100, maxPages: 5, timeoutMs, retries }));
       for (const t of terms) {
         if (t && t.id) termsById.set(t.id, { name: t.name || null, start: t.availability && t.availability.duration && t.availability.duration.start, end: t.availability && t.availability.duration && t.availability.duration.end });
       }
@@ -226,7 +236,7 @@
     if (courses.length === 0) {
       try {
         const data = await track("courses-fallback", "GET /learn/api/public/v1/users/{id}/courses",
-          () => U.pagedGet(origin, `/learn/api/public/v1/users/${encodeURIComponent(myUserId)}/courses`, { limit: 100, maxPages: 5, timeoutMs, retries }));
+          () => pagedGet(`/learn/api/public/v1/users/${encodeURIComponent(myUserId)}/courses`, { limit: 100, maxPages: 5, timeoutMs, retries }));
         for (const c of data) {
           const cid = c.courseId || c.id;
           if (!cid || courseById.has(cid)) continue;
@@ -243,14 +253,15 @@
     const scopedNote = scope === "all" ? null : (courses.length && inScope.length === 0 ? "current-filter-empty" : null);
     prog(`Courses: ${inScope.length} in scope / ${courses.length} total`);
 
-    // ---- 3. per-course reads (isolated; conservative concurrency) ----
-    const results = await U.limitedMap(inScope, concurrency, async (course) => {
-      const cid = course.id;
-      const cname = course.name;
-      const per = { assessments: [], announcements: [], grades: [], events: [], content: [] };
+    // ---- 3. per-course reads (isolated; independent reads run concurrently, the gate caps load) ----
+    // One sweep returns every course's calendar items; it runs alongside the course reads.
+    const globalCalendar = U.limitedMap(windows, windows.length || 1, (w) => track("calendar-global", "GET /learn/api/public/v1/calendars/items",
+      () => getJson(`/learn/api/public/v1/calendars/items?since=${encodeURIComponent(w.since)}&until=${encodeURIComponent(w.until)}`, { timeoutMs, retries })), true);
 
-      // 3a. instructors: students get 404 on the roster, so probe student-readable
-      // shapes in order and stop at the first that yields instructors.
+    // 3a. instructors: students get 404 on the roster, so probe student-readable
+    // shapes in order and stop at the first that yields instructors.
+    async function readInstructors(course) {
+      const cid = course.id;
       const instructorProbes = [
         ["ultra-course", `/learn/api/v1/courses/${encodeURIComponent(cid)}?expand=instructorsMembership`],
         ["public-memberships", `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/users?role=Instructor&expand=user`]
@@ -259,7 +270,7 @@
       for (const [label, path] of instructorProbes) {
         const t0 = Date.now();
         try {
-          const payload = await U.getJson(origin, path, { timeoutMs, retries: 1 });
+          const payload = await getJson(path, { timeoutMs: probeTimeoutMs, retries: 1 });
           sample(`instructors-${label}`, payload);
           const found = M.instructorsFrom(payload);
           recordSource(`instructors:${cid}`, `GET ${label}`, found.length ? "ok" : "probe_empty", found.length, Date.now() - t0);
@@ -268,10 +279,15 @@
           recordSource(`instructors:${cid}`, `GET ${label}`, `probe_${e && e.status ? `http_${e.status}` : "failed"}`, 0, Date.now() - t0, e);
         }
       }
+    }
 
-      // 3b. contents: documented public API first (stable shape: contentHandler.id,
-      // hasChildren, created/modified); Ultra's internal list is the fallback.
-      const contentIndex = new Map(); // contentId -> record
+    // 3b. contents: documented public API first (stable shape: contentHandler.id,
+    // hasChildren, created/modified); Ultra's internal list is the fallback.
+    // Returns contentId -> record.
+    async function readContents(course, per) {
+      const cid = course.id;
+      const cname = course.name;
+      const contentIndex = new Map();
       const contentBases = [
         `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/contents`,
         `/learn/api/v1/courses/${encodeURIComponent(cid)}/contents`
@@ -281,7 +297,7 @@
       for (const b of contentBases) {
         try {
           tops = await track(`contents:${cid}`, `GET ${b.includes("/public/") ? "public" : "ultra"} contents`,
-            () => U.pagedGet(origin, b, { limit: 100, maxPages: 5, timeoutMs, retries }));
+            () => pagedGet(b, { limit: 100, maxPages: 5, timeoutMs, retries }));
           base = b;
           break;
         } catch { /* recorded; try the next shape */ }
@@ -290,58 +306,62 @@
       const attachmentJobs = [];
       let childErrors = 0;
       if (tops) {
-        const queue = tops.map((t) => ({ item: t, parentId: null, path: [t.title || "(untitled)"] }));
+        // Breadth-first, one level at a time: every folder on a level is opened in parallel.
+        let level = tops.map((t) => ({ item: t, parentId: null, path: [t.title || "(untitled)"] }));
         const seen = new Set();
-        while (queue.length) {
-          const { item, parentId, path } = queue.shift();
-          if (!item || !item.id || seen.has(item.id)) continue;
-          seen.add(item.id);
-          const handler = handlerOf(item);
-          const type = contentTypeOf(item);
-          const bodyR = U.extractRichText(item.body);
-          const bodyText = U.htmlToText(bodyR.text);
-          const embedded = bodyText && /^https?:\/\/\S+\/embedded\/?$/.test(bodyText) ? bodyText : null;
-          const created = item.created || item.createdDate;
-          const modified = item.modified || item.modifiedDate;
-          const rec = {
-            course: cname, course_id: cid,
-            title: item.title || "(untitled)",
-            content_id: item.id,
-            source_id: item.id,
-            type,
-            handler: handler || null,
-            parent_id: parentId,
-            path: path.join(" / "),
-            description: embedded ? null : bodyText,
-            body_text: embedded ? null : bodyText,
-            body_html: bodyR.html || (typeof item.body === "string" && !embedded ? item.body : null),
-            embedded_url: embedded,
-            availability: (item.availability && item.availability.available) ?? null,
-            available_from: U.normalizeTimestamp(item.availability && item.availability.adaptiveRelease && item.availability.adaptiveRelease.start),
-            available_until: U.normalizeTimestamp(item.availability && item.availability.adaptiveRelease && item.availability.adaptiveRelease.end),
-            created: U.normalizeTimestamp(created),
-            modified: U.normalizeTimestamp(modified),
-            dates: {
-              due: U.normalizeTimestamp((item.dates && item.dates.due) || U.findKey(item.contentDetail || {}, ["dueDate", "due"])),
-              start: U.normalizeTimestamp(item.dates && item.dates.start),
-              end: U.normalizeTimestamp(item.dates && item.dates.end)
-            },
-            url: contentUrl(origin, cid, item.id),
-            attachments: [],
-            file: (item.contentHandler && item.contentHandler.file) || null,
-            external_link: (item.contentHandler && item.contentHandler.url) || item.externalLink || null
-          };
-          contentIndex.set(item.id, rec);
-          per.content.push(rec);
-          if (/x-bb-(file|document|assignment)/.test(handler)) attachmentJobs.push(rec);
-          const isFolder = item.hasChildren || /x-bb-(folder|lesson)/.test(handler);
-          if (isFolder) {
-            try {
-              const kids = await U.pagedGet(origin, `${base}/${encodeURIComponent(item.id)}/children`, { limit: 100, maxPages: 5, timeoutMs, retries });
-              if (kids.truncated) childErrors++;
-              for (const k of kids) queue.push({ item: k, parentId: item.id, path: [...path, k.title || "(untitled)"] });
-            } catch { childErrors++; /* keep what we have */ }
+        while (level.length) {
+          const folders = [];
+          for (const { item, parentId, path } of level) {
+            if (!item || !item.id || seen.has(item.id)) continue;
+            seen.add(item.id);
+            const handler = handlerOf(item);
+            const type = contentTypeOf(item);
+            const bodyR = U.extractRichText(item.body);
+            const bodyText = U.htmlToText(bodyR.text);
+            const embedded = bodyText && /^https?:\/\/\S+\/embedded\/?$/.test(bodyText) ? bodyText : null;
+            const created = item.created || item.createdDate;
+            const modified = item.modified || item.modifiedDate;
+            const rec = {
+              course: cname, course_id: cid,
+              title: item.title || "(untitled)",
+              content_id: item.id,
+              source_id: item.id,
+              type,
+              handler: handler || null,
+              parent_id: parentId,
+              path: path.join(" / "),
+              description: embedded ? null : bodyText,
+              body_text: embedded ? null : bodyText,
+              body_html: bodyR.html || (typeof item.body === "string" && !embedded ? item.body : null),
+              embedded_url: embedded,
+              availability: (item.availability && item.availability.available) ?? null,
+              available_from: U.normalizeTimestamp(item.availability && item.availability.adaptiveRelease && item.availability.adaptiveRelease.start),
+              available_until: U.normalizeTimestamp(item.availability && item.availability.adaptiveRelease && item.availability.adaptiveRelease.end),
+              created: U.normalizeTimestamp(created),
+              modified: U.normalizeTimestamp(modified),
+              dates: {
+                due: U.normalizeTimestamp((item.dates && item.dates.due) || U.findKey(item.contentDetail || {}, ["dueDate", "due"])),
+                start: U.normalizeTimestamp(item.dates && item.dates.start),
+                end: U.normalizeTimestamp(item.dates && item.dates.end)
+              },
+              url: contentUrl(origin, cid, item.id),
+              attachments: [],
+              file: (item.contentHandler && item.contentHandler.file) || null,
+              external_link: (item.contentHandler && item.contentHandler.url) || item.externalLink || null
+            };
+            contentIndex.set(item.id, rec);
+            per.content.push(rec);
+            if (/x-bb-(file|document|assignment)/.test(handler)) attachmentJobs.push(rec);
+            if (item.hasChildren || /x-bb-(folder|lesson)/.test(handler)) folders.push({ id: item.id, path });
           }
+          const opened = await U.limitedMap(folders, 4, (f) =>
+            pagedGet(`${base}/${encodeURIComponent(f.id)}/children`, { limit: 100, maxPages: 5, timeoutMs, retries }), true);
+          level = [];
+          opened.forEach((r, i) => {
+            if (!r.ok) { childErrors++; return; } // keep what we have
+            if (r.value.truncated) childErrors++;
+            for (const k of r.value) level.push({ item: k, parentId: folders[i].id, path: [...folders[i].path, k.title || "(untitled)"] });
+          });
         }
         // A folder we could not open hides its items: mark the listing partial so consumers
         // never treat the missing items as deleted.
@@ -354,10 +374,10 @@
       // 3b'. attachment metadata (documented); bytes are never fetched here.
       const attT0 = Date.now();
       let attListingErrors = 0;
-      await U.limitedMap(attachmentJobs, 2, async (rec) => {
+      await U.limitedMap(attachmentJobs, 4, async (rec) => {
         const listPath = `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/contents/${encodeURIComponent(rec.content_id)}/attachments`;
         try {
-          const res = { results: await U.pagedGet(origin, listPath, { limit: 100, maxPages: 20, timeoutMs, retries: 1 }) };
+          const res = { results: await pagedGet(listPath, { limit: 100, maxPages: 20, timeoutMs, retries: 1 }) };
           if (res.results.truncated) attListingErrors++;
           sample("attachments", (res.results || [])[0]);
           rec.attachments = (res.results || []).filter((a) => a && a.id).map((a) => ({
@@ -407,14 +427,19 @@
         delete rec.file;
       }
       const attCount = per.content.reduce((n, r) => n + r.attachments.length, 0);
-      recordSource(`attachments:${cid}`, "GET public attachments + observed file links",
+      const attEntry = recordSource(`attachments:${cid}`, "GET public attachments + observed file links",
         (!tops || tops.truncated || childErrors || attListingErrors) ? "partial" : "ok", attCount, Date.now() - attT0);
-      Object.assign(sources[sources.length - 1], { truncated: false, listing_errors: attListingErrors });
+      Object.assign(attEntry, { truncated: false, listing_errors: attListingErrors });
+      return contentIndex;
+    }
 
-      // 3c. announcements (proven endpoint, kept) — fixed rich-text extraction.
+    // 3c. announcements (proven endpoint, kept) — fixed rich-text extraction.
+    async function readAnnouncements(course, per) {
+      const cid = course.id;
+      const cname = course.name;
       try {
         const anns = await track(`announcements:${cid}`, "GET /learn/api/v1/courses/{id}/announcements",
-          () => U.pagedGet(origin, `/learn/api/v1/courses/${encodeURIComponent(cid)}/announcements`, { limit: 100, maxPages: 5, timeoutMs, retries }));
+          () => pagedGet(`/learn/api/v1/courses/${encodeURIComponent(cid)}/announcements`, { limit: 100, maxPages: 5, timeoutMs, retries }));
         sample("announcements", anns[0]);
         for (const a of anns) {
           const r = U.extractRichText(a.body);
@@ -437,97 +462,113 @@
           });
         }
       } catch { /* recorded */ }
+    }
 
-      // 3d. gradebook columns (proven endpoint, kept) — metadata for assessments.
-      let columns = [];
-      try {
-        columns = await track(`columns:${cid}`, "GET /learn/api/public/v2/courses/{id}/gradebook/columns",
-          () => U.pagedGet(origin, `/learn/api/public/v2/courses/${encodeURIComponent(cid)}/gradebook/columns`, { limit: 100, maxPages: 5, timeoutMs, retries }));
-      } catch { columns = []; }
+    // 3d. gradebook columns (proven endpoint, kept), category titles and the student's own grades,
+    // fetched together. In summary mode the columns are recorded under another source name: they
+    // only label grades, and must not let a consumer delete assessments it did not re-read.
+    async function readGradebook(course, summaryMode) {
+      const cid = course.id;
+      const [columns, categoryById, userGrades] = await Promise.all([
+        track(`${summaryMode ? "summary-columns" : "columns"}:${cid}`, "GET /learn/api/public/v2/courses/{id}/gradebook/columns",
+          () => pagedGet(`/learn/api/public/v2/courses/${encodeURIComponent(cid)}/gradebook/columns`, { limit: 100, maxPages: 5, timeoutMs, retries }))
+          .catch(() => []),
+        // Category titles (columns only carry category IDs) for classification.
+        summaryMode ? new Map() : pagedGet(`/learn/api/public/v1/courses/${encodeURIComponent(cid)}/gradebook/categories`, { limit: 100, maxPages: 2, timeoutMs: probeTimeoutMs, retries: 1 })
+          .then((cats) => new Map(cats.filter((c) => c && c.id).map((c) => [c.id, c.title || c.name || null])))
+          .catch(() => new Map()),
+        // Documented student-readable path: GET /learn/api/public/v1/courses/{courseId}/gradebook/users/{userId}
+        // (the `/users/{uid}/grades` path without /gradebook/ 404s and is never called). null = use the fallback.
+        track(`usergrades:${cid}`, "GET /learn/api/public/v1/courses/{id}/gradebook/users/{userId}",
+          () => getJson(`/learn/api/public/v1/courses/${encodeURIComponent(cid)}/gradebook/users/${encodeURIComponent(myUserId)}?limit=100`, { timeoutMs, retries }))
+          .then((g) => g.results || g.grades || (g.columnId ? [g] : []))
+          .catch(() => null)
+      ]);
+      return { columns, categoryById, userGrades };
+    }
+
+    async function readCourse(course) {
+      const cid = course.id;
+      const cname = course.name;
+      const summaryMode = summaryOnly.has(cid) && !course.is_current;
+      course.detail = summaryMode ? "summary" : "full";
+      const per = { assessments: [], announcements: [], grades: [], events: [], content: [] };
+
+      const [contentIndex, gradebook] = await Promise.all([
+        summaryMode ? new Map() : readContents(course, per),
+        readGradebook(course, summaryMode),
+        summaryMode ? null : readInstructors(course),
+        summaryMode ? null : readAnnouncements(course, per)
+      ]);
+
+      let columns = gradebook.columns;
+      const categoryById = gradebook.categoryById;
       sample("columns", columns[0]);
       // The course total ("externalGrade") is a final grade, not an assessment.
       const totalColumn = columns.find((c) => c.externalGrade === true) || null;
       columns = columns.filter((c) => c !== totalColumn);
       const columnById = new Map([...columns, ...(totalColumn ? [totalColumn] : [])].map((c) => [c.id, c]));
-      const contentByColumnContentId = new Map();
-      for (const rec of contentIndex.values()) {
-        // columns reference content via contentId; index not strictly needed
-        // since we join on IDs below, kept for clarity.
-        void rec;
-      }
-
-      // Category titles (columns only carry category IDs) for classification.
-      const categoryById = new Map();
-      try {
-        const cats = await U.pagedGet(origin, `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/gradebook/categories`, { limit: 100, maxPages: 2, timeoutMs, retries: 1 });
-        for (const c of cats) if (c && c.id) categoryById.set(c.id, c.title || c.name || null);
-      } catch { /* optional */ }
       for (const col of columns) {
         if (!col.gradebookCategory && categoryById.get(col.gradebookCategoryId)) col.gradebookCategory = { title: categoryById.get(col.gradebookCategoryId) };
       }
-      for (const col of columns) {
-        const grading = col.grading || {};
-        const descR = U.extractRichText(col.description);
-        per.assessments.push({
-          course: cname, course_id: cid,
-          title: col.name || col.displayName || "(graded item)",
-          description: U.htmlToText(descR.text),
-          due_date: U.normalizeTimestamp(grading.due || col.due || U.findKey(col, ["dueDate"])),
-          available_from: U.normalizeTimestamp(grading.availableFrom || (col.availability && col.availability.start)),
-          available_until: U.normalizeTimestamp(grading.availableUntil || (col.availability && col.availability.end)),
-          submission_status: null, submitted_at: null,
-          grade: null, possible: (col.score && col.score.possible) ?? null,
-          percentage: null, feedback: null, attempts: [],
-          type: M.classifyAssessment({ column: col, content: col.contentId && contentIndex.get(col.contentId) }),
-          content_id: col.contentId || null,
-          column_id: col.id,
-          calendar_id: null, attempt_id: null,
-          gradebook_category: (col.gradebookCategory && (col.gradebookCategory.title || col.gradebookCategory.name)) || col.gradebookCategoryId || null,
-          url: contentUrl(origin, cid, col.contentId || col.id),
-          source_id: col.id,
-          source: "gradebook-column"
-        });
-      }
-
-      // Content-side assessment candidates (proven heuristic, kept) with IDs.
-      for (const rec of contentIndex.values()) {
-        const h = rec.handler || "";
-        if (/assess|assign|test|survey|grade/i.test(h)) {
+      if (!summaryMode) {
+        for (const col of columns) {
+          const grading = col.grading || {};
+          const descR = U.extractRichText(col.description);
           per.assessments.push({
             course: cname, course_id: cid,
-            title: rec.title,
-            description: rec.description,
-            due_date: (rec.dates && rec.dates.due) || null,
-            available_from: rec.available_from || (rec.dates && rec.dates.start) || null,
-            available_until: rec.available_until || (rec.dates && rec.dates.end) || null,
+            title: col.name || col.displayName || "(graded item)",
+            description: U.htmlToText(descR.text),
+            due_date: U.normalizeTimestamp(grading.due || col.due || U.findKey(col, ["dueDate"])),
+            available_from: U.normalizeTimestamp(grading.availableFrom || (col.availability && col.availability.start)),
+            available_until: U.normalizeTimestamp(grading.availableUntil || (col.availability && col.availability.end)),
             submission_status: null, submitted_at: null,
-            grade: null, possible: null, percentage: null, feedback: null, attempts: [],
-            type: M.classifyAssessment({ column: { name: rec.title }, content: { contentHandler: { id: h } } }),
-            content_id: rec.content_id,
-            column_id: null, calendar_id: null, attempt_id: null,
-            url: rec.url, source_id: rec.content_id,
-            source: "content"
+            grade: null, possible: (col.score && col.score.possible) ?? null,
+            percentage: null, feedback: null, attempts: [],
+            type: M.classifyAssessment({ column: col, content: col.contentId && contentIndex.get(col.contentId) }),
+            content_id: col.contentId || null,
+            column_id: col.id,
+            calendar_id: null, attempt_id: null,
+            gradebook_category: (col.gradebookCategory && (col.gradebookCategory.title || col.gradebookCategory.name)) || col.gradebookCategoryId || null,
+            url: contentUrl(origin, cid, col.contentId || col.id),
+            source_id: col.id,
+            source: "gradebook-column"
           });
+        }
+
+        // Content-side assessment candidates (proven heuristic, kept) with IDs.
+        for (const rec of contentIndex.values()) {
+          const h = rec.handler || "";
+          if (/assess|assign|test|survey|grade/i.test(h)) {
+            per.assessments.push({
+              course: cname, course_id: cid,
+              title: rec.title,
+              description: rec.description,
+              due_date: (rec.dates && rec.dates.due) || null,
+              available_from: rec.available_from || (rec.dates && rec.dates.start) || null,
+              available_until: rec.available_until || (rec.dates && rec.dates.end) || null,
+              submission_status: null, submitted_at: null,
+              grade: null, possible: null, percentage: null, feedback: null, attempts: [],
+              type: M.classifyAssessment({ column: { name: rec.title }, content: { contentHandler: { id: h } } }),
+              content_id: rec.content_id,
+              column_id: null, calendar_id: null, attempt_id: null,
+              url: rec.url, source_id: rec.content_id,
+              source: "content"
+            });
+          }
         }
       }
 
-      // 3e. grades — documented student-readable paths ONLY.
-      // Primary: GET /learn/api/public/v1/courses/{courseId}/gradebook/users/{userId}
-      // Fallback: per-column GET .../columns/{columnId}/users/{userId} (bounded).
-      // The `/users/{uid}/grades` path (no /gradebook/) 404s and is never called.
+      // 3e. grades. Fallback when the bulk path fails: bounded per-column GET
+      // .../columns/{columnId}/users/{userId} (documented path).
       const gradeByColumn = new Map();
-      let userGrades = [];
-      try {
-        const g = await track(`usergrades:${cid}`, "GET /learn/api/public/v1/courses/{id}/gradebook/users/{userId}",
-          () => U.getJson(origin, `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/gradebook/users/${encodeURIComponent(myUserId)}?limit=100`, { timeoutMs, retries }));
-        userGrades = g.results || g.grades || (g.columnId ? [g] : []);
-      } catch {
-        // Bounded per-column fallback (documented path).
+      let userGrades = gradebook.userGrades || [];
+      if (gradebook.userGrades === null) {
         const todo = [...(totalColumn ? [totalColumn] : []), ...columns.slice(0, 10)]; // total first so the cap cannot drop the final grade
-        const res = await U.limitedMap(todo, 2, async (col) => {
+        const res = await U.limitedMap(todo, 3, async (col) => {
           const t0 = Date.now();
           try {
-            const one = await U.getJson(origin, `/learn/api/public/v1/courses/${encodeURIComponent(cid)}/gradebook/columns/${encodeURIComponent(col.id)}/users/${encodeURIComponent(myUserId)}`, { timeoutMs, retries: 1 });
+            const one = await getJson(`/learn/api/public/v1/courses/${encodeURIComponent(cid)}/gradebook/columns/${encodeURIComponent(col.id)}/users/${encodeURIComponent(myUserId)}`, { timeoutMs: probeTimeoutMs, retries: 1 });
             recordSource(`grade:${cid}:${col.id}`, "GET .../columns/{columnId}/users/{userId}", "ok", 1, Date.now() - t0);
             return one;
           } catch (e) {
@@ -574,9 +615,9 @@
 
       // 3f. attempts (bounded): submission status + submitted timestamp.
       const assessed = per.assessments.filter((a) => a.column_id).slice(0, 10);
-      await U.limitedMap(assessed, 2, async (a) => {
+      await U.limitedMap(assessed, 3, async (a) => {
         try {
-          const att = await U.getJson(origin, `/learn/api/public/v2/courses/${encodeURIComponent(cid)}/gradebook/columns/${encodeURIComponent(a.column_id)}/users/${encodeURIComponent(myUserId)}/attempts?limit=5`, { timeoutMs, retries: 1 });
+          const att = await getJson(`/learn/api/public/v2/courses/${encodeURIComponent(cid)}/gradebook/columns/${encodeURIComponent(a.column_id)}/users/${encodeURIComponent(myUserId)}/attempts?limit=5`, { timeoutMs: probeTimeoutMs, retries: 1 });
           const list = att.results || att.attempts || [];
           if (list.length) {
             const last = list[list.length - 1];
@@ -609,42 +650,10 @@
           a.feedback = a.feedback || U.extractRichText(gr.feedback).text;
         }
       }
-
-      // 3g. structured calendar sweep per course, in <= 16-week windows (longer -> HTTP 400).
-      for (const w of windows) {
-        try {
-          const cal = await track(`calendar:${cid}`, "GET /learn/api/public/v1/calendars/items",
-            () => U.getJson(origin, `/learn/api/public/v1/calendars/items?courseId=${encodeURIComponent(cid)}&since=${encodeURIComponent(w.since)}&until=${encodeURIComponent(w.until)}`, { timeoutMs, retries }));
-          sample("calendar", (cal.results || [])[0]);
-          for (const it of (cal.results || [])) {
-            const dynId = it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.id;
-            per.events.push({
-              title: it.title || "(event)",
-              course: cname, course_id: cid,
-              description: U.extractRichText(it.description).text,
-              start: U.normalizeTimestamp(it.start),
-              end: U.normalizeTimestamp(it.end),
-              due_date: U.normalizeTimestamp(it.end || it.start),
-              type: it.type || null,
-              calendar_id: it.id || null,
-              uid: it.id || null,
-              url: (it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.link) || courseUrl(origin, cid),
-              source_id: it.id ? `cal:${it.id}` : null,
-              source: "api-calendar"
-            });
-            if (it.type === "GradebookColumn" && dynId) {
-              const ax = per.assessments.find((x) => x.column_id === dynId);
-              if (ax) {
-                ax.calendar_id = it.id || ax.calendar_id;
-                if (!ax.due_date) ax.due_date = U.normalizeTimestamp(it.end || it.start);
-              }
-            }
-          }
-        } catch { /* recorded */ }
-      }
-
       return per;
-    }, true);
+    }
+
+    const results = await U.limitedMap(inScope, concurrency, readCourse, true);
 
     for (const r of results) {
       if (!r.ok) continue; // per-course isolation: failure recorded by track(); export continues
@@ -655,27 +664,51 @@
       content.push(...r.value.content);
     }
 
-    // ---- 4. global calendar sweep (kept) ----
-    for (const w of windows) {
-      try {
-        const g = await track("calendar-global", "GET /learn/api/public/v1/calendars/items",
-          () => U.getJson(origin, `/learn/api/public/v1/calendars/items?since=${encodeURIComponent(w.since)}&until=${encodeURIComponent(w.until)}`, { timeoutMs, retries }));
-        for (const it of (g.results || [])) {
-          const cid = it.calendarId || it.courseId || null;
-          const cname = it.calendarName || (cid && courseById.get(cid)?.name) || null;
-          events.push({
-            title: it.title || "(event)", course: cname, course_id: cid,
-            description: U.extractRichText(it.description).text,
-            start: U.normalizeTimestamp(it.start),
-            end: U.normalizeTimestamp(it.end),
-            due_date: U.normalizeTimestamp(it.end || it.start),
-            type: it.type || null, calendar_id: it.id || null, uid: it.id || null,
-            url: cid ? courseUrl(origin, cid) : null,
-            source_id: it.id ? `cal:${it.id}` : null,
-            source: "api-calendar"
-          });
+    // ---- 4. calendar: the global sweep; per-course sweeps (<= 16-week windows) only if it failed ----
+    const calendarItems = [];
+    const globalWindows = await globalCalendar;
+    for (const r of globalWindows) if (r.ok) for (const it of (r.value.results || [])) calendarItems.push([it, null]);
+    if (globalWindows.some((r) => !r.ok)) {
+      const perCourse = await U.limitedMap(inScope, concurrency, async (course) => {
+        const items = [];
+        for (const w of windows) {
+          try {
+            const cal = await track(`calendar:${course.id}`, "GET /learn/api/public/v1/calendars/items",
+              () => getJson(`/learn/api/public/v1/calendars/items?courseId=${encodeURIComponent(course.id)}&since=${encodeURIComponent(w.since)}&until=${encodeURIComponent(w.until)}`, { timeoutMs, retries }));
+            for (const it of (cal.results || [])) items.push([it, course]);
+          } catch { /* recorded */ }
         }
-      } catch { /* recorded */ }
+        return items;
+      }, true);
+      for (const r of perCourse) if (r.ok) calendarItems.push(...r.value);
+    }
+    sample("calendar", calendarItems.length ? calendarItems[0][0] : null);
+    for (const [it, course] of calendarItems) {
+      const cid = course ? course.id : (it.calendarId || it.courseId || null);
+      const known = cid ? courseById.get(cid) : null;
+      const cname = course ? course.name : (it.calendarName || (known && known.name) || null);
+      const dynId = it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.id;
+      events.push({
+        title: it.title || "(event)",
+        course: cname, course_id: cid,
+        description: U.extractRichText(it.description).text,
+        start: U.normalizeTimestamp(it.start),
+        end: U.normalizeTimestamp(it.end),
+        due_date: U.normalizeTimestamp(it.end || it.start),
+        type: it.type || null,
+        calendar_id: it.id || null,
+        uid: it.id || null,
+        url: (it.dynamicCalendarItemProps && it.dynamicCalendarItemProps.link) || (known ? courseUrl(origin, cid) : null),
+        source_id: it.id ? `cal:${it.id}` : null,
+        source: "api-calendar"
+      });
+      if (it.type === "GradebookColumn" && dynId) {
+        const ax = assessments.find((x) => x.column_id === dynId && (!known || x.course_id === cid));
+        if (ax) {
+          ax.calendar_id = it.id || ax.calendar_id;
+          if (!ax.due_date) ax.due_date = U.normalizeTimestamp(it.end || it.start);
+        }
+      }
     }
 
     // ---- 5. ICS merge (kept as fallback/supplement) ----

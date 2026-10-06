@@ -6,12 +6,13 @@ The password is typed into the form and never logged, returned or stored here.
 """
 from __future__ import annotations
 
+import base64
 import os
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable, Collection, Protocol
 from urllib.parse import urlsplit
 
 from .files import MAX_FILE_BYTES, Attachment
@@ -25,17 +26,49 @@ LOGIN_WAIT_MS = 30_000
 EXTRACT_TIMEOUT_MS = 8 * 60_000
 # The whole attachment phase; with login and extraction this keeps a sync under ~10 minutes.
 DOWNLOAD_BUDGET_SECONDS = 180
-EXTRACT_SCRIPT = """async ({ origin, timeoutMs }) => {
+# Files fetched at once inside the signed-in page. Each comes back base64-encoded, so this also
+# bounds how much is held in memory (3 x 15 MB).
+DOWNLOAD_BATCH = 3
+# Nothing on Blackboard's pages is looked at, so its images, fonts and media are never loaded.
+# Registered only once signed in: nothing intercepts the SAML hand-off or a sign-in step's screenshot.
+HEAVY_RESOURCES = r"\.(?:png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|eot|mp4|webm|mp3)(?:[?#]|$)"
+EXTRACT_SCRIPT = """async ({ origin, timeoutMs, summaryOnly }) => {
   const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("extract timed out")), timeoutMs));
   try {
     const data = await Promise.race([
-      BBExtractor.extractAll({ origin, scope: "all", onProgress: (m) => window.waypointProgress(String(m)) }),
+      BBExtractor.extractAll({ origin, scope: "all", summaryOnly, onProgress: (m) => window.waypointProgress(String(m)) }),
       timeout,
     ]);
     return { ok: true, data };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e).slice(0, 300) };
   }
+}"""
+# GET only, same-origin URLs only (checked before the call). A cross-origin redirect fails CORS
+# here and is retried through the browser context, which follows it.
+DOWNLOAD_SCRIPT = """async ({ jobs, maxBytes, timeoutMs }) => {
+  const toBase64 = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(text);
+  };
+  return Promise.all(jobs.map(async ({ key, url }) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { method: "GET", credentials: "include", signal: ctrl.signal });
+      if (!res.ok) return { key, skip: true };
+      if (Number(res.headers.get("content-length") || 0) > maxBytes) return { key, skip: true };
+      const buffer = await res.arrayBuffer();
+      if (buffer.byteLength > maxBytes) return { key, skip: true };
+      return { key, url: res.url, data: toBase64(buffer) };
+    } catch (e) {
+      return { key, retry: !ctrl.signal.aborted };
+    } finally {
+      clearTimeout(timer);
+    }
+  }));
 }"""
 
 
@@ -47,9 +80,12 @@ def extractor_dir() -> Path:
 class LoginFailure(Exception):
     """code: bad_password | extra_verification | unreachable | needs_login | browser_missing"""
 
-    def __init__(self, code: str, detail: str = "", screenshot: bytes | None = None):
+    def __init__(self, code: str, detail: str = "", screenshot: bytes | None = None, stale_session: bool = False):
         super().__init__(code)
         self.code = code
+        # Blackboard rejected the SAML exchange even after starting over without cookies: the caller
+        # drops the saved session so the next attempt starts clean.
+        self.stale_session = stale_session
         # What IAU showed instead of Blackboard (page title + host/path, no query string) and a
         # screenshot of it, so the student can see the extra step. Never contains the password.
         self.detail = detail
@@ -73,7 +109,7 @@ class BrowserResult:
 class BlackboardBrowser(Protocol):
     def run(self, *, username: str, password: str | None, session_state: dict | None,
             pick_attachments: Callable[[dict], list[Attachment]],
-            progress: Callable[[str, str], None]) -> BrowserResult: ...
+            progress: Callable[[str, str], None], summary_only: Collection[str] = ()) -> BrowserResult: ...
 
 
 def headed_from_env() -> bool:
@@ -114,8 +150,9 @@ class PlaywrightBrowser:
         self.login_wait_ms = login_wait_ms
         self.download_budget_s = download_budget_s
 
-    def run(self, *, username, password, session_state, pick_attachments, progress) -> BrowserResult:
-        """Must be called from a worker thread, not the asyncio event-loop thread (Playwright sync API)."""
+    def run(self, *, username, password, session_state, pick_attachments, progress, summary_only=()) -> BrowserResult:
+        """Must be called from a worker thread, not the asyncio event-loop thread (Playwright sync API).
+        summary_only: past course ids whose content was read recently; only their grades are refreshed."""
         try:
             from playwright.sync_api import Error as PlaywrightError, sync_playwright
         except ImportError as exc:
@@ -140,46 +177,44 @@ class PlaywrightBrowser:
                 page.expose_function("waypointProgress", lambda message: progress("extracting", str(message)[:200]))
                 progress("logging_in", "")
                 verified = False
+                started_over = False
                 if session_state and self._signed_in(context):
+                    self._skip_heavy_resources(context)
                     page.goto(f"{self.origin}/ultra/course", wait_until="domcontentloaded")
                 else:
                     if not password:
                         raise LoginFailure("needs_login")
-                    submitted = self._login(page, username, password)
-                    verified = submitted
+                    try:
+                        verified = self._login(page, username, password)
+                    except LoginFailure as failure:
+                        if failure.code != "extra_verification" or not self._sso_error(page):
+                            raise
+                        verified, started_over = self._start_over(context, page, username, password), True
                 # Blackboard can reach Ultra before acknowledging its single-session notice.
                 # It is a known acknowledgement, not an MFA or consent challenge.
                 self._dismiss_session_notice(page)
+                if not self._signed_in(context) and password and not started_over and self._sso_error(page):
+                    verified = self._start_over(context, page, username, password)
+                    self._dismiss_session_notice(page)
                 if not self._signed_in(context):
-                    raise self._extra_step(page)
+                    failure = self._extra_step(page)
+                    failure.stale_session = self._sso_error(page)
+                    raise failure
+                self._skip_heavy_resources(context)
                 progress("extracting", "")
                 try:
                     for source in bundle:
                         # Shadow `module` so the files register browser globals even if the page defines one.
                         page.evaluate(f"() => {{ const module = undefined; {source}\n}}")
-                    outcome = page.evaluate(EXTRACT_SCRIPT, {"origin": self.origin, "timeoutMs": EXTRACT_TIMEOUT_MS})
+                    outcome = page.evaluate(EXTRACT_SCRIPT, {"origin": self.origin, "timeoutMs": EXTRACT_TIMEOUT_MS,
+                                                            "summaryOnly": list(summary_only)})
                 except PlaywrightError:
                     raise ExtractFailure("extract failed") from None
                 if not outcome.get("ok"):
                     raise ExtractFailure(outcome.get("error") or "extract failed")
                 export = outcome["data"]
                 progress("reading_files", "")
-                downloaded: dict[str, tuple[str, bytes]] = {}
-                deadline = time.monotonic() + self.download_budget_s
-                for attachment in pick_attachments(export):
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        break  # budget spent: keep what was downloaded, start nothing new
-                    if not attachment.url.startswith(f"{self.origin}/"):
-                        continue  # URLs come from the page world; never start a fetch on another origin.
-                    try:
-                        response = context.request.get(attachment.url, timeout=max(1_000, min(60_000, remaining * 1000)))
-                    except PlaywrightError:
-                        continue
-                    if response.ok and self._allowed_final_url(response.url):
-                        body = response.body()
-                        if len(body) <= MAX_FILE_BYTES:
-                            downloaded[attachment.key] = (attachment.name, body)
+                downloaded = self._download(page, context, pick_attachments(export))
                 return BrowserResult(export=export, session_state=context.storage_state(), files=downloaded,
                                      password_verified=verified)
             except PlaywrightError:
@@ -189,6 +224,80 @@ class PlaywrightBrowser:
                     chromium.close()
                 except Exception:
                     pass
+
+    def _download(self, page, context, picks: list[Attachment]) -> dict[str, tuple[str, bytes]]:
+        """Fetch picked files in small parallel batches inside the page; anything the page could not
+        fetch (a redirect to another origin) is retried one at a time through the browser context.
+        One budget covers both: once spent, keep what was downloaded and start nothing new."""
+        from playwright.sync_api import Error as PlaywrightError
+        # URLs come from the page world; never start a fetch on another origin.
+        picks = [a for a in picks if a.url.startswith(f"{self.origin}/")]
+        deadline = time.monotonic() + self.download_budget_s
+        downloaded: dict[str, tuple[str, bytes]] = {}
+        retry: list[Attachment] = []
+
+        def keep(attachment: Attachment, final_url: str, body: bytes) -> None:
+            if self._allowed_final_url(final_url) and len(body) <= MAX_FILE_BYTES:
+                downloaded[attachment.key] = (attachment.name, body)
+
+        for start in range(0, len(picks), DOWNLOAD_BATCH):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return downloaded
+            batch = {a.key: a for a in picks[start:start + DOWNLOAD_BATCH]}
+            try:
+                outcomes = page.evaluate(DOWNLOAD_SCRIPT, {
+                    "jobs": [{"key": a.key, "url": a.url} for a in batch.values()],
+                    "maxBytes": MAX_FILE_BYTES, "timeoutMs": int(max(1_000, min(60_000, remaining * 1000)))})
+            except PlaywrightError:
+                retry.extend(batch.values())
+                continue
+            for outcome in outcomes or []:
+                attachment = batch.get(outcome.get("key"))
+                if attachment is None:
+                    continue
+                if outcome.get("retry"):
+                    retry.append(attachment)
+                elif isinstance(outcome.get("data"), str):
+                    try:
+                        keep(attachment, str(outcome.get("url") or ""), base64.b64decode(outcome["data"], validate=True))
+                    except ValueError:
+                        continue
+        for attachment in retry:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                response = context.request.get(attachment.url, timeout=max(1_000, min(60_000, remaining * 1000)))
+            except PlaywrightError:
+                continue
+            if response.ok:
+                keep(attachment, response.url, response.body())
+        return downloaded
+
+    def _skip_heavy_resources(self, context) -> None:
+        """Signed in: stop loading Blackboard's images, fonts and media (once per context)."""
+        if getattr(context, "_waypoint_light", False):
+            return
+        context.route(re.compile("^" + re.escape(self.origin) + "/.*" + HEAVY_RESOURCES, re.I),
+                      lambda route: route.abort())
+        context._waypoint_light = True
+
+    def _sso_error(self, page) -> bool:
+        """Blackboard's own SAML endpoint kept the page: it rejected the hand-off ("Sign On Error",
+        e.g. "the authentication request has expired"), which stale cookies from an old session cause."""
+        parts = urlsplit(page.url or "")
+        return parts.netloc == urlsplit(self.origin).netloc and parts.path.startswith("/auth-saml/saml/SSO")
+
+    def _start_over(self, context, page, username: str, password: str) -> bool:
+        """Clear every cookie (Blackboard's and AD FS's) and sign in once more from scratch."""
+        context.clear_cookies()
+        try:
+            return self._login(page, username, password)
+        except LoginFailure as failure:
+            if failure.code == "extra_verification" and self._sso_error(page):
+                failure.stale_session = True
+            raise
 
     def _extra_step(self, page) -> LoginFailure:
         """Record what IAU showed instead of Blackboard; best effort, never masks the failure."""

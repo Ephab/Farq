@@ -13,6 +13,8 @@ global.location = { origin: "https://vle.iau.edu.sa" };
 
 const BAD_PATH_HIT = [];
 let FAIL_CHILDREN = false; // simulate a folder whose children listing returns HTTP 500
+let FAIL_GLOBAL_CAL = false; // simulate the all-courses calendar sweep failing
+const CALLS = [];
 const responses = {
   me: { id: "_1_1", userName: "student" },
   memberships: {
@@ -58,12 +60,15 @@ const responses = {
   attemptsCol1: { results: [{ id: "_att1", status: "Graded", created: "2026-02-09T00:00:00.000Z", modified: "2026-02-10T20:00:00.000Z" }] },
   cal101: { results: [{ id: "_cal1", title: "Assignment 1", start: "2026-02-10T20:59:00.000Z", end: "2026-02-10T20:59:00.000Z", type: "GradebookColumn", calendarId: "_101_1", calendarName: "Intro to Computing", dynamicCalendarItemProps: { id: "_col1" } }, { id: "_cal2", title: "Lab session", start: "2026-10-05T08:00:00.000Z", end: "2026-10-05T10:00:00.000Z", type: "Course", calendarId: "_101_1", calendarName: "Intro to Computing" }] },
   cal102: { results: [] },
-  calGlobal: { results: [] }
+  calGlobal: null // set below: the global sweep returns every course's items
 };
+
+responses.calGlobal = { results: [...responses.cal101.results] };
 
 global.fetch = async (url) => {
   const u = new URL(url);
   const p = u.pathname;
+  CALLS.push(p + u.search);
   if (p.includes("/users/_1_1/grades")) BAD_PATH_HIT.push(p); // the known-404 path must never be called
   const ok = (v) => ({ ok: true, headers: { get: () => "application/json" }, json: async () => v });
   const miss = (status) => ({ ok: false, status, headers: { get: () => "" }, json: async () => ({}) });
@@ -88,7 +93,7 @@ global.fetch = async (url) => {
     if (!(span > 0) || span > 112 * 864e5) return miss(400); // real Blackboard behaviour
     if (u.searchParams.get("courseId") === "_101_1") return ok(responses.cal101);
     if (u.searchParams.get("courseId") === "_102_1") return ok(responses.cal102);
-    return ok(responses.calGlobal);
+    return FAIL_GLOBAL_CAL ? miss(500) : ok(responses.calGlobal);
   }
   if (p === "/learn/api/public/v1/courses/_101_1/users") return miss(403); // students may not list members
   if (p === "/learn/api/v1/courses/_101_1") return ok({ id: "_101_1", instructorsMembership: [{ user: { givenName: "A", familyName: "Prof", emailAddress: "a@iau.edu.sa", id: "_9_1" } }] });
@@ -129,6 +134,9 @@ global.fetch = async (url) => {
   check("grade record with feedback + posted", all.grades.some((g) => g.feedback === "Good work" && g.posted), all.grades.length);
   check("calendar event normalized", all.events.some((e) => e.source_id === "cal:_cal1" && e.due_date === "2026-02-10T20:59:00.000Z"));
   check("calendar windows never exceed 16 weeks (no 400s)", !all.diagnostics.sources.some((s) => s.source.startsWith("calendar") && s.status === "http_400"));
+  check("one global calendar sweep, no per-course sweeps", !all.diagnostics.sources.some((s) => /^calendar:/.test(s.source)) && all.diagnostics.sources.some((s) => s.source === "calendar-global"));
+  check("calendar links GradebookColumn item to its assessment", all.assessments.find((a) => a.column_id === "_col1").calendar_id === "_cal1");
+  check("every course read in full by default", all.courses.every((c) => c.detail === "full"));
   check("non-assessment calendar event kept", all.events.some((e) => e.source_id === "cal:_cal2" && e.type === "Course"));
   const quiz = all.assessments.find((a) => a.column_id === "_col2");
   check("ungraded past quiz is overdue", quiz && quiz.is_overdue === true && quiz.is_upcoming === false, quiz);
@@ -184,6 +192,22 @@ global.fetch = async (url) => {
   check("children 500 -> exactly one contents:<cid> entry, status partial", contentsSrc.length === 1 && contentsSrc[0].status === "partial" && contentsSrc[0].children_errors === 1, contentsSrc);
   check("partial contents counts as a failed source", partial.summary.failed_sources >= 1 && partial.diagnostics.failed_sources.some((f) => f.startsWith("contents:_101_1: partial")), partial.diagnostics.failed_sources);
   check("children 500 keeps the items it could read", partial.content.some((m) => m.content_id === "_c1") && !partial.content.some((m) => m.content_id === "_file1"));
+
+  FAIL_GLOBAL_CAL = true;
+  const calFallback = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all", retries: 0 });
+  FAIL_GLOBAL_CAL = false;
+  check("global calendar failure falls back to per-course sweeps", calFallback.diagnostics.sources.some((s) => s.source === "calendar:_101_1" && s.status === "ok")
+    && calFallback.events.some((e) => e.source_id === "cal:_cal1" && e.course === "Intro to Computing"), calFallback.diagnostics.failed_sources);
+
+  CALLS.length = 0;
+  const light = await ex.extractAll({ origin: "https://vle.iau.edu.sa", scope: "all", summaryOnly: ["_102_1", "_101_1"] });
+  const old = light.courses.find((c) => c.id === "_102_1");
+  check("summaryOnly: past course reads grades only", old.detail === "summary" && old.final_grade && old.final_grade.text === "A-"
+    && !CALLS.some((c) => /courses\/_102_1(\?|\/contents|\/announcements|\/users\?|\/gradebook\/categories)/.test(c)), CALLS.filter((c) => c.includes("_102_1")));
+  check("summaryOnly: columns are not reported as a full column read", !light.diagnostics.sources.some((s) => s.source === "columns:_102_1")
+    && light.diagnostics.sources.some((s) => s.source === "summary-columns:_102_1"));
+  check("summaryOnly never applies to current courses", light.courses.find((c) => c.id === "_101_1").detail === "full"
+    && light.content.some((m) => m.course_id === "_101_1"));
 
   const originalFetch = global.fetch;
   for (let i = 0; i < 85; i++) responses.pubChildrenF1.results.push({ id: `_extra${i}`, title: `Lecture ${i}.pptx`, contentHandler: { id: "resource/x-bb-file" } });

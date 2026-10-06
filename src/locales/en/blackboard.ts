@@ -60,6 +60,9 @@ export const blackboard = {
   synced: "Synced {when}",
   partial: "Some sections were unavailable this time.",
   nextSync: "Next automatic sync {when}",
+  autoOff: "Automatic sync is off",
+  stopAuto: "Stop automatic sync",
+  resumeAuto: "Turn on automatic sync",
   extraStep: {
     showed: "IAU showed:",
     view: "See what IAU showed",
